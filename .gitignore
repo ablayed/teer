@@ -12,3 +12,4 @@ test-results
 
 *.tsbuildinfo
 pnpm-debug.log*
+supabase/.temp

@@ -10,7 +10,7 @@ max_rows = 1000
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 15
+major_version = 17
 
 [db.pooler]
 enabled = false
@@ -54,4 +54,3 @@ secure_password_change = false
 
 [edge_runtime]
 enabled = true
-port = 54327
