@@ -1,0 +1,40 @@
+{
+  "marketing": {
+    "header": {
+      "connexion": "Connexion"
+    },
+    "hero": {
+      "title_a": "Recevez.",
+      "title_b": "Confirmez.",
+      "title_c": "Livrez.",
+      "subtitle": "Le tableau de bord COD pour marchands Shopify sénégalais.",
+      "cta": "Commencer gratuitement"
+    },
+    "footer": {
+      "copyright": "© 2026 Tëër",
+      "privacy": "Confidentialité"
+    }
+  },
+  "auth": {
+    "signin_tab": "Connexion",
+    "signup_tab": "Inscription",
+    "email_label": "Adresse e-mail",
+    "password_label": "Mot de passe",
+    "submit": "Continuer",
+    "verify_email": "Vérifiez votre email pour activer votre compte.",
+    "errors": {
+      "invalid_email": "Adresse e-mail invalide.",
+      "weak_password": "Le mot de passe doit contenir au moins 10 caractères.",
+      "invalid_credentials": "E-mail ou mot de passe incorrect.",
+      "generic": "Une erreur est survenue. Réessayez."
+    }
+  },
+  "app": {
+    "greeting": "Bonjour, {name}",
+    "phase0_placeholder": "Phase 0 OK. Le tableau arrive en semaine 11.",
+    "signout": "Se déconnecter"
+  },
+  "common": {
+    "under_construction": "En construction"
+  }
+}
