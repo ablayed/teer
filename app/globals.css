@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f4f3ed;
+  --color-surface: #ffffff;
+  --color-border: #e5e2d8;
+  --color-text: #111111;
+  --color-muted: #666666;
+  --color-accent: #ee8243;
+  --color-accent-deep: #c9651d;
+  --color-accent-soft: #f2bc97;
+  --color-accent-ink: #ffffff;
+  --color-success: #0e7c3a;
+  --color-warning: #b45309;
+  --color-danger: #b42318;
+
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  /* TODO: swap to PP Editorial New Italic when commercial license acquired */
+  --font-display: Georgia, "Times New Roman", serif;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-2: 0 2px 8px rgb(0 0 0 / 0.06);
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html {
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+body {
+  -webkit-font-smoothing: antialiased;
+}
+.font-mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+}
+.font-display {
+  font-family: var(--font-display);
+  font-style: italic;
+}
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

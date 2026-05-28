@@ -21,6 +21,7 @@
     "email_label": "Adresse e-mail",
     "password_label": "Mot de passe",
     "submit": "Continuer",
+    "form_label": "Formulaire de connexion",
     "verify_email": "Vérifiez votre email pour activer votre compte.",
     "errors": {
       "invalid_email": "Adresse e-mail invalide.",
