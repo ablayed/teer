@@ -10,7 +10,7 @@ import messages from '@/messages/fr.json';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 
 type AuthMode = 'signin' | 'signup';
@@ -25,6 +25,7 @@ export function ConnexionForm() {
   const mode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
   const [clientError, setClientError] = useState<string | null>(null);
   const [verificationSent, setVerificationSent] = useState(false);
+  const lastSubmitRef = useRef(0);
   const signUp = useAction(signUpAction);
   const signIn = useAction(signInAction);
 
@@ -43,10 +44,26 @@ export function ConnexionForm() {
     }
   }, [signUp.result.data]);
 
+  function errorMessageFor(errorCode: string | undefined): string | null {
+    if (!errorCode) {
+      return null;
+    }
+
+    const errors = messages.auth.errors as Record<string, string>;
+    return errors[errorCode] ?? errors.unknown ?? messages.auth.errors.generic;
+  }
+
+  const signUpErrorCode =
+    signUp.result.data?.ok === false ? signUp.result.data.errorCode : undefined;
+  const signInErrorCode =
+    signIn.result.data?.ok === false ? signIn.result.data.errorCode : undefined;
+
   const actionError =
-    signIn.result.data?.ok === false
-      ? messages.auth.errors.invalid_credentials
-      : (signIn.result.serverError ?? signUp.result.serverError ?? null);
+    errorMessageFor(signUpErrorCode) ??
+    errorMessageFor(signInErrorCode) ??
+    signIn.result.serverError ??
+    signUp.result.serverError ??
+    null;
 
   const validationError =
     signIn.result.validationErrors || signUp.result.validationErrors
@@ -55,6 +72,12 @@ export function ConnexionForm() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const now = Date.now();
+    if (now - lastSubmitRef.current < 1000) {
+      return;
+    }
+    lastSubmitRef.current = now;
+
     setClientError(null);
 
     const formData = new FormData(event.currentTarget);

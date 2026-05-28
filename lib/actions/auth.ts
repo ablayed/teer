@@ -1,5 +1,6 @@
 'use server';
 
+import { mapSupabaseAuthError } from '@/lib/actions/auth-errors';
 import { actionClient, authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -17,7 +18,7 @@ export const signUpAction = actionClient
   .inputSchema(authInputSchema)
   .action(async ({ parsedInput }) => {
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: parsedInput.email,
       password: parsedInput.password,
       options: {
@@ -26,10 +27,18 @@ export const signUpAction = actionClient
     });
 
     if (error) {
-      return { ok: false, error: 'generic' as const };
+      const code = mapSupabaseAuthError(error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[signUpAction]', { code, raw: error });
+      }
+      return { ok: false as const, errorCode: code };
     }
 
-    return { ok: true, requiresEmailVerification: true };
+    if (data.user?.identities && data.user.identities.length === 0) {
+      return { ok: false as const, errorCode: 'email_already_registered' as const };
+    }
+
+    return { ok: true as const, requiresEmailVerification: true };
   });
 
 export const signInAction = actionClient
@@ -43,7 +52,11 @@ export const signInAction = actionClient
     });
 
     if (error) {
-      return { ok: false, error: 'invalid_credentials' as const };
+      const code = mapSupabaseAuthError(error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[signInAction]', { code, raw: error });
+      }
+      return { ok: false as const, errorCode: code };
     }
 
     redirect('/tableau');
