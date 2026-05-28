@@ -1,5 +1,3 @@
-'use server';
-
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSafeActionClient } from 'next-safe-action';
 import { z } from 'zod';
