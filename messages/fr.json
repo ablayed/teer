@@ -5,9 +5,11 @@
     "save": "Enregistrer",
     "cancel": "Annuler",
     "back": "Retour",
+    "skipToContent": "Aller au contenu",
     "underConstruction": "En construction"
   },
   "nav": {
+    "ariaLabel": "Navigation principale",
     "tableau": "Tableau",
     "commandes": "Commandes",
     "clients": "Clients",
@@ -53,5 +55,9 @@
   "app": {
     "greeting": "Bonjour, {name}",
     "tableauPlaceholder": "Phase 0 OK. Le tableau arrive en semaine 11."
+  },
+  "placeholders": {
+    "commandes": "Bientôt disponible (semaine 5).",
+    "generic": "Bientôt disponible."
   }
 }

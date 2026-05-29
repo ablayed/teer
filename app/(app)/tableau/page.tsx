@@ -10,9 +10,9 @@ export default async function TableauPage() {
   const name = user?.email?.split('@')[0] ?? '';
 
   return (
-    <section className="space-y-4">
+    <main className="space-y-4" id="main">
       <h1 className="font-display text-4xl md:text-5xl">{t('greeting', { name })}</h1>
       <p className="text-muted">{t('tableauPlaceholder')}</p>
-    </section>
+    </main>
   );
 }
