@@ -8,6 +8,10 @@ Setup : `pnpm install` -> `cp .env.example .env.local` -> remplir `.env.local` -
 
 Scripts : `dev`, `build`, `lint`, `format`, `typecheck`, `test:unit`, `test:rls`, `test:e2e`, `db:types`.
 
+## Développement local
+
+Si vous voyez un warning Next.js `inferred your workspace root / multiple lockfiles`, supprimez le fichier parasite hors du projet (ex : `C:\Users\<user>\package-lock.json`). Il n'affecte pas le déploiement Vercel.
+
 ## i18n
 
 Les chaînes UI sont centralisées dans `messages/fr.json` et consommées via `next-intl`. L’application utilise une locale unique `fr` sans préfixe d’URL; le futur wolof sera activé par cookie.
