@@ -1,4 +1,20 @@
 {
+  "common": {
+    "appName": "Tëër",
+    "loading": "Chargement…",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "back": "Retour",
+    "underConstruction": "En construction"
+  },
+  "nav": {
+    "tableau": "Tableau",
+    "commandes": "Commandes",
+    "clients": "Clients",
+    "produits": "Produits",
+    "parametres": "Paramètres",
+    "signOut": "Se déconnecter"
+  },
   "marketing": {
     "header": {
       "connexion": "Connexion"
@@ -36,10 +52,6 @@
   },
   "app": {
     "greeting": "Bonjour, {name}",
-    "phase0_placeholder": "Phase 0 OK. Le tableau arrive en semaine 11.",
-    "signout": "Se déconnecter"
-  },
-  "common": {
-    "under_construction": "En construction"
+    "tableauPlaceholder": "Phase 0 OK. Le tableau arrive en semaine 11."
   }
 }

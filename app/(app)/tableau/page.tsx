@@ -1,7 +1,8 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import messages from '@/messages/fr.json';
+import { getTranslations } from 'next-intl/server';
 
 export default async function TableauPage() {
+  const t = await getTranslations('app');
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -10,10 +11,8 @@ export default async function TableauPage() {
 
   return (
     <section className="space-y-4">
-      <h1 className="font-display text-4xl md:text-5xl">
-        {messages.app.greeting.replace('{name}', name)}
-      </h1>
-      <p className="text-muted">{messages.app.phase0_placeholder}</p>
+      <h1 className="font-display text-4xl md:text-5xl">{t('greeting', { name })}</h1>
+      <p className="text-muted">{t('tableauPlaceholder')}</p>
     </section>
   );
 }

@@ -4,14 +4,18 @@ import { mapSupabaseAuthError } from '@/lib/actions/auth-errors';
 import { actionClient, authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import messages from '@/messages/fr.json';
+import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-const authInputSchema = z.object({
-  email: z.string().email(messages.auth.errors.invalid_email),
-  password: z.string().min(10, messages.auth.errors.weak_password),
-});
+async function authInputSchema() {
+  const t = await getTranslations('auth.errors');
+
+  return z.object({
+    email: z.string().email(t('invalid_email')),
+    password: z.string().min(10, t('weak_password')),
+  });
+}
 
 export const signUpAction = actionClient
   .metadata({ actionName: 'auth.sign_up', section: 'auth' })

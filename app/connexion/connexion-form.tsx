@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Wordmark } from '@/components/wordmark';
 import { signInAction, signUpAction } from '@/lib/actions/auth';
+import type { AuthErrorCode } from '@/lib/actions/auth-errors';
 import { cn } from '@/lib/utils';
-import messages from '@/messages/fr.json';
+import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -15,12 +16,22 @@ import { z } from 'zod';
 
 type AuthMode = 'signin' | 'signup';
 
-const tabs: Array<{ mode: AuthMode; label: string }> = [
-  { mode: 'signin', label: messages.auth.signin_tab },
-  { mode: 'signup', label: messages.auth.signup_tab },
-];
+const authErrorCodes = [
+  'invalid_credentials',
+  'email_already_registered',
+  'rate_limited',
+  'email_not_confirmed',
+  'weak_password',
+  'unknown',
+] as const satisfies readonly AuthErrorCode[];
+
+function isAuthErrorCode(errorCode: string): errorCode is AuthErrorCode {
+  return authErrorCodes.includes(errorCode as AuthErrorCode);
+}
 
 export function ConnexionForm() {
+  const t = useTranslations('auth');
+  const tErrors = useTranslations('auth.errors');
   const searchParams = useSearchParams();
   const mode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
   const [clientError, setClientError] = useState<string | null>(null);
@@ -29,13 +40,18 @@ export function ConnexionForm() {
   const signUp = useAction(signUpAction);
   const signIn = useAction(signInAction);
 
+  const tabs: Array<{ mode: AuthMode; label: string }> = [
+    { mode: 'signin', label: t('signin_tab') },
+    { mode: 'signup', label: t('signup_tab') },
+  ];
+
   const schema = useMemo(
     () =>
       z.object({
-        email: z.string().email(messages.auth.errors.invalid_email),
-        password: z.string().min(10, messages.auth.errors.weak_password),
+        email: z.string().email(tErrors('invalid_email')),
+        password: z.string().min(10, tErrors('weak_password')),
       }),
-    [],
+    [tErrors],
   );
 
   useEffect(() => {
@@ -49,8 +65,7 @@ export function ConnexionForm() {
       return null;
     }
 
-    const errors = messages.auth.errors as Record<string, string>;
-    return errors[errorCode] ?? errors.unknown ?? messages.auth.errors.generic;
+    return isAuthErrorCode(errorCode) ? tErrors(errorCode) : tErrors('unknown');
   }
 
   const signUpErrorCode =
@@ -66,9 +81,7 @@ export function ConnexionForm() {
     null;
 
   const validationError =
-    signIn.result.validationErrors || signUp.result.validationErrors
-      ? messages.auth.errors.generic
-      : null;
+    signIn.result.validationErrors || signUp.result.validationErrors ? tErrors('generic') : null;
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,7 +100,7 @@ export function ConnexionForm() {
     });
 
     if (!parsed.success) {
-      setClientError(parsed.error.issues[0]?.message ?? messages.auth.errors.generic);
+      setClientError(parsed.error.issues[0]?.message ?? tErrors('generic'));
       return;
     }
 
@@ -101,7 +114,7 @@ export function ConnexionForm() {
 
   return (
     <section
-      aria-label={messages.auth.form_label}
+      aria-label={t('form_label')}
       className="w-full max-w-[400px] rounded-2xl border border-border bg-surface p-8 shadow-1"
     >
       <div className="mb-8 flex justify-center">
@@ -125,16 +138,16 @@ export function ConnexionForm() {
 
       {verificationSent ? (
         <p className="rounded-lg border border-accent-soft bg-canvas p-4 text-sm leading-6 text-text">
-          {messages.auth.verify_email}
+          {t('verify_email')}
         </p>
       ) : (
         <form className="space-y-5" onSubmit={onSubmit}>
           <div className="space-y-2">
-            <Label htmlFor="email">{messages.auth.email_label}</Label>
+            <Label htmlFor="email">{t('email_label')}</Label>
             <Input autoComplete="email" id="email" name="email" required type="email" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">{messages.auth.password_label}</Label>
+            <Label htmlFor="password">{t('password_label')}</Label>
             <Input
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               id="password"
@@ -156,7 +169,7 @@ export function ConnexionForm() {
             disabled={signUp.isExecuting || signIn.isExecuting}
             type="submit"
           >
-            {messages.auth.submit}
+            {t('submit')}
           </Button>
         </form>
       )}
