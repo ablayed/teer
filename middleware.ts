@@ -1,4 +1,3 @@
-import type { Database } from '@/lib/supabase/database.types';
 import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 
@@ -18,7 +17,7 @@ export async function middleware(request: NextRequest) {
     options: Parameters<typeof response.cookies.set>[2];
   };
 
-  const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
