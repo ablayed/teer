@@ -1,6 +1,6 @@
 import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
 import { verifyWebhookHmac } from '@/lib/shopify/webhook-verify';
-import type { Database } from '@/lib/supabase/database.types';
+import type { Database, Json } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
@@ -164,6 +164,10 @@ function resolveShopDomain(headerShopDomain: string | null, payload: unknown): s
   }
 
   return stringField(payload, 'shop_domain') ?? stringField(payload, 'myshopify_domain');
+}
+
+function toJson(value: unknown): Json {
+  return JSON.parse(JSON.stringify(value)) as Json;
 }
 
 async function getActiveShopByDomain({
@@ -343,6 +347,65 @@ async function handleAppUninstalledWebhook({
   logWebhookInfo('[webhook] app/uninstalled processed', { resolvedShopDomain });
 }
 
+async function handleGdprWebhook({
+  payload,
+  shopDomain,
+  supabase,
+  topic,
+}: {
+  payload: unknown;
+  shopDomain: string | null;
+  supabase: NonNullable<SupabaseAdminClient>;
+  topic: string;
+}) {
+  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+
+  logWebhookInfo(`[webhook] GDPR ${topic} received`, {
+    payload,
+    shopDomain: resolvedShopDomain,
+  });
+
+  if (!resolvedShopDomain) {
+    logWebhookError('[webhook] GDPR audit skipped: missing shop domain', { topic });
+    return;
+  }
+
+  const shop = await getShopByDomain({ shopDomain: resolvedShopDomain, supabase });
+
+  if (!shop) {
+    logWebhookError('[webhook] GDPR audit skipped: shop not found', {
+      shopDomain: resolvedShopDomain,
+      topic,
+    });
+    return;
+  }
+
+  // TODO Phase 2: implémenter l'export/suppression réelle des données quand le schéma sera stable. Pour l'instant: log + audit (conformité technique au stade pilote).
+  const { error } = await supabase.from('audit_log').insert({
+    merchant_account_id: shop.merchant_account_id,
+    actor_user_id: null,
+    action: `gdpr.${topic}`,
+    resource_type: 'shop',
+    resource_id: shop.id,
+    payload: toJson({
+      payload,
+      shopDomain: resolvedShopDomain,
+      topic,
+    }),
+  });
+
+  if (error) {
+    logWebhookError('[webhook] GDPR audit failed', {
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      message: error.message,
+      shopDomain: resolvedShopDomain,
+      topic,
+    });
+  }
+}
+
 async function insertWebhookEvent({
   supabase,
   webhookId,
@@ -461,7 +524,7 @@ export async function POST(request: Request) {
     case 'customers/data_request':
     case 'customers/redact':
     case 'shop/redact':
-      logWebhookInfo('[webhook] gdpr received', topic);
+      await handleGdprWebhook({ payload, shopDomain, supabase, topic });
       break;
     default:
       logWebhookInfo('[webhook] unhandled topic', topic);
