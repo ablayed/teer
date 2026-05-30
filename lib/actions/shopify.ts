@@ -109,6 +109,15 @@ export const syncOrdersAction = authActionClient
       .maybeSingle();
 
     if (shopError) {
+      console.error(
+        '[sync] shop lookup failed',
+        JSON.stringify({
+          message: shopError.message,
+          code: shopError.code,
+          details: shopError.details,
+          hint: shopError.hint,
+        }),
+      );
       return { ok: false as const, errorCode: 'sync_failed' as const };
     }
 
@@ -119,50 +128,91 @@ export const syncOrdersAction = authActionClient
     let accessToken: string;
     try {
       accessToken = decryptToken(shop.access_token_encrypted);
-    } catch {
+    } catch (err) {
+      console.error('[sync] token decrypt failed', err);
       return { ok: false as const, errorCode: 'token_error' as const };
     }
 
     try {
       // MVP backfill: first page only. Cursor pagination can be added when the sync job grows.
-      const data = await shopifyGraphQL<ShopifyOrdersResponse>({
-        shopDomain: shop.shop_domain,
-        accessToken,
-        query: SHOPIFY_ORDERS_QUERY,
-        variables: { cursor: null },
-      });
+      let data: ShopifyOrdersResponse;
+      try {
+        data = await shopifyGraphQL<ShopifyOrdersResponse>({
+          shopDomain: shop.shop_domain,
+          accessToken,
+          query: SHOPIFY_ORDERS_QUERY,
+          variables: { cursor: null },
+        });
+      } catch (err) {
+        console.error('[sync] graphql failed', err);
+        return { ok: false as const, errorCode: 'sync_failed' as const };
+      }
+
+      const edges = data.orders.edges;
+      console.error('[sync] orders received from shopify:', edges.length);
+
       let syncedCount = 0;
 
-      for (const { node } of data.orders.edges) {
-        const customerInput = mapShopifyCustomer(node, merchantAccount.id);
+      for (const { node } of edges) {
+        const customerData = mapShopifyCustomer(node, merchantAccount.id);
         let customerId: string | null = null;
 
-        if (customerInput?.shopify_customer_id) {
-          const { data: savedCustomer, error: customerError } = await admin
-            .from('customer')
-            .upsert(customerInput, { onConflict: 'merchant_account_id,shopify_customer_id' })
-            .select('id')
-            .single();
+        if (customerData?.shopify_customer_id) {
+          try {
+            const { data: savedCustomer, error: customerError } = await admin
+              .from('customer')
+              .upsert(customerData, { onConflict: 'merchant_account_id,shopify_customer_id' })
+              .select('id')
+              .single();
 
-          if (customerError) {
-            throw customerError;
+            if (customerError) {
+              console.error(
+                '[sync] customer upsert failed',
+                JSON.stringify({
+                  message: customerError.message,
+                  code: customerError.code,
+                  details: customerError.details,
+                  hint: customerError.hint,
+                }),
+                customerData,
+              );
+              throw customerError;
+            }
+
+            customerId = savedCustomer.id;
+          } catch (err) {
+            console.error('[sync] customer upsert failed', JSON.stringify(err), customerData);
+            throw err;
           }
-
-          customerId = savedCustomer.id;
         }
 
-        const orderInput = mapShopifyOrder(node, {
+        const orderData = mapShopifyOrder(node, {
           merchantAccountId: merchantAccount.id,
           shopId: shop.id,
           customerId,
         });
-        const { error: orderError } = await admin
-          .from('orders')
-          // orderInput intentionally omits cod_status; upsert updates only provided fields.
-          .upsert(orderInput, { onConflict: 'merchant_account_id,shopify_order_id' });
+        try {
+          const { error: orderError } = await admin
+            .from('orders')
+            // orderData intentionally omits cod_status; upsert updates only provided fields.
+            .upsert(orderData, { onConflict: 'merchant_account_id,shopify_order_id' });
 
-        if (orderError) {
-          throw orderError;
+          if (orderError) {
+            console.error(
+              '[sync] order upsert failed',
+              JSON.stringify({
+                message: orderError.message,
+                code: orderError.code,
+                details: orderError.details,
+                hint: orderError.hint,
+              }),
+              orderData,
+            );
+            throw orderError;
+          }
+        } catch (err) {
+          console.error('[sync] order upsert failed', JSON.stringify(err), orderData);
+          throw err;
         }
 
         syncedCount += 1;
@@ -182,7 +232,8 @@ export const syncOrdersAction = authActionClient
       }
 
       return { ok: true as const, syncedCount };
-    } catch {
+    } catch (err) {
+      console.error('[sync] sync failed', err);
       return { ok: false as const, errorCode: 'sync_failed' as const };
     }
   });
