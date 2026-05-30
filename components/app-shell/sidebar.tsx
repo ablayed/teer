@@ -9,13 +9,14 @@ import {
   Package,
   Settings,
   ShoppingBag,
+  Store,
   Users,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-type NavKey = 'tableau' | 'commandes' | 'clients' | 'produits' | 'parametres';
+type NavKey = 'tableau' | 'commandes' | 'clients' | 'produits' | 'boutiques' | 'parametres';
 
 type SidebarItem = {
   href: string;
@@ -28,6 +29,7 @@ const sidebarItems: SidebarItem[] = [
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/clients', icon: Users, labelKey: 'clients' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
+  { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
 

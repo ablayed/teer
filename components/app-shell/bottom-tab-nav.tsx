@@ -1,12 +1,19 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, type LucideIcon, Package, Settings, ShoppingBag } from 'lucide-react';
+import {
+  LayoutDashboard,
+  type LucideIcon,
+  Package,
+  Settings,
+  ShoppingBag,
+  Store,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-type BottomTabKey = 'tableau' | 'commandes' | 'produits' | 'parametres';
+type BottomTabKey = 'tableau' | 'commandes' | 'produits' | 'boutiques' | 'parametres';
 
 type BottomTabItem = {
   href: string;
@@ -18,6 +25,7 @@ const bottomTabItems: BottomTabItem[] = [
   { href: '/tableau', icon: LayoutDashboard, labelKey: 'tableau' },
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
+  { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
 
