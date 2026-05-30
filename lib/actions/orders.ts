@@ -3,22 +3,11 @@
 import { getMerchantAccount } from '@/lib/actions/merchant';
 import { authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
+import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-
-export const codStatuses = [
-  'nouvelle',
-  'confirmee',
-  'assignee',
-  'en_livraison',
-  'livree',
-  'annulee',
-  'retournee',
-] as const;
-
-export type CodStatus = (typeof codStatuses)[number];
 
 type CustomerSummary = Pick<Tables<'customer'>, 'full_name' | 'phone'>;
 type CustomerDetail = Pick<
@@ -45,10 +34,6 @@ function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-}
-
-export function isCodStatus(value: string): value is CodStatus {
-  return codStatuses.includes(value as CodStatus);
 }
 
 export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<OrderListItem[]> {

@@ -203,6 +203,17 @@
       "dismiss": "Masquer ce rappel"
     }
   },
+  "orders": {
+    "status": {
+      "nouvelle": "Nouvelle",
+      "confirmee": "Confirmée",
+      "assignee": "Assignée",
+      "en_livraison": "En livraison",
+      "livree": "Livrée",
+      "annulee": "Annulée",
+      "retournee": "Retournée"
+    }
+  },
   "placeholders": {
     "commandes": "Bientôt disponible (semaine 5).",
     "generic": "Bientôt disponible."
