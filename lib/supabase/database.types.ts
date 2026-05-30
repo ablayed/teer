@@ -1,467 +1,459 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
+    PostgrestVersion: '14.5';
+  };
   graphql_public: {
     Tables: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
       graphql: {
         Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
     Enums: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
+      [_ in never]: never;
+    };
+  };
   public: {
     Tables: {
       audit_log: {
         Row: {
-          action: string
-          actor_user_id: string | null
-          created_at: string
-          id: string
-          merchant_account_id: string
-          payload: Json | null
-          resource_id: string | null
-          resource_type: string | null
-        }
+          action: string;
+          actor_user_id: string | null;
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          payload: Json | null;
+          resource_id: string | null;
+          resource_type: string | null;
+        };
         Insert: {
-          action: string
-          actor_user_id?: string | null
-          created_at?: string
-          id?: string
-          merchant_account_id: string
-          payload?: Json | null
-          resource_id?: string | null
-          resource_type?: string | null
-        }
+          action: string;
+          actor_user_id?: string | null;
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          payload?: Json | null;
+          resource_id?: string | null;
+          resource_type?: string | null;
+        };
         Update: {
-          action?: string
-          actor_user_id?: string | null
-          created_at?: string
-          id?: string
-          merchant_account_id?: string
-          payload?: Json | null
-          resource_id?: string | null
-          resource_type?: string | null
-        }
+          action?: string;
+          actor_user_id?: string | null;
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          payload?: Json | null;
+          resource_id?: string | null;
+          resource_type?: string | null;
+        };
         Relationships: [
           {
-            foreignKeyName: "audit_log_merchant_account_id_fkey"
-            columns: ["merchant_account_id"]
-            isOneToOne: false
-            referencedRelation: "merchant_account"
-            referencedColumns: ["id"]
+            foreignKeyName: 'audit_log_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
           },
-        ]
-      }
+        ];
+      };
       customer: {
         Row: {
-          created_at: string
-          email: string | null
-          full_name: string | null
-          id: string
-          merchant_account_id: string
-          phone: string | null
-          shipping_address: Json | null
-          shopify_customer_id: string | null
-          updated_at: string
-        }
+          created_at: string;
+          email: string | null;
+          full_name: string | null;
+          id: string;
+          merchant_account_id: string;
+          phone: string | null;
+          shipping_address: Json | null;
+          shopify_customer_id: string | null;
+          updated_at: string;
+        };
         Insert: {
-          created_at?: string
-          email?: string | null
-          full_name?: string | null
-          id?: string
-          merchant_account_id: string
-          phone?: string | null
-          shipping_address?: Json | null
-          shopify_customer_id?: string | null
-          updated_at?: string
-        }
+          created_at?: string;
+          email?: string | null;
+          full_name?: string | null;
+          id?: string;
+          merchant_account_id: string;
+          phone?: string | null;
+          shipping_address?: Json | null;
+          shopify_customer_id?: string | null;
+          updated_at?: string;
+        };
         Update: {
-          created_at?: string
-          email?: string | null
-          full_name?: string | null
-          id?: string
-          merchant_account_id?: string
-          phone?: string | null
-          shipping_address?: Json | null
-          shopify_customer_id?: string | null
-          updated_at?: string
-        }
+          created_at?: string;
+          email?: string | null;
+          full_name?: string | null;
+          id?: string;
+          merchant_account_id?: string;
+          phone?: string | null;
+          shipping_address?: Json | null;
+          shopify_customer_id?: string | null;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "customer_merchant_account_id_fkey"
-            columns: ["merchant_account_id"]
-            isOneToOne: false
-            referencedRelation: "merchant_account"
-            referencedColumns: ["id"]
+            foreignKeyName: 'customer_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
           },
-        ]
-      }
+        ];
+      };
       merchant_account: {
         Row: {
-          country_code: string
-          created_at: string
-          deleted_at: string | null
-          id: string
-          name: string
-          onboarded_at: string | null
-          owner_full_name: string | null
-          owner_user_id: string
-          plan: string
-          whatsapp_e164: string | null
-        }
+          country_code: string;
+          created_at: string;
+          deleted_at: string | null;
+          id: string;
+          name: string;
+          onboarded_at: string | null;
+          owner_full_name: string | null;
+          owner_user_id: string;
+          plan: string;
+          whatsapp_e164: string | null;
+        };
         Insert: {
-          country_code?: string
-          created_at?: string
-          deleted_at?: string | null
-          id?: string
-          name: string
-          onboarded_at?: string | null
-          owner_full_name?: string | null
-          owner_user_id: string
-          plan?: string
-          whatsapp_e164?: string | null
-        }
+          country_code?: string;
+          created_at?: string;
+          deleted_at?: string | null;
+          id?: string;
+          name: string;
+          onboarded_at?: string | null;
+          owner_full_name?: string | null;
+          owner_user_id: string;
+          plan?: string;
+          whatsapp_e164?: string | null;
+        };
         Update: {
-          country_code?: string
-          created_at?: string
-          deleted_at?: string | null
-          id?: string
-          name?: string
-          onboarded_at?: string | null
-          owner_full_name?: string | null
-          owner_user_id?: string
-          plan?: string
-          whatsapp_e164?: string | null
-        }
-        Relationships: []
-      }
+          country_code?: string;
+          created_at?: string;
+          deleted_at?: string | null;
+          id?: string;
+          name?: string;
+          onboarded_at?: string | null;
+          owner_full_name?: string | null;
+          owner_user_id?: string;
+          plan?: string;
+          whatsapp_e164?: string | null;
+        };
+        Relationships: [];
+      };
       merchant_member: {
         Row: {
-          created_at: string
-          id: string
-          merchant_account_id: string
-          role: string
-          user_id: string
-        }
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          role: string;
+          user_id: string;
+        };
         Insert: {
-          created_at?: string
-          id?: string
-          merchant_account_id: string
-          role: string
-          user_id: string
-        }
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          role: string;
+          user_id: string;
+        };
         Update: {
-          created_at?: string
-          id?: string
-          merchant_account_id?: string
-          role?: string
-          user_id?: string
-        }
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          role?: string;
+          user_id?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "merchant_member_merchant_account_id_fkey"
-            columns: ["merchant_account_id"]
-            isOneToOne: false
-            referencedRelation: "merchant_account"
-            referencedColumns: ["id"]
+            foreignKeyName: 'merchant_member_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
           },
-        ]
-      }
+        ];
+      };
       orders: {
         Row: {
-          assigned_driver_id: string | null
-          cod_status: string
-          created_at: string
-          created_at_shopify: string | null
-          currency: string
-          customer_id: string | null
-          financial_status: string | null
-          fulfillment_status: string | null
-          id: string
-          items_summary: Json | null
-          merchant_account_id: string
-          order_number: string | null
-          shipping_address: Json | null
-          shop_id: string | null
-          shopify_order_id: string | null
-          total_amount: number
-          updated_at: string
-        }
+          assigned_driver_id: string | null;
+          cod_status: string;
+          created_at: string;
+          created_at_shopify: string | null;
+          currency: string;
+          customer_id: string | null;
+          financial_status: string | null;
+          fulfillment_status: string | null;
+          id: string;
+          items_summary: Json | null;
+          merchant_account_id: string;
+          order_number: string | null;
+          shipping_address: Json | null;
+          shop_id: string | null;
+          shopify_order_id: string | null;
+          total_amount: number;
+          updated_at: string;
+        };
         Insert: {
-          assigned_driver_id?: string | null
-          cod_status?: string
-          created_at?: string
-          created_at_shopify?: string | null
-          currency?: string
-          customer_id?: string | null
-          financial_status?: string | null
-          fulfillment_status?: string | null
-          id?: string
-          items_summary?: Json | null
-          merchant_account_id: string
-          order_number?: string | null
-          shipping_address?: Json | null
-          shop_id?: string | null
-          shopify_order_id?: string | null
-          total_amount?: number
-          updated_at?: string
-        }
+          assigned_driver_id?: string | null;
+          cod_status?: string;
+          created_at?: string;
+          created_at_shopify?: string | null;
+          currency?: string;
+          customer_id?: string | null;
+          financial_status?: string | null;
+          fulfillment_status?: string | null;
+          id?: string;
+          items_summary?: Json | null;
+          merchant_account_id: string;
+          order_number?: string | null;
+          shipping_address?: Json | null;
+          shop_id?: string | null;
+          shopify_order_id?: string | null;
+          total_amount?: number;
+          updated_at?: string;
+        };
         Update: {
-          assigned_driver_id?: string | null
-          cod_status?: string
-          created_at?: string
-          created_at_shopify?: string | null
-          currency?: string
-          customer_id?: string | null
-          financial_status?: string | null
-          fulfillment_status?: string | null
-          id?: string
-          items_summary?: Json | null
-          merchant_account_id?: string
-          order_number?: string | null
-          shipping_address?: Json | null
-          shop_id?: string | null
-          shopify_order_id?: string | null
-          total_amount?: number
-          updated_at?: string
-        }
+          assigned_driver_id?: string | null;
+          cod_status?: string;
+          created_at?: string;
+          created_at_shopify?: string | null;
+          currency?: string;
+          customer_id?: string | null;
+          financial_status?: string | null;
+          fulfillment_status?: string | null;
+          id?: string;
+          items_summary?: Json | null;
+          merchant_account_id?: string;
+          order_number?: string | null;
+          shipping_address?: Json | null;
+          shop_id?: string | null;
+          shopify_order_id?: string | null;
+          total_amount?: number;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "orders_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customer"
-            referencedColumns: ["id"]
+            foreignKeyName: 'orders_customer_id_fkey';
+            columns: ['customer_id'];
+            isOneToOne: false;
+            referencedRelation: 'customer';
+            referencedColumns: ['id'];
           },
           {
-            foreignKeyName: "orders_merchant_account_id_fkey"
-            columns: ["merchant_account_id"]
-            isOneToOne: false
-            referencedRelation: "merchant_account"
-            referencedColumns: ["id"]
+            foreignKeyName: 'orders_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
           },
           {
-            foreignKeyName: "orders_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop"
-            referencedColumns: ["id"]
+            foreignKeyName: 'orders_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
           },
-        ]
-      }
+        ];
+      };
       shop: {
         Row: {
-          access_token_encrypted: string
-          access_token_expires_at: string | null
-          id: string
-          installed_at: string
-          merchant_account_id: string
-          refresh_token_encrypted: string | null
-          refresh_token_expires_at: string | null
-          scopes: string
-          shop_domain: string
-          status: string
-          updated_at: string
-        }
+          access_token_encrypted: string;
+          access_token_expires_at: string | null;
+          id: string;
+          installed_at: string;
+          merchant_account_id: string;
+          refresh_token_encrypted: string | null;
+          refresh_token_expires_at: string | null;
+          scopes: string;
+          shop_domain: string;
+          status: string;
+          updated_at: string;
+        };
         Insert: {
-          access_token_encrypted: string
-          access_token_expires_at?: string | null
-          id?: string
-          installed_at?: string
-          merchant_account_id: string
-          refresh_token_encrypted?: string | null
-          refresh_token_expires_at?: string | null
-          scopes: string
-          shop_domain: string
-          status?: string
-          updated_at?: string
-        }
+          access_token_encrypted: string;
+          access_token_expires_at?: string | null;
+          id?: string;
+          installed_at?: string;
+          merchant_account_id: string;
+          refresh_token_encrypted?: string | null;
+          refresh_token_expires_at?: string | null;
+          scopes: string;
+          shop_domain: string;
+          status?: string;
+          updated_at?: string;
+        };
         Update: {
-          access_token_encrypted?: string
-          access_token_expires_at?: string | null
-          id?: string
-          installed_at?: string
-          merchant_account_id?: string
-          refresh_token_encrypted?: string | null
-          refresh_token_expires_at?: string | null
-          scopes?: string
-          shop_domain?: string
-          status?: string
-          updated_at?: string
-        }
+          access_token_encrypted?: string;
+          access_token_expires_at?: string | null;
+          id?: string;
+          installed_at?: string;
+          merchant_account_id?: string;
+          refresh_token_encrypted?: string | null;
+          refresh_token_expires_at?: string | null;
+          scopes?: string;
+          shop_domain?: string;
+          status?: string;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "shop_merchant_account_id_fkey"
-            columns: ["merchant_account_id"]
-            isOneToOne: true
-            referencedRelation: "merchant_account"
-            referencedColumns: ["id"]
+            foreignKeyName: 'shop_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: true;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
           },
-        ]
-      }
-    }
+        ];
+      };
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
       is_member_of: {
-        Args: { p_merchant_account_id: string }
-        Returns: boolean
-      }
-    }
+        Args: { p_merchant_account_id: string };
+        Returns: boolean;
+      };
+    };
     Enums: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
+      [_ in never]: never;
+    };
+  };
+};
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>;
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>];
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+      Row: infer R;
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
       }
       ? R
       : never
-    : never
+    : never;
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+    | keyof DefaultSchema['Tables']
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+      Insert: infer I;
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I;
       }
       ? I
       : never
-    : never
+    : never;
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+    | keyof DefaultSchema['Tables']
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+      Update: infer U;
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U;
       }
       ? U
       : never
-    : never
+    : never;
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
+    | keyof DefaultSchema['Enums']
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
+    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+    : never;
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
+    | keyof DefaultSchema['CompositeTypes']
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
+    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
+    : never;
 
 export const Constants = {
   graphql_public: {
@@ -470,4 +462,4 @@ export const Constants = {
   public: {
     Enums: {},
   },
-} as const
+} as const;
