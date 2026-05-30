@@ -152,6 +152,50 @@
       "generic": "Une erreur est survenue. Réessayez."
     }
   },
+  "shops": {
+    "title": "Boutiques",
+    "subtitle": "Connectez votre boutique Shopify pour synchroniser vos commandes.",
+    "connect": {
+      "title": "Connecter Shopify",
+      "description": "Tëër utilisera cette connexion pour lire vos commandes, clients et produits Shopify.",
+      "domainLabel": "Domaine de votre boutique",
+      "domainPlaceholder": "ma-boutique.myshopify.com",
+      "submit": "Connecter ma boutique"
+    },
+    "connected": {
+      "scopes": "Autorisations",
+      "installedAt": "Connectée le"
+    },
+    "status": {
+      "connected": "Connectée"
+    },
+    "scopes": {
+      "orders": "Commandes",
+      "customers": "Clients",
+      "products": "Produits"
+    },
+    "messages": {
+      "connected": "Boutique connectée avec succès !"
+    },
+    "disconnect": {
+      "submit": "Déconnecter",
+      "confirm": "Déconnecter cette boutique de Tëër ?",
+      "errors": {
+        "merchant_not_found": "Aucun compte marchand n’a été trouvé.",
+        "shop_not_found": "Aucune boutique connectée n’a été trouvée.",
+        "disconnect_failed": "La déconnexion a échoué. Réessayez."
+      }
+    },
+    "errors": {
+      "invalid_shop": "Le domaine de la boutique est invalide.",
+      "invalid_state": "La session de connexion a expiré. Réessayez.",
+      "state_mismatch": "La session de connexion a expiré. Réessayez.",
+      "shop_mismatch": "Le domaine ne correspond pas à la demande.",
+      "invalid_hmac": "Échec de la vérification de sécurité. Réessayez.",
+      "connection_failed": "La connexion a échoué. Réessayez ou contactez le support.",
+      "generic": "Une erreur est survenue. Réessayez."
+    }
+  },
   "placeholders": {
     "commandes": "Bientôt disponible (semaine 5).",
     "generic": "Bientôt disponible."
