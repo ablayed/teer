@@ -194,6 +194,13 @@
       "invalid_hmac": "Échec de la vérification de sécurité. Réessayez.",
       "connection_failed": "La connexion a échoué. Réessayez ou contactez le support.",
       "generic": "Une erreur est survenue. Réessayez."
+    },
+    "banner": {
+      "ariaLabel": "Rappel de connexion Shopify",
+      "title": "Connectez votre boutique Shopify",
+      "description": "Synchronisez vos commandes, clients et produits Shopify pour préparer le tableau de bord Tëër.",
+      "cta": "Connecter",
+      "dismiss": "Masquer ce rappel"
     }
   },
   "placeholders": {
