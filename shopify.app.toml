@@ -1,0 +1,20 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+client_id = "1d6727179a64b9d78a8466802c16ca3a"
+name = "Teer Dev"
+application_url = "https://teer-dev.vercel.app"
+embedded = false
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders,read_customers,read_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "http://localhost:3000/api/shopify/callback",
+  "https://teer-dev.vercel.app/api/shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-04"
