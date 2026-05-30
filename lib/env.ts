@@ -16,6 +16,7 @@ const serverEnvSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   SHOPIFY_API_KEY: z.string().optional(),
   SHOPIFY_API_SECRET: z.string().optional(),
+  SHOPIFY_TOKEN_ENCRYPTION_KEY: z.string().optional(),
 });
 
 const rawPublicEnv = {
@@ -38,5 +39,6 @@ export const env = {
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY,
     SHOPIFY_API_SECRET: process.env.SHOPIFY_API_SECRET,
+    SHOPIFY_TOKEN_ENCRYPTION_KEY: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
   }),
 };
