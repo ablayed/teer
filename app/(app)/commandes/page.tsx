@@ -1,10 +1,11 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
+import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { formatDateAbsolute } from '@/lib/format/date';
 import { formatFCFA } from '@/lib/format/fcfa';
 import { type CodStatus, codStatuses, isCodStatus } from '@/lib/orders/status';
-import { AlertCircle, ArrowRight, RefreshCw, Store } from 'lucide-react';
+import { AlertCircle, ArrowRight, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
@@ -59,15 +60,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
           <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
           <p className="max-w-2xl text-muted">{t('subtitle')}</p>
         </div>
-        <button
-          aria-label={t('sync.submit')}
-          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-5 font-medium text-[#111] opacity-60"
-          disabled
-          type="button"
-        >
-          <RefreshCw aria-hidden="true" className="size-4" />
-          {t('sync.submit')}
-        </button>
+        <SyncOrdersButton hasShop={Boolean(shopConnection)} />
       </div>
 
       {syncedCount !== null && Number.isFinite(syncedCount) ? (
