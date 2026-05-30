@@ -194,6 +194,33 @@ async function getActiveShopByDomain({
   return data;
 }
 
+async function getShopByDomain({
+  shopDomain,
+  supabase,
+}: {
+  shopDomain: string;
+  supabase: NonNullable<SupabaseAdminClient>;
+}) {
+  const { data, error } = await supabase
+    .from('shop')
+    .select('id, merchant_account_id, shop_domain, status')
+    .eq('shop_domain', shopDomain)
+    .maybeSingle();
+
+  if (error) {
+    logWebhookError('[webhook] shop lookup failed', {
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      message: error.message,
+      shopDomain,
+    });
+    return null;
+  }
+
+  return data;
+}
+
 async function handleOrderWebhook({
   payload,
   shopDomain,
@@ -247,6 +274,73 @@ async function handleOrderWebhook({
       shopDomain: resolvedShopDomain,
     });
   }
+}
+
+async function handleAppUninstalledWebhook({
+  payload,
+  shopDomain,
+  supabase,
+  topic,
+}: {
+  payload: unknown;
+  shopDomain: string | null;
+  supabase: NonNullable<SupabaseAdminClient>;
+  topic: string;
+}) {
+  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+
+  if (!resolvedShopDomain) {
+    logWebhookError('[webhook] app/uninstalled missing shop domain', { topic });
+    return;
+  }
+
+  const shop = await getShopByDomain({ shopDomain: resolvedShopDomain, supabase });
+
+  if (!shop) {
+    logWebhookInfo('[webhook] app/uninstalled shop not found', { resolvedShopDomain });
+    return;
+  }
+
+  const { error: updateError } = await supabase
+    .from('shop')
+    .update({
+      status: 'uninstalled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('shop_domain', resolvedShopDomain);
+
+  if (updateError) {
+    logWebhookError('[webhook] app/uninstalled update failed', {
+      code: updateError.code,
+      details: updateError.details,
+      hint: updateError.hint,
+      message: updateError.message,
+      resolvedShopDomain,
+    });
+    return;
+  }
+
+  const { error: auditError } = await supabase.from('audit_log').insert({
+    merchant_account_id: shop.merchant_account_id,
+    actor_user_id: null,
+    action: 'shopify.app_uninstalled',
+    resource_type: 'shop',
+    resource_id: shop.id,
+    payload: { shopDomain: resolvedShopDomain },
+  });
+
+  if (auditError) {
+    logWebhookError('[webhook] app/uninstalled audit failed', {
+      code: auditError.code,
+      details: auditError.details,
+      hint: auditError.hint,
+      message: auditError.message,
+      resolvedShopDomain,
+    });
+    return;
+  }
+
+  logWebhookInfo('[webhook] app/uninstalled processed', { resolvedShopDomain });
 }
 
 async function insertWebhookEvent({
@@ -362,7 +456,7 @@ export async function POST(request: Request) {
       await handleOrderWebhook({ payload, shopDomain, supabase, topic });
       break;
     case 'app/uninstalled':
-      logWebhookInfo('[webhook] app/uninstalled received');
+      await handleAppUninstalledWebhook({ payload, shopDomain, supabase, topic });
       break;
     case 'customers/data_request':
     case 'customers/redact':
