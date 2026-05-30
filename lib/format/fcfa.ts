@@ -20,6 +20,21 @@ export function formatFCFA(amount: number): string {
   return `${formatRoundedNumber(amount)}${NARROW_NO_BREAK_SPACE}F CFA`;
 }
 
+export function formatMoney(amount: number, currency: string | null | undefined): string {
+  assertValidAmount(amount);
+
+  const normalizedCurrency = currency?.trim().toUpperCase() || 'XOF';
+
+  if (normalizedCurrency === 'XOF') {
+    return formatFCFA(amount);
+  }
+
+  return new Intl.NumberFormat('fr-FR', {
+    currency: normalizedCurrency,
+    style: 'currency',
+  }).format(amount);
+}
+
 export function formatFCFACompact(amount: number): string {
   assertValidAmount(amount);
 

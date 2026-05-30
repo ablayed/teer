@@ -3,7 +3,7 @@ import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { formatDateAbsolute } from '@/lib/format/date';
-import { formatFCFA } from '@/lib/format/fcfa';
+import { formatMoney } from '@/lib/format/fcfa';
 import { type CodStatus, codStatuses, isCodStatus } from '@/lib/orders/status';
 import { AlertCircle, ArrowRight, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -172,7 +172,9 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                     <td className="px-4 py-4 text-muted">
                       {order.customer?.full_name ?? t('table.emptyValue')}
                     </td>
-                    <td className="px-4 py-4 font-medium">{formatFCFA(order.total_amount)}</td>
+                    <td className="px-4 py-4 font-medium">
+                      {formatMoney(order.total_amount, order.currency)}
+                    </td>
                     <td className="px-4 py-4">
                       <CodStatusBadge status={orderStatus(order.cod_status)} />
                     </td>
@@ -213,7 +215,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                   <CodStatusBadge status={orderStatus(order.cod_status)} />
                 </div>
                 <div className="mt-4 flex items-end justify-between gap-3">
-                  <p className="font-semibold">{formatFCFA(order.total_amount)}</p>
+                  <p className="font-semibold">{formatMoney(order.total_amount, order.currency)}</p>
                   <p className="text-sm text-muted">
                     {order.created_at_shopify
                       ? formatDateAbsolute(order.created_at_shopify)

@@ -104,6 +104,26 @@ describe('mapShopifyOrder', () => {
     });
   });
 
+  it('preserves the Shopify currency code', () => {
+    const order = mapShopifyOrder(
+      makeOrder({
+        currentTotalPriceSet: {
+          shopMoney: {
+            amount: '99.95',
+            currencyCode: 'USD',
+          },
+        },
+      }),
+      {
+        merchantAccountId: 'merchant_123',
+        shopId: 'shop_123',
+        customerId: null,
+      },
+    );
+
+    expect(order.currency).toBe('USD');
+  });
+
   it('maps line items into a lightweight items summary', () => {
     const order = mapShopifyOrder(makeOrder(), {
       merchantAccountId: 'merchant_123',

@@ -2,7 +2,7 @@ import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { CodStatusSelector } from '@/components/orders/cod-status-selector';
 import { getOrderById } from '@/lib/actions/orders';
 import { formatDateAbsolute } from '@/lib/format/date';
-import { formatFCFA } from '@/lib/format/fcfa';
+import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN, toWhatsAppLink } from '@/lib/format/phone';
 import { isCodStatus } from '@/lib/orders/status';
 import type { Json } from '@/lib/supabase/database.types';
@@ -135,7 +135,9 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
             <dl className="grid gap-4 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-muted">{t('detail.total')}</dt>
-                <dd className="mt-1 text-2xl font-semibold">{formatFCFA(order.total_amount)}</dd>
+                <dd className="mt-1 text-2xl font-semibold">
+                  {formatMoney(order.total_amount, order.currency)}
+                </dd>
               </div>
               <div>
                 <dt className="text-muted">{t('detail.createdAt')}</dt>
@@ -218,11 +220,14 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   <div>
                     <p className="font-medium">{item.title || emptyValue}</p>
                     <p className="text-sm text-muted">
-                      {item.quantity} {t('detail.quantitySeparator')} {formatFCFA(item.price)}
+                      {item.quantity} {t('detail.quantitySeparator')}{' '}
+                      {formatMoney(item.price, order.currency)}
                     </p>
                   </div>
                 </div>
-                <p className="font-semibold">{formatFCFA(item.quantity * item.price)}</p>
+                <p className="font-semibold">
+                  {formatMoney(item.quantity * item.price, order.currency)}
+                </p>
               </div>
             ))}
           </div>
