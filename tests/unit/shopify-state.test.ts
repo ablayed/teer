@@ -36,7 +36,9 @@ describe('Shopify OAuth state', () => {
       exp: Date.now() + 60_000,
     });
 
-    expect(verifyState(`${token.slice(0, -1)}0`)).toBeNull();
+    const alteredLastCharacter = token.endsWith('0') ? '1' : '0';
+
+    expect(verifyState(`${token.slice(0, -1)}${alteredLastCharacter}`)).toBeNull();
   });
 
   it('returns null when the payload is expired', () => {
