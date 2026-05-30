@@ -204,6 +204,45 @@
     }
   },
   "orders": {
+    "title": "Commandes",
+    "subtitle": "Suivez les commandes Shopify importées et leur statut COD.",
+    "sync": {
+      "submit": "Synchroniser",
+      "loading": "Synchronisation...",
+      "success": "{count, plural, =0 {Aucune commande synchronisée} one {# commande synchronisée} other {# commandes synchronisées}}",
+      "disabled": "Connectez une boutique pour synchroniser"
+    },
+    "filters": {
+      "ariaLabel": "Filtrer les commandes par statut",
+      "all": "Toutes"
+    },
+    "table": {
+      "order": "Commande",
+      "customer": "Client",
+      "amount": "Montant",
+      "status": "Statut",
+      "date": "Date",
+      "details": "Détail",
+      "emptyValue": "Non renseigné"
+    },
+    "empty": {
+      "noShopTitle": "Connectez votre boutique Shopify",
+      "noShopDescription": "Connectez Shopify pour importer vos commandes et suivre vos livraisons COD.",
+      "noShopCta": "Aller aux boutiques",
+      "withShopTitle": "Aucune commande",
+      "withShopDescription": "Cliquez sur Synchroniser pour importer vos commandes Shopify.",
+      "filteredTitle": "Aucune commande avec ce statut",
+      "filteredDescription": "Essayez un autre filtre ou synchronisez vos commandes."
+    },
+    "messages": {
+      "synced": "{count, plural, =0 {Aucune commande synchronisée} one {# commande synchronisée} other {# commandes synchronisées}}"
+    },
+    "errors": {
+      "no_shop": "Connectez d'abord une boutique.",
+      "sync_failed": "Échec de la synchronisation, réessayez.",
+      "token_error": "Connexion Shopify expirée, reconnectez votre boutique.",
+      "generic": "Une erreur est survenue. Réessayez."
+    },
     "status": {
       "nouvelle": "Nouvelle",
       "confirmee": "Confirmée",

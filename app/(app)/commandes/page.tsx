@@ -1,13 +1,237 @@
+import { CodStatusBadge } from '@/components/orders/cod-status-badge';
+import { getOrders } from '@/lib/actions/orders';
+import { getShopConnection } from '@/lib/actions/shopify';
+import { formatDateAbsolute } from '@/lib/format/date';
+import { formatFCFA } from '@/lib/format/fcfa';
+import { type CodStatus, codStatuses, isCodStatus } from '@/lib/orders/status';
+import { AlertCircle, ArrowRight, RefreshCw, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
 
-export default async function CommandesPage() {
-  const nav = await getTranslations('nav');
-  const placeholders = await getTranslations('placeholders');
+type CommandesPageProps = {
+  searchParams: Promise<{
+    statut?: string;
+    sync_error?: string;
+    synced?: string;
+  }>;
+};
+
+const syncErrorCodes = ['no_shop', 'sync_failed', 'token_error'] as const;
+type SyncErrorCode = (typeof syncErrorCodes)[number];
+
+function isSyncErrorCode(value: string): value is SyncErrorCode {
+  return syncErrorCodes.includes(value as SyncErrorCode);
+}
+
+function orderStatus(orderStatus: string): CodStatus {
+  return isCodStatus(orderStatus) ? orderStatus : 'nouvelle';
+}
+
+function statusHref(status?: CodStatus): string {
+  return status ? `/commandes?statut=${status}` : '/commandes';
+}
+
+export default async function CommandesPage({ searchParams }: CommandesPageProps) {
+  const t = await getTranslations('orders');
+  const params = await searchParams;
+  const activeStatus = params.statut && isCodStatus(params.statut) ? params.statut : undefined;
+  const [orders, shopConnection] = await Promise.all([getOrders(), getShopConnection()]);
+  const visibleOrders = activeStatus
+    ? orders.filter((order) => orderStatus(order.cod_status) === activeStatus)
+    : orders;
+  const statusCounts = Object.fromEntries(
+    codStatuses.map((status) => [
+      status,
+      orders.filter((order) => orderStatus(order.cod_status) === status).length,
+    ]),
+  ) as Record<CodStatus, number>;
+  const syncedCount = params.synced ? Number.parseInt(params.synced, 10) : null;
+  const syncError =
+    params.sync_error && isSyncErrorCode(params.sync_error) ? params.sync_error : null;
+  const showNoShop = orders.length === 0 && !shopConnection && !activeStatus;
+  const showNoOrdersWithShop = orders.length === 0 && shopConnection && !activeStatus;
+  const showFilteredEmpty = orders.length > 0 && visibleOrders.length === 0 && activeStatus;
 
   return (
-    <main className="space-y-3" id="main">
-      <h1 className="font-display text-4xl md:text-5xl">{nav('commandes')}</h1>
-      <p className="text-muted">{placeholders('commandes')}</p>
+    <main className="space-y-6" id="main">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-2">
+          <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
+          <p className="max-w-2xl text-muted">{t('subtitle')}</p>
+        </div>
+        <button
+          aria-label={t('sync.submit')}
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-5 font-medium text-[#111] opacity-60"
+          disabled
+          type="button"
+        >
+          <RefreshCw aria-hidden="true" className="size-4" />
+          {t('sync.submit')}
+        </button>
+      </div>
+
+      {syncedCount !== null && Number.isFinite(syncedCount) ? (
+        <div className="rounded-lg border border-success/30 bg-surface p-4 text-sm font-medium text-success">
+          {t('messages.synced', { count: syncedCount })}
+        </div>
+      ) : null}
+
+      {syncError ? (
+        <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-surface p-4 text-danger">
+          <AlertCircle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+          <p className="text-sm font-medium">{t(`errors.${syncError}`)}</p>
+        </div>
+      ) : null}
+
+      <nav aria-label={t('filters.ariaLabel')} className="flex gap-2 overflow-x-auto pb-1">
+        <Link
+          className={`inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium ${
+            activeStatus
+              ? 'border-border bg-surface text-muted hover:bg-canvas'
+              : 'border-accent bg-accent text-[#111]'
+          }`}
+          href={statusHref()}
+        >
+          {t('filters.all')} ({orders.length})
+        </Link>
+        {codStatuses.map((status) => (
+          <Link
+            className={`inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium ${
+              activeStatus === status
+                ? 'border-accent bg-accent text-[#111]'
+                : 'border-border bg-surface text-muted hover:bg-canvas'
+            }`}
+            href={statusHref(status)}
+            key={status}
+          >
+            {t(`status.${status}`)} ({statusCounts[status]})
+          </Link>
+        ))}
+      </nav>
+
+      {showNoShop || showNoOrdersWithShop || showFilteredEmpty ? (
+        <section className="rounded-lg border border-border bg-surface p-6 shadow-1">
+          <div className="flex max-w-2xl flex-col gap-4 sm:flex-row sm:items-start">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-canvas text-accent">
+              <Store aria-hidden="true" className="size-6" />
+            </span>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold">
+                {showNoShop
+                  ? t('empty.noShopTitle')
+                  : showNoOrdersWithShop
+                    ? t('empty.withShopTitle')
+                    : t('empty.filteredTitle')}
+              </h2>
+              <p className="text-sm leading-6 text-muted">
+                {showNoShop
+                  ? t('empty.noShopDescription')
+                  : showNoOrdersWithShop
+                    ? t('empty.withShopDescription')
+                    : t('empty.filteredDescription')}
+              </p>
+              {showNoShop ? (
+                <Link
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-accent px-4 font-medium text-[#111]"
+                  href="/boutiques"
+                >
+                  {t('empty.noShopCta')}
+                  <ArrowRight aria-hidden="true" className="size-4" />
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {visibleOrders.length > 0 ? (
+        <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-1">
+          <div className="hidden md:block">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border bg-canvas text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium" scope="col">
+                    {t('table.order')}
+                  </th>
+                  <th className="px-4 py-3 font-medium" scope="col">
+                    {t('table.customer')}
+                  </th>
+                  <th className="px-4 py-3 font-medium" scope="col">
+                    {t('table.amount')}
+                  </th>
+                  <th className="px-4 py-3 font-medium" scope="col">
+                    {t('table.status')}
+                  </th>
+                  <th className="px-4 py-3 font-medium" scope="col">
+                    {t('table.date')}
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium" scope="col">
+                    {t('table.details')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {visibleOrders.map((order) => (
+                  <tr className="hover:bg-canvas/60" key={order.id}>
+                    <td className="px-4 py-4 font-semibold">
+                      {order.order_number ?? t('table.emptyValue')}
+                    </td>
+                    <td className="px-4 py-4 text-muted">
+                      {order.customer?.full_name ?? t('table.emptyValue')}
+                    </td>
+                    <td className="px-4 py-4 font-medium">{formatFCFA(order.total_amount)}</td>
+                    <td className="px-4 py-4">
+                      <CodStatusBadge status={orderStatus(order.cod_status)} />
+                    </td>
+                    <td className="px-4 py-4 text-muted">
+                      {order.created_at_shopify
+                        ? formatDateAbsolute(order.created_at_shopify)
+                        : t('table.emptyValue')}
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <Link
+                        className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 font-medium text-text hover:bg-canvas"
+                        href={`/commandes/${order.id}`}
+                      >
+                        {t('table.details')}
+                        <ArrowRight aria-hidden="true" className="size-4" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="divide-y divide-border md:hidden">
+            {visibleOrders.map((order) => (
+              <Link
+                className="block p-4 hover:bg-canvas/60"
+                href={`/commandes/${order.id}`}
+                key={order.id}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{order.order_number ?? t('table.emptyValue')}</p>
+                    <p className="mt-1 text-sm text-muted">
+                      {order.customer?.full_name ?? t('table.emptyValue')}
+                    </p>
+                  </div>
+                  <CodStatusBadge status={orderStatus(order.cod_status)} />
+                </div>
+                <div className="mt-4 flex items-end justify-between gap-3">
+                  <p className="font-semibold">{formatFCFA(order.total_amount)}</p>
+                  <p className="text-sm text-muted">
+                    {order.created_at_shopify
+                      ? formatDateAbsolute(order.created_at_shopify)
+                      : t('table.emptyValue')}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }
