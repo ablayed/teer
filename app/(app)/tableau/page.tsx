@@ -1,3 +1,4 @@
+import { getMerchantAccount } from '@/lib/actions/merchant';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getTranslations } from 'next-intl/server';
 
@@ -7,7 +8,8 @@ export default async function TableauPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const name = user?.email?.split('@')[0] ?? '';
+  const merchantAccount = await getMerchantAccount();
+  const name = merchantAccount?.name ?? user?.email?.split('@')[0] ?? '';
 
   return (
     <main className="space-y-4" id="main">

@@ -56,6 +56,47 @@
     "greeting": "Bonjour, {name}",
     "tableauPlaceholder": "Phase 0 OK. Le tableau arrive en semaine 11."
   },
+  "onboarding": {
+    "ariaLabel": "Configuration de la boutique",
+    "stepIndicator": "Étape {step} sur 2",
+    "step1": {
+      "title": "Bienvenue sur Tëër",
+      "subtitle": "Configurons votre boutique en 30 secondes"
+    },
+    "step2": {
+      "title": "Presque fini"
+    },
+    "fields": {
+      "shopName": "Nom de votre boutique",
+      "country": "Pays",
+      "ownerFullName": "Votre nom complet",
+      "whatsapp": "Numéro WhatsApp",
+      "whatsappPlaceholder": "+221 77 123 45 67",
+      "whatsappHint": "Pour recevoir les alertes (optionnel)"
+    },
+    "countries": {
+      "SN": "Sénégal",
+      "CI": "Côte d’Ivoire",
+      "BJ": "Bénin",
+      "TG": "Togo",
+      "BF": "Burkina Faso",
+      "ML": "Mali"
+    },
+    "actions": {
+      "continue": "Continuer",
+      "finish": "Terminer",
+      "back": "Retour"
+    },
+    "errors": {
+      "shopName": "Le nom de boutique doit contenir au moins 2 caractères.",
+      "ownerFullName": "Votre nom complet doit contenir au moins 2 caractères.",
+      "invalid_whatsapp": "Le numéro WhatsApp doit être un mobile sénégalais valide.",
+      "merchant_not_found": "Aucun compte marchand n’a été trouvé.",
+      "update_failed": "La mise à jour du profil a échoué. Réessayez.",
+      "audit_failed": "La mise à jour a réussi, mais le journal d’audit n’a pas pu être écrit.",
+      "generic": "Une erreur est survenue. Réessayez."
+    }
+  },
   "placeholders": {
     "commandes": "Bientôt disponible (semaine 5).",
     "generic": "Bientôt disponible."
