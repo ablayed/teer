@@ -18,3 +18,11 @@ redirect_urls = [
 
 [webhooks]
 api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create", "orders/updated", "app/uninstalled" ]
+  uri = "https://teer-dev.vercel.app/api/shopify/webhooks"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "https://teer-dev.vercel.app/api/shopify/webhooks"
