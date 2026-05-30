@@ -1,4 +1,5 @@
-import type { Json, TablesInsert } from '@/lib/supabase/database.types';
+import type { Database, Json, TablesInsert, TablesUpdate } from '@/lib/supabase/database.types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const SHOPIFY_ORDERS_QUERY = `
 query Orders($cursor: String) {
@@ -94,6 +95,30 @@ export type OrderUpsert = Omit<
   TablesInsert<'orders'>,
   'cod_status' | 'created_at' | 'id' | 'updated_at'
 >;
+type CustomerUpdate = Pick<
+  TablesUpdate<'customer'>,
+  'full_name' | 'phone' | 'email' | 'shipping_address' | 'updated_at'
+>;
+type OrderShopifyUpdate = Pick<
+  TablesUpdate<'orders'>,
+  | 'order_number'
+  | 'total_amount'
+  | 'currency'
+  | 'financial_status'
+  | 'fulfillment_status'
+  | 'items_summary'
+  | 'shipping_address'
+  | 'customer_id'
+  | 'created_at_shopify'
+  | 'updated_at'
+>;
+
+type PersistShopifyOrderInput = {
+  merchantAccountId: string;
+  orderNode: ShopifyOrderNode;
+  shopId: string;
+  supabaseServiceClient: SupabaseClient<Database>;
+};
 
 type OrderMappingContext = {
   merchantAccountId: string;
@@ -168,4 +193,120 @@ export function mapShopifyOrder(
     shipping_address: mapShippingAddress(node.shippingAddress),
     created_at_shopify: node.createdAt,
   };
+}
+
+export async function persistShopifyOrder({
+  merchantAccountId,
+  orderNode,
+  shopId,
+  supabaseServiceClient,
+}: PersistShopifyOrderInput): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const customerData = mapShopifyCustomer(orderNode, merchantAccountId);
+    let customerId: string | null = null;
+
+    if (customerData?.shopify_customer_id) {
+      const { data: existingCustomer, error: customerSelectError } = await supabaseServiceClient
+        .from('customer')
+        .select('id')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shopify_customer_id', customerData.shopify_customer_id)
+        .maybeSingle();
+
+      if (customerSelectError) {
+        return { ok: false, error: customerSelectError.message };
+      }
+
+      if (existingCustomer) {
+        const customerUpdate: CustomerUpdate = {
+          full_name: customerData.full_name,
+          phone: customerData.phone,
+          email: customerData.email,
+          shipping_address: customerData.shipping_address,
+          updated_at: new Date().toISOString(),
+        };
+        const { error: customerUpdateError } = await supabaseServiceClient
+          .from('customer')
+          .update(customerUpdate)
+          .eq('id', existingCustomer.id);
+
+        if (customerUpdateError) {
+          return { ok: false, error: customerUpdateError.message };
+        }
+
+        customerId = existingCustomer.id;
+      } else {
+        const { data: insertedCustomer, error: customerInsertError } = await supabaseServiceClient
+          .from('customer')
+          .insert(customerData)
+          .select('id')
+          .single();
+
+        if (customerInsertError) {
+          return { ok: false, error: customerInsertError.message };
+        }
+
+        customerId = insertedCustomer.id;
+      }
+    }
+
+    const orderData = mapShopifyOrder(orderNode, {
+      merchantAccountId,
+      shopId,
+      customerId,
+    });
+    const shopifyOrderId = orderData.shopify_order_id;
+
+    if (!shopifyOrderId) {
+      return { ok: false, error: 'Shopify order is missing shopify_order_id' };
+    }
+
+    const { data: existingOrder, error: orderSelectError } = await supabaseServiceClient
+      .from('orders')
+      .select('id, cod_status')
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shopify_order_id', shopifyOrderId)
+      .maybeSingle();
+
+    if (orderSelectError) {
+      return { ok: false, error: orderSelectError.message };
+    }
+
+    if (existingOrder) {
+      const orderUpdate: OrderShopifyUpdate = {
+        order_number: orderData.order_number,
+        total_amount: orderData.total_amount,
+        currency: orderData.currency,
+        financial_status: orderData.financial_status,
+        fulfillment_status: orderData.fulfillment_status,
+        items_summary: orderData.items_summary,
+        shipping_address: orderData.shipping_address,
+        customer_id: orderData.customer_id,
+        created_at_shopify: orderData.created_at_shopify,
+        updated_at: new Date().toISOString(),
+      };
+      const { error: orderUpdateError } = await supabaseServiceClient
+        .from('orders')
+        .update(orderUpdate)
+        .eq('id', existingOrder.id);
+
+      if (orderUpdateError) {
+        return { ok: false, error: orderUpdateError.message };
+      }
+    } else {
+      const { error: orderInsertError } = await supabaseServiceClient
+        .from('orders')
+        .insert(orderData)
+        .select('id')
+        .single();
+
+      if (orderInsertError) {
+        return { ok: false, error: orderInsertError.message };
+      }
+    }
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Unknown sync error' };
+  }
 }
