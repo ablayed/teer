@@ -6,7 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Wordmark } from '@/components/wordmark';
 import { signInAction, signUpAction } from '@/lib/actions/auth';
 import type { AuthErrorCode } from '@/lib/actions/auth-errors';
+import { checkPasswordStrength } from '@/lib/format/password';
 import { cn } from '@/lib/utils';
+import { CheckCircle2, Circle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
@@ -32,13 +34,16 @@ function isAuthErrorCode(errorCode: string): errorCode is AuthErrorCode {
 export function ConnexionForm() {
   const t = useTranslations('auth');
   const tErrors = useTranslations('auth.errors');
+  const tPasswordCriteria = useTranslations('auth.password_criteria');
   const searchParams = useSearchParams();
   const mode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
   const [clientError, setClientError] = useState<string | null>(null);
   const [verificationSent, setVerificationSent] = useState(false);
+  const [password, setPassword] = useState('');
   const lastSubmitRef = useRef(0);
   const signUp = useAction(signUpAction);
   const signIn = useAction(signInAction);
+  const passwordStrength = useMemo(() => checkPasswordStrength(password), [password]);
 
   const tabs: Array<{ mode: AuthMode; label: string }> = [
     { mode: 'signin', label: t('signin_tab') },
@@ -49,9 +54,14 @@ export function ConnexionForm() {
     () =>
       z.object({
         email: z.string().email(tErrors('invalid_email')),
-        password: z.string().min(10, tErrors('weak_password')),
+        password:
+          mode === 'signup'
+            ? z.string().refine((value) => checkPasswordStrength(value).allValid, {
+                message: tErrors('weak_password'),
+              })
+            : z.string().min(10, tErrors('weak_password')),
       }),
-    [tErrors],
+    [mode, tErrors],
   );
 
   useEffect(() => {
@@ -82,6 +92,15 @@ export function ConnexionForm() {
 
   const validationError =
     signIn.result.validationErrors || signUp.result.validationErrors ? tErrors('generic') : null;
+  const passwordCriteria = [
+    { key: 'minLength', valid: passwordStrength.minLength },
+    { key: 'hasUpper', valid: passwordStrength.hasUpper },
+    { key: 'hasLower', valid: passwordStrength.hasLower },
+    { key: 'hasDigit', valid: passwordStrength.hasDigit },
+    { key: 'hasSpecial', valid: passwordStrength.hasSpecial },
+  ] as const;
+  const submitDisabled =
+    signUp.isExecuting || signIn.isExecuting || (mode === 'signup' && !passwordStrength.allValid);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -153,10 +172,33 @@ export function ConnexionForm() {
               id="password"
               minLength={10}
               name="password"
+              onChange={(event) => setPassword(event.target.value)}
               required
               type="password"
+              value={password}
             />
           </div>
+
+          {mode === 'signup' ? (
+            <ul className="space-y-2" aria-label={tPasswordCriteria('ariaLabel')}>
+              {passwordCriteria.map((criterion) => {
+                const Icon = criterion.valid ? CheckCircle2 : Circle;
+
+                return (
+                  <li
+                    className={cn(
+                      'flex items-center gap-2 text-sm transition',
+                      criterion.valid ? 'text-success' : 'text-muted',
+                    )}
+                    key={criterion.key}
+                  >
+                    <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                    <span>{tPasswordCriteria(criterion.key)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
 
           {clientError || actionError || validationError ? (
             <p className="text-sm text-danger" role="alert">
@@ -164,11 +206,7 @@ export function ConnexionForm() {
             </p>
           ) : null}
 
-          <Button
-            className="w-full"
-            disabled={signUp.isExecuting || signIn.isExecuting}
-            type="submit"
-          >
+          <Button className="w-full" disabled={submitDisabled} type="submit">
             {t('submit')}
           </Button>
         </form>

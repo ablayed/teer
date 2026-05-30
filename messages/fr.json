@@ -43,13 +43,21 @@
     "verify_email": "Vérifiez votre email pour activer votre compte.",
     "errors": {
       "invalid_email": "Adresse e-mail invalide.",
-      "weak_password": "Le mot de passe doit contenir au moins 10 caractères.",
+      "weak_password": "Le mot de passe doit contenir au moins 10 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.",
       "invalid_credentials": "E-mail ou mot de passe incorrect.",
       "email_already_registered": "Cette adresse e-mail est déjà inscrite. Connectez-vous ou utilisez une autre adresse.",
       "rate_limited": "Trop de tentatives. Patientez quelques minutes avant de réessayer.",
       "email_not_confirmed": "Votre email n'a pas encore été confirmé. Vérifiez votre boîte de réception.",
       "unknown": "Une erreur est survenue. Réessayez dans quelques instants.",
       "generic": "Une erreur est survenue. Réessayez."
+    },
+    "password_criteria": {
+      "ariaLabel": "Critères du mot de passe",
+      "minLength": "Au moins 10 caractères",
+      "hasUpper": "Une lettre majuscule",
+      "hasLower": "Une lettre minuscule",
+      "hasDigit": "Un chiffre",
+      "hasSpecial": "Un caractère spécial (!@#$%^&* etc.)"
     }
   },
   "app": {

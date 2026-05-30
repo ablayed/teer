@@ -3,6 +3,7 @@
 import { mapSupabaseAuthError } from '@/lib/actions/auth-errors';
 import { actionClient, authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
+import { checkPasswordStrength } from '@/lib/format/password';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
@@ -17,9 +18,20 @@ async function authInputSchema() {
   });
 }
 
+async function signUpInputSchema() {
+  const t = await getTranslations('auth.errors');
+
+  return z.object({
+    email: z.string().email(t('invalid_email')),
+    password: z.string().refine((password) => checkPasswordStrength(password).allValid, {
+      message: t('weak_password'),
+    }),
+  });
+}
+
 export const signUpAction = actionClient
   .metadata({ actionName: 'auth.sign_up', section: 'auth' })
-  .inputSchema(authInputSchema)
+  .inputSchema(signUpInputSchema)
   .action(async ({ parsedInput }) => {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.signUp({
