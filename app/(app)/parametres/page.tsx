@@ -1,13 +1,28 @@
-import { getTranslations } from 'next-intl/server';
+import { SettingsProfile } from '@/components/settings/settings-profile';
+import { getMerchantAccount } from '@/lib/actions/merchant';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 
 export default async function ParametresPage() {
-  const nav = await getTranslations('nav');
-  const placeholders = await getTranslations('placeholders');
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const merchantAccount = await getMerchantAccount();
+
+  if (!user || !merchantAccount) {
+    redirect('/connexion');
+  }
 
   return (
-    <main className="space-y-3" id="main">
-      <h1 className="font-display text-4xl md:text-5xl">{nav('parametres')}</h1>
-      <p className="text-muted">{placeholders('generic')}</p>
+    <main id="main">
+      <SettingsProfile
+        countryCode={merchantAccount.country_code}
+        email={user.email ?? ''}
+        ownerFullName={merchantAccount.owner_full_name ?? ''}
+        shopName={merchantAccount.name}
+        whatsapp={merchantAccount.whatsapp_e164 ?? ''}
+      />
     </main>
   );
 }

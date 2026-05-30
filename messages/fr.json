@@ -105,6 +105,52 @@
       "generic": "Une erreur est survenue. Réessayez."
     }
   },
+  "settings": {
+    "title": "Paramètres",
+    "tabs": {
+      "ariaLabel": "Sections des paramètres",
+      "profile": "Profil",
+      "team": "Équipe",
+      "shops": "Boutiques",
+      "billing": "Facturation"
+    },
+    "placeholder": "Bientôt disponible.",
+    "profile": {
+      "fields": {
+        "shopName": "Nom de votre boutique",
+        "country": "Pays",
+        "ownerFullName": "Nom du propriétaire",
+        "whatsapp": "WhatsApp",
+        "whatsappPlaceholder": "+221 77 123 45 67",
+        "email": "Adresse e-mail",
+        "plan": "Plan"
+      },
+      "emailNote": "L’email ne peut pas être modifié",
+      "planDiscovery": "Découverte",
+      "save": "Enregistrer les modifications",
+      "success": "Profil mis à jour."
+    },
+    "countries": {
+      "SN": "Sénégal",
+      "CI": "Côte d’Ivoire",
+      "BJ": "Bénin",
+      "TG": "Togo",
+      "BF": "Burkina Faso",
+      "ML": "Mali"
+    },
+    "signOut": {
+      "title": "Session"
+    },
+    "errors": {
+      "shopName": "Le nom de boutique doit contenir au moins 2 caractères.",
+      "ownerFullName": "Le nom du propriétaire doit contenir au moins 2 caractères.",
+      "invalid_whatsapp": "Le numéro WhatsApp doit être un mobile sénégalais valide.",
+      "merchant_not_found": "Aucun compte marchand n’a été trouvé.",
+      "update_failed": "La mise à jour du profil a échoué. Réessayez.",
+      "audit_failed": "La mise à jour a réussi, mais le journal d’audit n’a pas pu être écrit.",
+      "generic": "Une erreur est survenue. Réessayez."
+    }
+  },
   "placeholders": {
     "commandes": "Bientôt disponible (semaine 5).",
     "generic": "Bientôt disponible."
