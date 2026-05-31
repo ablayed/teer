@@ -45,7 +45,7 @@ export function OrderSideSheet({ order, timeline }: OrderSideSheetProps) {
     <AnimatePresence>
       <motion.div
         animate={{ opacity: 1 }}
-        className="fixed inset-0 z-50 bg-black/40"
+        className="fixed inset-0 z-50 flex justify-end overflow-hidden bg-black/40"
         exit={{ opacity: 0 }}
         initial={{ opacity: 0 }}
         onClick={close}
@@ -54,7 +54,7 @@ export function OrderSideSheet({ order, timeline }: OrderSideSheetProps) {
         <motion.dialog
           animate={{ x: 0 }}
           aria-modal="true"
-          className="absolute inset-y-0 right-0 m-0 flex h-screen max-h-screen w-full border-0 bg-surface p-0 shadow-2 outline-none sm:max-w-[480px]"
+          className="relative m-0 flex h-dvh max-h-dvh min-h-0 w-full overflow-hidden border-0 bg-surface p-0 shadow-2 outline-none sm:max-w-[480px]"
           exit={{ x: '100%' }}
           initial={{ x: '100%' }}
           onClick={keepSheetOpen}

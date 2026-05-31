@@ -242,7 +242,9 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
   const items = parseItemsSummary(order.items_summary);
   const phone = order.customer?.phone;
   const contentClassName =
-    mode === 'sheet' ? 'flex min-h-full flex-col' : 'mx-auto max-w-5xl space-y-6 px-4 py-6';
+    mode === 'sheet'
+      ? 'flex h-full min-h-0 w-full flex-col'
+      : 'mx-auto max-w-5xl space-y-6 px-4 py-6';
 
   useEffect(() => {
     setVisibleTimeline(timeline);
@@ -252,7 +254,7 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
     <div className={contentClassName}>
       <header
         className={cn(
-          'flex items-start justify-between gap-4 border-b border-border bg-surface p-5',
+          'flex shrink-0 items-start justify-between gap-4 border-b border-border bg-surface p-5',
           mode === 'page' && 'rounded-lg border shadow-1',
         )}
       >
@@ -285,7 +287,12 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
         )}
       </header>
 
-      <div className={cn('space-y-5 p-5', mode === 'sheet' && 'flex-1 overflow-y-auto')}>
+      <div
+        className={cn(
+          'space-y-5 p-5',
+          mode === 'sheet' && 'min-h-0 flex-1 overflow-y-auto overscroll-contain pb-8',
+        )}
+      >
         <section className="space-y-3">
           <h2 className="text-sm font-semibold uppercase text-muted">Client</h2>
           <div className="space-y-2">
@@ -383,6 +390,11 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
           <Timeline currentStatus={currentStatus} events={visibleTimeline} />
         </section>
 
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
+          <ActionBar currentStatus={currentStatus} orderId={order.id} />
+        </section>
+
         <CallLogForm
           onOptimisticCall={(event) =>
             setVisibleTimeline((currentTimeline) => [event, ...currentTimeline])
@@ -394,11 +406,6 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
           }
           orderId={order.id}
         />
-
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
-          <ActionBar currentStatus={currentStatus} orderId={order.id} />
-        </section>
       </div>
     </div>
   );
