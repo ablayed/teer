@@ -449,6 +449,18 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      get_dashboard_kpi: {
+        Args: { p_merchant_id: string };
+        Returns: {
+          a_appeler_count: number;
+          a_appeler_delta: number;
+          ca_collecte_7j: number;
+          ca_en_attente: number;
+          sparkline_7j: Json;
+          taux_confirmation: number;
+          taux_livraison: number;
+        }[];
+      };
       is_member_of: {
         Args: { p_merchant_account_id: string };
         Returns: boolean;
