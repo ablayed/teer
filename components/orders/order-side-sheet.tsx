@@ -4,7 +4,7 @@ import { OrderDetailPanel } from '@/components/orders/order-detail-panel';
 import type { OrderDetail, OrderTimelineEvent } from '@/lib/actions/orders';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { type MouseEvent, useCallback, useEffect } from 'react';
 
 type OrderSideSheetProps = {
   order: OrderDetail;
@@ -19,8 +19,15 @@ const sheetTransition = {
 export function OrderSideSheet({ order, timeline }: OrderSideSheetProps) {
   const router = useRouter();
 
-  function close() {
-    router.push('/commandes');
+  const close = useCallback(() => {
+    router.back();
+    window.setTimeout(() => {
+      router.replace('/commandes');
+    }, 150);
+  }, [router]);
+
+  function keepSheetOpen(event: MouseEvent) {
+    event.stopPropagation();
   }
 
   useEffect(() => {
@@ -32,7 +39,7 @@ export function OrderSideSheet({ order, timeline }: OrderSideSheetProps) {
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  });
+  }, [close]);
 
   return (
     <AnimatePresence>
@@ -41,20 +48,16 @@ export function OrderSideSheet({ order, timeline }: OrderSideSheetProps) {
         className="fixed inset-0 z-50 bg-black/40"
         exit={{ opacity: 0 }}
         initial={{ opacity: 0 }}
+        onClick={close}
         transition={sheetTransition}
       >
-        <button
-          aria-label="Fermer"
-          className="absolute inset-0 size-full cursor-default"
-          onClick={close}
-          type="button"
-        />
         <motion.dialog
           animate={{ x: 0 }}
           aria-modal="true"
-          className="absolute inset-y-0 right-0 flex w-full bg-surface shadow-2 outline-none sm:max-w-[480px]"
+          className="absolute inset-y-0 right-0 m-0 flex h-screen max-h-screen w-full border-0 bg-surface p-0 shadow-2 outline-none sm:max-w-[480px]"
           exit={{ x: '100%' }}
           initial={{ x: '100%' }}
+          onClick={keepSheetOpen}
           open
           transition={sheetTransition}
         >
