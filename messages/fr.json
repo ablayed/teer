@@ -74,7 +74,8 @@
       "ca_attente": "CA en attente",
       "taux_confirmation": "Taux confirmation",
       "taux_livraison": "Taux livraison",
-      "delta_hier": "vs hier"
+      "delta_hier": "vs hier",
+      "unavailable": "Donn\u00e9es indisponibles"
     },
     "actions": {
       "title": "\u00c0 faire maintenant",

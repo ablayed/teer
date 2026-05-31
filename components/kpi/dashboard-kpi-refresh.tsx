@@ -52,6 +52,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
     () => kpi?.sparkline7j.map((point) => ({ date: point.date, value: point.caCollecte })) ?? [],
     [kpi],
   );
+  const unavailableLabel = t('kpi.unavailable');
 
   return (
     <section className="space-y-3">
@@ -61,6 +62,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
             deltaAbs={kpi?.aAppelerDelta}
             deltaType="abs"
             error={hasError}
+            errorLabel={unavailableLabel}
             invertDelta
             label={t('kpi.a_appeler')}
             loading={isLoading}
@@ -71,6 +73,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         <KPICard
           accentColor="success"
           error={hasError}
+          errorLabel={unavailableLabel}
           label={t('kpi.ca_collecte')}
           loading={isLoading}
           sparkline={sparkline}
@@ -80,6 +83,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         <KPICard
           accentColor="warning"
           error={hasError}
+          errorLabel={unavailableLabel}
           label={t('kpi.ca_attente')}
           loading={isLoading}
           unit="XOF"
@@ -87,6 +91,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         />
         <KPICard
           error={hasError}
+          errorLabel={unavailableLabel}
           label={t('kpi.taux_confirmation')}
           loading={isLoading}
           unit="%"
@@ -94,6 +99,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         />
         <KPICard
           error={hasError}
+          errorLabel={unavailableLabel}
           label={t('kpi.taux_livraison')}
           loading={isLoading}
           unit="%"
