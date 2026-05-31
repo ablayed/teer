@@ -73,7 +73,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
           errorLabel={unavailableLabel}
           label={t('kpi.ca_collecte')}
           loading={isLoading}
-          sparkline={sparkline}
+          sparkline={sparkline ?? []}
           unit="XOF"
           value={kpi?.ca_collecte_7j ?? 0}
         />
