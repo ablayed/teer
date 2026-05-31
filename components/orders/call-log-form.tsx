@@ -2,11 +2,15 @@
 
 import { Button } from '@/components/ui/button';
 import { type OrderTimelineEvent, logCallAction } from '@/lib/actions/orders';
+import {
+  type CallOutcome,
+  callOutcomes,
+  callRescheduleMessages,
+  validateCallNextActionAt,
+} from '@/lib/orders/call-log-validation';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-
-type CallOutcome = 'CONFIRMEE' | 'SANS_REPONSE' | 'A_RAPPELER' | 'REFUSEE';
 
 type CallLogFormProps = {
   onOptimisticCall: (event: OrderTimelineEvent) => void;
@@ -14,23 +18,12 @@ type CallLogFormProps = {
   orderId: string;
 };
 
-const callOutcomes: CallOutcome[] = ['CONFIRMEE', 'SANS_REPONSE', 'A_RAPPELER', 'REFUSEE'];
-
 const outcomeLabels: Record<CallOutcome, string> = {
-  CONFIRMEE: 'Confirmee',
-  SANS_REPONSE: 'Sans reponse',
-  A_RAPPELER: 'A rappeler',
-  REFUSEE: 'Refusee',
+  CONFIRMEE: 'Confirm\u00e9e',
+  SANS_REPONSE: 'Sans r\u00e9ponse',
+  A_RAPPELER: '\u00c0 rappeler',
+  REFUSEE: 'Refus\u00e9e',
 };
-
-function toDatetimeIso(value: string): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-}
 
 function errorMessage(errorCode: string | undefined): string {
   switch (errorCode) {
@@ -43,6 +36,32 @@ function errorMessage(errorCode: string | undefined): string {
     default:
       return 'Une erreur est survenue. Reessayez.';
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function firstError(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const errors = value._errors;
+
+  if (Array.isArray(errors) && typeof errors[0] === 'string') {
+    return errors[0];
+  }
+
+  return null;
+}
+
+function firstValidationErrorMessage(validationErrors: unknown): string | null {
+  if (!isRecord(validationErrors)) {
+    return null;
+  }
+
+  return firstError(validationErrors.nextActionAt) ?? firstError(validationErrors);
 }
 
 export function CallLogForm({
@@ -62,7 +81,9 @@ export function CallLogForm({
   const noteLength = note.length;
 
   const result = logCall.result.data;
-  const validationError = logCall.result.validationErrors ? 'Verifiez les champs.' : null;
+  const validationError =
+    firstValidationErrorMessage(logCall.result.validationErrors) ??
+    (logCall.result.validationErrors ? 'V\u00e9rifiez les champs.' : null);
 
   const actionError = useMemo(() => {
     if (!result || result.ok) {
@@ -96,12 +117,15 @@ export function CallLogForm({
   function submit() {
     setFeedback(null);
 
-    const nextActionAtIso = outcome === 'A_RAPPELER' ? toDatetimeIso(nextActionAt) : undefined;
+    const nextActionAtValidation =
+      outcome === 'A_RAPPELER' ? validateCallNextActionAt(nextActionAt) : null;
 
-    if (outcome === 'A_RAPPELER' && !nextActionAtIso) {
-      setFeedback({ tone: 'error', message: 'Choisissez une date de rappel.' });
+    if (nextActionAtValidation && !nextActionAtValidation.ok) {
+      setFeedback({ tone: 'error', message: nextActionAtValidation.message });
       return;
     }
+
+    const nextActionAtIso = nextActionAtValidation?.ok ? nextActionAtValidation.iso : undefined;
 
     const eventId = `optimistic-${Date.now()}`;
     setOptimisticEventId(eventId);
@@ -155,13 +179,17 @@ export function CallLogForm({
 
       {outcome === 'A_RAPPELER' ? (
         <label className="block space-y-2 text-sm font-medium">
-          <span>Date de rappel</span>
+          <span>Date et heure du rappel</span>
           <input
+            aria-describedby="next-action-at-hint"
             className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-accent"
             onChange={(event) => setNextActionAt(event.target.value)}
             type="datetime-local"
             value={nextActionAt}
           />
+          <span className="block text-xs text-muted" id="next-action-at-hint">
+            {callRescheduleMessages.required}
+          </span>
         </label>
       ) : null}
 

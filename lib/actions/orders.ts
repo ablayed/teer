@@ -9,6 +9,11 @@ import {
   orderStatuses,
 } from '@/lib/domain/order-state-machine';
 import { env } from '@/lib/env';
+import {
+  type CallOutcome,
+  callOutcomes,
+  logCallInputSchema,
+} from '@/lib/orders/call-log-validation';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -44,9 +49,6 @@ type GetOrdersInput = {
   codStatus?: CodStatus;
 };
 
-const callOutcomes = ['CONFIRMEE', 'SANS_REPONSE', 'A_RAPPELER', 'REFUSEE'] as const;
-
-type CallOutcome = (typeof callOutcomes)[number];
 type OrderActionErrorCode =
   | 'audit_failed'
   | 'call_log_failed'
@@ -376,23 +378,6 @@ export const transitionOrderStatusAction = authActionClient
     revalidateOrderPaths(order.id);
 
     return { ok: true as const, newStatus: parsedInput.to };
-  });
-
-const logCallInputSchema = z
-  .object({
-    orderId: z.string().uuid(),
-    outcome: z.enum(callOutcomes),
-    note: z.string().trim().max(500).optional(),
-    nextActionAt: z.string().datetime().optional(),
-  })
-  .superRefine((input, ctx) => {
-    if (input.outcome === 'A_RAPPELER' && !input.nextActionAt) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'La date du prochain rappel est requise.',
-        path: ['nextActionAt'],
-      });
-    }
   });
 
 function getAutoTransitionTarget(outcome: CallOutcome): OrderStatus {
