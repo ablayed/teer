@@ -10,17 +10,17 @@ type DashboardKpiRpcRow = Database['public']['Functions']['get_dashboard_kpi']['
 
 export type DashboardSparklinePoint = {
   date: string;
-  caCollecte: number;
+  value: number;
 };
 
 export type DashboardKpi = {
-  aAppelerCount: number;
-  aAppelerDelta: number;
-  caCollecte7j: number;
-  caEnAttente: number;
-  tauxConfirmation: number;
-  tauxLivraison: number;
-  sparkline7j: DashboardSparklinePoint[];
+  a_appeler_count: number;
+  a_appeler_delta: number;
+  ca_collecte_7j: number;
+  ca_en_attente: number;
+  taux_confirmation: number;
+  taux_livraison: number;
+  sparkline_7j: DashboardSparklinePoint[];
 };
 
 export type DashboardKpiActionResult =
@@ -47,15 +47,15 @@ function parseSparkline(value: Json): DashboardSparklinePoint[] {
       }
 
       const date = item.date;
-      const caCollecte = item.ca_collecte;
+      const sparklineValue = item.value;
 
-      if (typeof date !== 'string' || typeof caCollecte !== 'number') {
+      if (typeof date !== 'string' || typeof sparklineValue !== 'number') {
         return null;
       }
 
       return {
         date,
-        caCollecte,
+        value: sparklineValue,
       };
     })
     .filter((item): item is DashboardSparklinePoint => item !== null);
@@ -63,13 +63,13 @@ function parseSparkline(value: Json): DashboardSparklinePoint[] {
 
 function toDashboardKpi(row: DashboardKpiRpcRow): DashboardKpi {
   return {
-    aAppelerCount: row.a_appeler_count,
-    aAppelerDelta: row.a_appeler_delta,
-    caCollecte7j: row.ca_collecte_7j,
-    caEnAttente: row.ca_en_attente,
-    tauxConfirmation: row.taux_confirmation,
-    tauxLivraison: row.taux_livraison,
-    sparkline7j: parseSparkline(row.sparkline_7j),
+    a_appeler_count: row.a_appeler_count,
+    a_appeler_delta: row.a_appeler_delta,
+    ca_collecte_7j: row.ca_collecte_7j,
+    ca_en_attente: row.ca_en_attente,
+    taux_confirmation: row.taux_confirmation,
+    taux_livraison: row.taux_livraison,
+    sparkline_7j: parseSparkline(row.sparkline_7j),
   };
 }
 

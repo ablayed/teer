@@ -29,7 +29,7 @@ export default async function TableauPage() {
   const firstName =
     displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
   const kpi = kpiResult.ok ? kpiResult.data : null;
-  const callQueueCount = kpi?.aAppelerCount ?? 0;
+  const callQueueCount = kpi?.a_appeler_count ?? 0;
 
   return (
     <main className="space-y-8" id="main">

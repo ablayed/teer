@@ -48,10 +48,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
     }
   }, [kpiAction.result.data]);
 
-  const sparkline = useMemo(
-    () => kpi?.sparkline7j.map((point) => ({ date: point.date, value: point.caCollecte })) ?? [],
-    [kpi],
-  );
+  const sparkline = useMemo(() => kpi?.sparkline_7j ?? [], [kpi]);
   const unavailableLabel = t('kpi.unavailable');
 
   return (
@@ -59,7 +56,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="sm:col-span-2 xl:col-span-1">
           <KPICard
-            deltaAbs={kpi?.aAppelerDelta}
+            deltaAbs={kpi?.a_appeler_delta}
             deltaType="abs"
             error={hasError}
             errorLabel={unavailableLabel}
@@ -67,7 +64,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
             label={t('kpi.a_appeler')}
             loading={isLoading}
             unit="count"
-            value={kpi?.aAppelerCount ?? 0}
+            value={kpi?.a_appeler_count ?? 0}
           />
         </div>
         <KPICard
@@ -78,7 +75,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
           loading={isLoading}
           sparkline={sparkline}
           unit="XOF"
-          value={kpi?.caCollecte7j ?? 0}
+          value={kpi?.ca_collecte_7j ?? 0}
         />
         <KPICard
           accentColor="warning"
@@ -87,7 +84,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
           label={t('kpi.ca_attente')}
           loading={isLoading}
           unit="XOF"
-          value={kpi?.caEnAttente ?? 0}
+          value={kpi?.ca_en_attente ?? 0}
         />
         <KPICard
           error={hasError}
@@ -95,7 +92,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
           label={t('kpi.taux_confirmation')}
           loading={isLoading}
           unit="%"
-          value={kpi?.tauxConfirmation ?? 0}
+          value={kpi?.taux_confirmation ?? 0}
         />
         <KPICard
           error={hasError}
@@ -103,7 +100,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
           label={t('kpi.taux_livraison')}
           loading={isLoading}
           unit="%"
-          value={kpi?.tauxLivraison ?? 0}
+          value={kpi?.taux_livraison ?? 0}
         />
       </div>
 
