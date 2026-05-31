@@ -1,14 +1,8 @@
-export const codStatuses = [
-  'nouvelle',
-  'confirmee',
-  'assignee',
-  'en_livraison',
-  'livree',
-  'annulee',
-  'retournee',
-] as const;
+import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 
-export type CodStatus = (typeof codStatuses)[number];
+export const codStatuses = orderStatuses;
+
+export type CodStatus = OrderStatus;
 
 export function isCodStatus(value: string): value is CodStatus {
   return codStatuses.includes(value as CodStatus);

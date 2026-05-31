@@ -2,6 +2,7 @@ import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
+import { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateAbsolute } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { type CodStatus, codStatuses, isCodStatus } from '@/lib/orders/status';
@@ -25,7 +26,7 @@ function isSyncErrorCode(value: string): value is SyncErrorCode {
 }
 
 function orderStatus(orderStatus: string): CodStatus {
-  return isCodStatus(orderStatus) ? orderStatus : 'nouvelle';
+  return isCodStatus(orderStatus) ? orderStatus : 'A_APPELER';
 }
 
 function statusHref(status?: CodStatus): string {
@@ -97,7 +98,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             href={statusHref(status)}
             key={status}
           >
-            {t(`status.${status}`)} ({statusCounts[status]})
+            {orderStatusLabels[status]} ({statusCounts[status]})
           </Link>
         ))}
       </nav>
@@ -166,22 +167,32 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
               <tbody className="divide-y divide-border">
                 {visibleOrders.map((order) => (
                   <tr className="hover:bg-canvas/60" key={order.id}>
-                    <td className="px-4 py-4 font-semibold">
-                      {order.order_number ?? t('table.emptyValue')}
+                    <td className="font-semibold">
+                      <Link className="block px-4 py-4" href={`/commandes/${order.id}`}>
+                        {order.order_number ?? t('table.emptyValue')}
+                      </Link>
                     </td>
-                    <td className="px-4 py-4 text-muted">
-                      {order.customer?.full_name ?? t('table.emptyValue')}
+                    <td className="text-muted">
+                      <Link className="block px-4 py-4" href={`/commandes/${order.id}`}>
+                        {order.customer?.full_name ?? t('table.emptyValue')}
+                      </Link>
                     </td>
-                    <td className="px-4 py-4 font-medium">
-                      {formatMoney(order.total_amount, order.currency)}
+                    <td className="font-medium">
+                      <Link className="block px-4 py-4" href={`/commandes/${order.id}`}>
+                        {formatMoney(order.total_amount, order.currency)}
+                      </Link>
                     </td>
-                    <td className="px-4 py-4">
-                      <CodStatusBadge status={orderStatus(order.cod_status)} />
+                    <td>
+                      <Link className="block px-4 py-4" href={`/commandes/${order.id}`}>
+                        <CodStatusBadge status={orderStatus(order.cod_status)} />
+                      </Link>
                     </td>
-                    <td className="px-4 py-4 text-muted">
-                      {order.created_at_shopify
-                        ? formatDateAbsolute(order.created_at_shopify)
-                        : t('table.emptyValue')}
+                    <td className="text-muted">
+                      <Link className="block px-4 py-4" href={`/commandes/${order.id}`}>
+                        {order.created_at_shopify
+                          ? formatDateAbsolute(order.created_at_shopify)
+                          : t('table.emptyValue')}
+                      </Link>
                     </td>
                     <td className="px-4 py-4 text-right">
                       <Link
