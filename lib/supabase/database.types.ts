@@ -453,6 +453,15 @@ export type Database = {
         Args: { p_merchant_account_id: string };
         Returns: boolean;
       };
+      transition_order: {
+        Args: {
+          p_actor: string;
+          p_note?: string;
+          p_order_id: string;
+          p_to: string;
+        };
+        Returns: string;
+      };
     };
     Enums: {
       [_ in never]: never;

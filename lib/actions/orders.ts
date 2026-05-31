@@ -56,7 +56,6 @@ type OrderActionErrorCode =
   | 'illegal_transition'
   | 'merchant_not_found'
   | 'order_not_found'
-  | 'transition_log_failed'
   | 'update_failed';
 type SupabaseServerClient = SupabaseClient<Database>;
 
@@ -154,62 +153,29 @@ async function writeOrderAuditLog({
 
 async function applyOrderTransition({
   actorUserId,
-  from,
-  merchantAccountId,
   note,
   orderId,
   supabase,
   to,
 }: {
   actorUserId: string;
-  from: OrderStatus;
-  merchantAccountId: string;
   note: string | undefined;
   orderId: string;
   supabase: SupabaseServerClient;
   to: OrderStatus;
-}): Promise<{ ok: true } | { ok: false; errorCode: 'transition_log_failed' | 'update_failed' }> {
-  const now = new Date().toISOString();
-  const { data: updatedOrder, error: updateError } = await supabase
-    .from('orders')
-    .update({
-      cod_status: to,
-      updated_at: now,
-    })
-    .eq('id', orderId)
-    .eq('merchant_account_id', merchantAccountId)
-    .eq('cod_status', from)
-    .select('id')
-    .maybeSingle();
+}): Promise<{ ok: true; newStatus: OrderStatus } | { ok: false; errorCode: 'update_failed' }> {
+  const { data, error } = await supabase.rpc('transition_order', {
+    p_order_id: orderId,
+    p_to: to,
+    p_actor: actorUserId,
+    p_note: note?.trim() || undefined,
+  });
 
-  if (updateError || !updatedOrder) {
+  if (error || data !== to) {
     return { ok: false, errorCode: 'update_failed' };
   }
 
-  const { error: transitionError } = await supabase.from('order_state_transition').insert({
-    merchant_account_id: merchantAccountId,
-    order_id: orderId,
-    from_status: from,
-    to_status: to,
-    actor_user_id: actorUserId,
-    note: note?.trim() || null,
-  });
-
-  if (transitionError) {
-    await supabase
-      .from('orders')
-      .update({
-        cod_status: from,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', orderId)
-      .eq('merchant_account_id', merchantAccountId)
-      .eq('cod_status', to);
-
-    return { ok: false, errorCode: 'transition_log_failed' };
-  }
-
-  return { ok: true };
+  return { ok: true, newStatus: to };
 }
 
 export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<OrderListItem[]> {
@@ -347,8 +313,6 @@ export const transitionOrderStatusAction = authActionClient
 
     const transition = await applyOrderTransition({
       actorUserId: ctx.user.id,
-      from: order.cod_status,
-      merchantAccountId: order.merchant_account_id,
       note: parsedInput.note,
       orderId: order.id,
       supabase,
@@ -425,19 +389,13 @@ export const logCallAction = authActionClient
 
     const autoTransitionTarget = getAutoTransitionTarget(parsedInput.outcome);
     let transitioned = false;
-    let transitionErrorCode:
-      | 'invalid_current_status'
-      | 'transition_log_failed'
-      | 'update_failed'
-      | null = null;
+    let transitionErrorCode: 'invalid_current_status' | 'update_failed' | null = null;
 
     if (isOrderStatus(order.cod_status)) {
       try {
         assertTransition(order.cod_status, autoTransitionTarget);
         const transition = await applyOrderTransition({
           actorUserId: ctx.user.id,
-          from: order.cod_status,
-          merchantAccountId: order.merchant_account_id,
           note: parsedInput.note,
           orderId: order.id,
           supabase,
