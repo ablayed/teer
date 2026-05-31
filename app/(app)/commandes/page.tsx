@@ -1,6 +1,6 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
-import { getOrders } from '@/lib/actions/orders';
+import { type OrderListItem, getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateAbsolute } from '@/lib/format/date';
@@ -30,17 +30,37 @@ function orderStatus(orderStatus: string): CodStatus {
 }
 
 function statusHref(status?: CodStatus): string {
-  return status ? `/commandes?statut=${status}` : '/commandes';
+  return status ? `/commandes?statut=${status.toLowerCase()}` : '/commandes?statut=toutes';
+}
+
+function statusParam(value: string | undefined): CodStatus | 'toutes' {
+  if (!value) {
+    return 'A_APPELER';
+  }
+
+  if (value === 'toutes') {
+    return 'toutes';
+  }
+
+  const normalizedValue = value.toUpperCase();
+  return isCodStatus(normalizedValue) ? normalizedValue : 'A_APPELER';
+}
+
+function orderQueueDate(order: OrderListItem): string {
+  return order.created_at_shopify ?? order.created_at;
 }
 
 export default async function CommandesPage({ searchParams }: CommandesPageProps) {
   const t = await getTranslations('orders');
   const params = await searchParams;
-  const activeStatus = params.statut && isCodStatus(params.statut) ? params.statut : undefined;
+  const activeStatus = statusParam(params.statut);
   const [orders, shopConnection] = await Promise.all([getOrders(), getShopConnection()]);
-  const visibleOrders = activeStatus
-    ? orders.filter((order) => orderStatus(order.cod_status) === activeStatus)
-    : orders;
+  const visibleOrders =
+    activeStatus === 'toutes'
+      ? orders
+      : orders
+          .filter((order) => orderStatus(order.cod_status) === activeStatus)
+          .sort((left, right) => orderQueueDate(left).localeCompare(orderQueueDate(right)));
   const statusCounts = Object.fromEntries(
     codStatuses.map((status) => [
       status,
@@ -50,9 +70,9 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const syncedCount = params.synced ? Number.parseInt(params.synced, 10) : null;
   const syncError =
     params.sync_error && isSyncErrorCode(params.sync_error) ? params.sync_error : null;
-  const showNoShop = orders.length === 0 && !shopConnection && !activeStatus;
-  const showNoOrdersWithShop = orders.length === 0 && shopConnection && !activeStatus;
-  const showFilteredEmpty = orders.length > 0 && visibleOrders.length === 0 && activeStatus;
+  const showNoShop = orders.length === 0 && !shopConnection;
+  const showNoOrdersWithShop = orders.length === 0 && shopConnection;
+  const showFilteredEmpty = orders.length > 0 && visibleOrders.length === 0;
 
   return (
     <main className="space-y-6" id="main">
@@ -80,9 +100,9 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       <nav aria-label={t('filters.ariaLabel')} className="flex gap-2 overflow-x-auto pb-1">
         <Link
           className={`inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium ${
-            activeStatus
-              ? 'border-border bg-surface text-muted hover:bg-canvas'
-              : 'border-accent bg-accent text-[#111]'
+            activeStatus === 'toutes'
+              ? 'border-accent bg-accent text-[#111]'
+              : 'border-border bg-surface text-muted hover:bg-canvas'
           }`}
           href={statusHref()}
         >

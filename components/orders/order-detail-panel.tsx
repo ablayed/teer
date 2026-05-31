@@ -1,5 +1,6 @@
 'use client';
 
+import { CallLogForm } from '@/components/orders/call-log-form';
 import { Button } from '@/components/ui/button';
 import {
   type OrderDetail,
@@ -234,6 +235,7 @@ function ActionBar({ currentStatus, orderId }: { currentStatus: OrderStatus; ord
 }
 
 export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetailPanelProps) {
+  const [visibleTimeline, setVisibleTimeline] = useState(timeline);
   const emptyValue = 'Non renseigne';
   const currentStatus = toOrderStatus(order.cod_status);
   const shippingAddress = parseShippingAddress(order.shipping_address);
@@ -241,6 +243,10 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
   const phone = order.customer?.phone;
   const contentClassName =
     mode === 'sheet' ? 'flex min-h-full flex-col' : 'mx-auto max-w-5xl space-y-6 px-4 py-6';
+
+  useEffect(() => {
+    setVisibleTimeline(timeline);
+  }, [timeline]);
 
   return (
     <div className={contentClassName}>
@@ -374,8 +380,20 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
             <Clock3 aria-hidden="true" className="size-4" />
             Timeline
           </h2>
-          <Timeline currentStatus={currentStatus} events={timeline} />
+          <Timeline currentStatus={currentStatus} events={visibleTimeline} />
         </section>
+
+        <CallLogForm
+          onOptimisticCall={(event) =>
+            setVisibleTimeline((currentTimeline) => [event, ...currentTimeline])
+          }
+          onRemoveOptimisticCall={(eventId) =>
+            setVisibleTimeline((currentTimeline) =>
+              currentTimeline.filter((event) => event.id !== eventId),
+            )
+          }
+          orderId={order.id}
+        />
 
         <section className="space-y-3">
           <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
