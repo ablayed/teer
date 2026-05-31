@@ -1,0 +1,59 @@
+export const orderStatuses = [
+  'A_APPELER',
+  'TENTEE',
+  'CONFIRMEE',
+  'PROGRAMMEE',
+  'EN_LIVRAISON',
+  'LIVREE',
+  'REFUSEE',
+  'ANNULEE',
+] as const;
+
+export type OrderStatus = (typeof orderStatuses)[number];
+
+export const orderStatusLabels: Record<OrderStatus, string> = {
+  A_APPELER: '\u00c0 appeler',
+  TENTEE: 'Tent\u00e9e',
+  CONFIRMEE: 'Confirm\u00e9e',
+  PROGRAMMEE: 'Programm\u00e9e',
+  EN_LIVRAISON: 'En livraison',
+  LIVREE: 'Livr\u00e9e',
+  REFUSEE: 'Refus\u00e9e',
+  ANNULEE: 'Annul\u00e9e',
+};
+
+const legalTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
+  A_APPELER: ['TENTEE', 'CONFIRMEE', 'REFUSEE', 'ANNULEE'],
+  TENTEE: ['TENTEE', 'CONFIRMEE', 'REFUSEE', 'ANNULEE', 'A_APPELER'],
+  CONFIRMEE: ['PROGRAMMEE', 'ANNULEE', 'REFUSEE'],
+  PROGRAMMEE: ['EN_LIVRAISON', 'ANNULEE', 'REFUSEE'],
+  EN_LIVRAISON: ['LIVREE', 'REFUSEE', 'ANNULEE'],
+  LIVREE: [],
+  REFUSEE: [],
+  ANNULEE: [],
+};
+
+export class IllegalTransitionError extends Error {
+  constructor(from: OrderStatus, to: OrderStatus) {
+    super(`Transition COD impossible : ${orderStatusLabels[from]} vers ${orderStatusLabels[to]}.`);
+    this.name = 'IllegalTransitionError';
+  }
+}
+
+export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
+  return legalTransitions[from].includes(to);
+}
+
+export function assertTransition(from: OrderStatus, to: OrderStatus): void {
+  if (!canTransition(from, to)) {
+    throw new IllegalTransitionError(from, to);
+  }
+}
+
+export function getAllowedTransitions(from: OrderStatus): OrderStatus[] {
+  return [...legalTransitions[from]];
+}
+
+export function isTerminal(status: OrderStatus): boolean {
+  return getAllowedTransitions(status).length === 0;
+}

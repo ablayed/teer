@@ -74,6 +74,54 @@ export type Database = {
           },
         ];
       };
+      call_log: {
+        Row: {
+          agent_user_id: string;
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          next_action_at: string | null;
+          note_fr: string | null;
+          order_id: string;
+          outcome: string;
+        };
+        Insert: {
+          agent_user_id: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          next_action_at?: string | null;
+          note_fr?: string | null;
+          order_id: string;
+          outcome: string;
+        };
+        Update: {
+          agent_user_id?: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          next_action_at?: string | null;
+          note_fr?: string | null;
+          order_id?: string;
+          outcome?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'call_log_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'call_log_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       customer: {
         Row: {
           created_at: string;
@@ -185,6 +233,54 @@ export type Database = {
             columns: ['merchant_account_id'];
             isOneToOne: false;
             referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      order_state_transition: {
+        Row: {
+          actor_user_id: string;
+          created_at: string;
+          from_status: string | null;
+          id: string;
+          merchant_account_id: string;
+          note: string | null;
+          order_id: string;
+          to_status: string;
+        };
+        Insert: {
+          actor_user_id: string;
+          created_at?: string;
+          from_status?: string | null;
+          id?: string;
+          merchant_account_id: string;
+          note?: string | null;
+          order_id: string;
+          to_status: string;
+        };
+        Update: {
+          actor_user_id?: string;
+          created_at?: string;
+          from_status?: string | null;
+          id?: string;
+          merchant_account_id?: string;
+          note?: string | null;
+          order_id?: string;
+          to_status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'order_state_transition_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'order_state_transition_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
             referencedColumns: ['id'];
           },
         ];
