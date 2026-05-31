@@ -2,6 +2,7 @@
 
 import { authActionClient } from '@/lib/actions/safe-action';
 import type { Database, Json } from '@/lib/supabase/database.types';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 type SupabaseServerClient = SupabaseClient<Database>;
@@ -72,38 +73,63 @@ function toDashboardKpi(row: DashboardKpiRpcRow): DashboardKpi {
   };
 }
 
+async function fetchDashboardKpiForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardKpiActionResult> {
+  const { data: member, error: memberError } = await supabase
+    .from('merchant_member')
+    .select('merchant_account_id')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (memberError) {
+    return { ok: false, errorCode: 'rpc_error' };
+  }
+
+  if (!member) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  const { data, error } = await supabase.rpc('get_dashboard_kpi', {
+    p_merchant_id: member.merchant_account_id,
+  });
+
+  if (error) {
+    return { ok: false, errorCode: 'rpc_error' };
+  }
+
+  const row = data.at(0);
+
+  if (!row) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return { ok: true, data: toDashboardKpi(row) };
+}
+
+export async function getDashboardKpi(): Promise<DashboardKpiActionResult> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchDashboardKpiForUser({ supabase, userId: user.id });
+}
+
 export const getDashboardKpiAction = authActionClient
   .metadata({ actionName: 'dashboard.get_kpi', section: 'dashboard' })
   .action(async ({ ctx }): Promise<DashboardKpiActionResult> => {
-    const supabase = asTypedSupabaseClient(ctx.supabase);
-    const { data: member, error: memberError } = await supabase
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', ctx.user.id)
-      .limit(1)
-      .maybeSingle();
-
-    if (memberError) {
-      return { ok: false, errorCode: 'rpc_error' };
-    }
-
-    if (!member) {
-      return { ok: false, errorCode: 'not_found' };
-    }
-
-    const { data, error } = await supabase.rpc('get_dashboard_kpi', {
-      p_merchant_id: member.merchant_account_id,
+    return fetchDashboardKpiForUser({
+      supabase: asTypedSupabaseClient(ctx.supabase),
+      userId: ctx.user.id,
     });
-
-    if (error) {
-      return { ok: false, errorCode: 'rpc_error' };
-    }
-
-    const row = data.at(0);
-
-    if (!row) {
-      return { ok: false, errorCode: 'not_found' };
-    }
-
-    return { ok: true, data: toDashboardKpi(row) };
   });

@@ -65,6 +65,26 @@
     "greeting": "Bonjour, {name}",
     "tableauPlaceholder": "Phase 0 OK. Le tableau arrive en semaine 11."
   },
+  "tableau": {
+    "title": "Tableau",
+    "subtitle": "Bonjour {name}, {count, plural, =0 {aucune commande en attente d'appel} one {# commande en attente d'appel} other {# commandes en attente d'appel}}.",
+    "kpi": {
+      "a_appeler": "\u00c0 appeler",
+      "ca_collecte": "CA collect\u00e9",
+      "ca_attente": "CA en attente",
+      "taux_confirmation": "Taux confirmation",
+      "taux_livraison": "Taux livraison",
+      "delta_hier": "vs hier"
+    },
+    "actions": {
+      "title": "\u00c0 faire maintenant",
+      "voir_tout": "Voir toute la file",
+      "empty": "Tout est \u00e0 jour"
+    },
+    "refresh": {
+      "label": "Actualis\u00e9 \u00e0 {time}"
+    }
+  },
   "onboarding": {
     "ariaLabel": "Configuration de la boutique",
     "stepIndicator": "Étape {step} sur 2",
