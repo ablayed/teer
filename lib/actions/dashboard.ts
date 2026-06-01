@@ -76,10 +76,10 @@ export type DashboardRecentActivityItem = {
 };
 
 export type DashboardAlert = {
+  count: number;
   id: string;
+  kind: 'lateCalls' | 'shops' | 'tokens';
   tone: 'danger' | 'warning';
-  title: string;
-  value: string;
 };
 
 export type DashboardReadonlyActionResult<T> =
@@ -503,28 +503,28 @@ async function fetchAlertsForUser({
 
   if (lateOrderCount > 0) {
     alerts.push({
+      count: lateOrderCount,
       id: 'late-calls',
+      kind: 'lateCalls',
       tone: 'warning',
-      title: 'Appels en retard',
-      value: `${lateOrderCount} commande${lateOrderCount > 1 ? 's' : ''} à appeler depuis plus de 24 h`,
     });
   }
 
   if (shopIssueCount > 0) {
     alerts.push({
+      count: shopIssueCount,
       id: 'shops',
+      kind: 'shops',
       tone: 'danger',
-      title: 'Boutiques à vérifier',
-      value: `${shopIssueCount} boutique${shopIssueCount > 1 ? 's' : ''} hors connexion`,
     });
   }
 
   if (tokenIssueCount > 0) {
     alerts.push({
+      count: tokenIssueCount,
       id: 'tokens',
+      kind: 'tokens',
       tone: 'warning',
-      title: 'Connexion Shopify',
-      value: `${tokenIssueCount} jeton${tokenIssueCount > 1 ? 's' : ''} expire bientôt`,
     });
   }
 

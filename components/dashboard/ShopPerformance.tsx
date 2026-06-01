@@ -5,16 +5,23 @@ import { formatDashboardCount, formatDashboardMoney } from './dashboard-format';
 
 type ShopPerformanceProps = {
   currency: string | null;
+  connectedLabel: string;
   emptyLabel: string;
   items: DashboardShopPerformance[];
+  ordersLabel: string;
   title: string;
+  warningLabel: string;
 };
 
-function statusLabel(status: string): string {
-  return status === 'connected' ? 'Connectée' : 'À vérifier';
-}
-
-export function ShopPerformance({ currency, emptyLabel, items, title }: ShopPerformanceProps) {
+export function ShopPerformance({
+  connectedLabel,
+  currency,
+  emptyLabel,
+  items,
+  ordersLabel,
+  title,
+  warningLabel,
+}: ShopPerformanceProps) {
   return (
     <Card className="rounded-lg" padding="lg">
       <h2 className="mb-5 text-[15px] font-semibold text-text">{title}</h2>
@@ -36,7 +43,7 @@ export function ShopPerformance({ currency, emptyLabel, items, title }: ShopPerf
                         shop.status === 'connected' ? 'bg-success' : 'bg-danger',
                       )}
                     />
-                    {statusLabel(shop.status)}
+                    {shop.status === 'connected' ? connectedLabel : warningLabel}
                   </p>
                 </div>
                 <p className="font-mono text-sm font-semibold text-text tabular-nums">
@@ -44,7 +51,7 @@ export function ShopPerformance({ currency, emptyLabel, items, title }: ShopPerf
                 </p>
               </div>
               <p className="font-mono text-xs text-muted tabular-nums">
-                {formatDashboardCount(shop.ordersCount)} commandes
+                {formatDashboardCount(shop.ordersCount)} {ordersLabel}
               </p>
             </div>
           ))}

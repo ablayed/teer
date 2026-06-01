@@ -6,10 +6,11 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 type AlertsBlockProps = {
   emptyLabel: string;
   items: DashboardAlert[];
+  labels: Record<DashboardAlert['kind'], { title: string; value: (count: number) => string }>;
   title: string;
 };
 
-export function AlertsBlock({ emptyLabel, items, title }: AlertsBlockProps) {
+export function AlertsBlock({ emptyLabel, items, labels, title }: AlertsBlockProps) {
   return (
     <Card className="rounded-lg" padding="lg">
       <h2 className="mb-5 text-[15px] font-semibold text-text">{title}</h2>
@@ -32,8 +33,8 @@ export function AlertsBlock({ emptyLabel, items, title }: AlertsBlockProps) {
             >
               <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
               <div>
-                <p className="text-sm font-semibold">{item.title}</p>
-                <p className="mt-1 text-sm">{item.value}</p>
+                <p className="text-sm font-semibold">{labels[item.kind].title}</p>
+                <p className="mt-1 text-sm">{labels[item.kind].value(item.count)}</p>
               </div>
             </div>
           ))}

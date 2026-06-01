@@ -12,6 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 type SupabaseServerClient = SupabaseClient<Database>;
 
 type NextActionsListProps = {
+  callLabel: string;
   emptyLabel: string;
   emptyValueLabel: string;
 };
@@ -58,7 +59,11 @@ async function getNextActionOrders(): Promise<NextActionOrder[]> {
   return (data ?? []) as NextActionOrder[];
 }
 
-export async function NextActionsList({ emptyLabel, emptyValueLabel }: NextActionsListProps) {
+export async function NextActionsList({
+  callLabel,
+  emptyLabel,
+  emptyValueLabel,
+}: NextActionsListProps) {
   const orders = await getNextActionOrders();
   const items: NextActionViewItem[] = orders.map((order) => ({
     id: order.id,
@@ -71,5 +76,5 @@ export async function NextActionsList({ emptyLabel, emptyValueLabel }: NextActio
     total: formatMoney(order.total_amount, order.currency),
   }));
 
-  return <NextActionsListMotion emptyLabel={emptyLabel} items={items} />;
+  return <NextActionsListMotion callLabel={callLabel} emptyLabel={emptyLabel} items={items} />;
 }

@@ -81,7 +81,8 @@
     "actions": {
       "title": "\u00c0 faire maintenant",
       "voir_tout": "Voir toute la file",
-      "empty": "Tout est \u00e0 jour"
+      "empty": "Tout est \u00e0 jour",
+      "call": "Appeler"
     },
     "refresh": {
       "label": "Actualis\u00e9 \u00e0 {time}"
@@ -93,11 +94,15 @@
     "blocks": {
       "topProducts": {
         "title": "Produits les plus vendus",
-        "empty": "Aucun produit vendu pour le moment."
+        "empty": "Aucun produit vendu pour le moment.",
+        "units": "unit\u00e9s"
       },
       "shopPerformance": {
         "title": "Performance par boutique",
-        "empty": "Aucune boutique connect\u00e9e."
+        "empty": "Aucune boutique connect\u00e9e.",
+        "connected": "Connect\u00e9e",
+        "warning": "\u00c0 v\u00e9rifier",
+        "orders": "commandes"
       },
       "codBreakdown": {
         "title": "R\u00e9partition COD",
@@ -105,11 +110,25 @@
       },
       "recentActivity": {
         "title": "Activit\u00e9 r\u00e9cente",
-        "empty": "Aucune transition r\u00e9cente."
+        "empty": "Aucune transition r\u00e9cente.",
+        "initial": "Initial",
+        "orderFallback": "Commande"
       },
       "alerts": {
         "title": "Alertes",
-        "empty": "Aucune alerte. Tout va bien."
+        "empty": "Aucune alerte. Tout va bien.",
+        "lateCalls": {
+          "title": "Appels en retard",
+          "value": "{count, plural, one {# commande \u00e0 appeler depuis plus de 24 h} other {# commandes \u00e0 appeler depuis plus de 24 h}}"
+        },
+        "shops": {
+          "title": "Boutiques \u00e0 v\u00e9rifier",
+          "value": "{count, plural, one {# boutique hors connexion} other {# boutiques hors connexion}}"
+        },
+        "tokens": {
+          "title": "Connexion Shopify",
+          "value": "{count, plural, one {# jeton expire bient\u00f4t} other {# jetons expirent bient\u00f4t}}"
+        }
       }
     }
   },

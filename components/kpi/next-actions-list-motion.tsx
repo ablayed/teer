@@ -17,11 +17,16 @@ export type NextActionViewItem = {
 };
 
 type NextActionsListMotionProps = {
+  callLabel: string;
   emptyLabel: string;
   items: NextActionViewItem[];
 };
 
-export function NextActionsListMotion({ emptyLabel, items }: NextActionsListMotionProps) {
+export function NextActionsListMotion({
+  callLabel,
+  emptyLabel,
+  items,
+}: NextActionsListMotionProps) {
   if (items.length === 0) {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-success/25 bg-success-subtle p-4 text-success">
@@ -59,7 +64,7 @@ export function NextActionsListMotion({ emptyLabel, items }: NextActionsListMoti
                 href={`tel:${item.phoneRaw.replace(/\s/g, '')}`}
               >
                 <Phone aria-hidden="true" className="size-4" />
-                Appeler
+                {callLabel}
               </a>
             ) : null}
           </div>

@@ -6,11 +6,19 @@ import { formatOrderNumber } from './dashboard-format';
 
 type RecentActivityProps = {
   emptyLabel: string;
+  initialLabel: string;
   items: DashboardRecentActivityItem[];
+  orderFallbackLabel: string;
   title: string;
 };
 
-export function RecentActivity({ emptyLabel, items, title }: RecentActivityProps) {
+export function RecentActivity({
+  emptyLabel,
+  initialLabel,
+  items,
+  orderFallbackLabel,
+  title,
+}: RecentActivityProps) {
   return (
     <Card className="rounded-lg" padding="lg">
       <h2 className="mb-5 text-[15px] font-semibold text-text">{title}</h2>
@@ -24,8 +32,8 @@ export function RecentActivity({ emptyLabel, items, title }: RecentActivityProps
             <li className="relative border-l border-border pl-4" key={item.id}>
               <span className="-left-[5px] absolute top-1.5 size-2 rounded-full bg-accent" />
               <p className="text-sm font-medium text-text">
-                {formatOrderNumber(item.orderNumber)} ·{' '}
-                {item.fromStatus ? orderStatusLabels[item.fromStatus] : 'Initial'} →{' '}
+                {formatOrderNumber(item.orderNumber, orderFallbackLabel)} ·{' '}
+                {item.fromStatus ? orderStatusLabels[item.fromStatus] : initialLabel} →{' '}
                 {orderStatusLabels[item.toStatus]}
               </p>
               <p className="mt-1 font-mono text-xs text-muted tabular-nums">

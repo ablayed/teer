@@ -93,12 +93,16 @@ export default async function TableauPage() {
             emptyLabel={t('blocks.topProducts.empty')}
             items={topProducts}
             title={t('blocks.topProducts.title')}
+            unitsLabel={t('blocks.topProducts.units')}
           />
           <ShopPerformance
+            connectedLabel={t('blocks.shopPerformance.connected')}
             currency={kpi?.currency ?? null}
             emptyLabel={t('blocks.shopPerformance.empty')}
             items={shopPerformance}
+            ordersLabel={t('blocks.shopPerformance.orders')}
             title={t('blocks.shopPerformance.title')}
+            warningLabel={t('blocks.shopPerformance.warning')}
           />
           <CODStatusBreakdown
             emptyLabel={t('blocks.codBreakdown.empty')}
@@ -110,12 +114,28 @@ export default async function TableauPage() {
         <section className="grid gap-4 xl:grid-cols-2">
           <RecentActivity
             emptyLabel={t('blocks.recentActivity.empty')}
+            initialLabel={t('blocks.recentActivity.initial')}
             items={recentActivity}
+            orderFallbackLabel={t('blocks.recentActivity.orderFallback')}
             title={t('blocks.recentActivity.title')}
           />
           <AlertsBlock
             emptyLabel={t('blocks.alerts.empty')}
             items={alerts}
+            labels={{
+              lateCalls: {
+                title: t('blocks.alerts.lateCalls.title'),
+                value: (count) => t('blocks.alerts.lateCalls.value', { count }),
+              },
+              shops: {
+                title: t('blocks.alerts.shops.title'),
+                value: (count) => t('blocks.alerts.shops.value', { count }),
+              },
+              tokens: {
+                title: t('blocks.alerts.tokens.title'),
+                value: (count) => t('blocks.alerts.tokens.value', { count }),
+              },
+            }}
             title={t('blocks.alerts.title')}
           />
         </section>
@@ -133,6 +153,7 @@ export default async function TableauPage() {
           </div>
 
           <NextActionsList
+            callLabel={t('actions.call')}
             emptyLabel={t('actions.empty')}
             emptyValueLabel={ordersT('table.emptyValue')}
           />

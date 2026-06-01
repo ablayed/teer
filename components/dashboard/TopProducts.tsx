@@ -7,9 +7,10 @@ type TopProductsProps = {
   emptyLabel: string;
   items: DashboardTopProduct[];
   title: string;
+  unitsLabel: string;
 };
 
-export function TopProducts({ currency, emptyLabel, items, title }: TopProductsProps) {
+export function TopProducts({ currency, emptyLabel, items, title, unitsLabel }: TopProductsProps) {
   return (
     <Card className="rounded-lg" padding="lg">
       <h2 className="mb-5 text-[15px] font-semibold text-text">{title}</h2>
@@ -28,7 +29,7 @@ export function TopProducts({ currency, emptyLabel, items, title }: TopProductsP
                 <p className="truncate text-sm font-medium text-text">{item.name}</p>
                 <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted">
                   <span className="font-mono tabular-nums">
-                    {formatDashboardCount(item.units)} unités
+                    {formatDashboardCount(item.units)} {unitsLabel}
                   </span>
                   <span className="font-mono tabular-nums text-text">
                     {formatDashboardMoney(item.revenue, currency)}
