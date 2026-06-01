@@ -33,6 +33,20 @@ export type DashboardKpiActionResult =
   | { ok: true; data: DashboardKpi }
   | { ok: false; errorCode: 'not_found' | 'rpc_error' };
 
+export type DashboardRevenuePoint = {
+  date: string;
+  value: number;
+};
+
+export type DashboardRevenue30d = {
+  currency: string | null;
+  points: DashboardRevenuePoint[];
+};
+
+export type DashboardRevenue30dActionResult =
+  | { ok: true; data: DashboardRevenue30d }
+  | { ok: false; errorCode: 'not_found' | 'query_error' };
+
 function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
   return client as SupabaseServerClient;
 }
@@ -109,6 +123,106 @@ function toDashboardKpi(row: DashboardKpiRpcPayload, currency: string | null): D
   };
 }
 
+async function getMerchantAccountIdForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<{ ok: true; merchantAccountId: string } | { ok: false }> {
+  const { data: member, error } = await supabase
+    .from('merchant_member')
+    .select('merchant_account_id')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !member) {
+    return { ok: false };
+  }
+
+  return { ok: true, merchantAccountId: member.merchant_account_id };
+}
+
+function dateKey(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function createEmptyRevenueWindow(today = new Date()): DashboardRevenuePoint[] {
+  return Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(today);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (29 - index));
+
+    return { date: dateKey(date), value: 0 };
+  });
+}
+
+function dateFromOrder(value: string | null, fallback: string): Date {
+  return new Date(value ?? fallback);
+}
+
+function aggregateRevenue30d(
+  orders: Array<{
+    created_at: string;
+    created_at_shopify: string | null;
+    currency: string | null;
+    total_amount: number;
+  }>,
+): DashboardRevenue30d {
+  const points = createEmptyRevenueWindow();
+  const pointIndex = new Map(points.map((point, index) => [point.date, index]));
+  const firstPointDate = new Date(`${points[0]?.date ?? dateKey(new Date())}T00:00:00.000Z`);
+  let currency: string | null = null;
+
+  for (const order of orders) {
+    const orderDate = dateFromOrder(order.created_at_shopify, order.created_at);
+
+    if (orderDate < firstPointDate) {
+      continue;
+    }
+
+    const index = pointIndex.get(dateKey(orderDate));
+
+    if (index === undefined) {
+      continue;
+    }
+
+    points[index].value += Number(order.total_amount ?? 0);
+    currency ??= normalizeCurrency(order.currency);
+  }
+
+  return { currency, points };
+}
+
+async function fetchRevenue30dForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardRevenue30dActionResult> {
+  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
+
+  if (!merchant.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('created_at, created_at_shopify, currency, total_amount')
+    .eq('merchant_account_id', merchant.merchantAccountId)
+    .eq('cod_status', 'LIVREE')
+    .order('created_at', { ascending: false })
+    .limit(5000);
+
+  if (error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  return { ok: true, data: aggregateRevenue30d(data ?? []) };
+}
+
 async function fetchDashboardKpiForUser({
   supabase,
   userId,
@@ -182,6 +296,28 @@ export const getDashboardKpiAction = authActionClient
   .metadata({ actionName: 'dashboard.get_kpi', section: 'dashboard' })
   .action(async ({ ctx }): Promise<DashboardKpiActionResult> => {
     return fetchDashboardKpiForUser({
+      supabase: asTypedSupabaseClient(ctx.supabase),
+      userId: ctx.user.id,
+    });
+  });
+
+export async function getRevenue30d(): Promise<DashboardRevenue30dActionResult> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchRevenue30dForUser({ supabase, userId: user.id });
+}
+
+export const getRevenue30dAction = authActionClient
+  .metadata({ actionName: 'dashboard.get_revenue_30d', section: 'dashboard' })
+  .action(async ({ ctx }): Promise<DashboardRevenue30dActionResult> => {
+    return fetchRevenue30dForUser({
       supabase: asTypedSupabaseClient(ctx.supabase),
       userId: ctx.user.id,
     });

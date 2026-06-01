@@ -1,6 +1,7 @@
+import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { NextActionsList } from '@/components/kpi/NextActionsList';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
-import { getDashboardKpi } from '@/lib/actions/dashboard';
+import { getDashboardKpi, getRevenue30d } from '@/lib/actions/dashboard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ArrowRight } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -17,10 +18,11 @@ function displayNameFromMetadata(metadata: Record<string, unknown>): string {
 }
 
 export default async function TableauPage() {
-  const [t, ordersT, kpiResult] = await Promise.all([
+  const [t, ordersT, kpiResult, revenueResult] = await Promise.all([
     getTranslations('tableau'),
     getTranslations('orders'),
     getDashboardKpi(),
+    getRevenue30d(),
   ]);
   const supabase = await createSupabaseServerClient();
   const {
@@ -29,6 +31,7 @@ export default async function TableauPage() {
   const firstName =
     displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
   const kpi = kpiResult.ok ? kpiResult.data : null;
+  const revenue = revenueResult.ok ? revenueResult.data : null;
   const callQueueCount = kpi?.a_appeler_count ?? 0;
 
   return (
@@ -39,6 +42,13 @@ export default async function TableauPage() {
       </header>
 
       <DashboardKpiRefresh initialKpi={kpi} initialUpdatedAt={new Date().toISOString()} />
+
+      <RevenueChart
+        currency={revenue?.currency ?? kpi?.currency ?? null}
+        data={revenue?.points ?? []}
+        emptyLabel={t('revenue.empty')}
+        title={t('revenue.title')}
+      />
 
       <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
