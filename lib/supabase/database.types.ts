@@ -166,6 +166,79 @@ export type Database = {
           },
         ];
       };
+      delivery_address: {
+        Row: {
+          created_at: string;
+          customer_id: string | null;
+          gps_lat: number | null;
+          gps_lng: number | null;
+          id: string;
+          indications_acces: string | null;
+          merchant_account_id: string;
+          order_id: string | null;
+          quartier_commune: string;
+          repere: string | null;
+          telephone_alternatif: string | null;
+          telephone_principal: string;
+          updated_at: string;
+          ville: string;
+        };
+        Insert: {
+          created_at?: string;
+          customer_id?: string | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          id?: string;
+          indications_acces?: string | null;
+          merchant_account_id: string;
+          order_id?: string | null;
+          quartier_commune: string;
+          repere?: string | null;
+          telephone_alternatif?: string | null;
+          telephone_principal: string;
+          updated_at?: string;
+          ville?: string;
+        };
+        Update: {
+          created_at?: string;
+          customer_id?: string | null;
+          gps_lat?: number | null;
+          gps_lng?: number | null;
+          id?: string;
+          indications_acces?: string | null;
+          merchant_account_id?: string;
+          order_id?: string | null;
+          quartier_commune?: string;
+          repere?: string | null;
+          telephone_alternatif?: string | null;
+          telephone_principal?: string;
+          updated_at?: string;
+          ville?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'delivery_address_customer_id_fkey';
+            columns: ['customer_id'];
+            isOneToOne: false;
+            referencedRelation: 'customer';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'delivery_address_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'delivery_address_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       driver: {
         Row: {
           created_at: string;
