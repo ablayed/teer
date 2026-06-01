@@ -615,10 +615,72 @@ export type Database = {
     Functions: {
       accept_invitation: { Args: { p_token: string }; Returns: Json };
       current_member_role: { Args: { p_account: string }; Returns: string };
+      get_customer_reliability: {
+        Args: { p_customer_id: string; p_merchant_id: string };
+        Returns: {
+          attempts_weighted: number;
+          cancelled_count: number;
+          confirm_score: number;
+          confirmed_weighted: number;
+          customer_id: string;
+          decided: number;
+          delivered_count: number;
+          delivered_lifetime: number;
+          delivered_weighted: number;
+          delivery_score: number;
+          email: string;
+          flag_cancels_often: boolean;
+          flag_confirms_then_refuses: boolean;
+          flag_hard_to_reach: boolean;
+          full_name: string;
+          is_provisional: boolean;
+          no_response_weighted: number;
+          order_count: number;
+          phone: string;
+          refused_count: number;
+          refused_weighted: number;
+          score: number;
+          tier: string;
+        }[];
+      };
       get_dashboard_kpi: { Args: { p_merchant_id: string }; Returns: Json };
       is_member_of: {
         Args: { p_merchant_account_id: string };
         Returns: boolean;
+      };
+      list_customer_reliability: {
+        Args: {
+          p_limit?: number;
+          p_merchant_id: string;
+          p_offset?: number;
+          p_search?: string;
+          p_sort_by_risk?: boolean;
+        };
+        Returns: {
+          attempts_weighted: number;
+          cancelled_count: number;
+          confirm_score: number;
+          confirmed_weighted: number;
+          customer_id: string;
+          decided: number;
+          delivered_count: number;
+          delivered_lifetime: number;
+          delivered_weighted: number;
+          delivery_score: number;
+          email: string;
+          flag_cancels_often: boolean;
+          flag_confirms_then_refuses: boolean;
+          flag_hard_to_reach: boolean;
+          full_name: string;
+          is_provisional: boolean;
+          no_response_weighted: number;
+          order_count: number;
+          phone: string;
+          refused_count: number;
+          refused_weighted: number;
+          score: number;
+          tier: string;
+        }[];
       };
       transition_order: {
         Args: {
