@@ -1,6 +1,7 @@
 'use client';
 
 import { CallLogForm } from '@/components/orders/call-log-form';
+import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
 import { Button } from '@/components/ui/button';
 import {
   type OrderDetail,
@@ -292,8 +293,12 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
   const emptyValue = 'Non renseigne';
   const currentStatus = optimisticStatus;
   const shippingAddress = parseShippingAddress(order.shipping_address);
+  const structuredAddress = order.delivery_address ?? order.customer_delivery_address;
   const items = parseItemsSummary(order.items_summary);
   const phone = order.customer?.phone;
+  const fallbackQuartier = [shippingAddress?.address1, shippingAddress?.address2]
+    .filter(Boolean)
+    .join(', ');
   const contentClassName =
     mode === 'sheet'
       ? 'flex h-full min-h-0 w-full flex-col'
@@ -394,6 +399,13 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
             <MapPin aria-hidden="true" className="mt-1 size-4 shrink-0 text-accent" />
             {formatAddress(shippingAddress, emptyValue)}
           </p>
+          <DeliveryAddressForm
+            fallbackPhone={phone}
+            fallbackQuartier={fallbackQuartier || null}
+            fallbackVille={shippingAddress?.city}
+            initialAddress={structuredAddress}
+            orderId={order.id}
+          />
         </section>
 
         <section className="space-y-3">

@@ -26,6 +26,7 @@ type CustomerDetail = Pick<
   Tables<'customer'>,
   'email' | 'full_name' | 'phone' | 'shipping_address'
 >;
+export type DeliveryAddress = Tables<'delivery_address'>;
 
 export type OrderListItem = Pick<
   Tables<'orders'>,
@@ -43,6 +44,8 @@ export type OrderListItem = Pick<
 
 export type OrderDetail = Tables<'orders'> & {
   customer: CustomerDetail | null;
+  customer_delivery_address: DeliveryAddress | null;
+  delivery_address: DeliveryAddress | null;
 };
 
 type GetOrdersInput = {
@@ -212,7 +215,41 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
     throw error;
   }
 
-  return data as OrderDetail | null;
+  if (!data) {
+    return null;
+  }
+
+  const [orderAddressResult, customerAddressResult] = await Promise.all([
+    supabase
+      .from('delivery_address')
+      .select('*')
+      .eq('merchant_account_id', data.merchant_account_id)
+      .eq('order_id', data.id)
+      .maybeSingle(),
+    data.customer_id
+      ? supabase
+          .from('delivery_address')
+          .select('*')
+          .eq('merchant_account_id', data.merchant_account_id)
+          .eq('customer_id', data.customer_id)
+          .is('order_id', null)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (orderAddressResult.error) {
+    throw orderAddressResult.error;
+  }
+
+  if (customerAddressResult.error) {
+    throw customerAddressResult.error;
+  }
+
+  return {
+    ...(data as Tables<'orders'> & { customer: CustomerDetail | null }),
+    delivery_address: orderAddressResult.data,
+    customer_delivery_address: customerAddressResult.data,
+  };
 }
 
 export async function getOrderTimeline(orderId: string): Promise<OrderTimelineEvent[]> {

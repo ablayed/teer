@@ -414,6 +414,38 @@
       "audit_failed": "Le statut a été modifié, mais le journal d’audit n’a pas pu être écrit.",
       "generic": "Une erreur est survenue. Réessayez."
     },
+    "address": {
+      "title": "Adresse de livraison",
+      "description": "Ajoutez le quartier, le repère et un numéro joignable pour aider la livraison COD.",
+      "fields": {
+        "quartierCommune": "Quartier / commune",
+        "ville": "Ville",
+        "repere": "Repère",
+        "indicationsAcces": "Indications d'accès",
+        "telephonePrincipal": "Téléphone principal",
+        "telephoneAlternatif": "Téléphone alternatif"
+      },
+      "placeholders": {
+        "repere": "Ex : en face de la pharmacie Khadim"
+      },
+      "gpsButton": "Partager ma position GPS (optionnel)",
+      "gpsLoading": "Localisation...",
+      "gpsSaved": "Position GPS ajoutée.",
+      "gpsDenied": "Position GPS non ajoutée. Vous pouvez continuer sans GPS.",
+      "gpsUnavailable": "La localisation GPS n'est pas disponible sur cet appareil.",
+      "gpsValue": "GPS : {lat}, {lng}",
+      "save": "Enregistrer l'adresse",
+      "saving": "Enregistrement...",
+      "saved": "Adresse enregistrée.",
+      "errors": {
+        "quartierRequired": "Le quartier ou la commune est obligatoire.",
+        "invalidPhone": "Le téléphone principal doit contenir 9 chiffres après +221.",
+        "invalidAltPhone": "Le téléphone alternatif doit contenir 9 chiffres après +221.",
+        "orderNotFound": "Commande introuvable.",
+        "auditFailed": "L'adresse est enregistrée, mais l'audit a échoué.",
+        "generic": "Une erreur est survenue, réessayez."
+      }
+    },
     "detail": {
       "back": "Retour aux commandes",
       "total": "Total à encaisser",
