@@ -1,12 +1,15 @@
 'use client';
 
+import { KanbanCard } from '@/components/orders/kanban/KanbanCard';
 import { Badge } from '@/components/ui/badge';
+import type { OrderListItem } from '@/lib/actions/orders';
 import { cn } from '@/lib/utils';
 
 export type KanbanColumnView = {
   count: number;
   emptyLabel: string;
   id: string;
+  orders: OrderListItem[];
   title: string;
   tone: 'attention' | 'danger' | 'default' | 'success';
 };
@@ -42,9 +45,17 @@ export function KanbanBoard({ ariaLabel, columns }: KanbanBoardProps) {
                   {column.count}
                 </Badge>
               </div>
-              <div className="flex flex-1 items-center justify-center rounded-md border border-dashed border-border bg-surface/70 px-4 py-8 text-center text-sm text-muted">
-                {column.emptyLabel}
-              </div>
+              {column.orders.length > 0 ? (
+                <div className="flex flex-1 flex-col gap-3">
+                  {column.orders.map((order) => (
+                    <KanbanCard emptyLabel={column.emptyLabel} key={order.id} order={order} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-1 items-center justify-center rounded-md border border-dashed border-border bg-surface/70 px-4 py-8 text-center text-sm text-muted">
+                  {column.emptyLabel}
+                </div>
+              )}
             </div>
           ))}
         </div>

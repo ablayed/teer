@@ -1,5 +1,6 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { KanbanBoard, type KanbanColumnView } from '@/components/orders/kanban/KanbanBoard';
+import { groupOrdersByKanbanColumn } from '@/components/orders/kanban/kanban-utils';
 import { OrdersViewToggle } from '@/components/orders/orders-view-toggle';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
@@ -81,50 +82,53 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const showNoShop = orders.length === 0 && !shopConnection;
   const showNoOrdersWithShop = orders.length === 0 && shopConnection;
   const showFilteredEmpty = orders.length > 0 && visibleOrders.length === 0;
+  const groupedOrders = groupOrdersByKanbanColumn(orders);
   const kanbanColumns: KanbanColumnView[] = [
     {
-      count: orders.filter((order) => orderStatus(order.cod_status) === 'A_APPELER').length,
+      count: groupedOrders.A_APPELER.length,
       emptyLabel: t('kanban.empty'),
       id: 'A_APPELER',
+      orders: groupedOrders.A_APPELER,
       title: t('kanban.columns.aAppeler'),
       tone: 'attention',
     },
     {
-      count: orders.filter((order) => orderStatus(order.cod_status) === 'TENTEE').length,
+      count: groupedOrders.TENTEE.length,
       emptyLabel: t('kanban.empty'),
       id: 'TENTEE',
+      orders: groupedOrders.TENTEE,
       title: t('kanban.columns.tentee'),
       tone: 'default',
     },
     {
-      count: orders.filter((order) => orderStatus(order.cod_status) === 'CONFIRMEE').length,
+      count: groupedOrders.CONFIRMEE.length,
       emptyLabel: t('kanban.empty'),
       id: 'CONFIRMEE',
+      orders: groupedOrders.CONFIRMEE,
       title: t('kanban.columns.confirmee'),
       tone: 'default',
     },
     {
-      count: orders.filter((order) =>
-        ['PROGRAMMEE', 'EN_LIVRAISON'].includes(orderStatus(order.cod_status)),
-      ).length,
+      count: groupedOrders.EN_LIVRAISON.length,
       emptyLabel: t('kanban.empty'),
       id: 'EN_LIVRAISON',
+      orders: groupedOrders.EN_LIVRAISON,
       title: t('kanban.columns.enLivraison'),
       tone: 'default',
     },
     {
-      count: orders.filter((order) => orderStatus(order.cod_status) === 'LIVREE').length,
+      count: groupedOrders.LIVREE.length,
       emptyLabel: t('kanban.empty'),
       id: 'LIVREE',
+      orders: groupedOrders.LIVREE,
       title: t('kanban.columns.livree'),
       tone: 'success',
     },
     {
-      count: orders.filter((order) =>
-        ['REFUSEE', 'ANNULEE'].includes(orderStatus(order.cod_status)),
-      ).length,
+      count: groupedOrders.ANNULEE_REFUSEE.length,
       emptyLabel: t('kanban.empty'),
       id: 'ANNULEE_REFUSEE',
+      orders: groupedOrders.ANNULEE_REFUSEE,
       title: t('kanban.columns.cloturee'),
       tone: 'danger',
     },
