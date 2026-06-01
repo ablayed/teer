@@ -1,11 +1,11 @@
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type TeamRole, isTeamRole, teamRoles } from '@/lib/team/permissions';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSafeActionClient } from 'next-safe-action';
 import { z } from 'zod';
 
-export const teamRoles = ['owner', 'manager', 'agent'] as const;
-export type TeamRole = (typeof teamRoles)[number];
+export { teamRoles, type TeamRole };
 type SupabaseServerClient = SupabaseClient<Database>;
 
 export const actionClient = createSafeActionClient({
@@ -37,10 +37,6 @@ export const authActionClient = actionClient.use(async ({ next }) => {
     },
   });
 });
-
-function isTeamRole(role: string): role is TeamRole {
-  return teamRoles.includes(role as TeamRole);
-}
 
 export function requireRole(...allowedRoles: TeamRole[]) {
   return authActionClient.use(async ({ ctx, next }) => {

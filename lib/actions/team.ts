@@ -5,6 +5,12 @@ import { sendTeamInvitationEmail } from '@/lib/email/team-invitation';
 import { env } from '@/lib/env';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import { generateInvitationToken, hashInvitationToken } from '@/lib/team/invitation-token';
+import {
+  canChangeMemberRole,
+  canInviteRole,
+  canRemoveMember,
+  isTeamRole,
+} from '@/lib/team/permissions';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -44,7 +50,6 @@ const deactivateDriverSchema = z.object({
   driverId: z.string().uuid(),
 });
 
-type MemberRole = (typeof memberRoles)[number];
 type InviteRole = (typeof inviteRoles)[number];
 type AuthUserSummary = {
   id: string;
@@ -79,10 +84,6 @@ function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-}
-
-function isMemberRole(role: string): role is MemberRole {
-  return memberRoles.includes(role as MemberRole);
 }
 
 function normalizeEmail(email: string): string {
@@ -212,14 +213,7 @@ async function getAuthUsersById(userIds: string[]): Promise<Map<string, AuthUser
   );
 }
 
-async function assertNotLastOwner(
-  merchantAccountId: string,
-  member: Pick<TeamMemberRow, 'id' | 'role'>,
-): Promise<boolean> {
-  if (member.role !== 'owner') {
-    return true;
-  }
-
+async function countOwners(merchantAccountId: string): Promise<number> {
   const admin = createSupabaseAdminClient();
   const { count, error } = await admin
     .from('merchant_member')
@@ -231,7 +225,7 @@ async function assertNotLastOwner(
     throw error;
   }
 
-  return (count ?? 0) > 1;
+  return count ?? 0;
 }
 
 async function sendInvitationOrFail({
@@ -269,6 +263,10 @@ export const inviteMemberAction = requireRole('owner', 'manager')
     const email = normalizeEmail(parsedInput.email);
     const admin = createSupabaseAdminClient();
     const accountName = await getMerchantAccountName(ctx.member.merchantAccountId);
+
+    if (!canInviteRole(ctx.member.role, parsedInput.role)) {
+      return forbidden();
+    }
 
     if (!accountName) {
       return { ok: false as const, errorCode: 'merchant_not_found' as const };
@@ -501,20 +499,23 @@ export const changeRoleAction = requireRole('owner', 'manager')
       return { ok: false as const, errorCode: 'update_failed' as const };
     }
 
-    if (!member || !isMemberRole(member.role)) {
+    if (!member || !isTeamRole(member.role)) {
       return { ok: false as const, errorCode: 'member_not_found' as const };
     }
 
-    if (ctx.member.role !== 'owner' && member.role === 'owner') {
-      return forbidden();
-    }
+    const ownerCount = await countOwners(ctx.member.merchantAccountId);
 
-    if (member.role === 'owner' && parsedInput.newRole !== 'owner') {
-      const hasOtherOwner = await assertNotLastOwner(ctx.member.merchantAccountId, member);
-
-      if (!hasOtherOwner) {
-        return { ok: false as const, errorCode: 'last_owner' as const };
-      }
+    if (
+      !canChangeMemberRole({
+        actorRole: ctx.member.role,
+        targetRole: member.role,
+        newRole: parsedInput.newRole,
+        ownerCount,
+      })
+    ) {
+      return member.role === 'owner' && parsedInput.newRole !== 'owner' && ownerCount <= 1
+        ? { ok: false as const, errorCode: 'last_owner' as const }
+        : forbidden();
     }
 
     const { error: updateError } = await admin
@@ -561,18 +562,16 @@ export const removeMemberAction = requireRole('owner', 'manager')
       return { ok: false as const, errorCode: 'update_failed' as const };
     }
 
-    if (!member || !isMemberRole(member.role)) {
+    if (!member || !isTeamRole(member.role)) {
       return { ok: false as const, errorCode: 'member_not_found' as const };
     }
 
-    if (ctx.member.role !== 'owner' && member.role === 'owner') {
-      return forbidden();
-    }
+    const ownerCount = await countOwners(ctx.member.merchantAccountId);
 
-    const hasOtherOwner = await assertNotLastOwner(ctx.member.merchantAccountId, member);
-
-    if (!hasOtherOwner) {
-      return { ok: false as const, errorCode: 'last_owner' as const };
+    if (!canRemoveMember({ actorRole: ctx.member.role, targetRole: member.role, ownerCount })) {
+      return member.role === 'owner' && ownerCount <= 1
+        ? { ok: false as const, errorCode: 'last_owner' as const }
+        : forbidden();
     }
 
     const { error: deleteError } = await admin
