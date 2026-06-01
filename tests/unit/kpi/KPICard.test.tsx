@@ -37,6 +37,14 @@ describe('KPICard', () => {
     });
   });
 
+  it('formate une valeur monetaire avec la devise fournie', async () => {
+    render(<KPICard currency="USD" label="CA collecté" value={1825} unit="XOF" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/1\s825,00\s\$US/)).toBeTruthy();
+    });
+  });
+
   it('affiche un delta positif en vert', async () => {
     const { container } = render(<KPICard deltaPct={12} label="Taux confirmation" value={42} />);
 

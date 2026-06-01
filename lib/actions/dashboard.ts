@@ -23,6 +23,7 @@ export type DashboardKpi = {
   a_appeler_delta: number;
   ca_collecte_7j: number;
   ca_en_attente: number;
+  currency: string | null;
   taux_confirmation: number;
   taux_livraison: number;
   sparkline_7j: DashboardSparklinePoint[];
@@ -89,12 +90,19 @@ function firstRpcRow(value: unknown): DashboardKpiRpcPayload | null {
   return isRecord(row) ? row : null;
 }
 
-function toDashboardKpi(row: DashboardKpiRpcPayload): DashboardKpi {
+function normalizeCurrency(value: string | null | undefined): string | null {
+  const currency = value?.trim().toUpperCase();
+
+  return currency ? currency : null;
+}
+
+function toDashboardKpi(row: DashboardKpiRpcPayload, currency: string | null): DashboardKpi {
   return {
     a_appeler_count: numberFromRpc(row.a_appeler_count),
     a_appeler_delta: numberFromRpc(row.a_appeler_delta),
     ca_collecte_7j: numberFromRpc(row.ca_collecte_7j),
     ca_en_attente: numberFromRpc(row.ca_en_attente),
+    currency,
     taux_confirmation: numberFromRpc(row.taux_confirmation),
     taux_livraison: numberFromRpc(row.taux_livraison),
     sparkline_7j: parseSparkline(row.sparkline_7j),
@@ -123,9 +131,20 @@ async function fetchDashboardKpiForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  const { data, error } = await supabase.rpc('get_dashboard_kpi', {
-    p_merchant_id: member.merchant_account_id,
-  });
+  const [kpiResult, currencyResult] = await Promise.all([
+    supabase.rpc('get_dashboard_kpi', {
+      p_merchant_id: member.merchant_account_id,
+    }),
+    supabase
+      .from('orders')
+      .select('currency')
+      .eq('merchant_account_id', member.merchant_account_id)
+      .not('currency', 'is', null)
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const { data, error } = kpiResult;
 
   if (error) {
     return { ok: false, errorCode: 'rpc_error' };
@@ -137,7 +156,13 @@ async function fetchDashboardKpiForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return { ok: true, data: toDashboardKpi(row) };
+  return {
+    ok: true,
+    data: toDashboardKpi(
+      row,
+      currencyResult.error ? null : normalizeCurrency(currencyResult.data?.currency),
+    ),
+  };
 }
 
 export async function getDashboardKpi(): Promise<DashboardKpiActionResult> {

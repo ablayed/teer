@@ -56,12 +56,19 @@ type ItemSummary = {
   title: string;
 };
 
-const naturalTransitions: Partial<Record<OrderStatus, OrderStatus>> = {
-  A_APPELER: 'CONFIRMEE',
-  TENTEE: 'CONFIRMEE',
-  CONFIRMEE: 'PROGRAMMEE',
-  PROGRAMMEE: 'EN_LIVRAISON',
-  EN_LIVRAISON: 'LIVREE',
+type TransitionButtonConfig = {
+  label: string;
+  to: OrderStatus;
+  tone: 'primary' | 'secondary' | 'accent' | 'destructive';
+};
+
+const primaryTransitionConfigs: Partial<Record<OrderStatus, TransitionButtonConfig[]>> = {
+  CONFIRMEE: [{ label: 'Programmer la livraison', to: 'PROGRAMMEE', tone: 'primary' }],
+  PROGRAMMEE: [{ label: 'Marquer en livraison', to: 'EN_LIVRAISON', tone: 'primary' }],
+  EN_LIVRAISON: [
+    { label: 'Marquer livrée', to: 'LIVREE', tone: 'accent' },
+    { label: 'Retour client', to: 'REFUSEE', tone: 'secondary' },
+  ],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -184,12 +191,32 @@ function Timeline({
   );
 }
 
-function ActionBar({ currentStatus, orderId }: { currentStatus: OrderStatus; orderId: string }) {
+function ActionBar({
+  currentStatus,
+  onStatusChange,
+  orderId,
+}: {
+  currentStatus: OrderStatus;
+  onStatusChange: (status: OrderStatus) => void;
+  orderId: string;
+}) {
   const router = useRouter();
   const transitionStatus = useAction(transitionOrderStatusAction);
   const [feedback, setFeedback] = useState<string | null>(null);
   const allowedTransitions = getAllowedTransitions(currentStatus);
-  const naturalTransition = naturalTransitions[currentStatus];
+  const visibleTransitions =
+    primaryTransitionConfigs[currentStatus]?.filter((config) =>
+      allowedTransitions.includes(config.to),
+    ) ?? [];
+  const canCancel =
+    !isTerminal(currentStatus) &&
+    !['LIVREE', 'REFUSEE', 'ANNULEE'].includes(currentStatus) &&
+    allowedTransitions.includes('ANNULEE');
+
+  function executeTransition(to: OrderStatus) {
+    setFeedback(null);
+    transitionStatus.execute({ orderId, to });
+  }
 
   useEffect(() => {
     const result = transitionStatus.result.data;
@@ -199,45 +226,74 @@ function ActionBar({ currentStatus, orderId }: { currentStatus: OrderStatus; ord
     }
 
     if (result.ok) {
-      setFeedback('Statut COD mis a jour.');
+      onStatusChange(result.newStatus);
+      setFeedback('Statut COD mis à jour.');
       router.refresh();
       return;
     }
 
-    setFeedback('message' in result ? result.message : 'La mise a jour du statut a echoue.');
+    setFeedback('message' in result ? result.message : 'La mise à jour du statut a échoué.');
   }, [router, transitionStatus.result.data]);
 
   if (isTerminal(currentStatus) || allowedTransitions.length === 0) {
-    return null;
+    return (
+      <div className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm font-medium text-muted">
+        Commande clôturée
+      </div>
+    );
   }
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {allowedTransitions.map((status) => (
+        {visibleTransitions.map((transition) => (
           <Button
+            className={cn(
+              transition.tone === 'secondary' && 'border border-border bg-surface text-text',
+              transition.tone === 'accent' && 'bg-[#EE8243] text-[#111] hover:bg-[#f09a66]',
+            )}
             disabled={transitionStatus.isExecuting}
-            key={status}
-            onClick={() => {
-              setFeedback(null);
-              transitionStatus.execute({ orderId, to: status });
-            }}
+            key={transition.to}
+            onClick={() => executeTransition(transition.to)}
             size="sm"
-            variant={status === naturalTransition ? 'primary' : 'ghost'}
+            variant={transition.tone === 'primary' ? 'primary' : 'ghost'}
           >
-            {orderStatusLabels[status]}
+            {transition.label}
           </Button>
         ))}
       </div>
-      {feedback ? <p className="text-sm font-medium text-muted">{feedback}</p> : null}
+      {canCancel ? (
+        <div className="border-t border-border pt-3">
+          <Button
+            className="w-full border border-danger/30 bg-red-50 text-danger hover:bg-red-100 sm:w-auto"
+            disabled={transitionStatus.isExecuting}
+            onClick={() => executeTransition('ANNULEE')}
+            size="sm"
+            variant="ghost"
+          >
+            Annuler la commande
+          </Button>
+        </div>
+      ) : null}
+      {feedback ? (
+        <p
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted shadow-1"
+          role="status"
+        >
+          {feedback}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetailPanelProps) {
   const [visibleTimeline, setVisibleTimeline] = useState(timeline);
+  const [optimisticStatus, setOptimisticStatus] = useState<OrderStatus>(() =>
+    toOrderStatus(order.cod_status),
+  );
   const emptyValue = 'Non renseigne';
-  const currentStatus = toOrderStatus(order.cod_status);
+  const currentStatus = optimisticStatus;
   const shippingAddress = parseShippingAddress(order.shipping_address);
   const items = parseItemsSummary(order.items_summary);
   const phone = order.customer?.phone;
@@ -245,10 +301,24 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
     mode === 'sheet'
       ? 'flex h-full min-h-0 w-full flex-col'
       : 'mx-auto max-w-5xl space-y-6 px-4 py-6';
+  const actionBar = (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
+      <ActionBar
+        currentStatus={currentStatus}
+        onStatusChange={setOptimisticStatus}
+        orderId={order.id}
+      />
+    </section>
+  );
 
   useEffect(() => {
     setVisibleTimeline(timeline);
   }, [timeline]);
+
+  useEffect(() => {
+    setOptimisticStatus(toOrderStatus(order.cod_status));
+  }, [order.cod_status]);
 
   return (
     <div className={contentClassName}>
@@ -390,10 +460,7 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
           <Timeline currentStatus={currentStatus} events={visibleTimeline} />
         </section>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
-          <ActionBar currentStatus={currentStatus} orderId={order.id} />
-        </section>
+        {mode === 'page' ? actionBar : null}
 
         <CallLogForm
           onOptimisticCall={(event) =>
@@ -407,6 +474,9 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
           orderId={order.id}
         />
       </div>
+      {mode === 'sheet' ? (
+        <footer className="shrink-0 border-t border-border bg-surface p-5">{actionBar}</footer>
+      ) : null}
     </div>
   );
 }

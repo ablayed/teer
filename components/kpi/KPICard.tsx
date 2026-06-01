@@ -18,6 +18,7 @@ export type KPICardProps = {
   label: string;
   value: string | number;
   unit?: KPIUnit;
+  currency?: string | null;
   deltaPct?: number;
   deltaAbs?: number;
   deltaType?: DeltaType;
@@ -45,13 +46,30 @@ function formatPct(value: number): string {
     .concat(' %');
 }
 
-function formatValue(value: string | number, unit: KPIUnit): string {
+function formatCurrencyValue(value: number, currency: string | null | undefined): string {
+  const normalizedCurrency = currency?.trim().toUpperCase() || 'XOF';
+
+  if (normalizedCurrency === 'XOF') {
+    return formatFCFA(value);
+  }
+
+  return new Intl.NumberFormat('fr-FR', {
+    currency: normalizedCurrency,
+    style: 'currency',
+  }).format(value);
+}
+
+function formatValue(
+  value: string | number,
+  unit: KPIUnit,
+  currency: string | null | undefined,
+): string {
   if (typeof value === 'string') {
     return value;
   }
 
   if (unit === 'XOF') {
-    return formatFCFA(value);
+    return formatCurrencyValue(value, currency);
   }
 
   if (unit === '%') {
@@ -139,6 +157,7 @@ function DeltaChip({
 
 export function KPICard({
   accentColor = 'default',
+  currency,
   deltaAbs,
   deltaPct,
   deltaType = 'pct',
@@ -153,7 +172,7 @@ export function KPICard({
 }: KPICardProps) {
   const gradientId = useId().replace(/:/g, '');
   const animatedValue = useCountUp(value, loading);
-  const formattedValue = error ? '—' : formatValue(animatedValue, unit);
+  const formattedValue = error ? '—' : formatValue(animatedValue, unit, currency);
   const chartData = useMemo(() => sparkline ?? [], [sparkline]);
 
   return (

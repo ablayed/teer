@@ -69,6 +69,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         </div>
         <KPICard
           accentColor="success"
+          currency={kpi?.currency}
           error={hasError}
           errorLabel={unavailableLabel}
           label={t('kpi.ca_collecte')}
@@ -79,6 +80,7 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         />
         <KPICard
           accentColor="warning"
+          currency={kpi?.currency}
           error={hasError}
           errorLabel={unavailableLabel}
           label={t('kpi.ca_attente')}
