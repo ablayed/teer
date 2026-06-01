@@ -356,6 +356,11 @@
         "enLivraison": "En livraison",
         "livree": "Livrée",
         "cloturee": "Annulée / Refusée"
+      },
+      "toasts": {
+        "unauthorized": "Transition non autorisée",
+        "error": "La mise à jour du statut a échoué.",
+        "moved": "Commande déplacée vers {status}"
       }
     },
     "status": {

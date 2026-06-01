@@ -1,5 +1,6 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
-import { KanbanBoard, type KanbanColumnView } from '@/components/orders/kanban/KanbanBoard';
+import type { KanbanColumnView } from '@/components/orders/kanban/KanbanBoard';
+import { KanbanBoardLoader } from '@/components/orders/kanban/KanbanBoardLoader';
 import { groupOrdersByKanbanColumn } from '@/components/orders/kanban/kanban-utils';
 import { OrdersViewToggle } from '@/components/orders/orders-view-toggle';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
@@ -89,6 +90,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'A_APPELER',
       orders: groupedOrders.A_APPELER,
+      targetStatus: 'A_APPELER',
       title: t('kanban.columns.aAppeler'),
       tone: 'attention',
     },
@@ -97,6 +99,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'TENTEE',
       orders: groupedOrders.TENTEE,
+      targetStatus: 'TENTEE',
       title: t('kanban.columns.tentee'),
       tone: 'default',
     },
@@ -105,6 +108,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'CONFIRMEE',
       orders: groupedOrders.CONFIRMEE,
+      targetStatus: 'CONFIRMEE',
       title: t('kanban.columns.confirmee'),
       tone: 'default',
     },
@@ -113,6 +117,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'EN_LIVRAISON',
       orders: groupedOrders.EN_LIVRAISON,
+      targetStatus: 'PROGRAMMEE',
       title: t('kanban.columns.enLivraison'),
       tone: 'default',
     },
@@ -121,6 +126,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'LIVREE',
       orders: groupedOrders.LIVREE,
+      targetStatus: 'LIVREE',
       title: t('kanban.columns.livree'),
       tone: 'success',
     },
@@ -129,6 +135,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'ANNULEE_REFUSEE',
       orders: groupedOrders.ANNULEE_REFUSEE,
+      targetStatus: 'ANNULEE',
       title: t('kanban.columns.cloturee'),
       tone: 'danger',
     },
@@ -329,7 +336,24 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       ) : null}
 
       {activeView === 'kanban' ? (
-        <KanbanBoard ariaLabel={t('kanban.ariaLabel')} columns={kanbanColumns} />
+        <KanbanBoardLoader
+          ariaLabel={t('kanban.ariaLabel')}
+          columns={kanbanColumns}
+          toasts={{
+            error: t('kanban.toasts.error'),
+            successByStatus: {
+              A_APPELER: t('kanban.toasts.moved', { status: orderStatusLabels.A_APPELER }),
+              TENTEE: t('kanban.toasts.moved', { status: orderStatusLabels.TENTEE }),
+              CONFIRMEE: t('kanban.toasts.moved', { status: orderStatusLabels.CONFIRMEE }),
+              PROGRAMMEE: t('kanban.toasts.moved', { status: orderStatusLabels.PROGRAMMEE }),
+              EN_LIVRAISON: t('kanban.toasts.moved', { status: orderStatusLabels.EN_LIVRAISON }),
+              LIVREE: t('kanban.toasts.moved', { status: orderStatusLabels.LIVREE }),
+              REFUSEE: t('kanban.toasts.moved', { status: orderStatusLabels.REFUSEE }),
+              ANNULEE: t('kanban.toasts.moved', { status: orderStatusLabels.ANNULEE }),
+            },
+            unauthorized: t('kanban.toasts.unauthorized'),
+          }}
+        />
       ) : null}
     </main>
   );
