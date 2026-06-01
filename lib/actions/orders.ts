@@ -61,6 +61,14 @@ type OrderActionErrorCode =
   | 'order_not_found'
   | 'update_failed';
 type SupabaseServerClient = SupabaseClient<Database>;
+const paymentChannelsAtDelivery = [
+  'ESPECES',
+  'WAVE',
+  'ORANGE_MONEY',
+  'FREE_MONEY',
+  'INCONNU',
+] as const;
+type PaymentChannelAtDelivery = (typeof paymentChannelsAtDelivery)[number];
 
 export type OrderTransitionTimelineEvent = {
   id: string;
@@ -158,20 +166,33 @@ async function applyOrderTransition({
   actorUserId,
   note,
   orderId,
+  paymentChannelAtDelivery,
   supabase,
   to,
 }: {
   actorUserId: string;
   note: string | undefined;
   orderId: string;
+  paymentChannelAtDelivery: PaymentChannelAtDelivery | undefined;
   supabase: SupabaseServerClient;
   to: OrderStatus;
 }): Promise<{ ok: true; newStatus: OrderStatus } | { ok: false; errorCode: 'update_failed' }> {
-  const { data, error } = await supabase.rpc('transition_order', {
+  const transitionRpc = supabase.rpc as unknown as (
+    fn: 'transition_order',
+    args: {
+      p_actor: string;
+      p_note?: string;
+      p_order_id: string;
+      p_payment_channel?: PaymentChannelAtDelivery;
+      p_to: string;
+    },
+  ) => ReturnType<SupabaseServerClient['rpc']>;
+  const { data, error } = await transitionRpc('transition_order', {
     p_order_id: orderId,
     p_to: to,
     p_actor: actorUserId,
     p_note: note?.trim() || undefined,
+    ...(paymentChannelAtDelivery ? { p_payment_channel: paymentChannelAtDelivery } : {}),
   });
 
   if (error || data !== to) {
@@ -316,6 +337,7 @@ export const transitionOrderStatusAction = authActionClient
       orderId: z.string().uuid(),
       to: z.enum(orderStatuses),
       note: z.string().trim().max(500).optional(),
+      paymentChannelAtDelivery: z.enum(paymentChannelsAtDelivery).optional(),
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
@@ -352,6 +374,7 @@ export const transitionOrderStatusAction = authActionClient
       actorUserId: ctx.user.id,
       note: parsedInput.note,
       orderId: order.id,
+      paymentChannelAtDelivery: parsedInput.paymentChannelAtDelivery,
       supabase,
       to: parsedInput.to,
     });
@@ -369,6 +392,8 @@ export const transitionOrderStatusAction = authActionClient
         from: order.cod_status,
         to: parsedInput.to,
         note: parsedInput.note ?? null,
+        paymentChannelAtDelivery:
+          parsedInput.to === 'LIVREE' ? (parsedInput.paymentChannelAtDelivery ?? 'ESPECES') : null,
       },
     });
 
@@ -435,6 +460,7 @@ export const logCallAction = authActionClient
           actorUserId: ctx.user.id,
           note: parsedInput.note,
           orderId: order.id,
+          paymentChannelAtDelivery: undefined,
           supabase,
           to: autoTransitionTarget,
         });
