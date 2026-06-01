@@ -5,6 +5,7 @@ import {
   type KanbanColumnKey,
   getKanbanColumnKey,
   groupOrdersByKanbanColumn,
+  isKanbanTransitionAllowed,
   normalizeOrderStatus,
 } from '@/components/orders/kanban/kanban-utils';
 import { Badge } from '@/components/ui/badge';
@@ -157,7 +158,7 @@ export function KanbanBoard({ ariaLabel, columns, toasts, transitionMenu }: Kanb
 
     const from = normalizeOrderStatus(order.cod_status);
 
-    if (!canTransition(from, to)) {
+    if (!isKanbanTransitionAllowed(from, to, canTransition)) {
       setToast({ message: toasts.unauthorized, tone: 'danger' });
       return;
     }

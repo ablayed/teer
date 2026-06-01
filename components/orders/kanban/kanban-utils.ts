@@ -52,6 +52,14 @@ export function getKanbanDropTarget(columnKey: KanbanColumnKey): OrderStatus {
   }
 }
 
+export function isKanbanTransitionAllowed(
+  from: string,
+  to: OrderStatus,
+  canTransitionFn: (from: OrderStatus, to: OrderStatus) => boolean,
+): boolean {
+  return canTransitionFn(normalizeOrderStatus(from), to);
+}
+
 export function groupOrdersByKanbanColumn(orders: OrderListItem[]) {
   return orders.reduce<Record<KanbanColumnKey, OrderListItem[]>>(
     (columns, order) => {

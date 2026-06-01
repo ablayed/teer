@@ -1,7 +1,10 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import type { KanbanColumnView } from '@/components/orders/kanban/KanbanBoard';
 import { KanbanBoardLoader } from '@/components/orders/kanban/KanbanBoardLoader';
-import { groupOrdersByKanbanColumn } from '@/components/orders/kanban/kanban-utils';
+import {
+  getKanbanDropTarget,
+  groupOrdersByKanbanColumn,
+} from '@/components/orders/kanban/kanban-utils';
 import { OrdersViewToggle } from '@/components/orders/orders-view-toggle';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
@@ -90,7 +93,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'A_APPELER',
       orders: groupedOrders.A_APPELER,
-      targetStatus: 'A_APPELER',
+      targetStatus: getKanbanDropTarget('A_APPELER'),
       title: t('kanban.columns.aAppeler'),
       tone: 'attention',
     },
@@ -99,7 +102,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'TENTEE',
       orders: groupedOrders.TENTEE,
-      targetStatus: 'TENTEE',
+      targetStatus: getKanbanDropTarget('TENTEE'),
       title: t('kanban.columns.tentee'),
       tone: 'default',
     },
@@ -108,7 +111,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'CONFIRMEE',
       orders: groupedOrders.CONFIRMEE,
-      targetStatus: 'CONFIRMEE',
+      targetStatus: getKanbanDropTarget('CONFIRMEE'),
       title: t('kanban.columns.confirmee'),
       tone: 'default',
     },
@@ -117,7 +120,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'EN_LIVRAISON',
       orders: groupedOrders.EN_LIVRAISON,
-      targetStatus: 'PROGRAMMEE',
+      targetStatus: getKanbanDropTarget('EN_LIVRAISON'),
       title: t('kanban.columns.enLivraison'),
       tone: 'default',
     },
@@ -126,7 +129,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'LIVREE',
       orders: groupedOrders.LIVREE,
-      targetStatus: 'LIVREE',
+      targetStatus: getKanbanDropTarget('LIVREE'),
       title: t('kanban.columns.livree'),
       tone: 'success',
     },
@@ -135,7 +138,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'ANNULEE_REFUSEE',
       orders: groupedOrders.ANNULEE_REFUSEE,
-      targetStatus: 'ANNULEE',
+      targetStatus: getKanbanDropTarget('ANNULEE_REFUSEE'),
       title: t('kanban.columns.cloturee'),
       tone: 'danger',
     },
