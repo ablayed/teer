@@ -484,6 +484,7 @@
       "title": "Versements par livreur",
       "driverDetail": "Détail livreur",
       "record": "Enregistrer un versement",
+      "close": "Fermer",
       "amount": "Montant reçu",
       "method": "Méthode",
       "note": "Note",
