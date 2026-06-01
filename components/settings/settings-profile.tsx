@@ -1,5 +1,6 @@
 'use client';
 
+import { SettingsTeam } from '@/components/settings/settings-team';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,7 @@ type SettingsErrorCode =
 
 type SettingsProfileProps = {
   countryCode: string;
+  currentRole: string;
   email: string;
   ownerFullName: string;
   shopName: string;
@@ -51,6 +53,7 @@ function isSettingsErrorCode(errorCode: string): errorCode is SettingsErrorCode 
 
 export function SettingsProfile({
   countryCode,
+  currentRole,
   email,
   ownerFullName,
   shopName,
@@ -248,6 +251,15 @@ export function SettingsProfile({
               <SignOutButton />
             </div>
           </section>
+        </section>
+      ) : activeTab === 'team' ? (
+        <section
+          aria-labelledby="settings-tab-team"
+          className="max-w-5xl"
+          id="settings-panel-team"
+          role="tabpanel"
+        >
+          <SettingsTeam currentRole={currentRole} />
         </section>
       ) : (
         <section

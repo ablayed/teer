@@ -1,10 +1,10 @@
 'use server';
 
-import { createHash, randomBytes } from 'node:crypto';
 import { type TeamRole, requireRole } from '@/lib/actions/safe-action';
 import { sendTeamInvitationEmail } from '@/lib/email/team-invitation';
 import { env } from '@/lib/env';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
+import { generateInvitationToken, hashInvitationToken } from '@/lib/team/invitation-token';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -87,14 +87,6 @@ function isMemberRole(role: string): role is MemberRole {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-export function generateInvitationToken(): string {
-  return randomBytes(32).toString('base64url');
-}
-
-export function hashInvitationToken(token: string): string {
-  return `\\x${createHash('sha256').update(token).digest('hex')}`;
 }
 
 function expiresInSevenDays(): string {

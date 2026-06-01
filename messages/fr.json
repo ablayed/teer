@@ -218,6 +218,59 @@
     "signOut": {
       "title": "Session"
     },
+    "team": {
+      "restricted": "Accès réservé au propriétaire et aux gestionnaires.",
+      "refresh": "Actualiser",
+      "roles": {
+        "owner": "Propriétaire",
+        "manager": "Gestionnaire",
+        "agent": "Agent"
+      },
+      "members": {
+        "title": "Membres",
+        "empty": "Aucun membre à afficher.",
+        "unknown": "Membre",
+        "noEmail": "E-mail indisponible",
+        "roleAria": "Rôle du membre",
+        "remove": "Retirer",
+        "confirmRemove": "Retirer ce membre du compte ?"
+      },
+      "invite": {
+        "title": "Inviter un membre",
+        "email": "Adresse e-mail",
+        "role": "Rôle",
+        "submit": "Envoyer l’invitation"
+      },
+      "invitations": {
+        "title": "Invitations en attente",
+        "empty": "Aucune invitation en attente.",
+        "expiresIn": "expire dans {days, plural, =0 {aujourd’hui} one {# jour} other {# jours}}",
+        "resend": "Renvoyer",
+        "revoke": "Révoquer"
+      },
+      "drivers": {
+        "title": "Livreurs",
+        "fullName": "Nom complet",
+        "phone": "Téléphone",
+        "add": "Ajouter",
+        "empty": "Aucun livreur pour le moment.",
+        "edit": "Modifier",
+        "save": "Enregistrer",
+        "deactivate": "Désactiver"
+      },
+      "notices": {
+        "inviteSent": "Invitation envoyée.",
+        "inviteResent": "Invitation renvoyée.",
+        "inviteRevoked": "Invitation révoquée.",
+        "roleChanged": "Rôle mis à jour.",
+        "memberRemoved": "Membre retiré.",
+        "driverCreated": "Livreur ajouté.",
+        "driverUpdated": "Livreur mis à jour."
+      },
+      "errors": {
+        "generic": "Une erreur est survenue, réessayez."
+      }
+    },
     "errors": {
       "shopName": "Le nom de boutique doit contenir au moins 2 caractères.",
       "ownerFullName": "Le nom du propriétaire doit contenir au moins 2 caractères.",
