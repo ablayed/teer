@@ -13,6 +13,7 @@ export type SettlementMethod = (typeof settlementMethods)[number];
 
 export type OutstandingOrder = {
   deliveredAt: string;
+  driverId?: string;
   orderId: string;
   outstandingMinor: number;
 };
@@ -63,6 +64,41 @@ export function remainingCashMinor({
   cashCollectableMinor: number;
 }): number {
   return Math.max(collectableMinor - allocatedMinor, 0);
+}
+
+export function shortfallMinor(expectedMinor: number, receivedMinor: number): number {
+  return Math.max(expectedMinor - receivedMinor, 0);
+}
+
+export function totalOutstandingMinor(
+  orders: Array<Pick<OutstandingOrder, 'outstandingMinor'>>,
+): number {
+  return orders.reduce((total, order) => total + order.outstandingMinor, 0);
+}
+
+export function outstandingMinorByDriver(
+  orders: Array<Pick<OutstandingOrder, 'driverId' | 'outstandingMinor'>>,
+): Map<string, number> {
+  const totals = new Map<string, number>();
+
+  for (const order of orders) {
+    if (!order.driverId) {
+      continue;
+    }
+
+    totals.set(order.driverId, (totals.get(order.driverId) ?? 0) + order.outstandingMinor);
+  }
+
+  return totals;
+}
+
+export function idempotentSettlementResult<T>(
+  settlementsByClientRequestId: ReadonlyMap<string, T>,
+  clientRequestId: string,
+): { idempotent: false } | { idempotent: true; settlement: T } {
+  const settlement = settlementsByClientRequestId.get(clientRequestId);
+
+  return settlement ? { idempotent: true, settlement } : { idempotent: false };
 }
 
 export function allocateOldestFirst(
