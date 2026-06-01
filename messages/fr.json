@@ -61,6 +61,15 @@
       "hasSpecial": "Un caractère spécial (!@#$%^&* etc.)"
     }
   },
+  "invitation": {
+    "accept": {
+      "title": "Invitation",
+      "invalid": "Lien d'invitation invalide.",
+      "expired": "Cette invitation a expiré.",
+      "email_mismatch": "Cette invitation a été envoyée à une autre adresse e-mail.",
+      "login": "Connexion"
+    }
+  },
   "app": {
     "greeting": "Bonjour, {name}",
     "tableauPlaceholder": "Phase 0 OK. Le tableau arrive en semaine 11."

@@ -15,6 +15,7 @@ async function authInputSchema() {
   return z.object({
     email: z.string().email(t('invalid_email')),
     password: z.string().min(10, t('weak_password')),
+    redirectTo: z.string().trim().max(500).optional(),
   });
 }
 
@@ -26,7 +27,16 @@ async function signUpInputSchema() {
     password: z.string().refine((password) => checkPasswordStrength(password).allValid, {
       message: t('weak_password'),
     }),
+    redirectTo: z.string().trim().max(500).optional(),
   });
+}
+
+function safeRedirectPath(path: string | undefined): string {
+  if (!path || !path.startsWith('/') || path.startsWith('//')) {
+    return '/tableau';
+  }
+
+  return path;
 }
 
 export const signUpAction = actionClient
@@ -34,11 +44,14 @@ export const signUpAction = actionClient
   .inputSchema(signUpInputSchema)
   .action(async ({ parsedInput }) => {
     const supabase = await createSupabaseServerClient();
+    const callbackUrl = new URL('/auth/callback', env.NEXT_PUBLIC_APP_URL);
+    callbackUrl.searchParams.set('redirectTo', safeRedirectPath(parsedInput.redirectTo));
+
     const { data, error } = await supabase.auth.signUp({
       email: parsedInput.email,
       password: parsedInput.password,
       options: {
-        emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+        emailRedirectTo: callbackUrl.toString(),
       },
     });
 
@@ -75,7 +88,7 @@ export const signInAction = actionClient
       return { ok: false as const, errorCode: code };
     }
 
-    redirect('/tableau');
+    redirect(safeRedirectPath(parsedInput.redirectTo));
   });
 
 export const signOutAction = authActionClient

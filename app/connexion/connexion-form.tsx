@@ -37,6 +37,7 @@ export function ConnexionForm() {
   const tPasswordCriteria = useTranslations('auth.password_criteria');
   const searchParams = useSearchParams();
   const mode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
+  const redirectTo = searchParams.get('redirectTo') ?? undefined;
   const [clientError, setClientError] = useState<string | null>(null);
   const [verificationSent, setVerificationSent] = useState(false);
   const [password, setPassword] = useState('');
@@ -49,6 +50,17 @@ export function ConnexionForm() {
     { mode: 'signin', label: t('signin_tab') },
     { mode: 'signup', label: t('signup_tab') },
   ];
+
+  function tabHref(tabMode: AuthMode): string {
+    const params = new URLSearchParams();
+    params.set('mode', tabMode);
+
+    if (redirectTo) {
+      params.set('redirectTo', redirectTo);
+    }
+
+    return `/connexion?${params.toString()}`;
+  }
 
   const schema = useMemo(
     () =>
@@ -116,6 +128,7 @@ export function ConnexionForm() {
     const parsed = schema.safeParse({
       email: formData.get('email'),
       password: formData.get('password'),
+      redirectTo,
     });
 
     if (!parsed.success) {
@@ -147,7 +160,7 @@ export function ConnexionForm() {
               'rounded-md px-3 py-2 text-center text-sm font-medium transition',
               mode === tab.mode ? 'bg-surface text-text shadow-1' : 'text-muted hover:text-text',
             )}
-            href={`/connexion?mode=${tab.mode}`}
+            href={tabHref(tab.mode)}
             key={tab.mode}
           >
             {tab.label}
