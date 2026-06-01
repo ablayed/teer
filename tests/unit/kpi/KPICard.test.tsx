@@ -41,7 +41,7 @@ describe('KPICard', () => {
     render(<KPICard currency="USD" label="CA collecté" value={1825} unit="XOF" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/1\s825,00\s\$US/)).toBeTruthy();
+      expect(screen.getByText(/1\s825\s\$/)).toBeTruthy();
     });
   });
 

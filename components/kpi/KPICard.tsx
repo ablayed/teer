@@ -53,10 +53,13 @@ function formatCurrencyValue(value: number, currency: string | null | undefined)
     return formatFCFA(value);
   }
 
-  return new Intl.NumberFormat('fr-FR', {
-    currency: normalizedCurrency,
-    style: 'currency',
+  const formattedAmount = new Intl.NumberFormat('fr-FR', {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
   }).format(value);
+  const currencyLabel = normalizedCurrency === 'USD' ? '$' : normalizedCurrency;
+
+  return `${formattedAmount} ${currencyLabel}`;
 }
 
 function formatValue(
@@ -180,7 +183,7 @@ export function KPICard({
       aria-busy={loading}
       aria-label={`${label}: ${formattedValue}`}
       className={cn(
-        'min-h-[164px] rounded-lg border p-4 shadow-1',
+        '@container min-h-[164px] rounded-lg border p-4 shadow-1',
         'flex flex-col justify-between gap-3',
         accentStyles[accentColor],
       )}
@@ -194,7 +197,11 @@ export function KPICard({
             data-testid="kpi-value-skeleton"
           />
         ) : (
-          <p className="font-mono text-[36px] leading-none text-text">{formattedValue}</p>
+          <div className="w-full overflow-hidden">
+            <p className="whitespace-nowrap font-mono text-[clamp(1.25rem,4cqw,2.25rem)] leading-none text-text tabular-nums">
+              {formattedValue}
+            </p>
+          </div>
         )}
       </div>
 
