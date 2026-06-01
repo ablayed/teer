@@ -122,6 +122,60 @@ export type Database = {
           },
         ];
       };
+      cash_settlement: {
+        Row: {
+          amount_received_minor: number;
+          client_request_id: string;
+          created_at: string;
+          created_by: string;
+          driver_id: string;
+          id: string;
+          merchant_account_id: string;
+          method: string;
+          note: string | null;
+          settled_at: string;
+        };
+        Insert: {
+          amount_received_minor: number;
+          client_request_id: string;
+          created_at?: string;
+          created_by: string;
+          driver_id: string;
+          id?: string;
+          merchant_account_id: string;
+          method: string;
+          note?: string | null;
+          settled_at?: string;
+        };
+        Update: {
+          amount_received_minor?: number;
+          client_request_id?: string;
+          created_at?: string;
+          created_by?: string;
+          driver_id?: string;
+          id?: string;
+          merchant_account_id?: string;
+          method?: string;
+          note?: string | null;
+          settled_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'cash_settlement_driver_id_fkey';
+            columns: ['driver_id'];
+            isOneToOne: false;
+            referencedRelation: 'driver';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'cash_settlement_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       customer: {
         Row: {
           created_at: string;
@@ -537,6 +591,116 @@ export type Database = {
           },
         ];
       };
+      settlement_allocation: {
+        Row: {
+          allocated_minor: number;
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          order_id: string;
+          settlement_id: string;
+        };
+        Insert: {
+          allocated_minor: number;
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          order_id: string;
+          settlement_id: string;
+        };
+        Update: {
+          allocated_minor?: number;
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          order_id?: string;
+          settlement_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'settlement_allocation_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'settlement_allocation_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'settlement_allocation_settlement_id_fkey';
+            columns: ['settlement_id'];
+            isOneToOne: false;
+            referencedRelation: 'cash_settlement';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      settlement_shortfall: {
+        Row: {
+          created_at: string;
+          driver_id: string;
+          expected_minor: number;
+          id: string;
+          merchant_account_id: string;
+          reason: string | null;
+          received_minor: number;
+          resolution: string;
+          settlement_id: string;
+          shortfall_minor: number | null;
+        };
+        Insert: {
+          created_at?: string;
+          driver_id: string;
+          expected_minor: number;
+          id?: string;
+          merchant_account_id: string;
+          reason?: string | null;
+          received_minor: number;
+          resolution?: string;
+          settlement_id: string;
+          shortfall_minor?: number | null;
+        };
+        Update: {
+          created_at?: string;
+          driver_id?: string;
+          expected_minor?: number;
+          id?: string;
+          merchant_account_id?: string;
+          reason?: string | null;
+          received_minor?: number;
+          resolution?: string;
+          settlement_id?: string;
+          shortfall_minor?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'settlement_shortfall_driver_id_fkey';
+            columns: ['driver_id'];
+            isOneToOne: false;
+            referencedRelation: 'driver';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'settlement_shortfall_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'settlement_shortfall_settlement_id_fkey';
+            columns: ['settlement_id'];
+            isOneToOne: false;
+            referencedRelation: 'cash_settlement';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       shop: {
         Row: {
           access_token_encrypted: string;
@@ -620,7 +784,28 @@ export type Database = {
     };
     Functions: {
       accept_invitation: { Args: { p_token: string }; Returns: Json };
+      cash_aging: {
+        Args: { p_merchant: string };
+        Returns: {
+          bucket_1_3d: number;
+          bucket_gt3d: number;
+          bucket_lt1d: number;
+          driver_id: string;
+          driver_name: string;
+          outstanding_minor: number;
+        }[];
+      };
       current_member_role: { Args: { p_account: string }; Returns: string };
+      finance_kpis: {
+        Args: { p_from: string; p_merchant: string; p_to: string };
+        Returns: {
+          a_encaisser: number;
+          ca_livre: number;
+          cash_chez_livreurs: number;
+          encaisse: number;
+          taux_refus: number;
+        }[];
+      };
       get_customer_reliability: {
         Args: { p_customer_id: string; p_merchant_id: string };
         Returns: {
@@ -688,15 +873,26 @@ export type Database = {
           tier: string;
         }[];
       };
-      transition_order: {
-        Args: {
-          p_actor: string;
-          p_note?: string;
-          p_order_id: string;
-          p_to: string;
-        };
-        Returns: string;
-      };
+      transition_order:
+        | {
+            Args: {
+              p_actor: string;
+              p_note?: string;
+              p_order_id: string;
+              p_to: string;
+            };
+            Returns: string;
+          }
+        | {
+            Args: {
+              p_actor: string;
+              p_note?: string;
+              p_order_id: string;
+              p_payment_channel?: string;
+              p_to: string;
+            };
+            Returns: string;
+          };
     };
     Enums: {
       [_ in never]: never;
