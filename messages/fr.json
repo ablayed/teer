@@ -342,6 +342,22 @@
       "annulee": "Annuler",
       "retournee": "Marquer retournée"
     },
+    "kanban": {
+      "ariaLabel": "Tableau Kanban des commandes",
+      "toggle": {
+        "liste": "Liste",
+        "kanban": "Kanban"
+      },
+      "empty": "Aucune commande",
+      "columns": {
+        "aAppeler": "À appeler",
+        "tentee": "Tentée",
+        "confirmee": "Confirmée",
+        "enLivraison": "En livraison",
+        "livree": "Livrée",
+        "cloturee": "Annulée / Refusée"
+      }
+    },
     "status": {
       "nouvelle": "Nouvelle",
       "confirmee": "Confirmée",

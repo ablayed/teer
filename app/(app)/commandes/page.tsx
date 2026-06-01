@@ -1,4 +1,6 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
+import { KanbanBoard, type KanbanColumnView } from '@/components/orders/kanban/KanbanBoard';
+import { OrdersViewToggle } from '@/components/orders/orders-view-toggle';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
@@ -12,6 +14,7 @@ import Link from 'next/link';
 
 type CommandesPageProps = {
   searchParams: Promise<{
+    vue?: string;
     statut?: string;
     sync_error?: string;
     synced?: string;
@@ -50,9 +53,14 @@ function orderQueueDate(order: OrderListItem): string {
   return order.created_at_shopify ?? order.created_at;
 }
 
+function viewModeParam(value: string | undefined): 'liste' | 'kanban' {
+  return value === 'kanban' ? 'kanban' : 'liste';
+}
+
 export default async function CommandesPage({ searchParams }: CommandesPageProps) {
   const t = await getTranslations('orders');
   const params = await searchParams;
+  const activeView = viewModeParam(params.vue);
   const activeStatus = statusParam(params.statut);
   const [orders, shopConnection] = await Promise.all([getOrders(), getShopConnection()]);
   const visibleOrders =
@@ -73,6 +81,54 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const showNoShop = orders.length === 0 && !shopConnection;
   const showNoOrdersWithShop = orders.length === 0 && shopConnection;
   const showFilteredEmpty = orders.length > 0 && visibleOrders.length === 0;
+  const kanbanColumns: KanbanColumnView[] = [
+    {
+      count: orders.filter((order) => orderStatus(order.cod_status) === 'A_APPELER').length,
+      emptyLabel: t('kanban.empty'),
+      id: 'A_APPELER',
+      title: t('kanban.columns.aAppeler'),
+      tone: 'attention',
+    },
+    {
+      count: orders.filter((order) => orderStatus(order.cod_status) === 'TENTEE').length,
+      emptyLabel: t('kanban.empty'),
+      id: 'TENTEE',
+      title: t('kanban.columns.tentee'),
+      tone: 'default',
+    },
+    {
+      count: orders.filter((order) => orderStatus(order.cod_status) === 'CONFIRMEE').length,
+      emptyLabel: t('kanban.empty'),
+      id: 'CONFIRMEE',
+      title: t('kanban.columns.confirmee'),
+      tone: 'default',
+    },
+    {
+      count: orders.filter((order) =>
+        ['PROGRAMMEE', 'EN_LIVRAISON'].includes(orderStatus(order.cod_status)),
+      ).length,
+      emptyLabel: t('kanban.empty'),
+      id: 'EN_LIVRAISON',
+      title: t('kanban.columns.enLivraison'),
+      tone: 'default',
+    },
+    {
+      count: orders.filter((order) => orderStatus(order.cod_status) === 'LIVREE').length,
+      emptyLabel: t('kanban.empty'),
+      id: 'LIVREE',
+      title: t('kanban.columns.livree'),
+      tone: 'success',
+    },
+    {
+      count: orders.filter((order) =>
+        ['REFUSEE', 'ANNULEE'].includes(orderStatus(order.cod_status)),
+      ).length,
+      emptyLabel: t('kanban.empty'),
+      id: 'ANNULEE_REFUSEE',
+      title: t('kanban.columns.cloturee'),
+      tone: 'danger',
+    },
+  ];
 
   return (
     <main className="space-y-6" id="main">
@@ -81,7 +137,14 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
           <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
           <p className="max-w-2xl text-muted">{t('subtitle')}</p>
         </div>
-        <SyncOrdersButton hasShop={Boolean(shopConnection)} />
+        <div className="flex flex-col gap-3 sm:items-end">
+          <OrdersViewToggle
+            activeView={activeView}
+            labelKanban={t('kanban.toggle.kanban')}
+            labelListe={t('kanban.toggle.liste')}
+          />
+          <SyncOrdersButton hasShop={Boolean(shopConnection)} />
+        </div>
       </div>
 
       {syncedCount !== null && Number.isFinite(syncedCount) ? (
@@ -97,33 +160,35 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         </div>
       ) : null}
 
-      <nav aria-label={t('filters.ariaLabel')} className="flex gap-2 overflow-x-auto pb-1">
-        <Link
-          className={`inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium ${
-            activeStatus === 'toutes'
-              ? 'border-accent bg-accent text-[#111]'
-              : 'border-border bg-surface text-muted hover:bg-canvas'
-          }`}
-          href={statusHref()}
-        >
-          {t('filters.all')} ({orders.length})
-        </Link>
-        {codStatuses.map((status) => (
+      {activeView === 'liste' ? (
+        <nav aria-label={t('filters.ariaLabel')} className="flex gap-2 overflow-x-auto pb-1">
           <Link
             className={`inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium ${
-              activeStatus === status
+              activeStatus === 'toutes'
                 ? 'border-accent bg-accent text-[#111]'
                 : 'border-border bg-surface text-muted hover:bg-canvas'
             }`}
-            href={statusHref(status)}
-            key={status}
+            href={statusHref()}
           >
-            {orderStatusLabels[status]} ({statusCounts[status]})
+            {t('filters.all')} ({orders.length})
           </Link>
-        ))}
-      </nav>
+          {codStatuses.map((status) => (
+            <Link
+              className={`inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium ${
+                activeStatus === status
+                  ? 'border-accent bg-accent text-[#111]'
+                  : 'border-border bg-surface text-muted hover:bg-canvas'
+              }`}
+              href={statusHref(status)}
+              key={status}
+            >
+              {orderStatusLabels[status]} ({statusCounts[status]})
+            </Link>
+          ))}
+        </nav>
+      ) : null}
 
-      {showNoShop || showNoOrdersWithShop || showFilteredEmpty ? (
+      {activeView === 'liste' && (showNoShop || showNoOrdersWithShop || showFilteredEmpty) ? (
         <section className="rounded-lg border border-border bg-surface p-6 shadow-1">
           <div className="flex max-w-2xl flex-col gap-4 sm:flex-row sm:items-start">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-canvas text-accent">
@@ -158,7 +223,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         </section>
       ) : null}
 
-      {visibleOrders.length > 0 ? (
+      {activeView === 'liste' && visibleOrders.length > 0 ? (
         <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-1">
           <div className="hidden md:block">
             <table className="w-full text-left text-sm">
@@ -257,6 +322,10 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             ))}
           </div>
         </section>
+      ) : null}
+
+      {activeView === 'kanban' ? (
+        <KanbanBoard ariaLabel={t('kanban.ariaLabel')} columns={kanbanColumns} />
       ) : null}
     </main>
   );
