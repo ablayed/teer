@@ -452,6 +452,7 @@ export type Database = {
       orders: {
         Row: {
           assigned_driver_id: string | null;
+          cash_collectable_minor: number | null;
           cod_status: string;
           created_at: string;
           created_at_shopify: string | null;
@@ -463,6 +464,7 @@ export type Database = {
           items_summary: Json | null;
           merchant_account_id: string;
           order_number: string | null;
+          payment_channel_at_delivery: string | null;
           shipping_address: Json | null;
           shop_id: string | null;
           shopify_order_id: string | null;
@@ -471,6 +473,7 @@ export type Database = {
         };
         Insert: {
           assigned_driver_id?: string | null;
+          cash_collectable_minor?: number | null;
           cod_status?: string;
           created_at?: string;
           created_at_shopify?: string | null;
@@ -482,6 +485,7 @@ export type Database = {
           items_summary?: Json | null;
           merchant_account_id: string;
           order_number?: string | null;
+          payment_channel_at_delivery?: string | null;
           shipping_address?: Json | null;
           shop_id?: string | null;
           shopify_order_id?: string | null;
@@ -490,6 +494,7 @@ export type Database = {
         };
         Update: {
           assigned_driver_id?: string | null;
+          cash_collectable_minor?: number | null;
           cod_status?: string;
           created_at?: string;
           created_at_shopify?: string | null;
@@ -501,6 +506,7 @@ export type Database = {
           items_summary?: Json | null;
           merchant_account_id?: string;
           order_number?: string | null;
+          payment_channel_at_delivery?: string | null;
           shipping_address?: Json | null;
           shop_id?: string | null;
           shopify_order_id?: string | null;
