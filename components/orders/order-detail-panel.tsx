@@ -233,7 +233,7 @@ function ActionBar({
     }
 
     setFeedback('message' in result ? result.message : 'La mise à jour du statut a échoué.');
-  }, [router, transitionStatus.result.data]);
+  }, [onStatusChange, router, transitionStatus.result.data]);
 
   if (isTerminal(currentStatus) || allowedTransitions.length === 0) {
     return (
@@ -276,12 +276,9 @@ function ActionBar({
         </div>
       ) : null}
       {feedback ? (
-        <p
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted shadow-1"
-          role="status"
-        >
+        <output className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted shadow-1">
           {feedback}
-        </p>
+        </output>
       ) : null}
     </div>
   );
