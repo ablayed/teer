@@ -7,12 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 type SupabaseServerClient = SupabaseClient<Database>;
-type GeneratedDashboardKpiRpcRow =
-  Database['public']['Functions']['get_dashboard_kpi']['Returns'][number];
-
-type DashboardKpiRpcPayload = {
-  [Key in keyof GeneratedDashboardKpiRpcRow]?: unknown;
-};
+type DashboardKpiRpcPayload = Record<string, unknown>;
 
 export type DashboardSparklinePoint = {
   date: string;
