@@ -14,6 +14,7 @@
     "commandes": "Commandes",
     "clients": "Clients",
     "produits": "Produits",
+    "finances": "Finances",
     "boutiques": "Boutiques",
     "parametres": "Paramètres",
     "signOut": "Se déconnecter"
@@ -438,6 +439,94 @@
     "errors": {
       "list": "Une erreur est survenue, réessayez.",
       "detail": "Impossible de charger cette fiche client."
+    }
+  },
+  "finance": {
+    "title": "Finances",
+    "subtitle": "Suivez le cash collecté, les versements livreurs et la marge estimée.",
+    "restricted": "Accès réservé au propriétaire et aux gestionnaires.",
+    "empty": "Aucune donnée financière pour cette période.",
+    "periods": {
+      "today": "Aujourd'hui",
+      "7j": "7 j",
+      "30j": "30 j",
+      "custom": "Appliquer",
+      "from": "Du",
+      "to": "Au"
+    },
+    "kpis": {
+      "caLivre": "Chiffre d'affaires livré",
+      "encaisseAEncaisser": "Encaissé / À encaisser",
+      "cashDrivers": "Cash chez les livreurs",
+      "driversConcerned": "{count, plural, =0 {Aucun livreur concerné} one {# livreur concerné} other {# livreurs concernés}}",
+      "margin": "Marge brute estimée",
+      "marginEstimate": "Estimation — coût des produits non pris en compte",
+      "rto": "Taux de refus / RTO"
+    },
+    "charts": {
+      "revenue": "CA livré sur 30 jours",
+      "funnel": "Entonnoir COD",
+      "shops": "CA par boutique",
+      "aging": "Cash-aging par livreur",
+      "empty": "Aucune donnée à afficher."
+    },
+    "status": {
+      "A_APPELER": "À appeler",
+      "TENTEE": "Tentée",
+      "CONFIRMEE": "Confirmée",
+      "PROGRAMMEE": "Programmée",
+      "EN_LIVRAISON": "En livraison",
+      "LIVREE": "Livrée",
+      "REFUSEE": "Refusée",
+      "ANNULEE": "Annulée"
+    },
+    "settlements": {
+      "title": "Versements par livreur",
+      "driverDetail": "Détail livreur",
+      "record": "Enregistrer un versement",
+      "amount": "Montant reçu",
+      "method": "Méthode",
+      "note": "Note",
+      "submit": "Confirmer le versement",
+      "shortfallWarning": "Un écart de {amount} sera signalé.",
+      "success": "Versement enregistré.",
+      "error": "Une erreur est survenue, réessayez.",
+      "offline": "Connexion requise pour enregistrer un versement.",
+      "empty": "Aucun cash en attente — tous les versements sont à jour.",
+      "toPay": "À remettre",
+      "orders": "Commandes livrées non réglées",
+      "reliability": "Fiabilité versement",
+      "late": "Retard de versement",
+      "current": "À jour",
+      "writeOff": "Passer en perte",
+      "writeOffReason": "Raison",
+      "writeOffConfirm": "Confirmer la perte",
+      "writeOffSuccess": "Écart passé en perte.",
+      "shortfalls": "Écarts ouverts",
+      "noShortfalls": "Aucun écart ouvert.",
+      "ariaTotal": "Total cash chez les livreurs"
+    },
+    "methods": {
+      "ESPECES": "Espèces",
+      "WAVE": "Wave",
+      "ORANGE_MONEY": "Orange Money",
+      "FREE_MONEY": "Free Money"
+    },
+    "settings": {
+      "title": "Frais & taxes",
+      "description": "Paramètres utilisés pour estimer la marge brute. Le propriétaire peut les modifier.",
+      "readOnly": "Lecture seule pour les gestionnaires.",
+      "merchantLevy": "Prélèvement marchand",
+      "transferTax": "TTA",
+      "transferTaxCap": "Plafond TTA",
+      "waveFee": "Frais Wave",
+      "orangeMoneyFee": "Frais Orange Money",
+      "freeMoneyFee": "Frais Free Money",
+      "deliveryCost": "Coût livraison par défaut",
+      "cogsKnown": "Je connais mon coût d'achat",
+      "save": "Enregistrer les frais",
+      "success": "Paramètres de frais mis à jour.",
+      "error": "Une erreur est survenue, réessayez."
     }
   },
   "orders": {

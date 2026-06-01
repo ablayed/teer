@@ -20,5 +20,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/onboarding');
   }
 
-  return <AppShell>{children}</AppShell>;
+  const { data: member } = await supabase
+    .from('merchant_member')
+    .select('role')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+  const currentMember = member as { role: string } | null;
+
+  return <AppShell currentRole={currentMember?.role ?? null}>{children}</AppShell>;
 }

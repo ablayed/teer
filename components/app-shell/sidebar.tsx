@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Package,
+  ReceiptText,
   Settings,
   ShoppingBag,
   Store,
@@ -16,12 +17,20 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-type NavKey = 'tableau' | 'commandes' | 'clients' | 'produits' | 'boutiques' | 'parametres';
+type NavKey =
+  | 'tableau'
+  | 'commandes'
+  | 'clients'
+  | 'produits'
+  | 'finances'
+  | 'boutiques'
+  | 'parametres';
 
 type SidebarItem = {
   href: string;
   icon: LucideIcon;
   labelKey: NavKey;
+  ownerManagerOnly?: boolean;
 };
 
 const sidebarItems: SidebarItem[] = [
@@ -29,6 +38,7 @@ const sidebarItems: SidebarItem[] = [
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/clients', icon: Users, labelKey: 'clients' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
+  { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerManagerOnly: true },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
@@ -37,9 +47,12 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Sidebar() {
+export function Sidebar({ currentRole }: { currentRole?: string | null }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
+  const items = sidebarItems.filter(
+    (item) => !item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager',
+  );
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] flex-col border-border border-r bg-surface md:flex">
@@ -49,7 +62,7 @@ export function Sidebar() {
 
       <nav aria-label={t('ariaLabel')} className="px-3">
         <ul className="space-y-1">
-          {sidebarItems.map((item) => {
+          {items.map((item) => {
             const Icon = item.icon;
             const active = isActivePath(pathname, item.href);
 

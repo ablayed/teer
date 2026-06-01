@@ -3,7 +3,13 @@ import type { ReactNode } from 'react';
 import { BottomTabNav } from './bottom-tab-nav';
 import { Sidebar } from './sidebar';
 
-export async function AppShell({ children }: { children: ReactNode }) {
+export async function AppShell({
+  children,
+  currentRole,
+}: {
+  children: ReactNode;
+  currentRole?: string | null;
+}) {
   const t = await getTranslations('common');
 
   return (
@@ -14,11 +20,11 @@ export async function AppShell({ children }: { children: ReactNode }) {
       >
         {t('skipToContent')}
       </a>
-      <Sidebar />
+      <Sidebar currentRole={currentRole} />
       <div className="min-h-dvh px-4 pt-6 pb-20 md:ml-[280px] md:px-8 md:pt-10 md:pb-8">
         {children}
       </div>
-      <BottomTabNav />
+      <BottomTabNav currentRole={currentRole} />
     </div>
   );
 }

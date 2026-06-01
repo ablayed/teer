@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Package,
+  ReceiptText,
   Settings,
   ShoppingBag,
   Store,
@@ -13,18 +14,20 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-type BottomTabKey = 'tableau' | 'commandes' | 'produits' | 'boutiques' | 'parametres';
+type BottomTabKey = 'tableau' | 'commandes' | 'produits' | 'finances' | 'boutiques' | 'parametres';
 
 type BottomTabItem = {
   href: string;
   icon: LucideIcon;
   labelKey: BottomTabKey;
+  ownerManagerOnly?: boolean;
 };
 
 const bottomTabItems: BottomTabItem[] = [
   { href: '/tableau', icon: LayoutDashboard, labelKey: 'tableau' },
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
+  { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerManagerOnly: true },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
@@ -33,16 +36,19 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function BottomTabNav() {
+export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
+  const items = bottomTabItems.filter(
+    (item) => !item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager',
+  );
 
   return (
     <nav
       aria-label={t('ariaLabel')}
       className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(64px+env(safe-area-inset-bottom))] border-border border-t bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      {bottomTabItems.map((item) => {
+      {items.map((item) => {
         const Icon = item.icon;
         const active = isActivePath(pathname, item.href);
 
