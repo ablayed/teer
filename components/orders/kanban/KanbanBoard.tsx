@@ -9,8 +9,15 @@ import {
 } from '@/components/orders/kanban/kanban-utils';
 import { Badge } from '@/components/ui/badge';
 import { type OrderListItem, transitionOrderStatusAction } from '@/lib/actions/orders';
-import { type OrderStatus, canTransition } from '@/lib/domain/order-state-machine';
+import {
+  type OrderStatus,
+  canTransition,
+  getAllowedTransitions,
+  isTerminal,
+  orderStatusLabels,
+} from '@/lib/domain/order-state-machine';
 import { cn } from '@/lib/utils';
+import { MoreHorizontal } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
@@ -34,6 +41,11 @@ export type KanbanBoardProps = {
     error: string;
     successByStatus: Record<OrderStatus, string>;
     unauthorized: string;
+  };
+  transitionMenu: {
+    closed: string;
+    label: string;
+    move: string;
   };
 };
 
@@ -112,7 +124,7 @@ function KanbanToast({
   );
 }
 
-export function KanbanBoard({ ariaLabel, columns, toasts }: KanbanBoardProps) {
+export function KanbanBoard({ ariaLabel, columns, toasts, transitionMenu }: KanbanBoardProps) {
   const router = useRouter();
   const isDesktop = useIsDesktop();
   const transitionStatus = useAction(transitionOrderStatusAction);
@@ -135,7 +147,7 @@ export function KanbanBoard({ ariaLabel, columns, toasts }: KanbanBoardProps) {
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
-  async function moveOrder(orderId: string, targetColumn: KanbanColumnView) {
+  async function moveOrderToStatus(orderId: string, to: OrderStatus) {
     const order = orders.find((candidate) => candidate.id === orderId);
 
     if (!order) {
@@ -143,11 +155,6 @@ export function KanbanBoard({ ariaLabel, columns, toasts }: KanbanBoardProps) {
     }
 
     const from = normalizeOrderStatus(order.cod_status);
-    const to = targetColumn.targetStatus;
-
-    if (from === to || getKanbanColumnKey(from) === targetColumn.id) {
-      return;
-    }
 
     if (!canTransition(from, to)) {
       setToast({ message: toasts.unauthorized, tone: 'danger' });
@@ -180,19 +187,106 @@ export function KanbanBoard({ ariaLabel, columns, toasts }: KanbanBoardProps) {
     setToast({ message, tone: 'danger' });
   }
 
+  async function moveOrderToColumn(orderId: string, targetColumn: KanbanColumnView) {
+    const order = orders.find((candidate) => candidate.id === orderId);
+
+    if (!order) {
+      return;
+    }
+
+    const from = normalizeOrderStatus(order.cod_status);
+
+    if (from === targetColumn.targetStatus || getKanbanColumnKey(from) === targetColumn.id) {
+      return;
+    }
+
+    await moveOrderToStatus(orderId, targetColumn.targetStatus);
+  }
+
   return (
     <section aria-label={ariaLabel} className="space-y-4">
       {isDesktop ? (
-        <DesktopKanbanBoard columns={visibleColumns} onMoveOrder={moveOrder} />
+        <DesktopKanbanBoard columns={visibleColumns} onMoveOrder={moveOrderToColumn} />
       ) : (
-        <StaticKanbanBoard columns={visibleColumns} />
+        <StaticKanbanBoard
+          columns={visibleColumns}
+          onMoveOrder={moveOrderToStatus}
+          transitionMenu={transitionMenu}
+        />
       )}
       <KanbanToast message={toast?.message ?? null} tone={toast?.tone ?? 'success'} />
     </section>
   );
 }
 
-function StaticKanbanBoard({ columns }: { columns: KanbanColumnView[] }) {
+function MobileTransitionMenu({
+  labels,
+  onMoveOrder,
+  order,
+}: {
+  labels: KanbanBoardProps['transitionMenu'];
+  onMoveOrder: (orderId: string, to: OrderStatus) => Promise<void>;
+  order: OrderListItem;
+}) {
+  const [open, setOpen] = useState(false);
+  const status = normalizeOrderStatus(order.cod_status);
+  const allowedTransitions = getAllowedTransitions(status);
+
+  if (isTerminal(status) || allowedTransitions.length === 0) {
+    return (
+      <Badge className="rounded-full" tone="neutral">
+        {labels.closed}
+      </Badge>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={labels.move}
+        className="inline-flex size-11 items-center justify-center rounded-md border border-border bg-surface text-text shadow-1 hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <MoreHorizontal aria-hidden="true" className="size-5" />
+      </button>
+      {open ? (
+        <div
+          aria-label={labels.label}
+          className="absolute top-12 right-0 z-30 w-52 rounded-md border border-border bg-surface p-1 shadow-2"
+          role="menu"
+        >
+          {allowedTransitions.map((transition) => (
+            <button
+              className="flex min-h-11 w-full items-center rounded-sm px-3 text-left text-sm text-text hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              key={transition}
+              onClick={async () => {
+                setOpen(false);
+                await onMoveOrder(order.id, transition);
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {orderStatusLabels[transition]}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StaticKanbanBoard({
+  columns,
+  onMoveOrder,
+  transitionMenu,
+}: {
+  columns: KanbanColumnView[];
+  onMoveOrder: (orderId: string, to: OrderStatus) => Promise<void>;
+  transitionMenu: KanbanBoardProps['transitionMenu'];
+}) {
   return (
     <div className="overflow-x-auto pb-2">
       <div className="flex min-h-[60vh] gap-4 md:min-w-max">
@@ -213,7 +307,18 @@ function StaticKanbanBoard({ columns }: { columns: KanbanColumnView[] }) {
             {column.orders.length > 0 ? (
               <div className="flex flex-1 flex-col gap-3">
                 {column.orders.map((order) => (
-                  <KanbanCard emptyLabel={column.emptyLabel} key={order.id} order={order} />
+                  <KanbanCard
+                    actions={
+                      <MobileTransitionMenu
+                        labels={transitionMenu}
+                        onMoveOrder={onMoveOrder}
+                        order={order}
+                      />
+                    }
+                    emptyLabel={column.emptyLabel}
+                    key={order.id}
+                    order={order}
+                  />
                 ))}
               </div>
             ) : (

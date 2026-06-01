@@ -361,6 +361,11 @@
         "unauthorized": "Transition non autorisée",
         "error": "La mise à jour du statut a échoué.",
         "moved": "Commande déplacée vers {status}"
+      },
+      "transitionMenu": {
+        "label": "Transitions disponibles",
+        "move": "Déplacer la commande",
+        "closed": "Clôturée"
       }
     },
     "status": {

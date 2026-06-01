@@ -353,6 +353,11 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             },
             unauthorized: t('kanban.toasts.unauthorized'),
           }}
+          transitionMenu={{
+            closed: t('kanban.transitionMenu.closed'),
+            label: t('kanban.transitionMenu.label'),
+            move: t('kanban.transitionMenu.move'),
+          }}
         />
       ) : null}
     </main>
