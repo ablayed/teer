@@ -370,6 +370,76 @@
       "dismiss": "Masquer ce rappel"
     }
   },
+  "clients": {
+    "title": "Clients",
+    "subtitle": "Repérez les clients fiables, ceux à confirmer et les risques COD avant d’expédier.",
+    "loading": "Chargement…",
+    "fallbackName": "Client",
+    "fallbackPhone": "Téléphone indisponible",
+    "empty": "Vos clients apparaîtront ici dès la première commande synchronisée.",
+    "search": {
+      "label": "Rechercher un client",
+      "placeholder": "Nom ou téléphone",
+      "sortByRisk": "Risques en haut"
+    },
+    "list": {
+      "score": "Score",
+      "delivered": "Livré",
+      "orders": "Commandes"
+    },
+    "sheet": {
+      "title": "Fiche client",
+      "close": "Fermer"
+    },
+    "score": {
+      "label": "score",
+      "hidden": "Pas assez de données",
+      "provisional": "Score provisoire — basé sur peu de commandes"
+    },
+    "tiers": {
+      "new": "Nouveau client",
+      "reliable": "Fiable",
+      "watch": "À surveiller",
+      "risk": "À risque"
+    },
+    "advice": {
+      "new": "Confirmer avant expédition ; bien capter l’adresse + 2ᵉ numéro.",
+      "reliable": "Expédier en COD directement.",
+      "watch": "Confirmer avant d’expédier.",
+      "risk": "Exiger un paiement à l’avance avant expédition."
+    },
+    "flags": {
+      "title": "Signaux",
+      "confirmsThenRefuses": "Confirme mais refuse souvent à la livraison.",
+      "hardToReach": "Difficile à joindre — prévoir plusieurs appels.",
+      "cancelsOften": "Annule souvent avant expédition."
+    },
+    "actions": {
+      "title": "Actions",
+      "call": "Appeler",
+      "whatsapp": "WhatsApp",
+      "orders": "Voir commandes",
+      "requestConfirmation": "Demander confirmation",
+      "deposit": "Demander un acompte",
+      "depositSoon": "Disponible bientôt",
+      "addNote": "Ajouter une note",
+      "noteSoon": "Disponible bientôt"
+    },
+    "history": {
+      "title": "Historique des commandes",
+      "empty": "Aucune commande à afficher.",
+      "orderFallback": "Commande"
+    },
+    "stats": {
+      "orders": "Commandes",
+      "cancelled": "Annulations",
+      "delivered": "Livré"
+    },
+    "errors": {
+      "list": "Une erreur est survenue, réessayez.",
+      "detail": "Impossible de charger cette fiche client."
+    }
+  },
   "orders": {
     "title": "Commandes",
     "subtitle": "Suivez les commandes Shopify importées et leur statut COD.",
