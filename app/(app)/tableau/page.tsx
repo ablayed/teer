@@ -1,7 +1,20 @@
+import { AlertsBlock } from '@/components/dashboard/AlertsBlock';
+import { CODStatusBreakdown } from '@/components/dashboard/CODStatusBreakdown';
+import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
+import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
+import { TopProducts } from '@/components/dashboard/TopProducts';
 import { NextActionsList } from '@/components/kpi/NextActionsList';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
-import { getDashboardKpi, getRevenue30d } from '@/lib/actions/dashboard';
+import {
+  getAlerts,
+  getCodBreakdown,
+  getDashboardKpi,
+  getRecentActivity,
+  getRevenue30d,
+  getShopPerformance,
+  getTopProducts,
+} from '@/lib/actions/dashboard';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ArrowRight } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -18,11 +31,26 @@ function displayNameFromMetadata(metadata: Record<string, unknown>): string {
 }
 
 export default async function TableauPage() {
-  const [t, ordersT, kpiResult, revenueResult] = await Promise.all([
+  const [
+    t,
+    ordersT,
+    kpiResult,
+    revenueResult,
+    topProductsResult,
+    shopPerformanceResult,
+    codBreakdownResult,
+    recentActivityResult,
+    alertsResult,
+  ] = await Promise.all([
     getTranslations('tableau'),
     getTranslations('orders'),
     getDashboardKpi(),
     getRevenue30d(),
+    getTopProducts(),
+    getShopPerformance(),
+    getCodBreakdown(),
+    getRecentActivity(),
+    getAlerts(),
   ]);
   const supabase = await createSupabaseServerClient();
   const {
@@ -32,6 +60,11 @@ export default async function TableauPage() {
     displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
   const kpi = kpiResult.ok ? kpiResult.data : null;
   const revenue = revenueResult.ok ? revenueResult.data : null;
+  const topProducts = topProductsResult.ok ? topProductsResult.data : [];
+  const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
+  const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
+  const recentActivity = recentActivityResult.ok ? recentActivityResult.data : [];
+  const alerts = alertsResult.ok ? alertsResult.data : [];
   const callQueueCount = kpi?.a_appeler_count ?? 0;
 
   return (
@@ -49,6 +82,39 @@ export default async function TableauPage() {
         emptyLabel={t('revenue.empty')}
         title={t('revenue.title')}
       />
+
+      <section className="grid gap-4 xl:grid-cols-3">
+        <TopProducts
+          currency={kpi?.currency ?? null}
+          emptyLabel={t('blocks.topProducts.empty')}
+          items={topProducts}
+          title={t('blocks.topProducts.title')}
+        />
+        <ShopPerformance
+          currency={kpi?.currency ?? null}
+          emptyLabel={t('blocks.shopPerformance.empty')}
+          items={shopPerformance}
+          title={t('blocks.shopPerformance.title')}
+        />
+        <CODStatusBreakdown
+          emptyLabel={t('blocks.codBreakdown.empty')}
+          items={codBreakdown}
+          title={t('blocks.codBreakdown.title')}
+        />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <RecentActivity
+          emptyLabel={t('blocks.recentActivity.empty')}
+          items={recentActivity}
+          title={t('blocks.recentActivity.title')}
+        />
+        <AlertsBlock
+          emptyLabel={t('blocks.alerts.empty')}
+          items={alerts}
+          title={t('blocks.alerts.title')}
+        />
+      </section>
 
       <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

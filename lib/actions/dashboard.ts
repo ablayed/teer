@@ -1,6 +1,7 @@
 'use server';
 
 import { authActionClient } from '@/lib/actions/safe-action';
+import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -47,12 +48,54 @@ export type DashboardRevenue30dActionResult =
   | { ok: true; data: DashboardRevenue30d }
   | { ok: false; errorCode: 'not_found' | 'query_error' };
 
+export type DashboardTopProduct = {
+  name: string;
+  revenue: number;
+  units: number;
+};
+
+export type DashboardShopPerformance = {
+  id: string;
+  name: string;
+  status: string;
+  ordersCount: number;
+  revenue: number;
+};
+
+export type DashboardCodBreakdownItem = {
+  count: number;
+  status: OrderStatus;
+};
+
+export type DashboardRecentActivityItem = {
+  createdAt: string;
+  fromStatus: OrderStatus | null;
+  id: string;
+  orderNumber: string | null;
+  toStatus: OrderStatus;
+};
+
+export type DashboardAlert = {
+  id: string;
+  tone: 'danger' | 'warning';
+  title: string;
+  value: string;
+};
+
+export type DashboardReadonlyActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; errorCode: 'not_found' | 'query_error' };
+
 function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
   return client as SupabaseServerClient;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isOrderStatus(value: string | null): value is OrderStatus {
+  return value !== null && orderStatuses.includes(value as OrderStatus);
 }
 
 function numberFromRpc(value: unknown): number {
@@ -195,6 +238,299 @@ function aggregateRevenue30d(
   return { currency, points };
 }
 
+function stringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+
+  return typeof value === 'string' ? value : null;
+}
+
+function numberField(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  const numericValue = Number(value ?? 0);
+
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function parseItems(value: unknown): Array<{ price: number; quantity: number; title: string }> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+
+      const title = stringField(item, 'title');
+
+      if (!title) {
+        return null;
+      }
+
+      return {
+        title,
+        quantity: numberField(item, 'quantity'),
+        price: numberField(item, 'price'),
+      };
+    })
+    .filter((item): item is { price: number; quantity: number; title: string } => item !== null);
+}
+
+async function fetchTopProductsForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
+  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
+
+  if (!merchant.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('items_summary')
+    .eq('merchant_account_id', merchant.merchantAccountId)
+    .in('cod_status', ['CONFIRMEE', 'PROGRAMMEE', 'EN_LIVRAISON', 'LIVREE'])
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  if (error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const productMap = new Map<string, DashboardTopProduct>();
+
+  for (const order of data ?? []) {
+    for (const item of parseItems(order.items_summary)) {
+      const current = productMap.get(item.title) ?? { name: item.title, revenue: 0, units: 0 };
+      current.units += item.quantity;
+      current.revenue += item.quantity * item.price;
+      productMap.set(item.title, current);
+    }
+  }
+
+  return {
+    ok: true,
+    data: [...productMap.values()]
+      .sort((first, second) => second.units - first.units || second.revenue - first.revenue)
+      .slice(0, 5),
+  };
+}
+
+async function fetchShopPerformanceForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
+  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
+
+  if (!merchant.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  const [shopsResult, ordersResult] = await Promise.all([
+    supabase
+      .from('shop')
+      .select('id, shop_domain, status')
+      .eq('merchant_account_id', merchant.merchantAccountId)
+      .order('installed_at', { ascending: true }),
+    supabase
+      .from('orders')
+      .select('shop_id, total_amount')
+      .eq('merchant_account_id', merchant.merchantAccountId),
+  ]);
+
+  if (shopsResult.error || ordersResult.error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const orderStats = new Map<string, { ordersCount: number; revenue: number }>();
+
+  for (const order of ordersResult.data ?? []) {
+    if (!order.shop_id) {
+      continue;
+    }
+
+    const current = orderStats.get(order.shop_id) ?? { ordersCount: 0, revenue: 0 };
+    current.ordersCount += 1;
+    current.revenue += Number(order.total_amount ?? 0);
+    orderStats.set(order.shop_id, current);
+  }
+
+  return {
+    ok: true,
+    data: (shopsResult.data ?? []).map((shop) => ({
+      id: shop.id,
+      name: shop.shop_domain,
+      status: shop.status,
+      ordersCount: orderStats.get(shop.id)?.ordersCount ?? 0,
+      revenue: orderStats.get(shop.id)?.revenue ?? 0,
+    })),
+  };
+}
+
+async function fetchCodBreakdownForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
+  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
+
+  if (!merchant.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('cod_status')
+    .eq('merchant_account_id', merchant.merchantAccountId);
+
+  if (error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const counts = new Map<OrderStatus, number>(orderStatuses.map((status) => [status, 0]));
+
+  for (const order of data ?? []) {
+    if (isOrderStatus(order.cod_status)) {
+      counts.set(order.cod_status, (counts.get(order.cod_status) ?? 0) + 1);
+    }
+  }
+
+  return {
+    ok: true,
+    data: orderStatuses.map((status) => ({ status, count: counts.get(status) ?? 0 })),
+  };
+}
+
+async function fetchRecentActivityForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardReadonlyActionResult<DashboardRecentActivityItem[]>> {
+  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
+
+  if (!merchant.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  const { data, error } = await supabase
+    .from('order_state_transition')
+    .select('id, created_at, from_status, to_status, order:order_id(order_number)')
+    .eq('merchant_account_id', merchant.merchantAccountId)
+    .order('created_at', { ascending: false })
+    .limit(8);
+
+  if (error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  return {
+    ok: true,
+    data: (data ?? [])
+      .map((item) => {
+        const toStatus = isOrderStatus(item.to_status) ? item.to_status : null;
+
+        if (!toStatus) {
+          return null;
+        }
+
+        return {
+          id: item.id,
+          createdAt: item.created_at,
+          fromStatus: isOrderStatus(item.from_status) ? item.from_status : null,
+          orderNumber: item.order?.order_number ?? null,
+          toStatus,
+        };
+      })
+      .filter((item): item is DashboardRecentActivityItem => item !== null),
+  };
+}
+
+async function fetchAlertsForUser({
+  supabase,
+  userId,
+}: {
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardReadonlyActionResult<DashboardAlert[]>> {
+  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
+
+  if (!merchant.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  const olderThan = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const tokenExpiryThreshold = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const [lateOrdersResult, shopResult, tokenResult] = await Promise.all([
+    supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('merchant_account_id', merchant.merchantAccountId)
+      .eq('cod_status', 'A_APPELER')
+      .lt('created_at', olderThan),
+    supabase
+      .from('shop')
+      .select('id', { count: 'exact', head: true })
+      .eq('merchant_account_id', merchant.merchantAccountId)
+      .neq('status', 'connected'),
+    supabase
+      .from('shop')
+      .select('id', { count: 'exact', head: true })
+      .eq('merchant_account_id', merchant.merchantAccountId)
+      .not('access_token_expires_at', 'is', null)
+      .lt('access_token_expires_at', tokenExpiryThreshold),
+  ]);
+
+  if (lateOrdersResult.error || shopResult.error || tokenResult.error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const alerts: DashboardAlert[] = [];
+  const lateOrderCount = lateOrdersResult.count ?? 0;
+  const shopIssueCount = shopResult.count ?? 0;
+  const tokenIssueCount = tokenResult.count ?? 0;
+
+  if (lateOrderCount > 0) {
+    alerts.push({
+      id: 'late-calls',
+      tone: 'warning',
+      title: 'Appels en retard',
+      value: `${lateOrderCount} commande${lateOrderCount > 1 ? 's' : ''} à appeler depuis plus de 24 h`,
+    });
+  }
+
+  if (shopIssueCount > 0) {
+    alerts.push({
+      id: 'shops',
+      tone: 'danger',
+      title: 'Boutiques à vérifier',
+      value: `${shopIssueCount} boutique${shopIssueCount > 1 ? 's' : ''} hors connexion`,
+    });
+  }
+
+  if (tokenIssueCount > 0) {
+    alerts.push({
+      id: 'tokens',
+      tone: 'warning',
+      title: 'Connexion Shopify',
+      value: `${tokenIssueCount} jeton${tokenIssueCount > 1 ? 's' : ''} expire bientôt`,
+    });
+  }
+
+  return { ok: true, data: alerts };
+}
+
 async function fetchRevenue30dForUser({
   supabase,
   userId,
@@ -318,6 +654,126 @@ export const getRevenue30dAction = authActionClient
   .metadata({ actionName: 'dashboard.get_revenue_30d', section: 'dashboard' })
   .action(async ({ ctx }): Promise<DashboardRevenue30dActionResult> => {
     return fetchRevenue30dForUser({
+      supabase: asTypedSupabaseClient(ctx.supabase),
+      userId: ctx.user.id,
+    });
+  });
+
+export async function getTopProducts(): Promise<
+  DashboardReadonlyActionResult<DashboardTopProduct[]>
+> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchTopProductsForUser({ supabase, userId: user.id });
+}
+
+export const getTopProductsAction = authActionClient
+  .metadata({ actionName: 'dashboard.get_top_products', section: 'dashboard' })
+  .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> => {
+    return fetchTopProductsForUser({
+      supabase: asTypedSupabaseClient(ctx.supabase),
+      userId: ctx.user.id,
+    });
+  });
+
+export async function getShopPerformance(): Promise<
+  DashboardReadonlyActionResult<DashboardShopPerformance[]>
+> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchShopPerformanceForUser({ supabase, userId: user.id });
+}
+
+export const getShopPerformanceAction = authActionClient
+  .metadata({ actionName: 'dashboard.get_shop_performance', section: 'dashboard' })
+  .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> => {
+    return fetchShopPerformanceForUser({
+      supabase: asTypedSupabaseClient(ctx.supabase),
+      userId: ctx.user.id,
+    });
+  });
+
+export async function getCodBreakdown(): Promise<
+  DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>
+> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchCodBreakdownForUser({ supabase, userId: user.id });
+}
+
+export const getCodBreakdownAction = authActionClient
+  .metadata({ actionName: 'dashboard.get_cod_breakdown', section: 'dashboard' })
+  .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> => {
+    return fetchCodBreakdownForUser({
+      supabase: asTypedSupabaseClient(ctx.supabase),
+      userId: ctx.user.id,
+    });
+  });
+
+export async function getRecentActivity(): Promise<
+  DashboardReadonlyActionResult<DashboardRecentActivityItem[]>
+> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchRecentActivityForUser({ supabase, userId: user.id });
+}
+
+export const getRecentActivityAction = authActionClient
+  .metadata({ actionName: 'dashboard.get_recent_activity', section: 'dashboard' })
+  .action(
+    async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardRecentActivityItem[]>> => {
+      return fetchRecentActivityForUser({
+        supabase: asTypedSupabaseClient(ctx.supabase),
+        userId: ctx.user.id,
+      });
+    },
+  );
+
+export async function getAlerts(): Promise<DashboardReadonlyActionResult<DashboardAlert[]>> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchAlertsForUser({ supabase, userId: user.id });
+}
+
+export const getAlertsAction = authActionClient
+  .metadata({ actionName: 'dashboard.get_alerts', section: 'dashboard' })
+  .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardAlert[]>> => {
+    return fetchAlertsForUser({
       supabase: asTypedSupabaseClient(ctx.supabase),
       userId: ctx.user.id,
     });
