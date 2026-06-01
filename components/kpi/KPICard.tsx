@@ -210,7 +210,7 @@ export function KPICard({
         <p className="text-[13px] font-medium leading-snug text-muted">{label}</p>
         {loading ? (
           <div
-            className="h-10 w-32 animate-pulse rounded-sm bg-border md:h-11"
+            className="dashboard-shimmer h-10 w-32 rounded-sm md:h-11"
             data-testid="kpi-value-skeleton"
           />
         ) : (
@@ -231,10 +231,7 @@ export function KPICard({
       ) : null}
 
       {loading ? (
-        <div
-          className="h-7 w-20 animate-pulse rounded-sm bg-border"
-          data-testid="kpi-delta-skeleton"
-        />
+        <div className="dashboard-shimmer h-7 w-20 rounded-sm" data-testid="kpi-delta-skeleton" />
       ) : (
         <DeltaChip
           deltaAbs={deltaAbs}

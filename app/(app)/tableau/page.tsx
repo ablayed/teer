@@ -1,5 +1,6 @@
 import { AlertsBlock } from '@/components/dashboard/AlertsBlock';
 import { CODStatusBreakdown } from '@/components/dashboard/CODStatusBreakdown';
+import { DashboardMotion } from '@/components/dashboard/DashboardMotion';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
@@ -68,71 +69,75 @@ export default async function TableauPage() {
   const callQueueCount = kpi?.a_appeler_count ?? 0;
 
   return (
-    <main className="space-y-8" id="main">
-      <header className="space-y-2">
-        <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
-        <p className="text-muted">{t('subtitle', { count: callQueueCount, name: firstName })}</p>
-      </header>
+    <main id="main">
+      <DashboardMotion>
+        <header className="space-y-2">
+          <h1 className="font-display text-4xl md:text-5xl">
+            {t('greeting', { name: firstName })}
+          </h1>
+          <p className="text-muted">{t('subtitle', { count: callQueueCount })}</p>
+        </header>
 
-      <DashboardKpiRefresh initialKpi={kpi} initialUpdatedAt={new Date().toISOString()} />
+        <DashboardKpiRefresh initialKpi={kpi} initialUpdatedAt={new Date().toISOString()} />
 
-      <RevenueChart
-        currency={revenue?.currency ?? kpi?.currency ?? null}
-        data={revenue?.points ?? []}
-        emptyLabel={t('revenue.empty')}
-        title={t('revenue.title')}
-      />
+        <RevenueChart
+          currency={revenue?.currency ?? kpi?.currency ?? null}
+          data={revenue?.points ?? []}
+          emptyLabel={t('revenue.empty')}
+          title={t('revenue.title')}
+        />
 
-      <section className="grid gap-4 xl:grid-cols-3">
-        <TopProducts
-          currency={kpi?.currency ?? null}
-          emptyLabel={t('blocks.topProducts.empty')}
-          items={topProducts}
-          title={t('blocks.topProducts.title')}
-        />
-        <ShopPerformance
-          currency={kpi?.currency ?? null}
-          emptyLabel={t('blocks.shopPerformance.empty')}
-          items={shopPerformance}
-          title={t('blocks.shopPerformance.title')}
-        />
-        <CODStatusBreakdown
-          emptyLabel={t('blocks.codBreakdown.empty')}
-          items={codBreakdown}
-          title={t('blocks.codBreakdown.title')}
-        />
-      </section>
+        <section className="grid gap-4 xl:grid-cols-3">
+          <TopProducts
+            currency={kpi?.currency ?? null}
+            emptyLabel={t('blocks.topProducts.empty')}
+            items={topProducts}
+            title={t('blocks.topProducts.title')}
+          />
+          <ShopPerformance
+            currency={kpi?.currency ?? null}
+            emptyLabel={t('blocks.shopPerformance.empty')}
+            items={shopPerformance}
+            title={t('blocks.shopPerformance.title')}
+          />
+          <CODStatusBreakdown
+            emptyLabel={t('blocks.codBreakdown.empty')}
+            items={codBreakdown}
+            title={t('blocks.codBreakdown.title')}
+          />
+        </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <RecentActivity
-          emptyLabel={t('blocks.recentActivity.empty')}
-          items={recentActivity}
-          title={t('blocks.recentActivity.title')}
-        />
-        <AlertsBlock
-          emptyLabel={t('blocks.alerts.empty')}
-          items={alerts}
-          title={t('blocks.alerts.title')}
-        />
-      </section>
+        <section className="grid gap-4 xl:grid-cols-2">
+          <RecentActivity
+            emptyLabel={t('blocks.recentActivity.empty')}
+            items={recentActivity}
+            title={t('blocks.recentActivity.title')}
+          />
+          <AlertsBlock
+            emptyLabel={t('blocks.alerts.empty')}
+            items={alerts}
+            title={t('blocks.alerts.title')}
+          />
+        </section>
 
-      <section className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-xl font-semibold">{t('actions.title')}</h2>
-          <Link
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-text hover:bg-surface"
-            href="/commandes?statut=a_appeler"
-          >
-            {t('actions.voir_tout')}
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </Link>
-        </div>
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-semibold">{t('actions.title')}</h2>
+            <Link
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-text hover:bg-surface"
+              href="/commandes?statut=a_appeler"
+            >
+              {t('actions.voir_tout')}
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          </div>
 
-        <NextActionsList
-          emptyLabel={t('actions.empty')}
-          emptyValueLabel={ordersT('table.emptyValue')}
-        />
-      </section>
+          <NextActionsList
+            emptyLabel={t('actions.empty')}
+            emptyValueLabel={ordersT('table.emptyValue')}
+          />
+        </section>
+      </DashboardMotion>
     </main>
   );
 }

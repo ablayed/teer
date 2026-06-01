@@ -6,8 +6,8 @@ import dynamic from 'next/dynamic';
 const RevenueChartInner = dynamic(() => import('@/components/dashboard/RevenueChartInner'), {
   loading: () => (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1 md:p-6">
-      <div className="mb-5 h-5 w-40 animate-pulse rounded-sm bg-border" />
-      <div className="h-[260px] animate-pulse rounded-md bg-border" />
+      <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
+      <div className="dashboard-shimmer h-[260px] rounded-md" />
     </section>
   ),
   ssr: false,

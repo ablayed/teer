@@ -1,6 +1,7 @@
 'use client';
 
 import type { DashboardRevenuePoint } from '@/lib/actions/dashboard';
+import { useReducedMotion } from 'framer-motion';
 import { useMemo } from 'react';
 import {
   Area,
@@ -76,6 +77,7 @@ export default function RevenueChartInner({
   emptyLabel,
   title,
 }: RevenueChartInnerProps) {
+  const prefersReducedMotion = useReducedMotion();
   const normalizedCurrency = normalizeCurrency(currency);
   const currencyFormatter = useMemo(
     () =>
@@ -133,7 +135,7 @@ export default function RevenueChartInner({
               <Area
                 dataKey="value"
                 fill="url(#revenueGradient)"
-                isAnimationActive
+                isAnimationActive={!prefersReducedMotion}
                 stroke="var(--accent)"
                 strokeWidth={2}
                 type="monotone"
