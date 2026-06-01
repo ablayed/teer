@@ -63,29 +63,30 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
             invertDelta
             label={t('kpi.a_appeler')}
             loading={isLoading}
+            tone="attention"
             unit="count"
             value={kpi?.a_appeler_count ?? 0}
           />
         </div>
         <KPICard
-          accentColor="success"
           currency={kpi?.currency}
           error={hasError}
           errorLabel={unavailableLabel}
           label={t('kpi.ca_collecte')}
           loading={isLoading}
           sparkline={sparkline ?? []}
-          unit="XOF"
+          tone="success"
+          unit="currency"
           value={kpi?.ca_collecte_7j ?? 0}
         />
         <KPICard
-          accentColor="warning"
           currency={kpi?.currency}
           error={hasError}
           errorLabel={unavailableLabel}
           label={t('kpi.ca_attente')}
           loading={isLoading}
-          unit="XOF"
+          tone="warning"
+          unit="currency"
           value={kpi?.ca_en_attente ?? 0}
         />
         <KPICard

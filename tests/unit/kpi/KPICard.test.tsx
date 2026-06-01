@@ -23,14 +23,14 @@ describe('KPICard', () => {
   });
 
   it('affiche le skeleton en chargement sans valeur', () => {
-    render(<KPICard label="CA collecté" loading value={182500} unit="XOF" />);
+    render(<KPICard label="CA collecté" loading value={182500} unit="currency" />);
 
     expect(screen.getByTestId('kpi-value-skeleton')).toBeTruthy();
     expect(screen.queryByText(/182\s500\sF CFA/)).toBeNull();
   });
 
   it('formate une valeur XOF', async () => {
-    render(<KPICard label="CA collecté" value={182500} unit="XOF" />);
+    render(<KPICard currency="XOF" label="CA collecté" value={182500} unit="currency" />);
 
     await waitFor(() => {
       expect(screen.getByText(/182\s500\sF CFA/)).toBeTruthy();
@@ -38,10 +38,10 @@ describe('KPICard', () => {
   });
 
   it('formate une valeur monetaire avec la devise fournie', async () => {
-    render(<KPICard currency="USD" label="CA collecté" value={1825} unit="XOF" />);
+    render(<KPICard currency="USD" label="CA collecté" value={1825} unit="currency" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/1\s825\s\$/)).toBeTruthy();
+      expect(screen.getByText(/1\s825,00\s\$US/)).toBeTruthy();
     });
   });
 
@@ -66,7 +66,9 @@ describe('KPICard', () => {
   });
 
   it('ne présente aucune violation axe serious ou critical', async () => {
-    const { container } = render(<KPICard label="CA collecté" value={182500} unit="XOF" />);
+    const { container } = render(
+      <KPICard currency="XOF" label="CA collecté" value={182500} unit="currency" />,
+    );
 
     const results = await axe(container);
     const seriousOrCritical = results.violations.filter(

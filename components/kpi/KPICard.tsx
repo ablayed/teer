@@ -1,13 +1,13 @@
 'use client';
 
-import { formatFCFA } from '@/lib/format/fcfa';
+import { Sparkline } from '@/components/kpi/Sparkline';
 import { cn } from '@/lib/utils';
-import React, { useEffect, useId, useMemo, useState } from 'react';
-import { Area, AreaChart, ResponsiveContainer } from 'recharts';
+import { animate, useReducedMotion } from 'framer-motion';
+import React, { useEffect, useMemo, useRef } from 'react';
 
-type KPIUnit = 'XOF' | '%' | 'count';
+type KPIUnit = 'currency' | '%' | 'count';
 type DeltaType = 'pct' | 'abs';
-type AccentColor = 'default' | 'warning' | 'success' | 'danger';
+type Tone = 'default' | 'success' | 'attention' | 'warning';
 
 export type KPISparklinePoint = {
   date: string;
@@ -16,7 +16,7 @@ export type KPISparklinePoint = {
 
 export type KPICardProps = {
   label: string;
-  value: string | number;
+  value: number;
   unit?: KPIUnit;
   currency?: string | null;
   deltaPct?: number;
@@ -24,18 +24,19 @@ export type KPICardProps = {
   deltaType?: DeltaType;
   sparkline?: KPISparklinePoint[];
   loading?: boolean;
-  accentColor?: AccentColor;
+  tone?: Tone;
+  accentColor?: 'default' | 'warning' | 'success' | 'danger';
   invertDelta?: boolean;
   error?: boolean;
   errorLabel?: string;
 };
 
-const accentStyles = {
+const toneStyles = {
   default: 'border-border bg-surface',
-  warning: 'border-warning/30 bg-amber-50',
-  success: 'border-success/30 bg-green-50',
-  danger: 'border-danger/30 bg-red-50',
-} satisfies Record<AccentColor, string>;
+  success: 'border-success/20 bg-success-subtle',
+  attention: 'border-accent/35 bg-surface ring-1 ring-accent/35',
+  warning: 'border-accent/20 bg-accent-subtle',
+} satisfies Record<Tone, string>;
 
 function formatPct(value: number): string {
   return new Intl.NumberFormat('fr-FR', {
@@ -46,33 +47,26 @@ function formatPct(value: number): string {
     .concat(' %');
 }
 
-function formatCurrencyValue(value: number, currency: string | null | undefined): string {
-  const normalizedCurrency = currency?.trim().toUpperCase() || 'XOF';
-
-  if (normalizedCurrency === 'XOF') {
-    return formatFCFA(value);
-  }
-
-  const formattedAmount = new Intl.NumberFormat('fr-FR', {
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
-  }).format(value);
-  const currencyLabel = normalizedCurrency === 'USD' ? '$' : normalizedCurrency;
-
-  return `${formattedAmount} ${currencyLabel}`;
+function normalizeCurrency(currency: string | null | undefined): string {
+  return currency?.trim().toUpperCase() || 'XOF';
 }
 
-function formatValue(
-  value: string | number,
-  unit: KPIUnit,
-  currency: string | null | undefined,
-): string {
-  if (typeof value === 'string') {
-    return value;
-  }
+function useCurrencyFormatter(currency: string | null | undefined): Intl.NumberFormat {
+  const normalizedCurrency = normalizeCurrency(currency);
 
-  if (unit === 'XOF') {
-    return formatCurrencyValue(value, currency);
+  return useMemo(
+    () =>
+      new Intl.NumberFormat('fr-FR', {
+        currency: normalizedCurrency,
+        style: 'currency',
+      }),
+    [normalizedCurrency],
+  );
+}
+
+function formatValue(value: number, unit: KPIUnit, currencyFormatter: Intl.NumberFormat): string {
+  if (unit === 'currency') {
+    return currencyFormatter.format(value);
   }
 
   if (unit === '%') {
@@ -80,46 +74,6 @@ function formatValue(
   }
 
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Math.round(value));
-}
-
-function useCountUp(value: string | number, loading: boolean | undefined): string | number {
-  const numericValue = typeof value === 'number' ? value : null;
-  const [displayValue, setDisplayValue] = useState<number | string>(() => {
-    if (numericValue === null || loading) {
-      return value;
-    }
-
-    return 0;
-  });
-
-  useEffect(() => {
-    if (numericValue === null || loading) {
-      setDisplayValue(value);
-      return;
-    }
-
-    const targetValue = numericValue;
-    const duration = 800;
-    const startedAt = performance.now();
-    let frameId = 0;
-
-    function tick(now: number) {
-      const progress = Math.min((now - startedAt) / duration, 1);
-      setDisplayValue(Math.round(targetValue * progress));
-
-      if (progress < 1) {
-        frameId = requestAnimationFrame(tick);
-      }
-    }
-
-    frameId = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(frameId);
-    };
-  }, [loading, numericValue, value]);
-
-  return displayValue;
 }
 
 function DeltaChip({
@@ -145,10 +99,10 @@ function DeltaChip({
   return (
     <span
       className={cn(
-        'inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs font-semibold',
+        'inline-flex h-7 items-center gap-1 rounded-sm border px-2 text-xs font-semibold tabular-nums',
         isGood
-          ? 'border-success/20 bg-green-50 text-success'
-          : 'border-danger/20 bg-red-50 text-danger',
+          ? 'border-success/20 bg-success-subtle text-success'
+          : 'border-danger/20 bg-danger-subtle text-danger',
       )}
       data-kpi-delta-tone={isGood ? 'positive' : 'negative'}
     >
@@ -158,8 +112,68 @@ function DeltaChip({
   );
 }
 
+function useCountUp({
+  format,
+  loading,
+  value,
+}: {
+  format: (value: number) => string;
+  loading: boolean;
+  value: number;
+}) {
+  const outputRef = useRef<HTMLOutputElement>(null);
+  const hasAnimated = useRef(false);
+  const prefersReducedMotion = useReducedMotion();
+  const formattedValue = format(value);
+
+  useEffect(() => {
+    const output = outputRef.current;
+
+    if (!output || loading) {
+      return;
+    }
+
+    if (hasAnimated.current || prefersReducedMotion) {
+      output.textContent = formattedValue;
+      hasAnimated.current = true;
+      return;
+    }
+
+    hasAnimated.current = true;
+    const controls = animate(0, value, {
+      duration: 0.5,
+      ease: [0.2, 0, 0, 1],
+      onUpdate: (latest) => {
+        output.textContent = format(latest);
+      },
+    });
+
+    return () => {
+      controls.stop();
+    };
+  }, [format, formattedValue, loading, prefersReducedMotion, value]);
+
+  return { formattedValue, outputRef };
+}
+
+function resolveTone({ accentColor, tone }: Pick<KPICardProps, 'accentColor' | 'tone'>): Tone {
+  if (tone) {
+    return tone;
+  }
+
+  if (accentColor === 'success') {
+    return 'success';
+  }
+
+  if (accentColor === 'warning') {
+    return 'warning';
+  }
+
+  return 'default';
+}
+
 export function KPICard({
-  accentColor = 'default',
+  accentColor,
   currency,
   deltaAbs,
   deltaPct,
@@ -170,67 +184,55 @@ export function KPICard({
   label,
   loading = false,
   sparkline,
+  tone,
   unit = 'count',
   value,
 }: KPICardProps) {
-  const gradientId = useId().replace(/:/g, '');
-  const animatedValue = useCountUp(value, loading);
-  const formattedValue = error ? '—' : formatValue(animatedValue, unit, currency);
+  const cardTone = resolveTone({ accentColor, tone });
+  const currencyFormatter = useCurrencyFormatter(currency);
+  const format = useMemo(
+    () => (nextValue: number) => formatValue(nextValue, unit, currencyFormatter),
+    [currencyFormatter, unit],
+  );
+  const { formattedValue, outputRef } = useCountUp({ format, loading: loading || error, value });
   const chartData = useMemo(() => sparkline ?? [], [sparkline]);
 
   return (
-    <output
-      aria-busy={loading}
-      aria-label={`${label}: ${formattedValue}`}
+    <article
       className={cn(
-        '@container min-h-[164px] rounded-lg border p-4 shadow-1',
-        'flex flex-col justify-between gap-3',
-        accentStyles[accentColor],
+        '@container min-h-[164px] rounded-md border p-4 shadow-1 transition duration-200 ease-standard md:p-6 md:hover:-translate-y-0.5 md:hover:shadow-2',
+        'flex flex-col justify-between gap-4',
+        toneStyles[cardTone],
       )}
       title={error ? errorLabel : undefined}
     >
       <div className="space-y-2">
-        <p className="text-sm font-medium text-muted">{label}</p>
+        <p className="text-[13px] font-medium leading-snug text-muted">{label}</p>
         {loading ? (
           <div
-            className="h-11 w-32 animate-pulse rounded-md bg-border"
+            className="h-10 w-32 animate-pulse rounded-sm bg-border md:h-11"
             data-testid="kpi-value-skeleton"
           />
         ) : (
           <div className="w-full overflow-hidden">
-            <p className="whitespace-nowrap font-mono text-[clamp(1.25rem,4cqw,2.25rem)] leading-none text-text tabular-nums">
-              {formattedValue}
-            </p>
+            <output
+              aria-label={`${label}: ${error ? 'Indisponible' : formattedValue}`}
+              className="block whitespace-nowrap font-mono text-[clamp(1.5rem,4cqw,2.25rem)] leading-none text-text tabular-nums"
+              ref={outputRef}
+            >
+              {error ? '—' : formattedValue}
+            </output>
           </div>
         )}
       </div>
 
-      {chartData.length > 0 && !loading ? (
-        <div className="h-16 w-full" data-testid="kpi-sparkline">
-          <ResponsiveContainer height="100%" width="100%">
-            <AreaChart data={chartData} margin={{ bottom: 0, left: 0, right: 0, top: 4 }}>
-              <defs>
-                <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#EE8243" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#EE8243" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Area
-                dataKey="value"
-                fill={`url(#${gradientId})`}
-                isAnimationActive={false}
-                stroke="#EE8243"
-                strokeWidth={2}
-                type="monotone"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+      {chartData.length > 0 && !loading && !error ? (
+        <Sparkline data={chartData} tone={cardTone === 'success' ? 'success' : 'accent'} />
       ) : null}
 
       {loading ? (
         <div
-          className="h-7 w-20 animate-pulse rounded-full bg-border"
+          className="h-7 w-20 animate-pulse rounded-sm bg-border"
           data-testid="kpi-delta-skeleton"
         />
       ) : (
@@ -241,6 +243,6 @@ export function KPICard({
           invertDelta={invertDelta}
         />
       )}
-    </output>
+    </article>
   );
 }
