@@ -24,7 +24,7 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
   return (
     <div
       className={cn(
-        'flex min-h-24 flex-col gap-3 rounded-md border border-border bg-surface p-3 text-left shadow-1 transition duration-120 focus-within:ring-2 focus-within:ring-accent/60 md:hover:-translate-y-0.5 md:hover:shadow-2',
+        'flex min-h-24 flex-col gap-3 rounded-md border border-border bg-surface p-3 text-left shadow-1 transition duration-120 focus-within:ring-2 focus-within:ring-accent/60 md:hover:shadow-2',
         isOverlay && 'scale-[1.04] shadow-2',
       )}
     >

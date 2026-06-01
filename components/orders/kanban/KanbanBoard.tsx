@@ -17,6 +17,7 @@ import {
   orderStatusLabels,
 } from '@/lib/domain/order-state-machine';
 import { cn } from '@/lib/utils';
+import { MotionConfig, motion, useReducedMotion } from 'framer-motion';
 import { MoreHorizontal } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import dynamic from 'next/dynamic';
@@ -204,18 +205,20 @@ export function KanbanBoard({ ariaLabel, columns, toasts, transitionMenu }: Kanb
   }
 
   return (
-    <section aria-label={ariaLabel} className="space-y-4">
-      {isDesktop ? (
-        <DesktopKanbanBoard columns={visibleColumns} onMoveOrder={moveOrderToColumn} />
-      ) : (
-        <StaticKanbanBoard
-          columns={visibleColumns}
-          onMoveOrder={moveOrderToStatus}
-          transitionMenu={transitionMenu}
-        />
-      )}
-      <KanbanToast message={toast?.message ?? null} tone={toast?.tone ?? 'success'} />
-    </section>
+    <MotionConfig reducedMotion="user">
+      <section aria-label={ariaLabel} className="space-y-4">
+        {isDesktop ? (
+          <DesktopKanbanBoard columns={visibleColumns} onMoveOrder={moveOrderToColumn} />
+        ) : (
+          <StaticKanbanBoard
+            columns={visibleColumns}
+            onMoveOrder={moveOrderToStatus}
+            transitionMenu={transitionMenu}
+          />
+        )}
+        <KanbanToast message={toast?.message ?? null} tone={toast?.tone ?? 'success'} />
+      </section>
+    </MotionConfig>
   );
 }
 
@@ -256,6 +259,11 @@ function MobileTransitionMenu({
         <div
           aria-label={labels.label}
           className="absolute top-12 right-0 z-30 w-52 rounded-md border border-border bg-surface p-1 shadow-2"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setOpen(false);
+            }
+          }}
           role="menu"
         >
           {allowedTransitions.map((transition) => (
@@ -287,16 +295,34 @@ function StaticKanbanBoard({
   onMoveOrder: (orderId: string, to: OrderStatus) => Promise<void>;
   transitionMenu: KanbanBoardProps['transitionMenu'];
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <div className="overflow-x-auto pb-2">
-      <div className="flex min-h-[60vh] gap-4 md:min-w-max">
+      <motion.div
+        className="flex min-h-[60vh] gap-4 md:min-w-max"
+        initial={reduceMotion ? false : 'hidden'}
+        animate="visible"
+        variants={{
+          hidden: {},
+          visible: {
+            transition: {
+              staggerChildren: reduceMotion ? 0 : 0.06,
+            },
+          },
+        }}
+      >
         {columns.map((column) => (
-          <div
+          <motion.div
             className={cn(
               'flex w-[85vw] shrink-0 flex-col rounded-lg border p-4 shadow-1 md:w-[280px]',
               column.toneClassName,
             )}
             key={column.id}
+            variants={{
+              hidden: { opacity: 0, y: 8 },
+              visible: { opacity: 1, y: 0, transition: { duration: 0.28 } },
+            }}
           >
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="min-w-0 truncate text-sm font-semibold text-text">{column.title}</h2>
@@ -307,18 +333,24 @@ function StaticKanbanBoard({
             {column.orders.length > 0 ? (
               <div className="flex flex-1 flex-col gap-3">
                 {column.orders.map((order) => (
-                  <KanbanCard
-                    actions={
-                      <MobileTransitionMenu
-                        labels={transitionMenu}
-                        onMoveOrder={onMoveOrder}
-                        order={order}
-                      />
-                    }
-                    emptyLabel={column.emptyLabel}
+                  <motion.div
                     key={order.id}
-                    order={order}
-                  />
+                    layout={!reduceMotion}
+                    transition={{ duration: reduceMotion ? 0 : 0.2 }}
+                    whileHover={reduceMotion ? undefined : { y: -2 }}
+                  >
+                    <KanbanCard
+                      actions={
+                        <MobileTransitionMenu
+                          labels={transitionMenu}
+                          onMoveOrder={onMoveOrder}
+                          order={order}
+                        />
+                      }
+                      emptyLabel={column.emptyLabel}
+                      order={order}
+                    />
+                  </motion.div>
                 ))}
               </div>
             ) : (
@@ -326,9 +358,9 @@ function StaticKanbanBoard({
                 {column.emptyLabel}
               </div>
             )}
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
     </div>
   );
 }
