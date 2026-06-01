@@ -271,6 +271,44 @@
         "generic": "Une erreur est survenue, réessayez."
       }
     },
+    "shops": {
+      "restricted": "Accès réservé au propriétaire et aux gestionnaires.",
+      "title": "Boutiques",
+      "description": "Gérez la connexion Shopify utilisée pour synchroniser vos commandes.",
+      "connectNew": "Connecter une nouvelle boutique",
+      "retry": "Réessayer",
+      "installedAt": "Installée le",
+      "lastSync": "Dernière sync",
+      "neverSynced": "Jamais synchronisée",
+      "sync": "Synchroniser",
+      "syncing": "Synchronisation…",
+      "reconnect": "Reconnecter",
+      "status": {
+        "connected": "Connectée",
+        "error": "Erreur",
+        "syncing": "Synchronisation…",
+        "uninstalled": "Déconnectée"
+      },
+      "reasons": {
+        "tokenExpired": "Le jeton Shopify a expiré. Reconnectez la boutique pour relancer la synchronisation.",
+        "generic": "La connexion Shopify doit être vérifiée."
+      },
+      "empty": {
+        "title": "Aucune boutique connectée",
+        "description": "Connectez Shopify pour importer les commandes, clients et produits."
+      },
+      "disconnect": {
+        "submit": "Déconnecter",
+        "confirm": "Déconnecter cette boutique de Tëër ?"
+      },
+      "notices": {
+        "synced": "{count, plural, =0 {Aucune commande synchronisée.} one {# commande synchronisée.} other {# commandes synchronisées.}}",
+        "disconnected": "Boutique déconnectée."
+      },
+      "errors": {
+        "generic": "Une erreur est survenue, réessayez."
+      }
+    },
     "errors": {
       "shopName": "Le nom de boutique doit contenir au moins 2 caractères.",
       "ownerFullName": "Le nom du propriétaire doit contenir au moins 2 caractères.",

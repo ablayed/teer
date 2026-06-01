@@ -1,5 +1,6 @@
 'use client';
 
+import { SettingsShops } from '@/components/settings/settings-shops';
 import { SettingsTeam } from '@/components/settings/settings-team';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Button } from '@/components/ui/button';
@@ -260,6 +261,15 @@ export function SettingsProfile({
           role="tabpanel"
         >
           <SettingsTeam currentRole={currentRole} />
+        </section>
+      ) : activeTab === 'shops' ? (
+        <section
+          aria-labelledby="settings-tab-shops"
+          className="max-w-5xl"
+          id="settings-panel-shops"
+          role="tabpanel"
+        >
+          <SettingsShops currentRole={currentRole} />
         </section>
       ) : (
         <section
