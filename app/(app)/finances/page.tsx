@@ -4,6 +4,7 @@ import type {
   FinanceShortfall,
 } from '@/components/finance/DriverSettlementsPanel';
 import { FinanceChartsLoader } from '@/components/finance/FinanceChartsLoader';
+import { FinanceSettingsLoader } from '@/components/finance/FinanceSettingsLoader';
 import { getCodBreakdown, getRevenue30d, getShopPerformance } from '@/lib/actions/dashboard';
 import { cashCollectableMinor } from '@/lib/finance/cash';
 import {
@@ -280,6 +281,16 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         wave_fee_bps: settingsRow.wave_fee_bps,
       }
     : defaultSettings;
+  const settingsValues = {
+    cogsKnown: settings.cogs_known,
+    defaultDeliveryCostMinor: settings.default_delivery_cost_minor,
+    freeMoneyFeeBps: settings.free_money_fee_bps,
+    merchantLevyBps: settings.merchant_levy_bps,
+    orangeMoneyFeeBps: settings.orange_money_fee_bps,
+    transferTaxBps: settings.transfer_tax_bps,
+    transferTaxCapMinor: settings.transfer_tax_cap_minor,
+    waveFeeBps: settings.wave_fee_bps,
+  };
   const settlementRows = (settlementsResult.data ?? []) as Array<{
     amount_received_minor: number;
     method: SettlementForMargin['method'];
@@ -465,6 +476,8 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         drivers={driverOutstandings}
         shortfalls={shortfalls}
       />
+
+      <FinanceSettingsLoader currentRole={role} settings={settingsValues} />
 
       <FinanceChartsLoader
         aging={aging}
