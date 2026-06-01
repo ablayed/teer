@@ -1,38 +1,33 @@
 import { cn } from '@/lib/utils';
+import { type VariantProps, cva } from 'class-variance-authority';
 import type { ComponentProps } from 'react';
 
-type ButtonProps = ComponentProps<'button'> & {
-  size?: 'default' | 'sm';
-  variant?: 'primary' | 'ghost';
-};
+const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-2 rounded-md font-medium transition disabled:pointer-events-none disabled:opacity-50',
+  {
+    variants: {
+      size: {
+        default: 'h-11 px-5',
+        sm: 'h-9 px-3 text-sm',
+      },
+      variant: {
+        primary: 'bg-accent text-accent-ink hover:bg-accent-hover',
+        ghost: 'bg-transparent text-text hover:bg-canvas',
+        secondary: 'border border-border bg-surface text-text shadow-1 hover:bg-canvas',
+        destructive: 'border border-danger/30 bg-danger-subtle text-danger hover:bg-danger/15',
+      },
+    },
+    defaultVariants: {
+      size: 'default',
+      variant: 'primary',
+    },
+  },
+);
 
-const sizes = {
-  default: 'h-11 px-5',
-  sm: 'h-9 px-3 text-sm',
-};
+type ButtonProps = ComponentProps<'button'> & VariantProps<typeof buttonVariants>;
 
-const variants = {
-  primary: 'bg-accent text-[#111] hover:bg-accent-soft',
-  ghost: 'bg-transparent text-text hover:bg-canvas',
-};
-
-export function Button({
-  className,
-  size = 'default',
-  type = 'button',
-  variant = 'primary',
-  ...props
-}: ButtonProps) {
+export function Button({ className, size, type = 'button', variant, ...props }: ButtonProps) {
   return (
-    <button
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition disabled:pointer-events-none disabled:opacity-50',
-        sizes[size],
-        variants[variant],
-        className,
-      )}
-      type={type}
-      {...props}
-    />
+    <button className={cn(buttonVariants({ size, variant }), className)} type={type} {...props} />
   );
 }
