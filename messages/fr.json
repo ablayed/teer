@@ -447,7 +447,9 @@
     "restricted": "Accès réservé au propriétaire et aux gestionnaires.",
     "empty": "Aucune donnée financière pour cette période.",
     "report": {
-      "testPdf": "Tester le PDF"
+      "download": "Télécharger le rapport PDF",
+      "error": "Le rapport n'a pas pu être généré. Réessayez.",
+      "loading": "Génération du rapport..."
     },
     "periods": {
       "today": "Aujourd'hui",
@@ -533,6 +535,28 @@
       "error": "Une erreur est survenue, réessayez."
     }
   },
+  "report": {
+    "amount": "Montant",
+    "collected": "Encaissé",
+    "error": "Le rapport n'a pas pu être généré.",
+    "feesTitle": "Frais mobile money par méthode",
+    "forbidden": "Accès réservé au propriétaire et aux gestionnaires.",
+    "generatedBy": "généré par Tëër",
+    "generatedOn": "Généré le",
+    "headerTitle": "Compte rendu de la boutique",
+    "pending": "À encaisser",
+    "period": "Période",
+    "productsTitle": "Top produits",
+    "quantity": "Quantité",
+    "reconciliationTitle": "Réconciliation cash par livreur",
+    "settled": "Réglé",
+    "shortfall": "Manquant",
+    "statusTitle": "Commandes par statut COD",
+    "title": "Compte rendu de la boutique",
+    "total": "Total",
+    "trendTitle": "Tendance du CA livré",
+    "unauthenticated": "Connexion requise."
+  },
   "orders": {
     "title": "Commandes",
     "subtitle": "Suivez les commandes Shopify importées et leur statut COD.",
@@ -554,6 +578,10 @@
       "date": "Date",
       "details": "Détail",
       "emptyValue": "Non renseigné"
+    },
+    "whatsapp": {
+      "confirm": "Confirmer sur WhatsApp",
+      "missingPhone": "Numéro de téléphone manquant"
     },
     "empty": {
       "noShopTitle": "Connectez votre boutique Shopify",

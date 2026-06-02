@@ -1,69 +1,141 @@
 import { registerPdfFonts } from '@/lib/pdf/fonts';
 import { formatMoneyPdf } from '@/lib/pdf/format';
-import { Document, Page, StyleSheet, Text, View, renderToStream } from '@react-pdf/renderer';
-import type { ReactElement } from 'react';
+import { getReportData, reportFilename } from '@/lib/report/data';
+import type { ReportData } from '@/lib/report/data';
+import { ReportDocument } from '@/lib/report/document';
+import { renderToStream } from '@react-pdf/renderer';
+import { getTranslations } from 'next-intl/server';
 
 export const runtime = 'nodejs';
 
-const styles = StyleSheet.create({
-  page: {
-    backgroundColor: '#F4F3ED',
-    color: '#111111',
-    fontFamily: 'Geist',
-    padding: 40,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E2D8',
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 24,
-  },
-  date: {
-    color: '#666666',
-    fontSize: 12,
-    marginTop: 16,
-  },
-  money: {
-    fontFamily: 'Geist Mono',
-    fontSize: 16,
-    marginTop: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 700,
-  },
-});
+function parseDate(value: string | null, fallback: Date, endOfDay = false): Date {
+  if (!value) {
+    return fallback;
+  }
 
-function HelloReportDocument(): ReactElement {
-  const generatedAt = new Intl.DateTimeFormat('fr-FR', {
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999);
+  }
+
+  return date;
+}
+
+function defaultFrom(now: Date): Date {
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - 29);
+
+  return from;
+}
+
+function formatDateFr(date: Date): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'Africa/Dakar',
+    year: 'numeric',
+  }).format(date);
+}
+
+function formatDateTimeFr(date: Date): string {
+  return new Intl.DateTimeFormat('fr-FR', {
     dateStyle: 'long',
     timeStyle: 'short',
     timeZone: 'Africa/Dakar',
-  }).format(new Date());
-
-  return (
-    <Document author="Tëër" subject="Compte rendu de validation PDF" title="Compte rendu — Réglé">
-      <Page size="A4" style={styles.page}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Compte rendu — Réglé</Text>
-          <Text style={styles.money}>Total : {formatMoneyPdf(1_234_567, 'XOF')}</Text>
-          <Text style={styles.date}>Généré le {generatedAt}</Text>
-        </View>
-      </Page>
-    </Document>
-  );
+  }).format(date);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   registerPdfFonts();
+  const t = await getTranslations('report');
+  const finance = await getTranslations('finance');
+  const url = new URL(request.url);
+  const now = new Date();
+  const to = parseDate(url.searchParams.get('to'), now, true);
+  const from = parseDate(url.searchParams.get('from'), defaultFrom(now));
+  let data: ReportData;
 
-  const stream = await renderToStream(<HelloReportDocument />);
+  try {
+    data = await getReportData({
+      from,
+      shopId: url.searchParams.get('shopId'),
+      to,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
+      return new Response(t('unauthenticated'), { status: 401 });
+    }
+
+    if (error instanceof Error && error.message === 'FORBIDDEN') {
+      return new Response(t('forbidden'), { status: 403 });
+    }
+
+    return new Response(t('error'), { status: 500 });
+  }
+  const labels = {
+    agingTitle: finance('charts.aging'),
+    amount: t('amount'),
+    cashDrivers: finance('kpis.cashDrivers'),
+    collected: t('collected'),
+    deliveredRevenue: finance('kpis.caLivre'),
+    empty: finance('charts.empty'),
+    estimatedMargin: finance('kpis.marginEstimate'),
+    feesTitle: t('feesTitle'),
+    generatedBy: t('generatedBy'),
+    generatedOn: t('generatedOn'),
+    grossMarginEstimated: finance('kpis.margin'),
+    headerTitle: t('headerTitle'),
+    method: {
+      ESPECES: finance('methods.ESPECES'),
+      FREE_MONEY: finance('methods.FREE_MONEY'),
+      ORANGE_MONEY: finance('methods.ORANGE_MONEY'),
+      WAVE: finance('methods.WAVE'),
+    },
+    pending: t('pending'),
+    period: t('period'),
+    productsTitle: t('productsTitle'),
+    quantity: t('quantity'),
+    reconciliationTitle: t('reconciliationTitle'),
+    refusalRate: finance('kpis.rto'),
+    reportTitle: t('title'),
+    settled: t('settled'),
+    shortfall: t('shortfall'),
+    status: {
+      A_APPELER: finance('status.A_APPELER'),
+      ANNULEE: finance('status.ANNULEE'),
+      CONFIRMEE: finance('status.CONFIRMEE'),
+      EN_LIVRAISON: finance('status.EN_LIVRAISON'),
+      LIVREE: finance('status.LIVREE'),
+      PROGRAMMEE: finance('status.PROGRAMMEE'),
+      REFUSEE: finance('status.REFUSEE'),
+      TENTEE: finance('status.TENTEE'),
+    },
+    statusTitle: t('statusTitle'),
+    total: t('total'),
+    trendTitle: t('trendTitle'),
+  };
+
+  const stream = await renderToStream(
+    <ReportDocument
+      data={data}
+      formatDate={formatDateFr}
+      formatDateTime={formatDateTimeFr}
+      formatMoney={formatMoneyPdf}
+      labels={labels}
+    />,
+  );
+  const filename = reportFilename({ from: data.from, shopSlug: data.shop.slug, to: data.to });
 
   return new Response(stream as unknown as BodyInit, {
     headers: {
       'Cache-Control': 'private, no-store',
-      'Content-Disposition': 'attachment; filename="teer-hello-rapport.pdf"',
+      'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Type': 'application/pdf',
     },
   });
