@@ -36,7 +36,9 @@ export type OrderListItem = Pick<
   | 'currency'
   | 'customer_id'
   | 'id'
+  | 'items_summary'
   | 'order_number'
+  | 'shipping_address'
   | 'total_amount'
 > & {
   customer: CustomerSummary | null;
@@ -207,7 +209,7 @@ export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<Ord
   let query = supabase
     .from('orders')
     .select(
-      'id, customer_id, order_number, total_amount, currency, cod_status, created_at, created_at_shopify, customer:customer_id(full_name, phone)',
+      'id, customer_id, order_number, total_amount, currency, cod_status, items_summary, shipping_address, created_at, created_at_shopify, customer:customer_id(full_name, phone)',
     )
     .order('created_at_shopify', { ascending: false, nullsFirst: false });
 

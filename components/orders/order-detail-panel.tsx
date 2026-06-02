@@ -2,6 +2,7 @@
 
 import { CallLogForm } from '@/components/orders/call-log-form';
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
+import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { Button } from '@/components/ui/button';
 import {
   type OrderDetail,
@@ -16,14 +17,14 @@ import {
 } from '@/lib/domain/order-state-machine';
 import { formatDateTime } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
-import { formatPhoneSN, toWhatsAppLink } from '@/lib/format/phone';
+import { formatPhoneSN } from '@/lib/format/phone';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
+import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
 import {
   ArrowLeft,
   CheckCircle2,
   Clock3,
-  ExternalLink,
   MapPin,
   Phone,
   ShoppingBag,
@@ -39,7 +40,12 @@ type OrderDetailPanelProps = {
   mode: 'page' | 'sheet';
   onClose?: () => void;
   order: OrderDetail;
+  shopName: string;
   timeline: OrderTimelineEvent[];
+  whatsappLabels: {
+    confirm: string;
+    missingPhone: string;
+  };
 };
 
 type ShippingAddress = {
@@ -285,7 +291,14 @@ function ActionBar({
   );
 }
 
-export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetailPanelProps) {
+export function OrderDetailPanel({
+  mode,
+  onClose,
+  order,
+  shopName,
+  timeline,
+  whatsappLabels,
+}: OrderDetailPanelProps) {
   const [visibleTimeline, setVisibleTimeline] = useState(timeline);
   const [optimisticStatus, setOptimisticStatus] = useState<OrderStatus>(() =>
     toOrderStatus(order.cod_status),
@@ -295,10 +308,21 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
   const shippingAddress = parseShippingAddress(order.shipping_address);
   const structuredAddress = order.delivery_address ?? order.customer_delivery_address;
   const items = parseItemsSummary(order.items_summary);
-  const phone = order.customer?.phone;
+  const phone = order.customer?.phone ?? null;
   const fallbackQuartier = [shippingAddress?.address1, shippingAddress?.address2]
     .filter(Boolean)
     .join(', ');
+  const formattedDeliveryAddress = formatAddress(shippingAddress, emptyValue);
+  const whatsappUrl = buildWhatsAppConfirmationUrl({
+    address: formattedDeliveryAddress === emptyValue ? null : formattedDeliveryAddress,
+    currency: order.currency,
+    customerFirstName: firstName(order.customer?.full_name),
+    itemsSummary: order.items_summary,
+    orderNumber: order.order_number,
+    phone,
+    shopName,
+    totalAmount: order.total_amount,
+  });
   const contentClassName =
     mode === 'sheet'
       ? 'flex h-full min-h-0 w-full flex-col'
@@ -379,17 +403,19 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
                   <Phone aria-hidden="true" className="size-4" />
                   Appeler
                 </a>
-                <a
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#128C7E] px-3 text-sm font-medium text-white hover:brightness-95"
-                  href={toWhatsAppLink(phone)}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ExternalLink aria-hidden="true" className="size-4" />
-                  WhatsApp
-                </a>
+                <WhatsAppConfirmButton
+                  disabledLabel={whatsappLabels.missingPhone}
+                  label={whatsappLabels.confirm}
+                  url={whatsappUrl}
+                />
               </div>
-            ) : null}
+            ) : (
+              <WhatsAppConfirmButton
+                disabledLabel={whatsappLabels.missingPhone}
+                label={whatsappLabels.confirm}
+                url={null}
+              />
+            )}
           </div>
         </section>
 
@@ -397,7 +423,7 @@ export function OrderDetailPanel({ mode, onClose, order, timeline }: OrderDetail
           <h2 className="text-sm font-semibold uppercase text-muted">Livraison</h2>
           <p className="flex gap-2 text-sm italic leading-6 text-muted">
             <MapPin aria-hidden="true" className="mt-1 size-4 shrink-0 text-accent" />
-            {formatAddress(shippingAddress, emptyValue)}
+            {formattedDeliveryAddress}
           </p>
           <DeliveryAddressForm
             fallbackPhone={phone}

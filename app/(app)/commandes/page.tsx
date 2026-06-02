@@ -1,4 +1,5 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
+import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
 import type { KanbanColumnView } from '@/components/orders/kanban/KanbanBoard';
 import { KanbanBoardLoader } from '@/components/orders/kanban/KanbanBoardLoader';
 import {
@@ -7,12 +8,17 @@ import {
 } from '@/components/orders/kanban/kanban-utils';
 import { OrdersViewToggle } from '@/components/orders/orders-view-toggle';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
+import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
+import { getMerchantAccount } from '@/lib/actions/merchant';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateAbsolute } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { type CodStatus, codStatuses, isCodStatus } from '@/lib/orders/status';
+import type { Database, Json } from '@/lib/supabase/database.types';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
 import { AlertCircle, ArrowRight, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -25,6 +31,10 @@ type CommandesPageProps = {
     synced?: string;
   }>;
 };
+
+type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
+type ReliabilityRow =
+  Database['public']['Functions']['get_customer_reliability']['Returns'][number];
 
 const syncErrorCodes = ['no_shop', 'sync_failed', 'token_error'] as const;
 type SyncErrorCode = (typeof syncErrorCodes)[number];
@@ -62,18 +72,120 @@ function viewModeParam(value: string | undefined): 'liste' | 'kanban' {
   return value === 'kanban' ? 'kanban' : 'liste';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function formatOrderAddress(value: Json | null): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const parts = [
+    stringField(value, 'address1'),
+    stringField(value, 'address2'),
+    stringField(value, 'city'),
+    stringField(value, 'province'),
+    stringField(value, 'country'),
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+function getCustomerReliabilityRpc(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+) {
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    fn: 'get_customer_reliability',
+    args: { p_customer_id: string; p_merchant_id: string },
+  ) => Promise<{ data: ReliabilityRow[] | null; error: unknown }>;
+
+  return rpc;
+}
+
+function isReliabilityTier(value: string | null): value is ReliabilityTier {
+  return value === 'new' || value === 'reliable' || value === 'risk' || value === 'watch';
+}
+
+async function getReliabilityTiers(customerIds: string[]): Promise<Map<string, ReliabilityTier>> {
+  const uniqueCustomerIds = [...new Set(customerIds)];
+
+  if (uniqueCustomerIds.length === 0) {
+    return new Map();
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return new Map();
+  }
+
+  const { data: memberRow } = await supabase
+    .from('merchant_member')
+    .select('merchant_account_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+  const member = memberRow as { merchant_account_id: string } | null;
+
+  if (!member) {
+    return new Map();
+  }
+
+  const entries = await Promise.all(
+    uniqueCustomerIds.map(async (customerId) => {
+      const { data } = await getCustomerReliabilityRpc(supabase)('get_customer_reliability', {
+        p_customer_id: customerId,
+        p_merchant_id: member.merchant_account_id,
+      });
+      const tier = data?.[0]?.tier ?? null;
+
+      return isReliabilityTier(tier) ? ([customerId, tier] as const) : null;
+    }),
+  );
+
+  return new Map(entries.filter((entry): entry is readonly [string, ReliabilityTier] => !!entry));
+}
+
 export default async function CommandesPage({ searchParams }: CommandesPageProps) {
   const t = await getTranslations('orders');
+  const clientsT = await getTranslations('clients');
   const params = await searchParams;
   const activeView = viewModeParam(params.vue);
   const activeStatus = statusParam(params.statut);
-  const [orders, shopConnection] = await Promise.all([getOrders(), getShopConnection()]);
+  const [orders, shopConnection, merchant] = await Promise.all([
+    getOrders(),
+    getShopConnection(),
+    getMerchantAccount(),
+  ]);
   const visibleOrders =
     activeStatus === 'toutes'
       ? orders
       : orders
           .filter((order) => orderStatus(order.cod_status) === activeStatus)
           .sort((left, right) => orderQueueDate(left).localeCompare(orderQueueDate(right)));
+  const reliabilityTiers =
+    activeStatus === 'A_APPELER'
+      ? await getReliabilityTiers(
+          visibleOrders
+            .map((order) => order.customer_id)
+            .filter((customerId): customerId is string => Boolean(customerId)),
+        )
+      : new Map<string, ReliabilityTier>();
+  const reliabilityLabels = {
+    new: clientsT('tiers.new'),
+    reliable: clientsT('tiers.reliable'),
+    risk: clientsT('tiers.risk'),
+    watch: clientsT('tiers.watch'),
+  };
   const statusCounts = Object.fromEntries(
     codStatuses.map((status) => [
       status,
@@ -273,7 +385,17 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                     </td>
                     <td className="text-muted">
                       <Link className="block px-4 py-4" href={`/commandes/${order.id}`}>
-                        {order.customer?.full_name ?? t('table.emptyValue')}
+                        <span className="inline-flex items-center gap-2">
+                          <span>{order.customer?.full_name ?? t('table.emptyValue')}</span>
+                          <CustomerReliabilityBadge
+                            labels={reliabilityLabels}
+                            tier={
+                              order.customer_id
+                                ? (reliabilityTiers.get(order.customer_id) ?? null)
+                                : null
+                            }
+                          />
+                        </span>
                       </Link>
                     </td>
                     <td className="font-medium">
@@ -293,14 +415,32 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                           : t('table.emptyValue')}
                       </Link>
                     </td>
-                    <td className="px-4 py-4 text-right">
-                      <Link
-                        className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 font-medium text-text hover:bg-canvas"
-                        href={`/commandes/${order.id}`}
-                      >
-                        {t('table.details')}
-                        <ArrowRight aria-hidden="true" className="size-4" />
-                      </Link>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {orderStatus(order.cod_status) === 'A_APPELER' ? (
+                          <WhatsAppConfirmButton
+                            disabledLabel={t('whatsapp.missingPhone')}
+                            label={t('whatsapp.confirm')}
+                            url={buildWhatsAppConfirmationUrl({
+                              address: formatOrderAddress(order.shipping_address),
+                              currency: order.currency,
+                              customerFirstName: firstName(order.customer?.full_name),
+                              itemsSummary: order.items_summary,
+                              orderNumber: order.order_number,
+                              phone: order.customer?.phone ?? null,
+                              shopName: merchant?.name ?? 'Tëër',
+                              totalAmount: order.total_amount,
+                            })}
+                          />
+                        ) : null}
+                        <Link
+                          className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-medium text-text hover:bg-canvas"
+                          href={`/commandes/${order.id}`}
+                        >
+                          {t('table.details')}
+                          <ArrowRight aria-hidden="true" className="size-4" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -310,17 +450,21 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
 
           <div className="divide-y divide-border md:hidden">
             {visibleOrders.map((order) => (
-              <Link
-                className="block p-4 hover:bg-canvas/60"
-                href={`/commandes/${order.id}`}
-                key={order.id}
-              >
+              <article className="p-4 hover:bg-canvas/60" key={order.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold">{order.order_number ?? t('table.emptyValue')}</p>
-                    <p className="mt-1 text-sm text-muted">
-                      {order.customer?.full_name ?? t('table.emptyValue')}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
+                      <span>{order.customer?.full_name ?? t('table.emptyValue')}</span>
+                      <CustomerReliabilityBadge
+                        labels={reliabilityLabels}
+                        tier={
+                          order.customer_id
+                            ? (reliabilityTiers.get(order.customer_id) ?? null)
+                            : null
+                        }
+                      />
+                    </div>
                   </div>
                   <CodStatusBadge status={orderStatus(order.cod_status)} />
                 </div>
@@ -332,7 +476,32 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                       : t('table.emptyValue')}
                   </p>
                 </div>
-              </Link>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  {orderStatus(order.cod_status) === 'A_APPELER' ? (
+                    <WhatsAppConfirmButton
+                      disabledLabel={t('whatsapp.missingPhone')}
+                      label={t('whatsapp.confirm')}
+                      url={buildWhatsAppConfirmationUrl({
+                        address: formatOrderAddress(order.shipping_address),
+                        currency: order.currency,
+                        customerFirstName: firstName(order.customer?.full_name),
+                        itemsSummary: order.items_summary,
+                        orderNumber: order.order_number,
+                        phone: order.customer?.phone ?? null,
+                        shopName: merchant?.name ?? 'Tëër',
+                        totalAmount: order.total_amount,
+                      })}
+                    />
+                  ) : null}
+                  <Link
+                    className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-medium text-text hover:bg-canvas"
+                    href={`/commandes/${order.id}`}
+                  >
+                    {t('table.details')}
+                    <ArrowRight aria-hidden="true" className="size-4" />
+                  </Link>
+                </div>
+              </article>
             ))}
           </div>
         </section>

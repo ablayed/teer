@@ -8,7 +8,12 @@ import { type MouseEvent, useCallback, useEffect } from 'react';
 
 type OrderSideSheetProps = {
   order: OrderDetail;
+  shopName: string;
   timeline: OrderTimelineEvent[];
+  whatsappLabels: {
+    confirm: string;
+    missingPhone: string;
+  };
 };
 
 const sheetTransition = {
@@ -16,7 +21,7 @@ const sheetTransition = {
   ease: [0.22, 1, 0.36, 1],
 } as const;
 
-export function OrderSideSheet({ order, timeline }: OrderSideSheetProps) {
+export function OrderSideSheet({ order, shopName, timeline, whatsappLabels }: OrderSideSheetProps) {
   const router = useRouter();
 
   const close = useCallback(() => {
@@ -61,7 +66,14 @@ export function OrderSideSheet({ order, timeline }: OrderSideSheetProps) {
           open
           transition={sheetTransition}
         >
-          <OrderDetailPanel mode="sheet" onClose={close} order={order} timeline={timeline} />
+          <OrderDetailPanel
+            mode="sheet"
+            onClose={close}
+            order={order}
+            shopName={shopName}
+            timeline={timeline}
+            whatsappLabels={whatsappLabels}
+          />
         </motion.dialog>
       </motion.div>
     </AnimatePresence>
