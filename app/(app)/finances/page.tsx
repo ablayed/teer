@@ -126,17 +126,21 @@ function kpiCard(label: string, value: string, description?: string) {
 }
 
 function financeKpisRpc(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  return supabase.rpc as unknown as (
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
     fn: 'finance_kpis',
     args: { p_from: string; p_merchant: string; p_to: string },
   ) => Promise<{ data: FinanceKpiRow[] | null; error: unknown }>;
+
+  return rpc;
 }
 
 function cashAgingRpc(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
-  return supabase.rpc as unknown as (
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
     fn: 'cash_aging',
     args: { p_merchant: string },
   ) => Promise<{ data: CashAgingRow[] | null; error: unknown }>;
+
+  return rpc;
 }
 
 function paymentChannelIsCash(channel: string | null): boolean {
