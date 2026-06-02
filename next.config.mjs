@@ -5,7 +5,11 @@ const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingIncludes: {
+    '/api/rapport': ['./lib/pdf/fonts/*.ttf'],
+  },
   reactStrictMode: true,
+  serverExternalPackages: ['@react-pdf/renderer'],
 };
 
 const configWithIntl = withNextIntl(nextConfig);

@@ -446,6 +446,9 @@
     "subtitle": "Suivez le cash collecté, les versements livreurs et la marge estimée.",
     "restricted": "Accès réservé au propriétaire et aux gestionnaires.",
     "empty": "Aucune donnée financière pour cette période.",
+    "report": {
+      "testPdf": "Tester le PDF"
+    },
     "periods": {
       "today": "Aujourd'hui",
       "7j": "7 j",

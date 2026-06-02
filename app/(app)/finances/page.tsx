@@ -15,7 +15,7 @@ import {
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { ArrowRight, LockKeyhole, Wallet } from 'lucide-react';
+import { ArrowRight, FileDown, LockKeyhole, Wallet } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
@@ -386,45 +386,54 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
           <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
           <p className="max-w-2xl text-muted">{t('subtitle')}</p>
         </div>
-        <form className="flex flex-wrap items-end gap-2" method="get">
-          <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
-            {periods.map((period) => (
-              <Link
-                className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
-                  activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
-                }`}
-                href={`/finances?period=${period}`}
-                key={period}
-              >
-                {t(`periods.${period}`)}
-              </Link>
-            ))}
-          </div>
-          <label className="space-y-1 text-xs font-medium text-muted">
-            {t('periods.from')}
-            <input
-              className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-              defaultValue={toDateInput(from)}
-              name="from"
-              type="date"
-            />
-          </label>
-          <label className="space-y-1 text-xs font-medium text-muted">
-            {t('periods.to')}
-            <input
-              className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-              defaultValue={toDateInput(to)}
-              name="to"
-              type="date"
-            />
-          </label>
-          <button
-            className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
-            type="submit"
+        <div className="flex flex-col items-stretch gap-3 md:items-end">
+          <a
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
+            href="/api/rapport"
           >
-            {t('periods.custom')}
-          </button>
-        </form>
+            <FileDown aria-hidden="true" className="size-4" />
+            {t('report.testPdf')}
+          </a>
+          <form className="flex flex-wrap items-end gap-2" method="get">
+            <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
+              {periods.map((period) => (
+                <Link
+                  className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
+                    activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
+                  }`}
+                  href={`/finances?period=${period}`}
+                  key={period}
+                >
+                  {t(`periods.${period}`)}
+                </Link>
+              ))}
+            </div>
+            <label className="space-y-1 text-xs font-medium text-muted">
+              {t('periods.from')}
+              <input
+                className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+                defaultValue={toDateInput(from)}
+                name="from"
+                type="date"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-muted">
+              {t('periods.to')}
+              <input
+                className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+                defaultValue={toDateInput(to)}
+                name="to"
+                type="date"
+              />
+            </label>
+            <button
+              className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
+              type="submit"
+            >
+              {t('periods.custom')}
+            </button>
+          </form>
+        </div>
       </header>
 
       {!hasFinancialData ? (
