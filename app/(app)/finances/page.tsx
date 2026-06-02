@@ -5,6 +5,7 @@ import type {
 } from '@/components/finance/DriverSettlementsPanel';
 import { FinanceChartsLoader } from '@/components/finance/FinanceChartsLoader';
 import { FinanceSettingsLoader } from '@/components/finance/FinanceSettingsLoader';
+import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
 import { getCodBreakdown, getRevenue30d, getShopPerformance } from '@/lib/actions/dashboard';
 import { cashCollectableMinor } from '@/lib/finance/cash';
 import {
@@ -15,7 +16,7 @@ import {
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { ArrowRight, FileDown, LockKeyhole, Wallet } from 'lucide-react';
+import { ArrowRight, LockKeyhole, Wallet } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
@@ -391,13 +392,13 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
           <p className="max-w-2xl text-muted">{t('subtitle')}</p>
         </div>
         <div className="flex flex-col items-stretch gap-3 md:items-end">
-          <a
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
-            href="/api/rapport"
-          >
-            <FileDown aria-hidden="true" className="size-4" />
-            {t('report.testPdf')}
-          </a>
+          <ReportDownloadButton
+            errorLabel={t('report.error')}
+            from={toDateInput(from)}
+            label={t('report.download')}
+            loadingLabel={t('report.loading')}
+            to={toDateInput(to)}
+          />
           <form className="flex flex-wrap items-end gap-2" method="get">
             <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
               {periods.map((period) => (
