@@ -965,6 +965,15 @@ export type Database = {
           tier: string;
         }[];
       };
+      reconcile_order_cod_status: {
+        Args: never;
+        Returns: {
+          derived_cod_status: string;
+          merchant_account_id: string;
+          order_id: string;
+          stored_cod_status: string;
+        }[];
+      };
       record_cash_settlement: {
         Args: {
           p_actor?: string;
@@ -979,6 +988,24 @@ export type Database = {
         Returns: Json;
       };
       transition_order:
+        | {
+            Args: {
+              p_actor: string;
+              p_assigned_driver_id?: string;
+              p_attempt_count?: number;
+              p_call_state?: string;
+              p_cancel_reason?: string;
+              p_cash_state?: string;
+              p_delivery_state?: string;
+              p_next_contact_at?: string;
+              p_note?: string;
+              p_order_id: string;
+              p_order_state?: string;
+              p_payment_channel?: string;
+              p_scheduled_for?: string;
+            };
+            Returns: string;
+          }
         | {
             Args: {
               p_actor: string;
