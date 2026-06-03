@@ -4,17 +4,10 @@ import { CallLogForm } from '@/components/orders/call-log-form';
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
 import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { Button } from '@/components/ui/button';
-import {
-  type OrderDetail,
-  type OrderTimelineEvent,
-  transitionOrderStatusAction,
-} from '@/lib/actions/orders';
-import {
-  type OrderStatus,
-  getAllowedTransitions,
-  isTerminal,
-  orderStatusLabels,
-} from '@/lib/domain/order-state-machine';
+import type { OrderDetail, OrderTimelineEvent } from '@/lib/actions/orders';
+import { performTransition } from '@/lib/actions/transitions';
+import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-machine';
+import type { TransitionAction } from '@/lib/domain/order-transition-actions';
 import { formatDateTime } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
@@ -65,18 +58,32 @@ type ItemSummary = {
 
 type TransitionButtonConfig = {
   label: string;
-  to: OrderStatus;
+  action: TransitionAction;
   tone: 'primary' | 'secondary' | 'accent' | 'destructive';
 };
 
-const primaryTransitionConfigs: Partial<Record<OrderStatus, TransitionButtonConfig[]>> = {
-  CONFIRMEE: [{ label: 'Programmer la livraison', to: 'PROGRAMMEE', tone: 'primary' }],
-  PROGRAMMEE: [{ label: 'Marquer en livraison', to: 'EN_LIVRAISON', tone: 'primary' }],
-  EN_LIVRAISON: [
-    { label: 'Marquer livrée', to: 'LIVREE', tone: 'accent' },
-    { label: 'Retour client', to: 'REFUSEE', tone: 'secondary' },
-  ],
+const transitionButtonConfigs: Record<TransitionAction, TransitionButtonConfig> = {
+  journaliser_appel: {
+    action: 'journaliser_appel',
+    label: 'Journaliser une tentative',
+    tone: 'secondary',
+  },
+  confirmer: { action: 'confirmer', label: 'Confirmer', tone: 'primary' },
+  programmer: { action: 'programmer', label: 'Programmer la livraison', tone: 'primary' },
+  assigner: { action: 'assigner', label: 'Assigner', tone: 'primary' },
+  livrer: { action: 'livrer', label: 'Marquer livree', tone: 'accent' },
+  annuler: { action: 'annuler', label: 'Annuler la commande', tone: 'destructive' },
+  refuser: { action: 'refuser', label: 'Refuser', tone: 'secondary' },
 };
+
+const primaryActionOrder: TransitionAction[] = [
+  'journaliser_appel',
+  'confirmer',
+  'programmer',
+  'assigner',
+  'livrer',
+  'refuser',
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -199,30 +206,27 @@ function Timeline({
 }
 
 function ActionBar({
-  currentStatus,
+  allowedActions,
+  onAllowedActionsChange,
   onStatusChange,
   orderId,
 }: {
-  currentStatus: OrderStatus;
+  allowedActions: TransitionAction[];
+  onAllowedActionsChange: (actions: TransitionAction[]) => void;
   onStatusChange: (status: OrderStatus) => void;
   orderId: string;
 }) {
   const router = useRouter();
-  const transitionStatus = useAction(transitionOrderStatusAction);
+  const transitionStatus = useAction(performTransition);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const allowedTransitions = getAllowedTransitions(currentStatus);
-  const visibleTransitions =
-    primaryTransitionConfigs[currentStatus]?.filter((config) =>
-      allowedTransitions.includes(config.to),
-    ) ?? [];
-  const canCancel =
-    !isTerminal(currentStatus) &&
-    !['LIVREE', 'REFUSEE', 'ANNULEE'].includes(currentStatus) &&
-    allowedTransitions.includes('ANNULEE');
+  const visibleTransitions = primaryActionOrder
+    .filter((action) => allowedActions.includes(action))
+    .map((action) => transitionButtonConfigs[action]);
+  const canCancel = allowedActions.includes('annuler');
 
-  function executeTransition(to: OrderStatus) {
+  function executeTransition(action: TransitionAction) {
     setFeedback(null);
-    transitionStatus.execute({ orderId, to });
+    transitionStatus.execute({ orderId, action });
   }
 
   useEffect(() => {
@@ -233,19 +237,20 @@ function ActionBar({
     }
 
     if (result.ok) {
-      onStatusChange(result.newStatus);
-      setFeedback('Statut COD mis à jour.');
+      onStatusChange(toOrderStatus(result.order.cod_status));
+      onAllowedActionsChange(result.allowedActions);
+      setFeedback('Statut COD mis a jour.');
       router.refresh();
       return;
     }
 
-    setFeedback('message' in result ? result.message : 'La mise à jour du statut a échoué.');
-  }, [onStatusChange, router, transitionStatus.result.data]);
+    setFeedback('message' in result ? result.message : 'La mise a jour du statut a echoue.');
+  }, [onAllowedActionsChange, onStatusChange, router, transitionStatus.result.data]);
 
-  if (isTerminal(currentStatus) || allowedTransitions.length === 0) {
+  if (allowedActions.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm font-medium text-muted">
-        Commande clôturée
+        Aucune action disponible
       </div>
     );
   }
@@ -260,8 +265,8 @@ function ActionBar({
               transition.tone === 'accent' && 'bg-[#EE8243] text-[#111] hover:bg-[#f09a66]',
             )}
             disabled={transitionStatus.isExecuting}
-            key={transition.to}
-            onClick={() => executeTransition(transition.to)}
+            key={transition.action}
+            onClick={() => executeTransition(transition.action)}
             size="sm"
             variant={transition.tone === 'primary' ? 'primary' : 'ghost'}
           >
@@ -274,11 +279,11 @@ function ActionBar({
           <Button
             className="w-full border border-danger/30 bg-red-50 text-danger hover:bg-red-100 sm:w-auto"
             disabled={transitionStatus.isExecuting}
-            onClick={() => executeTransition('ANNULEE')}
+            onClick={() => executeTransition('annuler')}
             size="sm"
             variant="ghost"
           >
-            Annuler la commande
+            {transitionButtonConfigs.annuler.label}
           </Button>
         </div>
       ) : null}
@@ -303,6 +308,7 @@ export function OrderDetailPanel({
   const [optimisticStatus, setOptimisticStatus] = useState<OrderStatus>(() =>
     toOrderStatus(order.cod_status),
   );
+  const [allowedActions, setAllowedActions] = useState<TransitionAction[]>(order.allowedActions);
   const emptyValue = 'Non renseigne';
   const currentStatus = optimisticStatus;
   const shippingAddress = parseShippingAddress(order.shipping_address);
@@ -331,7 +337,8 @@ export function OrderDetailPanel({
     <section className="space-y-3">
       <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
       <ActionBar
-        currentStatus={currentStatus}
+        allowedActions={allowedActions}
+        onAllowedActionsChange={setAllowedActions}
         onStatusChange={setOptimisticStatus}
         orderId={order.id}
       />
@@ -344,7 +351,8 @@ export function OrderDetailPanel({
 
   useEffect(() => {
     setOptimisticStatus(toOrderStatus(order.cod_status));
-  }, [order.cod_status]);
+    setAllowedActions(order.allowedActions);
+  }, [order.allowedActions, order.cod_status]);
 
   return (
     <div className={contentClassName}>

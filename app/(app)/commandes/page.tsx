@@ -13,6 +13,7 @@ import { getMerchantAccount } from '@/lib/actions/merchant';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderStatusLabels } from '@/lib/domain/order-state-machine';
+import type { TransitionAction } from '@/lib/domain/order-transition-actions';
 import { formatDateAbsolute } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { type CodStatus, codStatuses, isCodStatus } from '@/lib/orders/status';
@@ -205,6 +206,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'A_APPELER',
       orders: groupedOrders.A_APPELER,
+      targetAction: undefined,
       targetStatus: getKanbanDropTarget('A_APPELER'),
       title: t('kanban.columns.aAppeler'),
       tone: 'attention',
@@ -214,6 +216,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'TENTEE',
       orders: groupedOrders.TENTEE,
+      targetAction: 'journaliser_appel' satisfies TransitionAction,
       targetStatus: getKanbanDropTarget('TENTEE'),
       title: t('kanban.columns.tentee'),
       tone: 'default',
@@ -223,6 +226,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'CONFIRMEE',
       orders: groupedOrders.CONFIRMEE,
+      targetAction: 'confirmer' satisfies TransitionAction,
       targetStatus: getKanbanDropTarget('CONFIRMEE'),
       title: t('kanban.columns.confirmee'),
       tone: 'default',
@@ -232,6 +236,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'EN_LIVRAISON',
       orders: groupedOrders.EN_LIVRAISON,
+      targetAction: 'programmer' satisfies TransitionAction,
       targetStatus: getKanbanDropTarget('EN_LIVRAISON'),
       title: t('kanban.columns.enLivraison'),
       tone: 'default',
@@ -241,6 +246,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'LIVREE',
       orders: groupedOrders.LIVREE,
+      targetAction: 'livrer' satisfies TransitionAction,
       targetStatus: getKanbanDropTarget('LIVREE'),
       title: t('kanban.columns.livree'),
       tone: 'success',
@@ -250,6 +256,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       emptyLabel: t('kanban.empty'),
       id: 'ANNULEE_REFUSEE',
       orders: groupedOrders.ANNULEE_REFUSEE,
+      targetAction: 'annuler' satisfies TransitionAction,
       targetStatus: getKanbanDropTarget('ANNULEE_REFUSEE'),
       title: t('kanban.columns.cloturee'),
       tone: 'danger',

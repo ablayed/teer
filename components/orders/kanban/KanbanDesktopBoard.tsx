@@ -2,9 +2,7 @@
 
 import type { KanbanColumnView } from '@/components/orders/kanban/KanbanBoard';
 import { KanbanCard } from '@/components/orders/kanban/KanbanCard';
-import { normalizeOrderStatus } from '@/components/orders/kanban/kanban-utils';
 import { Badge } from '@/components/ui/badge';
-import { canTransition, isTerminal } from '@/lib/domain/order-state-machine';
 import { cn } from '@/lib/utils';
 import {
   DndContext,
@@ -52,8 +50,7 @@ function findColumnForDroppable(
 
 function SortableKanbanCard({ emptyLabel, order }: SortableKanbanCardProps) {
   const reduceMotion = useReducedMotion();
-  const currentStatus = normalizeOrderStatus(order.cod_status);
-  const disabled = isTerminal(currentStatus);
+  const disabled = order.allowedActions.length === 0;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     disabled,
     id: order.id,
@@ -99,7 +96,7 @@ function DroppableColumn({
   const { setNodeRef } = useDroppable({ id: column.id });
   const isOver = overColumnId === column.id;
   const transitionAllowed =
-    activeOrder && canTransition(normalizeOrderStatus(activeOrder.cod_status), column.targetStatus);
+    activeOrder && column.targetAction && activeOrder.allowedActions.includes(column.targetAction);
 
   return (
     <div
