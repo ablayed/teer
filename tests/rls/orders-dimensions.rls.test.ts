@@ -1,5 +1,6 @@
 import { orderStatuses } from '@/lib/domain/order-state-machine';
 import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
+import { matchesOrderSearch } from '@/lib/orders/search';
 import type { Database } from '@/lib/supabase/database.types';
 import {
   type PostgrestError,
@@ -38,6 +39,15 @@ type ReconcileRow = {
   merchant_account_id: string;
   order_id: string;
   stored_cod_status: string;
+};
+
+type SearchVisibleOrder = {
+  customer: {
+    full_name: string | null;
+    phone: string | null;
+  } | null;
+  id: string;
+  items_summary: Database['public']['Tables']['orders']['Row']['items_summary'];
 };
 
 function adminClient(): AdminClient {
@@ -297,6 +307,151 @@ describe('orders dimensions RLS', () => {
 
       expect(result.error).toBeNull();
       expect(result.data ?? []).toEqual([]);
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'autorise l agent a creer une commande manuelle sur son tenant uniquement',
+    async () => {
+      const fixtureA = await createOwnerFixture('manual-own-tenant');
+      const fixtureB = await createOwnerFixture('manual-other-tenant');
+      const agent = await addMember(fixtureA.admin, fixtureA.merchantAccountId, 'agent');
+      const agentClient = await signIn(agent.email);
+
+      const { data: customer, error: customerError } = await agentClient
+        .from('customer')
+        .insert({
+          merchant_account_id: fixtureA.merchantAccountId,
+          full_name: 'Client manuel',
+          phone: '+221771010101',
+        })
+        .select('id')
+        .single();
+
+      expect(customerError).toBeNull();
+      expect(customer?.id).toBeTruthy();
+
+      const ownInsert = await agentClient
+        .from('orders')
+        .insert({
+          merchant_account_id: fixtureA.merchantAccountId,
+          customer_id: customer?.id ?? null,
+          shopify_order_id: null,
+          source: 'manual',
+          order_number: `MAN-RLS-${Date.now()}`,
+          total_amount: 12000,
+          currency: 'XOF',
+          items_summary: [{ title: 'Produit manuel', quantity: 1, price: 12000 }],
+          order_state: 'open',
+          call_state: 'to_call',
+          delivery_state: 'unassigned',
+          cash_state: 'not_due',
+        })
+        .select('id, cod_status, source')
+        .single();
+
+      expect(ownInsert.error).toBeNull();
+      expect(ownInsert.data).toMatchObject({
+        cod_status: 'A_APPELER',
+        source: 'manual',
+      });
+
+      const foreignOrderNumber = `MAN-RLS-FOREIGN-${Date.now()}`;
+      const foreignInsert = await agentClient.from('orders').insert({
+        merchant_account_id: fixtureB.merchantAccountId,
+        customer_id: null,
+        shopify_order_id: null,
+        source: 'manual',
+        order_number: foreignOrderNumber,
+        total_amount: 15000,
+        currency: 'XOF',
+        items_summary: [{ title: 'Produit interdit', quantity: 1, price: 15000 }],
+        order_state: 'open',
+        call_state: 'to_call',
+        delivery_state: 'unassigned',
+        cash_state: 'not_due',
+      });
+
+      expect(foreignInsert.error).not.toBeNull();
+
+      const { data: foreignRows, error: foreignRowsError } = await fixtureB.admin
+        .from('orders')
+        .select('id')
+        .eq('order_number', foreignOrderNumber);
+
+      expect(foreignRowsError).toBeNull();
+      expect(foreignRows ?? []).toEqual([]);
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'garde la recherche isolee par tenant sur le dataset visible',
+    async () => {
+      const fixtureA = await createOwnerFixture('search-a');
+      const fixtureB = await createOwnerFixture('search-b');
+
+      await fixtureA.admin.from('customer').insert({
+        merchant_account_id: fixtureA.merchantAccountId,
+        full_name: 'Awa Recherche',
+        phone: '+221771020202',
+      });
+
+      const { data: customerB } = await fixtureB.admin
+        .from('customer')
+        .insert({
+          merchant_account_id: fixtureB.merchantAccountId,
+          full_name: 'Moussa Visible',
+          phone: '+221781030303',
+        })
+        .select('id')
+        .single();
+
+      await fixtureA.admin.from('orders').insert({
+        merchant_account_id: fixtureA.merchantAccountId,
+        shopify_order_id: null,
+        source: 'manual',
+        order_number: `SEA-${Date.now()}`,
+        total_amount: 10000,
+        currency: 'XOF',
+        items_summary: [{ title: 'Produit Rare A', quantity: 1, price: 10000 }],
+        order_state: 'open',
+        call_state: 'to_call',
+        delivery_state: 'unassigned',
+        cash_state: 'not_due',
+      });
+
+      await fixtureB.admin.from('orders').insert({
+        merchant_account_id: fixtureB.merchantAccountId,
+        customer_id: customerB?.id ?? null,
+        shopify_order_id: null,
+        source: 'manual',
+        order_number: `SEB-${Date.now()}`,
+        total_amount: 10000,
+        currency: 'XOF',
+        items_summary: [{ title: 'Produit Visible B', quantity: 1, price: 10000 }],
+        order_state: 'open',
+        call_state: 'to_call',
+        delivery_state: 'unassigned',
+        cash_state: 'not_due',
+      });
+
+      const outsider = await signIn(fixtureB.email);
+      const { data, error } = await outsider
+        .from('orders')
+        .select('id, items_summary, customer:customer_id(full_name, phone)');
+
+      expect(error).toBeNull();
+
+      const visibleRows = (data ?? []) as SearchVisibleOrder[];
+      const foreignMatches = visibleRows.filter((order) =>
+        matchesOrderSearch(order, 'Produit Rare A'),
+      );
+      const ownMatches = visibleRows.filter((order) =>
+        matchesOrderSearch(order, 'Produit Visible B'),
+      );
+
+      expect(foreignMatches).toEqual([]);
+      expect(ownMatches).toHaveLength(1);
     },
   );
 });

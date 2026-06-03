@@ -135,6 +135,31 @@ async function createOrder(
   status: string,
   totalAmount = 12345,
 ) {
+  return createOrderWithCustomer(admin, {
+    merchantAccountId,
+    status,
+    totalAmount,
+  });
+}
+
+async function createOrderWithCustomer(
+  admin: AdminClient,
+  {
+    customerName = 'Client Phase Zero',
+    merchantAccountId,
+    phone = '+221771234567',
+    productName = 'Produit E2E',
+    status,
+    totalAmount = 12345,
+  }: {
+    customerName?: string;
+    merchantAccountId: string;
+    phone?: string;
+    productName?: string;
+    status: string;
+    totalAmount?: number;
+  },
+) {
   const dimensions = legacyStatusToDimensions(
     status as Parameters<typeof legacyStatusToDimensions>[0],
   );
@@ -142,8 +167,8 @@ async function createOrder(
     .from('customer')
     .insert({
       merchant_account_id: merchantAccountId,
-      full_name: 'Client Phase Zero',
-      phone: '+221771234567',
+      full_name: customerName,
+      phone,
       shipping_address: {
         address1: 'Almadies',
         city: 'Dakar',
@@ -175,7 +200,7 @@ async function createOrder(
       scheduled_for: dimensions.scheduledFor,
       cancel_reason: dimensions.cancelReason,
       assigned_driver_id: dimensions.assignedDriverId,
-      items_summary: [{ title: 'Produit E2E', quantity: 1, price: totalAmount }],
+      items_summary: [{ title: productName, quantity: 1, price: totalAmount }],
       shipping_address: {
         address1: 'Almadies',
         city: 'Dakar',
@@ -197,21 +222,51 @@ async function cleanupUsers(admin: AdminClient, userIds: string[]) {
   await Promise.all(userIds.map((userId) => admin.auth.admin.deleteUser(userId)));
 }
 
+async function waitForOrderStatus(
+  admin: AdminClient,
+  orderId: string,
+  status: string,
+  timeoutMs = 15_000,
+) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const { data, error } = await admin
+      .from('orders')
+      .select('cod_status')
+      .eq('id', orderId)
+      .single();
+
+    if (!error && data?.cod_status === status) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  throw new Error(`Statut ${status} non observe pour la commande ${orderId}.`);
+}
+
 async function signIn(page: Page, email: string, redirectTo = '/tableau') {
-  await page.goto('/connexion');
+  const targetUrl =
+    redirectTo === '/tableau'
+      ? '/connexion'
+      : `/connexion?redirectTo=${encodeURIComponent(redirectTo)}`;
+
+  await page.goto(targetUrl);
   await page.getByLabel(messages.auth.email_label).fill(email);
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
-  await page.waitForURL('**/tableau');
+  await page.waitForURL(`**${redirectTo}`);
   await page.waitForLoadState('networkidle');
-
-  if (redirectTo !== '/tableau') {
-    await page.goto(redirectTo);
-  }
 }
 
 function actionButton(page: Page, name: string) {
   return page.getByRole('button', { name, exact: true });
+}
+
+function savedViewButton(page: Page, label: string) {
+  return page.getByRole('button', { name: new RegExp(`^${label} \\(`) });
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E commandes');
@@ -224,15 +279,21 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
     await actionButton(page, 'Confirmer').click();
+    await waitForOrderStatus(fixture.admin, orderId, 'CONFIRMEE');
     await expect(page.getByText('Confirmée').first()).toBeVisible({ timeout: 15_000 });
 
     await actionButton(page, 'Programmer la livraison').click();
-    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
+    await expect(actionButton(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
 
     await actionButton(page, 'Assigner').click();
-    await expect(page.getByText('En livraison').first()).toBeVisible({ timeout: 15_000 });
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+    await page.reload();
+    await expect(actionButton(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 
     await actionButton(page, 'Marquer livree').click();
+    await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
     await expect(page.getByText('Livrée').first()).toBeVisible({ timeout: 15_000 });
 
     const { data: order, error } = await fixture.admin
@@ -305,6 +366,111 @@ test('un agent est refuse sur la page finances cote serveur', async ({ page }) =
   try {
     await signIn(page, agent.email, '/finances');
     await expect(page.getByText(messages.finance.restricted)).toBeVisible();
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('manual-list');
+
+  try {
+    await signIn(page, fixture.email, '/commandes');
+
+    await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
+    await page.getByLabel('Nom client').fill('Awa Manuelle');
+    await page.getByLabel('Telephone').fill('+221 77 111 22 33');
+    await page.getByRole('textbox', { name: 'Produit', exact: true }).fill('Sac manuel');
+    await page.getByRole('spinbutton', { name: 'Montant', exact: true }).fill('14500');
+    await page.getByRole('button', { name: 'Creer la commande' }).click();
+
+    await expect(page.getByText('Commande creee.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Awa Manuelle')).toBeVisible({ timeout: 15_000 });
+
+    await savedViewButton(page, 'À appeler').click();
+    await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-appeler(&.*)?$/);
+    await expect(page.getByText('Awa Manuelle')).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('la transition inline confirmee deplace la commande vers la bonne vue et survit au refresh', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('inline-list');
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Inline',
+    phone: '+221771445566',
+  });
+
+  try {
+    await signIn(page, fixture.email, '/commandes');
+
+    await page.goto('/commandes?q=Client%20Inline&vue=a-appeler');
+    await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-appeler(&.*)?$/);
+    await expect(page.getByText('Client Inline')).toBeVisible({ timeout: 15_000 });
+
+    await actionButton(page, 'Confirmer').click();
+    await expect(page.locator('article').filter({ hasText: 'Client Inline' })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+
+    await savedViewButton(page, 'Confirmée').click();
+    await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=confirmee(&.*)?$/);
+    await expect(page.getByText('Client Inline')).toBeVisible({ timeout: 15_000 });
+
+    await page.reload();
+    await expect(page.getByText('Client Inline')).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('la recherche retrouve une commande par nom puis par telephone', async ({ page }) => {
+  const fixture = await createOwnerFixture('search-list');
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Recherche Nadia',
+    phone: '+221771998877',
+    productName: 'Chaussure cuir',
+  });
+
+  try {
+    await signIn(page, fixture.email, '/commandes');
+
+    const searchInput = page.getByPlaceholder('Nom, telephone ou produit');
+
+    await searchInput.fill('Nadia');
+    await expect(page.getByText('Recherche Nadia')).toBeVisible({ timeout: 15_000 });
+
+    await searchInput.fill('771998877');
+    await expect(page.getByText('Recherche Nadia')).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('le tableau deep-link vers la vue Cash a remettre', async ({ page }) => {
+  const fixture = await createOwnerFixture('dashboard-deeplink');
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'LIVREE',
+    customerName: 'Cash Dashboard',
+    phone: '+221781223344',
+  });
+
+  try {
+    await signIn(page, fixture.email, '/tableau');
+
+    await page.getByRole('link', { name: 'Cash a remettre' }).click();
+    await page.waitForURL('**/commandes?vue=cash-a-remettre');
+    await expect(page.getByText('Cash Dashboard')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
