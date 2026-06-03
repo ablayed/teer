@@ -5,9 +5,10 @@ import { performTransitionForContext } from '@/lib/actions/transitions';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import {
   type TransitionAction,
-  getAllowedTransitionActions,
+  getAllowedTransitionActionsForDimensions,
   getTransitionActionForTarget,
   paymentChannelsAtDelivery,
+  resolveOrderDimensions,
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
 import {
@@ -33,12 +34,16 @@ export type DeliveryAddress = Tables<'delivery_address'>;
 export type OrderListItem = Pick<
   Tables<'orders'>,
   | 'cod_status'
+  | 'call_state'
   | 'created_at'
   | 'created_at_shopify'
   | 'currency'
+  | 'cash_state'
   | 'customer_id'
+  | 'delivery_state'
   | 'id'
   | 'items_summary'
+  | 'order_state'
   | 'order_number'
   | 'shipping_address'
   | 'total_amount'
@@ -127,8 +132,14 @@ async function getCurrentMemberRole(supabase: SupabaseServerClient): Promise<Tea
   return member.role;
 }
 
-function allowedActionsForOrder(status: string, role: TeamRole | null): TransitionAction[] {
-  return role && isOrderStatus(status) ? getAllowedTransitionActions(status, role) : [];
+function allowedActionsForOrderRow(
+  order: Pick<
+    Tables<'orders'>,
+    'call_state' | 'cash_state' | 'cod_status' | 'delivery_state' | 'order_state'
+  >,
+  role: TeamRole | null,
+): TransitionAction[] {
+  return role ? getAllowedTransitionActionsForDimensions(resolveOrderDimensions(order), role) : [];
 }
 
 function revalidateOrderPaths(orderId: string) {
@@ -173,7 +184,7 @@ export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<Ord
   let query = supabase
     .from('orders')
     .select(
-      'id, customer_id, order_number, total_amount, currency, cod_status, items_summary, shipping_address, created_at, created_at_shopify, customer:customer_id(full_name, phone)',
+      'id, customer_id, order_number, total_amount, currency, cod_status, order_state, call_state, delivery_state, cash_state, items_summary, shipping_address, created_at, created_at_shopify, customer:customer_id(full_name, phone)',
     )
     .order('created_at_shopify', { ascending: false, nullsFirst: false });
 
@@ -189,7 +200,7 @@ export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<Ord
 
   return ((data ?? []) as Array<Omit<OrderListItem, 'allowedActions'>>).map((order) => ({
     ...order,
-    allowedActions: allowedActionsForOrder(order.cod_status, role),
+    allowedActions: allowedActionsForOrderRow(order, role),
   }));
 }
 
@@ -238,7 +249,7 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
 
   return {
     ...(data as Tables<'orders'> & { customer: CustomerDetail | null }),
-    allowedActions: allowedActionsForOrder(data.cod_status, role),
+    allowedActions: allowedActionsForOrderRow(data, role),
     delivery_address: orderAddressResult.data,
     customer_delivery_address: customerAddressResult.data,
   };
@@ -361,7 +372,9 @@ export const logCallAction = requireRole('owner', 'manager', 'agent')
     const supabase = asTypedSupabaseClient(ctx.supabase);
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, cod_status, merchant_account_id')
+      .select(
+        'id, merchant_account_id, cod_status, order_state, call_state, delivery_state, cash_state',
+      )
       .eq('id', parsedInput.orderId)
       .maybeSingle();
 
@@ -408,7 +421,10 @@ export const logCallAction = requireRole('owner', 'manager', 'agent')
           action: transitionAction,
           actorUserId: ctx.user.id,
           orderId: order.id,
-          payload: { note: parsedInput.note },
+          payload: {
+            nextContactAt: nextActionAt ?? undefined,
+            note: parsedInput.note,
+          },
           role: ctx.member.role,
           supabase,
         });

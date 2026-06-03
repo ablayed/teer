@@ -175,6 +175,10 @@ export function mapShopifyOrder(
   const money = node.currentTotalPriceSet.shopMoney;
 
   return {
+    order_state: 'open',
+    call_state: 'to_call',
+    delivery_state: 'unassigned',
+    cash_state: 'not_due',
     merchant_account_id: merchantAccountId,
     shop_id: shopId,
     customer_id: customerId,
