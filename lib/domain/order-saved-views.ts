@@ -45,7 +45,7 @@ function startOfLocalDay(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function isSameLocalDate(value: string | null, date = new Date()) {
+export function isSameLocalDate(value: string | null, date = new Date()) {
   if (!value) {
     return false;
   }

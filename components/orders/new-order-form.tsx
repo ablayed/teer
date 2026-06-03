@@ -165,10 +165,10 @@ export function NewOrderForm() {
             >
               Creer la commande
             </button>
-            {feedback ? <p className="text-sm text-muted">{feedback}</p> : null}
           </div>
         </div>
       ) : null}
+      {feedback ? <p className="mt-4 text-sm text-muted">{feedback}</p> : null}
     </div>
   );
 }

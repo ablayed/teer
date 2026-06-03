@@ -2,6 +2,7 @@ import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
 import { NewOrderForm } from '@/components/orders/new-order-form';
 import { OrderInlineActions } from '@/components/orders/order-inline-actions';
+import { OrdersSearchInput } from '@/components/orders/orders-search-input';
 import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getMerchantAccount } from '@/lib/actions/merchant';
@@ -16,6 +17,7 @@ import {
 import { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
+import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
@@ -25,6 +27,7 @@ import Link from 'next/link';
 
 type CommandesPageProps = {
   searchParams: Promise<{
+    q?: string;
     vue?: string;
     sync_error?: string;
     synced?: string;
@@ -139,17 +142,19 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const clientsT = await getTranslations('clients');
   const params = await searchParams;
   const activeView = parseOrderSavedViewId(params.vue);
+  const search = normalizeOrderSearch(params.q);
   const [orders, shopConnection, merchant] = await Promise.all([
     getOrders(),
     getShopConnection(),
     getMerchantAccount(),
   ]);
 
-  const visibleOrders = buildVisibleOrders(orders, activeView);
+  const searchedOrders = filterOrdersBySearch(orders, search);
+  const visibleOrders = buildVisibleOrders(searchedOrders, activeView);
   const viewCounts = orderSavedViews.map((view) => ({
     id: view.id,
     label: view.label,
-    count: orders.filter((order) => matchesOrderSavedView(order, view.id)).length,
+    count: searchedOrders.filter((order) => matchesOrderSavedView(order, view.id)).length,
   }));
   const reliabilityTiers =
     activeView === 'a-appeler'
@@ -170,7 +175,8 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
     params.sync_error && isSyncErrorCode(params.sync_error) ? params.sync_error : null;
   const showNoShop = orders.length === 0 && !shopConnection;
   const showNoOrdersWithShop = orders.length === 0 && shopConnection;
-  const showFilteredEmpty = orders.length > 0 && visibleOrders.length === 0;
+  const showSearchEmpty = orders.length > 0 && searchedOrders.length === 0 && search.length > 0;
+  const showFilteredEmpty = searchedOrders.length > 0 && visibleOrders.length === 0;
 
   return (
     <main className="space-y-6" id="main">
@@ -199,8 +205,9 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       ) : null}
 
       <OrdersViewChips activeView={activeView} views={viewCounts} />
+      <OrdersSearchInput initialValue={search} />
 
-      {showNoShop || showNoOrdersWithShop || showFilteredEmpty ? (
+      {showNoShop || showNoOrdersWithShop || showSearchEmpty || showFilteredEmpty ? (
         <section className="rounded-lg border border-border bg-surface p-6 shadow-1">
           <div className="flex max-w-2xl flex-col gap-4 sm:flex-row sm:items-start">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-canvas text-accent">
@@ -212,14 +219,18 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                   ? t('empty.noShopTitle')
                   : showNoOrdersWithShop
                     ? t('empty.withShopTitle')
-                    : t('empty.filteredTitle')}
+                    : showSearchEmpty
+                      ? `Aucune commande pour "${params.q?.trim() ?? ''}"`
+                      : t('empty.filteredTitle')}
               </h2>
               <p className="text-sm leading-6 text-muted">
                 {showNoShop
                   ? t('empty.noShopDescription')
                   : showNoOrdersWithShop
                     ? t('empty.withShopDescription')
-                    : t('empty.filteredDescription')}
+                    : showSearchEmpty
+                      ? 'Essayez un autre nom, numero de telephone ou produit.'
+                      : t('empty.filteredDescription')}
               </p>
               {showNoShop ? (
                 <Link

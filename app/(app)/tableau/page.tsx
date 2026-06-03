@@ -1,14 +1,12 @@
-import { AlertsBlock } from '@/components/dashboard/AlertsBlock';
 import { CODStatusBreakdown } from '@/components/dashboard/CODStatusBreakdown';
 import { DashboardMotion } from '@/components/dashboard/DashboardMotion';
+import { OrderExceptionsGrid } from '@/components/dashboard/OrderExceptionsGrid';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
 import { TopProducts } from '@/components/dashboard/TopProducts';
-import { NextActionsList } from '@/components/kpi/NextActionsList';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
 import {
-  getAlerts,
   getCodBreakdown,
   getDashboardKpi,
   getRecentActivity,
@@ -16,10 +14,14 @@ import {
   getShopPerformance,
   getTopProducts,
 } from '@/lib/actions/dashboard';
+import { getOrders } from '@/lib/actions/orders';
+import {
+  buildOrderViewHref,
+  isSameLocalDate,
+  matchesOrderSavedView,
+} from '@/lib/domain/order-saved-views';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { ArrowRight } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 
 function firstToken(value: string | null | undefined): string {
   return value?.trim().split(/\s+/)[0] ?? '';
@@ -34,24 +36,22 @@ function displayNameFromMetadata(metadata: Record<string, unknown>): string {
 export default async function TableauPage() {
   const [
     t,
-    ordersT,
     kpiResult,
     revenueResult,
     topProductsResult,
     shopPerformanceResult,
     codBreakdownResult,
     recentActivityResult,
-    alertsResult,
+    orders,
   ] = await Promise.all([
     getTranslations('tableau'),
-    getTranslations('orders'),
     getDashboardKpi(),
     getRevenue30d(),
     getTopProducts(),
     getShopPerformance(),
     getCodBreakdown(),
     getRecentActivity(),
-    getAlerts(),
+    getOrders(),
   ]);
   const supabase = await createSupabaseServerClient();
   const {
@@ -65,8 +65,61 @@ export default async function TableauPage() {
   const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
   const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
   const recentActivity = recentActivityResult.ok ? recentActivityResult.data : [];
-  const alerts = alertsResult.ok ? alertsResult.data : [];
   const callQueueCount = kpi?.a_appeler_count ?? 0;
+  const callbackTodayCount = orders.filter(
+    (order) =>
+      order.order_state === 'open' &&
+      order.call_state === 'callback' &&
+      isSameLocalDate(order.next_contact_at),
+  ).length;
+  const exceptionCards = [
+    {
+      title: 'Urgences du jour',
+      rows: [
+        {
+          count: orders.filter((order) => matchesOrderSavedView(order, 'a-appeler')).length,
+          href: buildOrderViewHref('a-appeler'),
+          label: 'A appeler',
+        },
+        {
+          count: callbackTodayCount,
+          href: buildOrderViewHref('tentee-a-rappeler'),
+          label: "A rappeler aujourd'hui",
+        },
+      ],
+    },
+    {
+      title: 'Livraison du jour',
+      rows: [
+        {
+          count: orders.filter((order) => matchesOrderSavedView(order, 'a-livrer-aujourdhui'))
+            .length,
+          href: buildOrderViewHref('a-livrer-aujourdhui'),
+          label: "A livrer aujourd'hui",
+        },
+      ],
+    },
+    {
+      title: 'Tresorerie',
+      rows: [
+        {
+          count: orders.filter((order) => matchesOrderSavedView(order, 'cash-a-remettre')).length,
+          href: buildOrderViewHref('cash-a-remettre'),
+          label: 'Cash a remettre',
+        },
+      ],
+    },
+    {
+      title: 'Retours',
+      rows: [
+        {
+          count: orders.filter((order) => matchesOrderSavedView(order, 'retours')).length,
+          href: buildOrderViewHref('retours'),
+          label: 'Retours',
+        },
+      ],
+    },
+  ];
 
   return (
     <main id="main">
@@ -79,6 +132,8 @@ export default async function TableauPage() {
         </header>
 
         <DashboardKpiRefresh initialKpi={kpi} initialUpdatedAt={new Date().toISOString()} />
+
+        <OrderExceptionsGrid cards={exceptionCards} title="Exceptions a traiter" />
 
         <RevenueChart
           currency={revenue?.currency ?? kpi?.currency ?? null}
@@ -118,44 +173,6 @@ export default async function TableauPage() {
             items={recentActivity}
             orderFallbackLabel={t('blocks.recentActivity.orderFallback')}
             title={t('blocks.recentActivity.title')}
-          />
-          <AlertsBlock
-            emptyLabel={t('blocks.alerts.empty')}
-            items={alerts}
-            labels={{
-              lateCalls: {
-                title: t('blocks.alerts.lateCalls.title'),
-                value: (count) => t('blocks.alerts.lateCalls.value', { count }),
-              },
-              shops: {
-                title: t('blocks.alerts.shops.title'),
-                value: (count) => t('blocks.alerts.shops.value', { count }),
-              },
-              tokens: {
-                title: t('blocks.alerts.tokens.title'),
-                value: (count) => t('blocks.alerts.tokens.value', { count }),
-              },
-            }}
-            title={t('blocks.alerts.title')}
-          />
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-semibold">{t('actions.title')}</h2>
-            <Link
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-text hover:bg-surface"
-              href="/commandes?statut=a_appeler"
-            >
-              {t('actions.voir_tout')}
-              <ArrowRight aria-hidden="true" className="size-4" />
-            </Link>
-          </div>
-
-          <NextActionsList
-            callLabel={t('actions.call')}
-            emptyLabel={t('actions.empty')}
-            emptyValueLabel={ordersT('table.emptyValue')}
           />
         </section>
       </DashboardMotion>
