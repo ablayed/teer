@@ -1,5 +1,6 @@
 import { encryptToken } from '@/lib/shopify/crypto';
 import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib/shopify/oauth';
+import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import { verifyState } from '@/lib/shopify/state';
 import type { Database } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
@@ -114,6 +115,28 @@ export async function GET(request: NextRequest) {
 
     if (auditError) {
       throw auditError;
+    }
+
+    const productsSyncResult = await syncProductsForShop({
+      accessToken: tokenResponse.accessToken,
+      actorUserId: null,
+      admin: supabase,
+      merchantAccountId: payload.merchantAccountId,
+      shop: {
+        id: savedShop.id,
+        shop_domain: shop,
+      },
+    });
+
+    if (!productsSyncResult.ok) {
+      Sentry.captureMessage('Shopify product sync failed after connect', {
+        level: 'warning',
+        extra: {
+          merchantAccountId: payload.merchantAccountId,
+          shopDomain: shop,
+        },
+        tags: { route: 'shopify.callback' },
+      });
     }
 
     return redirectTo('/boutiques?connected=1', request);

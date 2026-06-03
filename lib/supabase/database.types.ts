@@ -677,6 +677,53 @@ export type Database = {
           },
         ];
       };
+      product: {
+        Row: {
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          merchant_account_id: string;
+          shopify_product_id: string | null;
+          shopify_variant_id: string | null;
+          sku: string | null;
+          title: string;
+          unit_cost: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          merchant_account_id: string;
+          shopify_product_id?: string | null;
+          shopify_variant_id?: string | null;
+          sku?: string | null;
+          title: string;
+          unit_cost?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          merchant_account_id?: string;
+          shopify_product_id?: string | null;
+          shopify_variant_id?: string | null;
+          sku?: string | null;
+          title?: string;
+          unit_cost?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'product_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       settlement_allocation: {
         Row: {
           allocated_minor: number;

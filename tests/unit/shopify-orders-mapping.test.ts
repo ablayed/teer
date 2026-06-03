@@ -40,9 +40,16 @@ function makeOrder(overrides: Partial<ShopifyOrderNode> = {}): ShopifyOrderNode 
         {
           node: {
             title: 'Sac',
+            sku: 'SAC-001',
             quantity: 2,
             originalUnitPriceSet: {
               shopMoney: { amount: '5000.25' },
+            },
+            variant: {
+              id: 'gid://shopify/ProductVariant/444',
+            },
+            product: {
+              id: 'gid://shopify/Product/333',
             },
           },
         },
@@ -124,14 +131,23 @@ describe('mapShopifyOrder', () => {
     expect(order.currency).toBe('USD');
   });
 
-  it('maps line items into a lightweight items summary', () => {
+  it('maps line items into items summary while preserving Shopify identifiers', () => {
     const order = mapShopifyOrder(makeOrder(), {
       merchantAccountId: 'merchant_123',
       shopId: 'shop_123',
       customerId: null,
     });
 
-    expect(order.items_summary).toEqual([{ title: 'Sac', quantity: 2, price: 5000.25 }]);
+    expect(order.items_summary).toEqual([
+      {
+        title: 'Sac',
+        sku: 'SAC-001',
+        quantity: 2,
+        price: 5000.25,
+        shopify_variant_id: '444',
+        shopify_product_id: '333',
+      },
+    ]);
   });
 
   it('handles a missing shipping address', () => {

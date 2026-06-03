@@ -15,6 +15,8 @@ type BuildAuthorizeUrlInput = {
   state: string;
 };
 
+export const SHOPIFY_REQUIRED_SCOPES = ['read_orders', 'read_customers', 'read_products'] as const;
+
 type ExchangeCodeForTokenInput = {
   shop: string;
   clientId: string;
@@ -38,8 +40,21 @@ export function buildAuthorizeUrl({
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('state', state);
+  url.searchParams.set('scope', SHOPIFY_REQUIRED_SCOPES.join(','));
 
   return url.toString();
+}
+
+export function hasShopifyScope(scopes: string | null | undefined, scope: string): boolean {
+  if (!scopes) {
+    return false;
+  }
+
+  return scopes
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .includes(scope);
 }
 
 function buildOAuthHmacMessage(searchParams: URLSearchParams): string {

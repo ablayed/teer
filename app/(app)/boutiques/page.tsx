@@ -2,8 +2,10 @@ import { ConnectShopForm } from '@/components/shops/connect-shop-form';
 import { DisconnectShopButton } from '@/components/shops/disconnect-shop-button';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { formatDateAbsolute } from '@/lib/format/date';
+import { hasShopifyScope } from '@/lib/shopify/oauth';
 import { AlertCircle, CheckCircle2, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
 
 type BoutiquesPageProps = {
   searchParams: Promise<{
@@ -58,6 +60,9 @@ export default async function BoutiquesPage({ searchParams }: BoutiquesPageProps
   const shopConnection = await getShopConnection();
   const errorCode = params.error && isErrorCode(params.error) ? params.error : null;
   const showSuccess = params.connected === '1';
+  const needsProductReconnect = shopConnection
+    ? !hasShopifyScope(shopConnection.scopes, 'read_products')
+    : false;
 
   return (
     <main className="space-y-6" id="main">
@@ -77,6 +82,23 @@ export default async function BoutiquesPage({ searchParams }: BoutiquesPageProps
         <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-surface p-4 text-danger">
           <AlertCircle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
           <p className="text-sm font-medium">{t(`errors.${errorCode}`)}</p>
+        </div>
+      ) : null}
+
+      {shopConnection && needsProductReconnect ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-warning/30 bg-surface p-4 text-text">
+          <div className="flex items-start gap-3 text-warning">
+            <AlertCircle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+            <p className="text-sm font-medium">{t('messages.productsScopeRequired')}</p>
+          </div>
+          <div>
+            <Link
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-canvas px-4 text-sm font-medium text-text shadow-1"
+              href={`/api/shopify/install?shop=${encodeURIComponent(shopConnection.shop_domain)}`}
+            >
+              {t('messages.productsScopeCta')}
+            </Link>
+          </div>
         </div>
       ) : null}
 

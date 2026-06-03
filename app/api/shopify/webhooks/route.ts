@@ -1,4 +1,5 @@
 import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
+import { type ShopifyProductNode, persistShopifyProductWebhook } from '@/lib/shopify/products-sync';
 import { verifyWebhookHmac } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
@@ -142,12 +143,52 @@ function mapOrderWebhookToOrderNode(payload: unknown): ShopifyOrderNode | null {
       edges: lineItems.filter(isRecord).map((lineItem) => ({
         node: {
           title: stringField(lineItem, 'title') ?? '',
+          sku: stringField(lineItem, 'sku'),
           quantity: numberField(lineItem, 'quantity'),
           originalUnitPriceSet: {
             shopMoney: {
               amount: stringField(lineItem, 'price') ?? '0',
             },
           },
+          variant: (() => {
+            const variantId = stringField(lineItem, 'variant_id');
+
+            return variantId ? { id: variantId } : null;
+          })(),
+          product: (() => {
+            const productId = stringField(lineItem, 'product_id');
+
+            return productId ? { id: productId } : null;
+          })(),
+        },
+      })),
+    },
+  };
+}
+
+function mapProductWebhookToProductNode(payload: unknown): ShopifyProductNode | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const productId = stringField(payload, 'id');
+  const title = stringField(payload, 'title');
+  const variants = Array.isArray(payload.variants) ? payload.variants : [];
+
+  if (!productId || !title) {
+    return null;
+  }
+
+  return {
+    id: productId,
+    title,
+    status: stringField(payload, 'status'),
+    variants: {
+      edges: variants.filter(isRecord).map((variant) => ({
+        node: {
+          id: stringField(variant, 'id') ?? '',
+          title: stringField(variant, 'title'),
+          sku: stringField(variant, 'sku'),
         },
       })),
     },
@@ -274,6 +315,60 @@ async function handleOrderWebhook({
     logWebhookError('[webhook] order persist failed', {
       error: result.error,
       orderId: orderNode.id,
+      topic,
+      shopDomain: resolvedShopDomain,
+    });
+  }
+}
+
+async function handleProductWebhook({
+  payload,
+  shopDomain,
+  supabase,
+  topic,
+}: {
+  payload: unknown;
+  shopDomain: string | null;
+  supabase: NonNullable<SupabaseAdminClient>;
+  topic: string;
+}) {
+  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+
+  if (!resolvedShopDomain) {
+    logWebhookError('[webhook] product webhook missing shop domain', { topic });
+    return;
+  }
+
+  const shop = await getActiveShopByDomain({ shopDomain: resolvedShopDomain, supabase });
+
+  if (!shop) {
+    logWebhookInfo('[webhook] no active shop for product webhook', { topic, resolvedShopDomain });
+    return;
+  }
+
+  const productNode = mapProductWebhookToProductNode(payload);
+
+  if (!productNode) {
+    logWebhookError('[webhook] invalid product payload', { topic, resolvedShopDomain });
+    return;
+  }
+
+  const result = await persistShopifyProductWebhook({
+    merchantAccountId: shop.merchant_account_id,
+    productNode,
+    supabaseServiceClient: supabase,
+  });
+
+  if (result.ok) {
+    logWebhookInfo('[webhook] product persisted', {
+      productId: productNode.id,
+      topic,
+      shopDomain: resolvedShopDomain,
+    });
+  } else {
+    logWebhookError('[webhook] product persist failed', {
+      error: result.error,
+      productId: productNode.id,
       topic,
       shopDomain: resolvedShopDomain,
     });
@@ -517,6 +612,10 @@ export async function POST(request: Request) {
     case 'orders/create':
     case 'orders/updated':
       await handleOrderWebhook({ payload, shopDomain, supabase, topic });
+      break;
+    case 'products/create':
+    case 'products/update':
+      await handleProductWebhook({ payload, shopDomain, supabase, topic });
       break;
     case 'app/uninstalled':
       await handleAppUninstalledWebhook({ payload, shopDomain, supabase, topic });

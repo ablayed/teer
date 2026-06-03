@@ -6,6 +6,7 @@ import {
   type ShopifyOrdersResponse,
   persistShopifyOrder,
 } from '@/lib/shopify/orders-sync';
+import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -94,6 +95,19 @@ export async function syncShopOrders({
   }
 
   try {
+    const productsSyncResult = await syncProductsForShop({
+      accessToken,
+      actorUserId,
+      admin,
+      auditAction: 'shopify.products_synced',
+      merchantAccountId,
+      shop,
+    });
+
+    if (!productsSyncResult.ok) {
+      return { ok: false, errorCode: 'sync_failed' };
+    }
+
     const data = await shopifyGraphQL<ShopifyOrdersResponse>({
       accessToken,
       query: SHOPIFY_ORDERS_QUERY,

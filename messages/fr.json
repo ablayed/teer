@@ -343,7 +343,9 @@
       "products": "Produits"
     },
     "messages": {
-      "connected": "Boutique connectée avec succès !"
+      "connected": "Boutique connectée avec succès !",
+      "productsScopeRequired": "Cette boutique doit être reconnectée pour autoriser la synchronisation du catalogue produit Shopify.",
+      "productsScopeCta": "Reconnecter pour les produits"
     },
     "disconnect": {
       "submit": "Déconnecter",

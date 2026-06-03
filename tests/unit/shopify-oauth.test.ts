@@ -35,7 +35,7 @@ describe('validateShopDomain', () => {
 });
 
 describe('buildAuthorizeUrl', () => {
-  it('builds an offline managed-install OAuth URL without scope or grant options', () => {
+  it('builds an offline managed-install OAuth URL with required Shopify scopes', () => {
     const authorizeUrl = buildAuthorizeUrl({
       shop: 'teer-test.myshopify.com',
       clientId: 'client_123',
@@ -51,7 +51,7 @@ describe('buildAuthorizeUrl', () => {
       'redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fshopify%2Fcallback',
     );
     expect(url.searchParams.get('state')).toBe('nonce_123');
-    expect(url.searchParams.has('scope')).toBe(false);
+    expect(url.searchParams.get('scope')).toBe('read_orders,read_customers,read_products');
     expect(authorizeUrl).not.toContain('grant_options');
   });
 });

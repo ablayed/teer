@@ -16,7 +16,16 @@ query Orders($cursor: String) {
         customer { id displayName phone email }
         shippingAddress { address1 address2 city province country zip phone name }
         lineItems(first: 20) {
-          edges { node { title quantity originalUnitPriceSet { shopMoney { amount } } } }
+          edges {
+            node {
+              title
+              sku
+              quantity
+              originalUnitPriceSet { shopMoney { amount } }
+              variant { id }
+              product { id }
+            }
+          }
         }
       }
     }
@@ -50,12 +59,19 @@ export type ShopifyCustomerNode = {
 
 export type ShopifyLineItemNode = {
   title: string;
+  sku: string | null;
   quantity: number;
   originalUnitPriceSet: {
     shopMoney: {
       amount: string;
     };
   };
+  variant: {
+    id: string;
+  } | null;
+  product: {
+    id: string;
+  } | null;
 };
 
 export type ShopifyOrderNode = {
@@ -191,8 +207,11 @@ export function mapShopifyOrder(
     fulfillment_status: node.displayFulfillmentStatus,
     items_summary: node.lineItems.edges.map(({ node: lineItem }) => ({
       title: lineItem.title,
+      sku: lineItem.sku,
       quantity: lineItem.quantity,
       price: parseAmount(lineItem.originalUnitPriceSet.shopMoney.amount),
+      shopify_variant_id: lineItem.variant?.id ? extractShopifyId(lineItem.variant.id) : null,
+      shopify_product_id: lineItem.product?.id ? extractShopifyId(lineItem.product.id) : null,
     })),
     shipping_address: mapShippingAddress(node.shippingAddress),
     created_at_shopify: node.createdAt,
