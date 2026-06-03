@@ -1,11 +1,6 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: '14.5';
-  };
   graphql_public: {
     Tables: {
       [_ in never]: never;
@@ -589,6 +584,7 @@ export type Database = {
           shipping_address: Json | null;
           shop_id: string | null;
           shopify_order_id: string | null;
+          source: string | null;
           total_amount: number;
           updated_at: string;
         };
@@ -618,6 +614,7 @@ export type Database = {
           shipping_address?: Json | null;
           shop_id?: string | null;
           shopify_order_id?: string | null;
+          source?: string | null;
           total_amount?: number;
           updated_at?: string;
         };
@@ -647,6 +644,7 @@ export type Database = {
           shipping_address?: Json | null;
           shop_id?: string | null;
           shopify_order_id?: string | null;
+          source?: string | null;
           total_amount?: number;
           updated_at?: string;
         };
@@ -965,6 +963,7 @@ export type Database = {
           tier: string;
         }[];
       };
+      order_items_search_text: { Args: { p_items: Json }; Returns: string };
       reconcile_order_cod_status: {
         Args: never;
         Returns: {
