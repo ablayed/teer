@@ -1,13 +1,14 @@
 'use server';
 
-import { getMerchantAccount } from '@/lib/actions/merchant';
-import { authActionClient } from '@/lib/actions/safe-action';
+import { requireRole } from '@/lib/actions/safe-action';
+import { performTransitionForContext } from '@/lib/actions/transitions';
+import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import {
-  IllegalTransitionError,
-  type OrderStatus,
-  assertTransition,
-  orderStatuses,
-} from '@/lib/domain/order-state-machine';
+  type TransitionAction,
+  getAllowedTransitionActions,
+  getTransitionActionForTarget,
+  paymentChannelsAtDelivery,
+} from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
 import {
   type CallOutcome,
@@ -17,6 +18,7 @@ import {
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -41,10 +43,12 @@ export type OrderListItem = Pick<
   | 'shipping_address'
   | 'total_amount'
 > & {
+  allowedActions: TransitionAction[];
   customer: CustomerSummary | null;
 };
 
 export type OrderDetail = Tables<'orders'> & {
+  allowedActions: TransitionAction[];
   customer: CustomerDetail | null;
   customer_delivery_address: DeliveryAddress | null;
   delivery_address: DeliveryAddress | null;
@@ -54,23 +58,7 @@ type GetOrdersInput = {
   codStatus?: CodStatus;
 };
 
-type OrderActionErrorCode =
-  | 'audit_failed'
-  | 'call_log_failed'
-  | 'invalid_current_status'
-  | 'illegal_transition'
-  | 'merchant_not_found'
-  | 'order_not_found'
-  | 'update_failed';
 type SupabaseServerClient = SupabaseClient<Database>;
-const paymentChannelsAtDelivery = [
-  'ESPECES',
-  'WAVE',
-  'ORANGE_MONEY',
-  'FREE_MONEY',
-  'INCONNU',
-] as const;
-type PaymentChannelAtDelivery = (typeof paymentChannelsAtDelivery)[number];
 
 export type OrderTransitionTimelineEvent = {
   id: string;
@@ -116,25 +104,40 @@ function toOrderStatus(value: string | null): OrderStatus | null {
   return value && isOrderStatus(value) ? value : null;
 }
 
-function toCallOutcome(value: string): CallOutcome {
-  return isCallOutcome(value) ? value : 'SANS_REPONSE';
+async function getCurrentMemberRole(supabase: SupabaseServerClient): Promise<TeamRole | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const { data: member, error } = await supabase
+    .from('merchant_member')
+    .select('role')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !member || !isTeamRole(member.role)) {
+    return null;
+  }
+
+  return member.role;
 }
 
-function transitionErrorPayload(error: IllegalTransitionError): {
-  ok: false;
-  errorCode: OrderActionErrorCode;
-  message: string;
-} {
-  return {
-    ok: false,
-    errorCode: 'illegal_transition',
-    message: error.message,
-  };
+function allowedActionsForOrder(status: string, role: TeamRole | null): TransitionAction[] {
+  return role && isOrderStatus(status) ? getAllowedTransitionActions(status, role) : [];
 }
 
 function revalidateOrderPaths(orderId: string) {
   revalidatePath('/commandes');
   revalidatePath(`/commandes/${orderId}`);
+}
+
+function toCallOutcome(value: string): CallOutcome {
+  return isCallOutcome(value) ? value : 'SANS_REPONSE';
 }
 
 async function writeOrderAuditLog({
@@ -164,48 +167,9 @@ async function writeOrderAuditLog({
   return error;
 }
 
-async function applyOrderTransition({
-  actorUserId,
-  note,
-  orderId,
-  paymentChannelAtDelivery,
-  supabase,
-  to,
-}: {
-  actorUserId: string;
-  note: string | undefined;
-  orderId: string;
-  paymentChannelAtDelivery: PaymentChannelAtDelivery | undefined;
-  supabase: SupabaseServerClient;
-  to: OrderStatus;
-}): Promise<{ ok: true; newStatus: OrderStatus } | { ok: false; errorCode: 'update_failed' }> {
-  const transitionRpc = supabase.rpc as unknown as (
-    fn: 'transition_order',
-    args: {
-      p_actor: string;
-      p_note?: string;
-      p_order_id: string;
-      p_payment_channel?: PaymentChannelAtDelivery;
-      p_to: string;
-    },
-  ) => ReturnType<SupabaseServerClient['rpc']>;
-  const { data, error } = await transitionRpc('transition_order', {
-    p_order_id: orderId,
-    p_to: to,
-    p_actor: actorUserId,
-    p_note: note?.trim() || undefined,
-    ...(paymentChannelAtDelivery ? { p_payment_channel: paymentChannelAtDelivery } : {}),
-  });
-
-  if (error || data !== to) {
-    return { ok: false, errorCode: 'update_failed' };
-  }
-
-  return { ok: true, newStatus: to };
-}
-
 export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<OrderListItem[]> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const role = await getCurrentMemberRole(supabase);
   let query = supabase
     .from('orders')
     .select(
@@ -223,11 +187,15 @@ export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<Ord
     throw error;
   }
 
-  return (data ?? []) as OrderListItem[];
+  return ((data ?? []) as Array<Omit<OrderListItem, 'allowedActions'>>).map((order) => ({
+    ...order,
+    allowedActions: allowedActionsForOrder(order.cod_status, role),
+  }));
 }
 
 export async function getOrderById(id: string): Promise<OrderDetail | null> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const role = await getCurrentMemberRole(supabase);
   const { data, error } = await supabase
     .from('orders')
     .select('*, customer:customer_id(full_name, phone, email, shipping_address)')
@@ -270,6 +238,7 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
 
   return {
     ...(data as Tables<'orders'> & { customer: CustomerDetail | null }),
+    allowedActions: allowedActionsForOrder(data.cod_status, role),
     delivery_address: orderAddressResult.data,
     customer_delivery_address: customerAddressResult.data,
   };
@@ -332,7 +301,7 @@ export async function getOrderTimeline(orderId: string): Promise<OrderTimelineEv
   return [...transitions, ...calls].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export const transitionOrderStatusAction = authActionClient
+export const transitionOrderStatusAction = requireRole('owner', 'manager', 'agent')
   .metadata({ actionName: 'orders.transition_status', section: 'orders' })
   .inputSchema(
     z.object({
@@ -343,69 +312,38 @@ export const transitionOrderStatusAction = authActionClient
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
-    const supabase = asTypedSupabaseClient(ctx.supabase);
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select('id, cod_status, merchant_account_id')
-      .eq('id', parsedInput.orderId)
-      .maybeSingle();
+    const action = getTransitionActionForTarget(parsedInput.to, ctx.member.role);
 
-    if (orderError) {
-      return { ok: false as const, errorCode: 'update_failed' as const };
+    if (!action) {
+      return {
+        ok: false as const,
+        errorCode: 'forbidden' as const,
+        message: "Vous n'avez pas le droit d'executer cette action.",
+      };
     }
 
-    if (!order) {
-      return { ok: false as const, errorCode: 'order_not_found' as const };
-    }
-
-    if (!isOrderStatus(order.cod_status)) {
-      return { ok: false as const, errorCode: 'invalid_current_status' as const };
-    }
-
-    try {
-      assertTransition(order.cod_status, parsedInput.to);
-    } catch (error) {
-      if (error instanceof IllegalTransitionError) {
-        return transitionErrorPayload(error);
-      }
-
-      throw error;
-    }
-
-    const transition = await applyOrderTransition({
+    const transition = await performTransitionForContext({
+      action,
       actorUserId: ctx.user.id,
-      note: parsedInput.note,
-      orderId: order.id,
-      paymentChannelAtDelivery: parsedInput.paymentChannelAtDelivery,
-      supabase,
-      to: parsedInput.to,
+      orderId: parsedInput.orderId,
+      payload: {
+        note: parsedInput.note,
+        paymentChannelAtDelivery: parsedInput.paymentChannelAtDelivery,
+      },
+      role: ctx.member.role,
+      supabase: asTypedSupabaseClient(ctx.supabase),
     });
 
     if (!transition.ok) {
-      return { ok: false as const, errorCode: transition.errorCode };
+      return transition;
     }
 
-    const auditError = await writeOrderAuditLog({
-      action: 'order.transition',
-      actorUserId: ctx.user.id,
-      merchantAccountId: order.merchant_account_id,
-      orderId: order.id,
-      payload: {
-        from: order.cod_status,
-        to: parsedInput.to,
-        note: parsedInput.note ?? null,
-        paymentChannelAtDelivery:
-          parsedInput.to === 'LIVREE' ? (parsedInput.paymentChannelAtDelivery ?? 'ESPECES') : null,
-      },
-    });
-
-    if (auditError) {
-      return { ok: false as const, errorCode: 'audit_failed' as const };
-    }
-
-    revalidateOrderPaths(order.id);
-
-    return { ok: true as const, newStatus: parsedInput.to };
+    return {
+      ok: true as const,
+      newStatus: transition.order.cod_status,
+      order: transition.order,
+      allowedActions: transition.allowedActions,
+    };
   });
 
 function getAutoTransitionTarget(outcome: CallOutcome): OrderStatus {
@@ -416,7 +354,7 @@ function getAutoTransitionTarget(outcome: CallOutcome): OrderStatus {
   return outcome;
 }
 
-export const logCallAction = authActionClient
+export const logCallAction = requireRole('owner', 'manager', 'agent')
   .metadata({ actionName: 'orders.log_call', section: 'orders' })
   .inputSchema(logCallInputSchema)
   .action(async ({ ctx, parsedInput }) => {
@@ -453,26 +391,33 @@ export const logCallAction = authActionClient
 
     const autoTransitionTarget = getAutoTransitionTarget(parsedInput.outcome);
     let transitioned = false;
-    let transitionErrorCode: 'invalid_current_status' | 'update_failed' | null = null;
+    let transitionErrorCode:
+      | 'forbidden'
+      | 'audit_failed'
+      | 'illegal_transition'
+      | 'invalid_current_status'
+      | 'order_not_found'
+      | 'update_failed'
+      | null = null;
 
     if (isOrderStatus(order.cod_status)) {
-      try {
-        assertTransition(order.cod_status, autoTransitionTarget);
-        const transition = await applyOrderTransition({
+      const transitionAction = getTransitionActionForTarget(autoTransitionTarget, ctx.member.role);
+
+      if (transitionAction) {
+        const transition = await performTransitionForContext({
+          action: transitionAction,
           actorUserId: ctx.user.id,
-          note: parsedInput.note,
           orderId: order.id,
-          paymentChannelAtDelivery: undefined,
+          payload: { note: parsedInput.note },
+          role: ctx.member.role,
           supabase,
-          to: autoTransitionTarget,
         });
 
         transitioned = transition.ok;
-        transitionErrorCode = transition.ok ? null : transition.errorCode;
-      } catch (error) {
-        if (!(error instanceof IllegalTransitionError)) {
-          throw error;
-        }
+        transitionErrorCode =
+          transition.ok || transition.errorCode === 'audit_failed' ? null : transition.errorCode;
+      } else {
+        transitionErrorCode = 'forbidden';
       }
     } else {
       transitionErrorCode = 'invalid_current_status';
@@ -512,7 +457,7 @@ export const logCallAction = authActionClient
     };
   });
 
-export const updateCodStatusAction = authActionClient
+export const updateCodStatusAction = requireRole('owner', 'manager', 'agent')
   .metadata({ actionName: 'orders.update_cod_status', section: 'orders' })
   .inputSchema(
     z.object({
@@ -521,55 +466,22 @@ export const updateCodStatusAction = authActionClient
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
-    const merchantAccount = await getMerchantAccount();
+    const action = getTransitionActionForTarget(parsedInput.codStatus, ctx.member.role);
 
-    if (!merchantAccount) {
-      return { ok: false as const, errorCode: 'merchant_not_found' as const };
+    if (!action) {
+      return { ok: false as const, errorCode: 'forbidden' as const };
     }
 
-    const admin = createSupabaseAdminClient();
-    const { data: existingOrder, error: selectError } = await admin
-      .from('orders')
-      .select('id, cod_status')
-      .eq('id', parsedInput.orderId)
-      .eq('merchant_account_id', merchantAccount.id)
-      .maybeSingle();
-
-    if (selectError) {
-      return { ok: false as const, errorCode: 'update_failed' as const };
-    }
-
-    if (!existingOrder) {
-      return { ok: false as const, errorCode: 'order_not_found' as const };
-    }
-
-    const { error: updateError } = await admin
-      .from('orders')
-      .update({
-        cod_status: parsedInput.codStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', parsedInput.orderId)
-      .eq('merchant_account_id', merchantAccount.id);
-
-    if (updateError) {
-      return { ok: false as const, errorCode: 'update_failed' as const };
-    }
-
-    const { error: auditError } = await admin.from('audit_log').insert({
-      merchant_account_id: merchantAccount.id,
-      actor_user_id: ctx.user.id,
-      action: 'order.cod_status_changed',
-      resource_type: 'orders',
-      resource_id: parsedInput.orderId,
-      payload: {
-        from: existingOrder.cod_status,
-        to: parsedInput.codStatus,
-      },
+    const transition = await performTransitionForContext({
+      action,
+      actorUserId: ctx.user.id,
+      orderId: parsedInput.orderId,
+      role: ctx.member.role,
+      supabase: asTypedSupabaseClient(ctx.supabase),
     });
 
-    if (auditError) {
-      return { ok: false as const, errorCode: 'audit_failed' as const };
+    if (!transition.ok) {
+      return { ok: false as const, errorCode: transition.errorCode };
     }
 
     return { ok: true as const };
