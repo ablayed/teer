@@ -1,8 +1,8 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
+import { OrderInlineActions } from '@/components/orders/order-inline-actions';
 import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
-import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { getMerchantAccount } from '@/lib/actions/merchant';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
 import { getShopConnection } from '@/lib/actions/shopify';
@@ -276,31 +276,22 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                   <p className="text-lg font-semibold">
                     {formatMoney(order.total_amount, order.currency)}
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {order.cod_status === 'A_APPELER' ? (
-                      <WhatsAppConfirmButton
-                        disabledLabel={t('whatsapp.missingPhone')}
-                        label={t('whatsapp.confirm')}
-                        url={buildWhatsAppConfirmationUrl({
-                          address: formatOrderAddress(order.shipping_address),
-                          currency: order.currency,
-                          customerFirstName: firstName(order.customer?.full_name),
-                          itemsSummary: order.items_summary,
-                          orderNumber: order.order_number,
-                          phone: order.customer?.phone ?? null,
-                          shopName: merchant?.name ?? 'T\u00eb\u00ebr',
-                          totalAmount: order.total_amount,
-                        })}
-                      />
-                    ) : null}
-                    <Link
-                      className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-medium text-text hover:bg-canvas"
-                      href={`/commandes/${order.id}`}
-                    >
-                      {t('table.details')}
-                      <ArrowRight aria-hidden="true" className="size-4" />
-                    </Link>
-                  </div>
+                  <OrderInlineActions
+                    allowedActions={order.allowedActions}
+                    orderId={order.id}
+                    phone={order.customer?.phone ?? null}
+                    whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}
+                    whatsappUrl={buildWhatsAppConfirmationUrl({
+                      address: formatOrderAddress(order.shipping_address),
+                      currency: order.currency,
+                      customerFirstName: firstName(order.customer?.full_name),
+                      itemsSummary: order.items_summary,
+                      orderNumber: order.order_number,
+                      phone: order.customer?.phone ?? null,
+                      shopName: merchant?.name ?? 'T\u00eb\u00ebr',
+                      totalAmount: order.total_amount,
+                    })}
+                  />
                 </div>
               </div>
             </article>
