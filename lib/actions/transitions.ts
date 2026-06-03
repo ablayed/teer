@@ -182,6 +182,7 @@ export async function performTransitionForContext({
   const note = payload?.note?.trim() || undefined;
   const paymentChannelAtDelivery =
     to === 'LIVREE' ? (payload?.paymentChannelAtDelivery ?? 'ESPECES') : undefined;
+  const rpcPaymentChannel = paymentChannelAtDelivery ?? 'ESPECES';
   const { data: nextStatus, error: transitionErrorResult } = await transitionRpc(supabase)(
     'transition_order',
     {
@@ -189,7 +190,7 @@ export async function performTransitionForContext({
       p_to: to,
       p_actor: actorUserId,
       ...(note ? { p_note: note } : {}),
-      ...(paymentChannelAtDelivery ? { p_payment_channel: paymentChannelAtDelivery } : {}),
+      p_payment_channel: rpcPaymentChannel,
     },
   );
 

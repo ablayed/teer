@@ -72,6 +72,7 @@ export function ConnexionForm() {
                 message: tErrors('weak_password'),
               })
             : z.string().min(10, tErrors('weak_password')),
+        redirectTo: z.string().trim().max(500).optional(),
       }),
     [mode, tErrors],
   );
