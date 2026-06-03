@@ -434,7 +434,8 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       customerName: z.string().trim().min(2).max(120),
       phone: z.string().trim().min(1).max(40),
       source: z.enum(manualOrderSources).default('manual'),
-      productName: z.string().trim().min(2).max(160),
+      productId: z.string().uuid(),
+      quantity: z.number().int().min(1).max(999),
       totalAmount: z.number().finite().positive(),
       address: z.string().trim().max(500).optional(),
     }),
@@ -456,6 +457,21 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
           address1: parsedInput.address,
         } satisfies Json)
       : null;
+
+    const { data: product, error: productError } = await supabase
+      .from('product')
+      .select('id, title, sku')
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('id', parsedInput.productId)
+      .maybeSingle();
+
+    if (productError || !product) {
+      return {
+        ok: false as const,
+        errorCode: 'invalid_phone' as const,
+        message: 'Le produit selectionne est introuvable.',
+      };
+    }
 
     const customer = await findOrCreateCustomerByPhone({
       merchantAccountId,
@@ -485,7 +501,13 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
         total_amount: parsedInput.totalAmount,
         currency: 'XOF',
         items_summary: [
-          { title: parsedInput.productName, quantity: 1, price: parsedInput.totalAmount },
+          {
+            product_id: product.id,
+            title: product.title,
+            sku: product.sku,
+            quantity: parsedInput.quantity,
+            price: parsedInput.totalAmount / parsedInput.quantity,
+          },
         ],
         shipping_address: shippingAddress,
         order_state: 'open',

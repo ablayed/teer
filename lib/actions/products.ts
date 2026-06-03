@@ -144,20 +144,21 @@ export async function getProductCatalogPageData(): Promise<ProductCatalogPageDat
   };
 }
 
-export const createProductAction = requireRole('owner', 'manager')
+export const createProductAction = requireRole('owner', 'manager', 'agent')
   .metadata({ actionName: 'products.create', section: 'products' })
   .inputSchema(productInputSchema)
   .action(async ({ ctx, parsedInput }) => {
     const admin = createSupabaseAdminClient();
+    const unitCost = ctx.member.role === 'agent' ? 0 : parsedInput.unitCost;
     const { data, error } = await admin
       .from('product')
       .insert({
         merchant_account_id: ctx.member.merchantAccountId,
         sku: parsedInput.sku?.trim() || null,
         title: parsedInput.title,
-        unit_cost: parsedInput.unitCost,
+        unit_cost: unitCost,
       })
-      .select('id')
+      .select('id, title, sku')
       .single();
 
     if (error) {
@@ -166,7 +167,14 @@ export const createProductAction = requireRole('owner', 'manager')
 
     revalidatePath('/produits');
 
-    return { ok: true as const, productId: data.id };
+    return {
+      ok: true as const,
+      product: {
+        id: data.id,
+        sku: data.sku,
+        title: data.title,
+      },
+    };
   });
 
 export const updateProductUnitCostAction = requireRole('owner', 'manager')

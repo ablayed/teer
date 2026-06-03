@@ -7,6 +7,7 @@ import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getMerchantAccount } from '@/lib/actions/merchant';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
+import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
 import {
   compareOrdersForSavedView,
@@ -143,11 +144,21 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const params = await searchParams;
   const activeView = parseOrderSavedViewId(params.vue);
   const search = normalizeOrderSearch(params.q);
-  const [orders, shopConnection, merchant] = await Promise.all([
+  const [orders, shopConnection, merchant, productCatalog] = await Promise.all([
     getOrders(),
     getShopConnection(),
     getMerchantAccount(),
+    getProductCatalogPageData(),
   ]);
+  const productOptions = productCatalog.ok
+    ? productCatalog.products
+        .filter((product) => product.is_active)
+        .map((product) => ({
+          id: product.id,
+          sku: product.sku,
+          title: product.title,
+        }))
+    : [];
 
   const searchedOrders = filterOrdersBySearch(orders, search);
   const visibleOrders = buildVisibleOrders(searchedOrders, activeView);
@@ -186,7 +197,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
           <p className="max-w-2xl text-muted">{t('subtitle')}</p>
         </div>
         <div className="flex flex-col gap-3 sm:items-end">
-          <NewOrderForm />
+          <NewOrderForm products={productOptions} />
           <SyncOrdersButton hasShop={Boolean(shopConnection)} />
         </div>
       </div>
