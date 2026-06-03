@@ -1,0 +1,302 @@
+import { orderStatuses } from '@/lib/domain/order-state-machine';
+import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
+import type { Database } from '@/lib/supabase/database.types';
+import {
+  type PostgrestError,
+  type PostgrestSingleResponse,
+  type SupabaseClient,
+  createClient,
+} from '@supabase/supabase-js';
+import { afterEach, describe, expect, it } from 'vitest';
+
+const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+const password = 'mot-de-passe-phase1-rls';
+const createdUserIds: string[] = [];
+
+type AdminClient = SupabaseClient<Database>;
+
+type TransitionOrderArgs = {
+  p_actor: string;
+  p_assigned_driver_id?: string;
+  p_attempt_count?: number;
+  p_call_state?: string;
+  p_cancel_reason?: string;
+  p_cash_state?: string;
+  p_delivery_state?: string;
+  p_next_contact_at?: string;
+  p_note?: string;
+  p_order_id: string;
+  p_order_state?: string;
+  p_payment_channel?: string;
+  p_scheduled_for?: string;
+};
+
+type ReconcileRow = {
+  derived_cod_status: string;
+  merchant_account_id: string;
+  order_id: string;
+  stored_cod_status: string;
+};
+
+function adminClient(): AdminClient {
+  return createClient<Database>(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+function transitionOrderRpc(client: SupabaseClient<Database>) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'transition_order',
+    args: TransitionOrderArgs,
+  ) => Promise<PostgrestSingleResponse<string>>;
+}
+
+function reconcileCodStatusRpc(client: SupabaseClient<Database>) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'reconcile_order_cod_status',
+    args?: Record<string, never>,
+  ) => Promise<{ data: ReconcileRow[] | null; error: PostgrestError | null }>;
+}
+
+async function createConfirmedUser(admin: AdminClient, email: string) {
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (error || !data.user) {
+    throw error ?? new Error('Utilisateur de test non cree');
+  }
+
+  createdUserIds.push(data.user.id);
+  return data.user.id;
+}
+
+async function waitForMerchantAccount(admin: AdminClient, userId: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const { data, error } = await admin
+      .from('merchant_account')
+      .select('id')
+      .eq('owner_user_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.id) {
+      return data.id;
+    }
+  }
+
+  throw new Error('Merchant account introuvable');
+}
+
+async function createOwnerFixture(label: string) {
+  const admin = adminClient();
+  const email = `phase1-rls-${label}-${Date.now()}-${crypto.randomUUID()}@example.com`;
+  const userId = await createConfirmedUser(admin, email);
+  const merchantAccountId = await waitForMerchantAccount(admin, userId);
+
+  return { admin, email, merchantAccountId, userId };
+}
+
+async function addMember(
+  admin: AdminClient,
+  merchantAccountId: string,
+  role: 'agent' | 'manager' | 'owner',
+) {
+  const email = `phase1-member-${role}-${Date.now()}-${crypto.randomUUID()}@example.com`;
+  const userId = await createConfirmedUser(admin, email);
+
+  await admin.from('merchant_account').delete().eq('owner_user_id', userId);
+
+  const { error } = await admin.from('merchant_member').insert({
+    merchant_account_id: merchantAccountId,
+    role,
+    user_id: userId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return { email, userId };
+}
+
+async function signIn(email: string) {
+  const client = createClient<Database>(supabaseUrl, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    throw error;
+  }
+
+  return client;
+}
+
+async function createOrder(
+  admin: AdminClient,
+  merchantAccountId: string,
+  status: (typeof orderStatuses)[number],
+) {
+  const dimensions = legacyStatusToDimensions(status);
+  const { data, error } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      order_number: `PHASE1-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      total_amount: 10000,
+      currency: 'XOF',
+      cod_status: status,
+      order_state: dimensions.orderState,
+      call_state: dimensions.callState,
+      delivery_state: dimensions.deliveryState,
+      cash_state: dimensions.cashState,
+      attempt_count: dimensions.attemptCount,
+      next_contact_at: dimensions.nextContactAt,
+      scheduled_for: dimensions.scheduledFor,
+      cancel_reason: dimensions.cancelReason,
+      assigned_driver_id: dimensions.assignedDriverId,
+      created_at_shopify: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Commande de test non creee');
+  }
+
+  return data.id;
+}
+
+afterEach(async () => {
+  if (!supabaseUrl || !serviceRoleKey) {
+    return;
+  }
+
+  const admin = adminClient();
+  await Promise.all(createdUserIds.map((userId) => admin.auth.admin.deleteUser(userId)));
+  createdUserIds.length = 0;
+});
+
+describe('orders dimensions RLS', () => {
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'isole les nouvelles colonnes de dimensions entre tenants',
+    async () => {
+      const fixtureA = await createOwnerFixture('tenant-a');
+      const fixtureB = await createOwnerFixture('tenant-b');
+      const orderId = await createOrder(fixtureA.admin, fixtureA.merchantAccountId, 'A_APPELER');
+      const outsider = await signIn(fixtureB.email);
+
+      const { data: hiddenRows, error: hiddenError } = await outsider
+        .from('orders')
+        .select('id, order_state, call_state, delivery_state, cash_state')
+        .eq('id', orderId);
+
+      expect(hiddenError).toBeNull();
+      expect(hiddenRows).toEqual([]);
+
+      const { error: updateError } = await outsider
+        .from('orders')
+        .update({ order_state: 'completed' })
+        .eq('id', orderId);
+
+      expect(updateError).toBeNull();
+
+      const { data: storedOrder, error: storedOrderError } = await fixtureA.admin
+        .from('orders')
+        .select('order_state, call_state, delivery_state, cash_state')
+        .eq('id', orderId)
+        .single();
+
+      expect(storedOrderError).toBeNull();
+      expect(storedOrder).toMatchObject({
+        order_state: 'open',
+        call_state: 'to_call',
+        delivery_state: 'unassigned',
+        cash_state: 'not_due',
+      });
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'respecte le WITH CHECK agent sur le cod_status derive par le trigger',
+    async () => {
+      const fixture = await createOwnerFixture('agent-check');
+      const agent = await addMember(fixture.admin, fixture.merchantAccountId, 'agent');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      const agentClient = await signIn(agent.email);
+
+      const programmed = await transitionOrderRpc(agentClient)('transition_order', {
+        p_actor: agent.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_order_id: orderId,
+      });
+
+      expect(programmed.error).toBeNull();
+      expect(programmed.data).toBe('PROGRAMMEE');
+
+      const assigned = await transitionOrderRpc(agentClient)('transition_order', {
+        p_actor: agent.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'assigned',
+        p_order_id: orderId,
+      });
+
+      expect(assigned.error).toBeNull();
+      expect(assigned.data).toBe('EN_LIVRAISON');
+
+      const delivered = await transitionOrderRpc(agentClient)('transition_order', {
+        p_actor: agent.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'collected',
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+
+      expect(delivered.error).not.toBeNull();
+
+      const { data: storedOrder, error: storedOrderError } = await fixture.admin
+        .from('orders')
+        .select('cod_status, order_state, delivery_state, cash_state')
+        .eq('id', orderId)
+        .single();
+
+      expect(storedOrderError).toBeNull();
+      expect(storedOrder).toMatchObject({
+        cod_status: 'EN_LIVRAISON',
+        order_state: 'open',
+        delivery_state: 'assigned',
+        cash_state: 'expected',
+      });
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey)(
+    'retourne zero ecart dans la reconciliation des statuts legacy',
+    async () => {
+      const fixture = await createOwnerFixture('reconcile');
+
+      for (const status of orderStatuses) {
+        await createOrder(fixture.admin, fixture.merchantAccountId, status);
+      }
+
+      const result = await reconcileCodStatusRpc(fixture.admin)('reconcile_order_cod_status', {});
+
+      expect(result.error).toBeNull();
+      expect(result.data ?? []).toEqual([]);
+    },
+  );
+});

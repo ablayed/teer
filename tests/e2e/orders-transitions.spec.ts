@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -134,6 +135,9 @@ async function createOrder(
   status: string,
   totalAmount = 12345,
 ) {
+  const dimensions = legacyStatusToDimensions(
+    status as Parameters<typeof legacyStatusToDimensions>[0],
+  );
   const { data: customer, error: customerError } = await admin
     .from('customer')
     .insert({
@@ -162,6 +166,15 @@ async function createOrder(
       total_amount: totalAmount,
       currency: 'XOF',
       cod_status: status,
+      order_state: dimensions.orderState,
+      call_state: dimensions.callState,
+      delivery_state: dimensions.deliveryState,
+      cash_state: dimensions.cashState,
+      attempt_count: dimensions.attemptCount,
+      next_contact_at: dimensions.nextContactAt,
+      scheduled_for: dimensions.scheduledFor,
+      cancel_reason: dimensions.cancelReason,
+      assigned_driver_id: dimensions.assignedDriverId,
       items_summary: [{ title: 'Produit E2E', quantity: 1, price: totalAmount }],
       shipping_address: {
         address1: 'Almadies',
@@ -224,12 +237,18 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
 
     const { data: order, error } = await fixture.admin
       .from('orders')
-      .select('cod_status, cash_collectable_minor, payment_channel_at_delivery')
+      .select(
+        'cod_status, order_state, call_state, delivery_state, cash_state, cash_collectable_minor, payment_channel_at_delivery',
+      )
       .eq('id', orderId)
       .single();
 
     expect(error).toBeNull();
     expect(order?.cod_status).toBe('LIVREE');
+    expect(order?.order_state).toBe('completed');
+    expect(order?.call_state).toBe('validated');
+    expect(order?.delivery_state).toBe('delivered');
+    expect(order?.cash_state).toBe('collected');
     expect(order?.payment_channel_at_delivery).toBe('ESPECES');
     expect(order?.cash_collectable_minor).toBe(12345);
   } finally {
