@@ -1,5 +1,6 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
+import { NewOrderForm } from '@/components/orders/new-order-form';
 import { OrderInlineActions } from '@/components/orders/order-inline-actions';
 import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
@@ -179,6 +180,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
           <p className="max-w-2xl text-muted">{t('subtitle')}</p>
         </div>
         <div className="flex flex-col gap-3 sm:items-end">
+          <NewOrderForm />
           <SyncOrdersButton hasShop={Boolean(shopConnection)} />
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import { performTransitionForContext } from '@/lib/actions/transitions';
+import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import {
   type TransitionAction,
@@ -17,7 +18,7 @@ import {
   logCallInputSchema,
 } from '@/lib/orders/call-log-validation';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
-import type { Database, Tables } from '@/lib/supabase/database.types';
+import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -67,6 +68,7 @@ type GetOrdersInput = {
 };
 
 type SupabaseServerClient = SupabaseClient<Database>;
+const manualOrderSources = ['manual', 'whatsapp', 'instagram', 'tiktok', 'facebook'] as const;
 
 export type OrderTransitionTimelineEvent = {
   id: string;
@@ -179,6 +181,116 @@ async function writeOrderAuditLog({
   });
 
   return error;
+}
+
+async function getMerchantAccountIdForActor(
+  supabase: SupabaseServerClient,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('merchant_member')
+    .select('merchant_account_id')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data.merchant_account_id;
+}
+
+async function findOrCreateCustomerByPhone({
+  email,
+  fullName,
+  merchantAccountId,
+  phone,
+  shippingAddress,
+  supabase,
+}: {
+  email?: string;
+  fullName?: string;
+  merchantAccountId: string;
+  phone: string;
+  shippingAddress: Json | null;
+  supabase: SupabaseServerClient;
+}): Promise<
+  { ok: true; customerId: string; normalizedPhone: string } | { message: string; ok: false }
+> {
+  const normalizedPhone = normalizeSenegalPhone(phone);
+
+  if (!normalizedPhone) {
+    return {
+      ok: false,
+      message: 'Le numero de telephone doit etre un mobile senegalais valide.',
+    };
+  }
+
+  const { data: matches, error: selectError } = await supabase
+    .from('customer')
+    .select('id, full_name, email, shipping_address, created_at')
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('phone', normalizedPhone)
+    .order('created_at', { ascending: true })
+    .limit(2);
+
+  if (selectError) {
+    return { ok: false, message: 'Impossible de verifier le client existant.' };
+  }
+
+  const existingCustomer = matches?.[0] ?? null;
+
+  if (existingCustomer) {
+    const customerPatch: TablesUpdate<'customer'> = {
+      ...(existingCustomer.full_name ? {} : fullName ? { full_name: fullName } : {}),
+      ...(existingCustomer.email ? {} : email ? { email } : {}),
+      ...(existingCustomer.shipping_address
+        ? {}
+        : shippingAddress
+          ? { shipping_address: shippingAddress }
+          : {}),
+    };
+
+    if (Object.keys(customerPatch).length > 0) {
+      const { error: updateError } = await supabase
+        .from('customer')
+        .update(customerPatch)
+        .eq('id', existingCustomer.id);
+
+      if (updateError) {
+        return { ok: false, message: 'Impossible de mettre a jour le client existant.' };
+      }
+    }
+
+    return {
+      ok: true,
+      customerId: existingCustomer.id,
+      normalizedPhone,
+    };
+  }
+
+  const { data: insertedCustomer, error: insertError } = await supabase
+    .from('customer')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      full_name: fullName ?? null,
+      phone: normalizedPhone,
+      email: email ?? null,
+      shipping_address: shippingAddress,
+    })
+    .select('id')
+    .single();
+
+  if (insertError || !insertedCustomer) {
+    return { ok: false, message: 'Impossible de creer le client.' };
+  }
+
+  return {
+    ok: true,
+    customerId: insertedCustomer.id,
+    normalizedPhone,
+  };
 }
 
 export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<OrderListItem[]> {
@@ -314,6 +426,92 @@ export async function getOrderTimeline(orderId: string): Promise<OrderTimelineEv
 
   return [...transitions, ...calls].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
+
+export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
+  .metadata({ actionName: 'orders.create_manual', section: 'orders' })
+  .inputSchema(
+    z.object({
+      customerName: z.string().trim().min(2).max(120),
+      phone: z.string().trim().min(1).max(40),
+      source: z.enum(manualOrderSources).default('manual'),
+      productName: z.string().trim().min(2).max(160),
+      totalAmount: z.number().finite().positive(),
+      address: z.string().trim().max(500).optional(),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const merchantAccountId = await getMerchantAccountIdForActor(supabase, ctx.user.id);
+
+    if (!merchantAccountId) {
+      return {
+        ok: false as const,
+        errorCode: 'merchant_not_found' as const,
+        message: 'Aucun compte marchand n’a ete trouve.',
+      };
+    }
+
+    const shippingAddress = parsedInput.address
+      ? ({
+          address1: parsedInput.address,
+        } satisfies Json)
+      : null;
+
+    const customer = await findOrCreateCustomerByPhone({
+      merchantAccountId,
+      phone: parsedInput.phone,
+      fullName: parsedInput.customerName,
+      shippingAddress,
+      supabase,
+    });
+
+    if (!customer.ok) {
+      return {
+        ok: false as const,
+        errorCode: 'update_failed' as const,
+        message: customer.message,
+      };
+    }
+
+    const orderNumber = `MAN-${Date.now()}`;
+    const { data: order, error: insertError } = await supabase
+      .from('orders')
+      .insert({
+        merchant_account_id: merchantAccountId,
+        customer_id: customer.customerId,
+        shopify_order_id: null,
+        source: parsedInput.source,
+        order_number: orderNumber,
+        total_amount: parsedInput.totalAmount,
+        currency: 'XOF',
+        items_summary: [
+          { title: parsedInput.productName, quantity: 1, price: parsedInput.totalAmount },
+        ],
+        shipping_address: shippingAddress,
+        order_state: 'open',
+        call_state: 'to_call',
+        delivery_state: 'unassigned',
+        cash_state: 'not_due',
+      })
+      .select('id')
+      .single();
+
+    if (insertError || !order) {
+      return {
+        ok: false as const,
+        errorCode: 'update_failed' as const,
+        message: 'La commande manuelle n’a pas pu etre creee.',
+      };
+    }
+
+    revalidatePath('/commandes');
+    revalidatePath('/tableau');
+
+    return {
+      ok: true as const,
+      orderId: order.id,
+    };
+  });
 
 export const transitionOrderStatusAction = requireRole('owner', 'manager', 'agent')
   .metadata({ actionName: 'orders.transition_status', section: 'orders' })
