@@ -7,6 +7,7 @@ import {
   persistShopifyOrder,
 } from '@/lib/shopify/orders-sync';
 import type { Database, Tables } from '@/lib/supabase/database.types';
+import * as Sentry from '@sentry/nextjs';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 
 type ShopRow = Tables<'shop'>;
@@ -30,7 +31,10 @@ function createSupabaseAdminClient() {
 }
 
 function logSyncError(prefix: string, error: unknown, payload?: unknown) {
-  console.error(prefix, error, payload);
+  Sentry.captureException(error, {
+    tags: { module: 'shopify.shop-sync' },
+    extra: { payload, prefix },
+  });
 }
 
 async function getShop({

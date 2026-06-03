@@ -1,4 +1,5 @@
 import type { Database } from '@/lib/supabase/database.types';
+import * as Sentry from '@sentry/nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 
@@ -27,7 +28,9 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.from('merchant_account').select('id').limit(1);
 
   if (error) {
-    console.error('[cron.keep-alive]', error);
+    Sentry.captureException(error, {
+      tags: { route: 'cron.keep-alive' },
+    });
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 

@@ -2,6 +2,7 @@ import { encryptToken } from '@/lib/shopify/crypto';
 import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib/shopify/oauth';
 import { verifyState } from '@/lib/shopify/state';
 import type { Database } from '@/lib/supabase/database.types';
+import * as Sentry from '@sentry/nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 
@@ -117,7 +118,9 @@ export async function GET(request: NextRequest) {
 
     return redirectTo('/boutiques?connected=1', request);
   } catch (error) {
-    console.error('[shopify.callback]', error);
+    Sentry.captureException(error, {
+      tags: { route: 'shopify.callback' },
+    });
     return redirectTo('/boutiques?error=connection_failed', request);
   }
 }

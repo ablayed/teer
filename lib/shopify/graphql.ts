@@ -65,10 +65,6 @@ export async function shopifyGraphQL<T>({
 
   const payload = (await response.json()) as ShopifyGraphQLResponse<T>;
 
-  if (payload.extensions?.cost && process.env.NODE_ENV === 'development') {
-    console.error('[shopify.graphql.cost]', payload.extensions.cost);
-  }
-
   if (payload.errors?.length) {
     throw new Error(buildGraphQLErrorMessage(payload.errors));
   }

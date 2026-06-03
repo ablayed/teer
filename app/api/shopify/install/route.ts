@@ -2,6 +2,7 @@ import { getMerchantAccount } from '@/lib/actions/merchant';
 import { buildAuthorizeUrl, validateShopDomain } from '@/lib/shopify/oauth';
 import { generateNonce, signState } from '@/lib/shopify/state';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import * as Sentry from '@sentry/nextjs';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -39,7 +40,10 @@ export async function GET(request: NextRequest) {
   const clientId = process.env.SHOPIFY_API_KEY;
 
   if (!clientId) {
-    console.error('[shopify.install] Missing SHOPIFY_API_KEY');
+    Sentry.captureMessage('Missing SHOPIFY_API_KEY', {
+      level: 'error',
+      tags: { route: 'shopify.install' },
+    });
     return NextResponse.json({ error: 'missing_shopify_api_key' }, { status: 500 });
   }
 

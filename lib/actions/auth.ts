@@ -5,6 +5,7 @@ import { actionClient, authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { checkPasswordStrength } from '@/lib/format/password';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import * as Sentry from '@sentry/nextjs';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
@@ -58,7 +59,10 @@ export const signUpAction = actionClient
     if (error) {
       const code = mapSupabaseAuthError(error);
       if (process.env.NODE_ENV !== 'production') {
-        console.error('[signUpAction]', { code, raw: error });
+        Sentry.captureException(error, {
+          tags: { action: 'auth.sign_up' },
+          extra: { code },
+        });
       }
       return { ok: false as const, errorCode: code };
     }
@@ -83,7 +87,10 @@ export const signInAction = actionClient
     if (error) {
       const code = mapSupabaseAuthError(error);
       if (process.env.NODE_ENV !== 'production') {
-        console.error('[signInAction]', { code, raw: error });
+        Sentry.captureException(error, {
+          tags: { action: 'auth.sign_in' },
+          extra: { code },
+        });
       }
       return { ok: false as const, errorCode: code };
     }
