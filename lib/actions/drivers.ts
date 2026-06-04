@@ -5,6 +5,7 @@ import {
   type DriverCashConsolidation,
   deriveDriverCashConsolidation,
 } from '@/lib/drivers/cash-consolidation';
+import { type DriverPerformance, deriveDriverPerformance } from '@/lib/drivers/performance';
 import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
@@ -244,4 +245,42 @@ export async function getDriverCashConsolidation(driverId: string): Promise<Driv
   });
 
   return { ok: true, consolidation };
+}
+
+export type DriverPerformanceData =
+  | { ok: true; performance: DriverPerformance }
+  | { ok: false; message: string };
+
+// Per-driver performance over a period (created_at in [from, to)). Owner/manager only.
+export async function getDriverPerformance(
+  driverId: string,
+  period: { from: string; to: string },
+): Promise<DriverPerformanceData> {
+  const auth = await resolveOwnerManagerContext();
+  if (!auth.ok) return { ok: false, message: auth.message };
+  const { merchantAccountId, admin } = auth;
+
+  const { data: orders, error } = await admin
+    .from('orders')
+    .select(
+      'cod_status, cash_state, cash_collectable_minor, payment_channel_at_delivery, total_amount',
+    )
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('assigned_driver_id', driverId)
+    .gte('created_at', period.from)
+    .lt('created_at', period.to);
+
+  if (error) return { ok: false, message: error.message };
+
+  const performance = deriveDriverPerformance(
+    (orders ?? []).map((o) => ({
+      codStatus: o.cod_status,
+      cashState: o.cash_state,
+      cashCollectableMinor: o.cash_collectable_minor,
+      paymentChannel: o.payment_channel_at_delivery,
+      totalAmount: o.total_amount,
+    })),
+  );
+
+  return { ok: true, performance };
 }
