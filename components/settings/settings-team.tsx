@@ -119,7 +119,10 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
 
   async function onInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    // Capturer la ref AVANT l'await : React remet event.currentTarget à null
+    // dès la fin de la portion synchrone du handler (cf. onCreateDriver).
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const email = String(formData.get('email') ?? '').trim();
 
     if (!email) {
@@ -130,7 +133,7 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
     const result = await inviteMember.executeAsync({ email, role: inviteRole });
 
     if (result?.data?.ok) {
-      event.currentTarget.reset();
+      form.reset();
       setInviteRole('agent');
       refresh(t('notices.inviteSent'));
       return;
@@ -141,7 +144,11 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
 
   async function onCreateDriver(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    // event.currentTarget devient null après le premier await (React nullifie
+    // currentTarget hors dispatch synchrone) : on capture la ref maintenant,
+    // sinon form.reset() lève "Cannot read properties of null (reading 'reset')".
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const fullName = String(formData.get('fullName') ?? '').trim();
     const phone = String(formData.get('phone') ?? '').trim();
 
@@ -153,7 +160,7 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
     const result = await createDriver.executeAsync({ fullName, phone });
 
     if (result?.data?.ok) {
-      event.currentTarget.reset();
+      form.reset();
       refresh(t('notices.driverCreated'));
       return;
     }

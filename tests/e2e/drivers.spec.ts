@@ -144,6 +144,46 @@ async function signIn(page: Page, email: string, redirectTo: string) {
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E livreurs');
 
+test('ajouter un livreur: toast affiche, champs vides, pas de doublon', async ({ page }) => {
+  const fixture = await createOwnerFixture('add-driver');
+
+  try {
+    await signIn(page, fixture.email, '/parametres');
+
+    // Onglet Équipe
+    await page.getByRole('tab', { name: messages.settings.tabs.team }).click();
+
+    const nameInput = page.getByLabel(messages.settings.team.drivers.fullName);
+    const phoneInput = page.getByLabel(messages.settings.team.drivers.phone);
+
+    await nameInput.fill('Ndeye Livreuse');
+    await phoneInput.fill('+221 77 555 44 33');
+    await page.getByRole('button', { name: messages.settings.team.drivers.add }).click();
+
+    // Toast de succès
+    await expect(page.getByText(messages.settings.team.notices.driverCreated)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Champs vidés (le reset ne plante plus)
+    await expect(nameInput).toHaveValue('');
+    await expect(phoneInput).toHaveValue('');
+
+    // Le livreur apparaît dans la liste
+    await expect(page.getByText('Ndeye Livreuse')).toBeVisible({ timeout: 15_000 });
+
+    // Une seule ligne en base — aucun doublon
+    const { data: drivers } = await fixture.admin
+      .from('driver')
+      .select('id')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('full_name', 'Ndeye Livreuse');
+    expect(drivers).toHaveLength(1);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('allouer un lot fait monter le stock en main du livreur', async ({ page }) => {
   const fixture = await createOwnerFixture('lot');
   const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa Lot');
