@@ -33,7 +33,7 @@ Run a single e2e spec/project: `pnpm exec playwright test tests/e2e/orders-trans
 
 CI (`.github/workflows/ci.yml`) runs lint → typecheck/test-unit/test-rls → test-e2e. `test:rls` spins up a local stack via `supabase start` and reads keys from `supabase status`; locally it needs `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (loaded via `.env.test`; RLS tests `skipIf` the service role key is absent). **Ports 54321-54324 are shared with another local project — stop it before starting Tëër's stack.**
 
-DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM. **Latest applied migration: `0028`.**
+DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM. **Latest applied migration: `0030`.**
 
 ## Engineering rules (non-negotiable)
 
@@ -72,7 +72,7 @@ Support columns: `attempt_count`, `next_contact_at`, `scheduled_for`, `cancel_re
 The lifecycle is defined in layers that must stay in sync:
 1. `lib/domain/order-state-machine.ts` — legal transitions, `canTransition`/`assertTransition`.
 2. `lib/domain/order-transition-actions.ts` — maps user *actions* (`confirmer`, `livrer`, …) to dimension changes via `transitionCatalog`, and which `TeamRole` may perform each action.
-3. `lib/actions/transitions.ts` — `performTransitionForContext` orchestrates: role check → load order → `canTransition` guard → call the `transition_order` Postgres RPC (which writes the dimensions atomically; the trigger derives `cod_status`) → reload → write `audit_log` (with first-class `prior_state`/`next_state`/`source`/`reason`, extended in Phase 1, via the service-role admin client) → `revalidatePath`, returning `{ order, allowedActions }`.
+3. `lib/actions/transitions.ts` — `performTransitionForContext` orchestrates: role check → load order → `canTransition` guard → call the `transition_order` Postgres RPC (which writes the dimensions atomically, the trigger derives `cod_status`, **and posts stock movements via `post_stock_movement` in the same transaction** — all or nothing) → reload → write `audit_log` (service-role admin client) → `revalidatePath`, returning `{ order, allowedActions }`.
 
 The actual state write happens in the **`transition_order` Postgres function** (migrations `0008`, `0016`, `0020`, extended in Phase 1 to write dimensions), not in TS — the TS layer guards and audits, Postgres enforces. When changing the lifecycle, update the TS state machine, the catalog, the RPC, and the RLS policies together.
 
@@ -92,7 +92,7 @@ The actual state write happens in the **`transition_order` Postgres function** (
 
 Tenant tables (all carry `merchant_account_id`, RLS FORCE): `merchant_account` · `merchant_member` (role `owner|manager|agent`) · `shop` · `webhook_event` · `customer` · `product` (catalogue, Phase 3a/`0027`) · `orders` · `order_state_transition` · `order_line` (Phase 3b/`0028`) · `call_log` · `audit_log` (extended: `prior_state, next_state, source, reason`) · `invitation` · `driver` (non-auth) · `cash_settlement` · `settlement_allocation` · `settlement_shortfall` · `merchant_settings` · `stock_movement` (append-only, Phase 3b/`0028`) · `product_stock` (denormalized projection, Phase 3b/`0028`).
 
-Key functions/RPC: `transition_order` · `derive_legacy_cod_status` (trigger) · `current_member_role(merchant_account_id)` (SECURITY DEFINER) · `reconcile_order_cod_status()`.
+Key functions/RPC: `transition_order` (writes dimensions + derives `cod_status` via trigger + posts stock movements atomically via `post_stock_movement`) · `derive_legacy_cod_status` (trigger) · `current_member_role(merchant_account_id)` (SECURITY DEFINER) · `post_stock_movement(...)` (SECURITY DEFINER — ledger insert + `FOR UPDATE` + position update in one transaction) · `reconcile_order_cod_status()` · `reconcile_product_stock()` · `rebuild_product_stock()`.
 
 ## Locked decisions (do not re-litigate without explicit reason)
 
@@ -130,16 +130,16 @@ Key functions/RPC: `transition_order` · `derive_legacy_cod_status` (trigger) ·
 | **1** | 4-dimension model + backfill + dual-write trigger + extended audit log | 0021–0024 | ✅ Done (zero reconciliation drift, RLS green) |
 | **2** | Unified list + 8 saved views + inline status + manual creation + search + remove "Frais & taxes" | 0025–0026 | ✅ Done |
 | **3a** | Product catalogue (`product` table, `read_products` scope, capture Shopify line ids, product selector) | 0027 | ✅ Done (catalogue populated in prod) |
-| **3b** | Stock: `stock_movement` + `product_stock` + `order_line` + movements wired to transitions + thresholds + manual adjustment + Stock page | 0028 | ⏳ **In progress** (schema applied; TS code remaining) |
+| **3b** | Stock module: `stock_movement` + `product_stock` + `order_line` + `post_stock_movement` (atomic) + movements in `transition_order` + CUMP + thresholds + manual adjustment + courier_return + Stock page + reconciliation filet | 0028–0030 | ✅ Done |
 | **4** | Drivers: `driver_stock` (lot + per-order) + cash consolidation + performance | — | ⬜ Next |
 | **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | — | ⬜ |
 | **6** | Finance: returns-aware revenue + COGS + expenses + net profit + 0.5% default | — | ⬜ |
 | **7** | Shopify sync hardening + customer enrichment + cancellation/return analytics | — | ⬜ |
 | **8** | AI assistant (metrics function-calling, read-only, RLS-scoped) | — | ⬜ |
 
-**Remaining on 3b:** manual-order-creation UX fixes (missing price fails silently → make validation visible; invalid-phone toast barely visible → make it visible with a clear message) → `order_line` resolution (manual creation + Shopify sync + best-effort historical backfill) → movements wired in `performTransition` (`FOR UPDATE` + idempotency + CUMP snapshot, mapping below) → manual purchase-in + adjustment + CUMP → Stock page → reconciliation + tests.
+**Transition → movement mapping (authoritative SQL, `0029`):** call→validated (delivery=unassigned) → `reserve` (+qty_reserved, soft) · delivery→assigned/out_for_delivery → `dispatch` (−qty_on_hand, −qty_reserved, CUMP snapshot) · delivery→delivered → `sold` (COGS snapshot) · cancel/refuse when delivery∈{unassigned,scheduled} → `release` (−qty_reserved) · cancel/refuse/fail when delivery∈{assigned,out_for_delivery} → **no movement** (stock with courier; `courier_return` posted manually at physical return).
 
-**Transition → movement mapping (3b):** validate→`reserve` (soft, +qty_reserved) · dispatch→`dispatch` (−qty_on_hand, −qty_reserved, CUMP snapshot) · mark_delivered→`sold` (COGS snapshot, 0 qty) · cancel-before-dispatch→`release` · cancel-after-dispatch / mark_returned→`courier_return` (+qty_on_hand at return) · mark_failed→none (stock with courier).
+**Stock atomicity:** `transition_order` (0029) calls `post_stock_movement` per resolved `order_line` **within its own transaction**. An exception in `post_stock_movement` rolls back the entire transition. Unresolved lines (match_status ≠ 'matched') are silently skipped. Autonomous stock actions (`purchaseInAction`, `manualAdjustmentAction`, `courierReturnAction`) call `post_stock_movement` via `supabase.rpc()` — single atomic HTTP call. Nightly pg_cron (`0030`) runs `reconcile_product_stock()` and persists discrepancies in `stock_reconciliation_alert`; `rebuild_product_stock()` reconstructs from the ledger on demand.
 
 ## Agent alternation workflow (Codex CLI ↔ Claude Code)
 
