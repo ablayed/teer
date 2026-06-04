@@ -1,6 +1,10 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
+import {
+  type DriverCashConsolidation,
+  deriveDriverCashConsolidation,
+} from '@/lib/drivers/cash-consolidation';
 import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
@@ -107,8 +111,12 @@ export type DriverStockRow = {
 
 export type DriverStockData = { ok: true; rows: DriverStockRow[] } | { ok: false; message: string };
 
-// Derives the courier's stock-in-hand per product from the ledger (owner/manager only).
-export async function getDriverStockOnHand(driverId: string): Promise<DriverStockData> {
+// Resolves the current owner/manager context (auth via server client, data via admin).
+type OwnerManagerContext =
+  | { ok: true; merchantAccountId: string; admin: ReturnType<typeof createSupabaseAdminClient> }
+  | { ok: false; message: string };
+
+async function resolveOwnerManagerContext(): Promise<OwnerManagerContext> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -128,7 +136,14 @@ export async function getDriverStockOnHand(driverId: string): Promise<DriverStoc
     return { ok: false, message: 'Accès refusé.' };
   }
 
-  const merchantAccountId = memberAuth.merchant_account_id;
+  return { ok: true, merchantAccountId: memberAuth.merchant_account_id, admin };
+}
+
+// Derives the courier's stock-in-hand per product from the ledger (owner/manager only).
+export async function getDriverStockOnHand(driverId: string): Promise<DriverStockData> {
+  const auth = await resolveOwnerManagerContext();
+  if (!auth.ok) return { ok: false, message: auth.message };
+  const { merchantAccountId, admin } = auth;
 
   const { data: movements, error } = await admin
     .from('stock_movement')
@@ -168,4 +183,65 @@ export async function getDriverStockOnHand(driverId: string): Promise<DriverStoc
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
 
   return { ok: true, rows };
+}
+
+export type DriverCashData =
+  | { ok: true; consolidation: DriverCashConsolidation }
+  | { ok: false; message: string };
+
+// Consolidates cash per driver (dû/collecté/remis/écart) by reusing the existing
+// cash tables and the dimensional cash_state. Owner/manager only.
+export async function getDriverCashConsolidation(driverId: string): Promise<DriverCashData> {
+  const auth = await resolveOwnerManagerContext();
+  if (!auth.ok) return { ok: false, message: auth.message };
+  const { merchantAccountId, admin } = auth;
+
+  const { data: orders, error: ordersError } = await admin
+    .from('orders')
+    .select('id, cash_state, cash_collectable_minor, payment_channel_at_delivery, total_amount')
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('assigned_driver_id', driverId);
+
+  if (ordersError) return { ok: false, message: ordersError.message };
+
+  const orderIds = (orders ?? []).map((o) => o.id);
+
+  const [allocationsResult, shortfallsResult] = await Promise.all([
+    orderIds.length > 0
+      ? admin
+          .from('settlement_allocation')
+          .select('allocated_minor')
+          .eq('merchant_account_id', merchantAccountId)
+          .in('order_id', orderIds)
+      : Promise.resolve({ data: [] as { allocated_minor: number }[], error: null }),
+    admin
+      .from('settlement_shortfall')
+      .select('shortfall_minor, resolution')
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('driver_id', driverId),
+  ]);
+
+  if (allocationsResult.error) return { ok: false, message: allocationsResult.error.message };
+  if (shortfallsResult.error) return { ok: false, message: shortfallsResult.error.message };
+
+  const remittedMinor = (allocationsResult.data ?? []).reduce(
+    (total, a) => total + a.allocated_minor,
+    0,
+  );
+
+  const consolidation = deriveDriverCashConsolidation({
+    orders: (orders ?? []).map((o) => ({
+      cashState: o.cash_state,
+      cashCollectableMinor: o.cash_collectable_minor,
+      paymentChannel: o.payment_channel_at_delivery,
+      totalAmount: o.total_amount,
+    })),
+    remittedMinor,
+    shortfalls: (shortfallsResult.data ?? []).map((s) => ({
+      shortfallMinor: s.shortfall_minor ?? 0,
+      resolution: s.resolution,
+    })),
+  });
+
+  return { ok: true, consolidation };
 }
