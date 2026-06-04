@@ -435,9 +435,16 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       customerName: z.string().trim().min(2).max(120),
       phone: z.string().trim().min(1).max(40),
       source: z.enum(manualOrderSources).default('manual'),
-      productId: z.string().uuid(),
-      quantity: z.number().int().min(1).max(999),
-      totalAmount: z.number().finite().positive(),
+      lines: z
+        .array(
+          z.object({
+            productId: z.string().uuid(),
+            quantity: z.number().int().min(1).max(999),
+            unitPrice: z.number().min(0),
+          }),
+        )
+        .min(1)
+        .max(20),
       address: z.string().trim().max(500).optional(),
     }),
   )
@@ -459,20 +466,22 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
         } satisfies Json)
       : null;
 
-    const { data: product, error: productError } = await supabase
+    const productIds = parsedInput.lines.map((l) => l.productId);
+    const { data: products, error: productError } = await supabase
       .from('product')
       .select('id, title, sku')
       .eq('merchant_account_id', merchantAccountId)
-      .eq('id', parsedInput.productId)
-      .maybeSingle();
+      .in('id', productIds);
 
-    if (productError || !product) {
+    if (productError || !products || products.length !== productIds.length) {
       return {
         ok: false as const,
-        errorCode: 'invalid_phone' as const,
-        message: 'Le produit selectionne est introuvable.',
+        errorCode: 'update_failed' as const,
+        message: 'Un ou plusieurs produits sont introuvables.',
       };
     }
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
 
     const customer = await findOrCreateCustomerByPhone({
       merchantAccountId,
@@ -490,6 +499,18 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       };
     }
 
+    const itemsSummary = parsedInput.lines.map((line) => {
+      const product = productMap.get(line.productId);
+      return {
+        product_id: line.productId,
+        title: product?.title ?? '',
+        sku: product?.sku ?? null,
+        quantity: line.quantity,
+        price: line.unitPrice,
+      };
+    });
+    const totalAmount = parsedInput.lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
+
     const orderNumber = `MAN-${Date.now()}`;
     const { data: order, error: insertError } = await supabase
       .from('orders')
@@ -499,17 +520,9 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
         shopify_order_id: null,
         source: parsedInput.source,
         order_number: orderNumber,
-        total_amount: parsedInput.totalAmount,
+        total_amount: totalAmount,
         currency: 'XOF',
-        items_summary: [
-          {
-            product_id: product.id,
-            title: product.title,
-            sku: product.sku,
-            quantity: parsedInput.quantity,
-            price: parsedInput.totalAmount / parsedInput.quantity,
-          },
-        ],
+        items_summary: itemsSummary,
         shipping_address: shippingAddress,
         order_state: 'open',
         call_state: 'to_call',
@@ -531,15 +544,7 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
     await resolveAndInsertOrderLines(supabase, {
       merchantAccountId,
       orderId: order.id,
-      lineItems: [
-        {
-          product_id: product.id,
-          title: product.title,
-          sku: product.sku,
-          quantity: parsedInput.quantity,
-          price: parsedInput.totalAmount / parsedInput.quantity,
-        },
-      ],
+      lineItems: itemsSummary,
     }).catch(() => undefined);
 
     revalidatePath('/commandes');
