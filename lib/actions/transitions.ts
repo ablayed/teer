@@ -336,15 +336,23 @@ export async function performTransitionForContext({
     return transitionError('audit_failed', "La transition est appliquee, mais l'audit a echoue.");
   }
 
-  // Fire-and-forget: stock is a side-effect, never a precondition for transition success.
-  applyTransitionStockMovements(createSupabaseAdminClient(), supabase, {
+  // Stock movements run after the transition commits. An error here never rolls back the
+  // transition — but we await and log so divergences are visible and recoverable.
+  const stockErr = await applyTransitionStockMovements(createSupabaseAdminClient(), supabase, {
     action,
     actorUserId,
     currentDeliveryState: currentDimensions.deliveryState,
     merchantAccountId: order.merchant_account_id,
     orderId: order.id,
     transitionId,
-  }).catch(() => undefined);
+  }).catch((e: unknown) => e);
+  if (stockErr instanceof Error) {
+    console.error('[stock] movement failed', {
+      transitionId,
+      orderId: order.id,
+      error: stockErr.message,
+    });
+  }
 
   revalidateOrderPaths(order.id);
 
