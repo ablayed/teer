@@ -128,7 +128,7 @@ function writeOffPayload(value: unknown): {
 }
 
 function recordSettlementRpc(supabase: SupabaseServerClient) {
-  return supabase.rpc as unknown as (
+  return supabase.rpc.bind(supabase) as unknown as (
     fn: 'record_cash_settlement',
     args: {
       p_actor: string;
@@ -144,7 +144,7 @@ function recordSettlementRpc(supabase: SupabaseServerClient) {
 }
 
 function writeOffShortfallRpc(supabase: SupabaseServerClient) {
-  return supabase.rpc as unknown as (
+  return supabase.rpc.bind(supabase) as unknown as (
     fn: 'write_off_shortfall',
     args: {
       p_actor: string;
