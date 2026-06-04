@@ -258,7 +258,8 @@
         "empty": "Aucun livreur pour le moment.",
         "edit": "Modifier",
         "save": "Enregistrer",
-        "deactivate": "Désactiver"
+        "remove": "Supprimer",
+        "confirmRemove": "Supprimer ce livreur ? S'il a un historique (commandes, cash ou stock en main), il sera seulement désactivé pour préserver les données."
       },
       "notices": {
         "inviteSent": "Invitation envoyée.",
@@ -267,7 +268,9 @@
         "roleChanged": "Rôle mis à jour.",
         "memberRemoved": "Membre retiré.",
         "driverCreated": "Livreur ajouté.",
-        "driverUpdated": "Livreur mis à jour."
+        "driverUpdated": "Livreur mis à jour.",
+        "driverDeactivated": "Livreur désactivé (historique conservé).",
+        "driverDeleted": "Livreur supprimé."
       },
       "errors": {
         "generic": "Une erreur est survenue, réessayez."

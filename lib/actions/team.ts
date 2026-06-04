@@ -46,7 +46,7 @@ const updateDriverSchema = createDriverSchema.extend({
   isActive: z.boolean().optional(),
 });
 
-const deactivateDriverSchema = z.object({
+const removeDriverSchema = z.object({
   driverId: z.string().uuid(),
 });
 
@@ -65,7 +65,8 @@ type TeamAuditAction =
   | 'member_removed'
   | 'driver_created'
   | 'driver_updated'
-  | 'driver_deactivated';
+  | 'driver_deactivated'
+  | 'driver_deleted';
 
 type TeamMemberRow = Pick<
   Tables<'merchant_member'>,
@@ -763,16 +764,21 @@ export const updateDriverAction = requireRole('owner', 'manager')
     return { ok: true as const };
   });
 
-export const deactivateDriverAction = requireRole('owner', 'manager')
-  .metadata({ actionName: 'team.deactivate_driver', section: 'team' })
-  .inputSchema(deactivateDriverSchema)
+// Supprime un livreur si totalement vierge (aucune commande assignée, aucun
+// cash, aucun mouvement de stock) ; sinon le désactive (is_active=false) pour
+// préserver l'historique et les invariants. owner/manager uniquement.
+export const removeDriverAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'team.remove_driver', section: 'team' })
+  .inputSchema(removeDriverSchema)
   .action(async ({ ctx, parsedInput }) => {
     const admin = createSupabaseAdminClient();
+    const merchantAccountId = ctx.member.merchantAccountId;
+
     const { data: driver, error: driverError } = await admin
       .from('driver')
       .select('id')
       .eq('id', parsedInput.driverId)
-      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('merchant_account_id', merchantAccountId)
       .maybeSingle();
 
     if (driverError) {
@@ -783,20 +789,84 @@ export const deactivateDriverAction = requireRole('owner', 'manager')
       return { ok: false as const, errorCode: 'driver_not_found' as const };
     }
 
-    const { error: updateError } = await admin
-      .from('driver')
-      .update({ is_active: false })
-      .eq('id', driver.id)
-      .eq('merchant_account_id', ctx.member.merchantAccountId);
+    // Le livreur a-t-il un historique (commandes assignées, cash, stock en main) ?
+    const [orders, settlements, shortfalls, movements] = await Promise.all([
+      admin
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('assigned_driver_id', driver.id),
+      admin
+        .from('cash_settlement')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('driver_id', driver.id),
+      admin
+        .from('settlement_shortfall')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('driver_id', driver.id),
+      admin
+        .from('stock_movement')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('driver_id', driver.id),
+    ]);
 
-    if (updateError) {
+    if (orders.error || settlements.error || shortfalls.error || movements.error) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    const hasHistory =
+      (orders.count ?? 0) > 0 ||
+      (settlements.count ?? 0) > 0 ||
+      (shortfalls.count ?? 0) > 0 ||
+      (movements.count ?? 0) > 0;
+
+    if (hasHistory) {
+      // Désactivation : préserve l'historique et les invariants de stock/cash.
+      const { error: updateError } = await admin
+        .from('driver')
+        .update({ is_active: false })
+        .eq('id', driver.id)
+        .eq('merchant_account_id', merchantAccountId);
+
+      if (updateError) {
+        return { ok: false as const, errorCode: 'update_failed' as const };
+      }
+
+      const auditError = await writeTeamAuditLog({
+        action: 'driver_deactivated',
+        actorUserId: ctx.user.id,
+        merchantAccountId,
+        resourceType: 'driver',
+        resourceId: driver.id,
+      });
+
+      if (auditError) {
+        return { ok: false as const, errorCode: 'audit_failed' as const };
+      }
+
+      revalidateTeamPaths();
+
+      return { ok: true as const, mode: 'deactivated' as const };
+    }
+
+    // Suppression dure : livreur totalement vierge.
+    const { error: deleteError } = await admin
+      .from('driver')
+      .delete()
+      .eq('id', driver.id)
+      .eq('merchant_account_id', merchantAccountId);
+
+    if (deleteError) {
       return { ok: false as const, errorCode: 'update_failed' as const };
     }
 
     const auditError = await writeTeamAuditLog({
-      action: 'driver_deactivated',
+      action: 'driver_deleted',
       actorUserId: ctx.user.id,
-      merchantAccountId: ctx.member.merchantAccountId,
+      merchantAccountId,
       resourceType: 'driver',
       resourceId: driver.id,
     });
@@ -807,5 +877,5 @@ export const deactivateDriverAction = requireRole('owner', 'manager')
 
     revalidateTeamPaths();
 
-    return { ok: true as const };
+    return { ok: true as const, mode: 'deleted' as const };
   });

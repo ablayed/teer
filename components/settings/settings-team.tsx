@@ -6,9 +6,9 @@ import { Label } from '@/components/ui/label';
 import {
   changeRoleAction,
   createDriverAction,
-  deactivateDriverAction,
   inviteMemberAction,
   listTeamAction,
+  removeDriverAction,
   removeMemberAction,
   resendInviteAction,
   revokeInviteAction,
@@ -75,7 +75,7 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
   const removeMember = useAction(removeMemberAction);
   const createDriver = useAction(createDriverAction);
   const updateDriver = useAction(updateDriverAction);
-  const deactivateDriver = useAction(deactivateDriverAction);
+  const removeDriver = useAction(removeDriverAction);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteRole, setInviteRole] = useState<InviteRole>('agent');
@@ -196,9 +196,17 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
     result?.data?.ok ? refresh(t('notices.driverUpdated')) : fail();
   }
 
-  async function onDeactivateDriver(driverId: string) {
-    const result = await deactivateDriver.executeAsync({ driverId });
-    result?.data?.ok ? refresh(t('notices.driverUpdated')) : fail();
+  async function onRemoveDriver(driverId: string) {
+    const result = await removeDriver.executeAsync({ driverId });
+    if (result?.data?.ok) {
+      refresh(
+        result.data.mode === 'deleted'
+          ? t('notices.driverDeleted')
+          : t('notices.driverDeactivated'),
+      );
+      return;
+    }
+    fail();
   }
 
   return (
@@ -350,7 +358,11 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
             <DriverRow
               driver={driver}
               key={driver.id}
-              onDeactivate={() => onDeactivateDriver(driver.id)}
+              onRemove={() => {
+                if (window.confirm(t('drivers.confirmRemove'))) {
+                  onRemoveDriver(driver.id);
+                }
+              }}
               onUpdate={(payload) => onUpdateDriver(driver.id, payload)}
               t={t}
             />
@@ -425,12 +437,12 @@ function MemberRow({
 
 function DriverRow({
   driver,
-  onDeactivate,
+  onRemove,
   onUpdate,
   t,
 }: {
   driver: TeamDriver;
-  onDeactivate: () => void;
+  onRemove: () => void;
   onUpdate: (payload: { fullName: string; phone: string; isActive?: boolean }) => void;
   t: ReturnType<typeof useTranslations<'settings.team'>>;
 }) {
@@ -480,13 +492,14 @@ function DriverRow({
           {t('drivers.edit')}
         </Button>
         <Button
-          disabled={!driver.isActive}
-          onClick={onDeactivate}
+          aria-label={t('drivers.remove')}
+          onClick={onRemove}
           size="sm"
           type="button"
           variant="destructive"
         >
-          {t('drivers.deactivate')}
+          <UserMinus aria-hidden="true" className="h-4 w-4" />
+          {t('drivers.remove')}
         </Button>
       </div>
     </div>

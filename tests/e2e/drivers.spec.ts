@@ -184,6 +184,100 @@ test('ajouter un livreur: toast affiche, champs vides, pas de doublon', async ({
   }
 });
 
+test('désactiver un livreur avec données: inactif, historique + réconciliation intacts', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('deact');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Khadim Actif');
+  const productId = await createProduct(fixture.admin, fixture.merchantAccountId, 'Carton E2E');
+
+  // Stock en main via le chemin dispatch (compté par reconcile_product_stock) :
+  // purchase_in 10 puis dispatch -3 attribué au livreur → en main 3, entrepôt 7.
+  await fixture.admin.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'purchase_in',
+    p_qty: 10,
+    p_idempotency_key: `deact-in:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_unit_cost: 5000,
+  });
+  await fixture.admin.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'dispatch',
+    p_qty: -3,
+    p_idempotency_key: `deact-disp:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_driver_id: driverId,
+  });
+
+  try {
+    page.on('dialog', (dialog) => dialog.accept());
+    await signIn(page, fixture.email, '/parametres');
+    await page.getByRole('tab', { name: messages.settings.tabs.team }).click();
+
+    await expect(page.getByText('Khadim Actif')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: messages.settings.team.drivers.remove }).click();
+
+    // Désactivation (historique présent) — pas de suppression
+    await expect(page.getByText(messages.settings.team.notices.driverDeactivated)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Le livreur existe toujours mais inactif
+    const { data: driver } = await fixture.admin
+      .from('driver')
+      .select('is_active')
+      .eq('id', driverId)
+      .single();
+    expect(driver?.is_active).toBe(false);
+
+    // Historique stock préservé (driver_id intact sur le mouvement)
+    const { data: movements } = await fixture.admin
+      .from('stock_movement')
+      .select('id')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId);
+    expect((movements ?? []).length).toBeGreaterThan(0);
+
+    // Réconciliation intacte : aucun écart pour ce produit (entrepôt 7 = ledger 10-3)
+    const { data: discrepancies } = await (
+      fixture.admin.rpc as unknown as (fn: string) => Promise<{ data: { product_id: string }[] }>
+    )('reconcile_product_stock');
+    expect((discrepancies ?? []).filter((d) => d.product_id === productId)).toHaveLength(0);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('supprimer un livreur vierge: retiré de la base (suppression dure)', async ({ page }) => {
+  const fixture = await createOwnerFixture('del');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Fatou Vierge');
+
+  try {
+    page.on('dialog', (dialog) => dialog.accept());
+    await signIn(page, fixture.email, '/parametres');
+    await page.getByRole('tab', { name: messages.settings.tabs.team }).click();
+
+    await expect(page.getByText('Fatou Vierge')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: messages.settings.team.drivers.remove }).click();
+
+    await expect(page.getByText(messages.settings.team.notices.driverDeleted)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const { data: driver } = await fixture.admin
+      .from('driver')
+      .select('id')
+      .eq('id', driverId)
+      .maybeSingle();
+    expect(driver).toBeNull();
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('allouer un lot fait monter le stock en main du livreur', async ({ page }) => {
   const fixture = await createOwnerFixture('lot');
   const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa Lot');
