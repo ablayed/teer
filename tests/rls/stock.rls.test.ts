@@ -204,23 +204,37 @@ describe('stock_movement — immutabilité (RLS)', () => {
 });
 
 describe('product_stock — visibilité unit_cost (RLS colonne)', () => {
-  skipIfNoServiceRole('agent cannot read unit_cost (column not granted)', async () => {
-    const { admin, merchantAccountId } = await createOwnerFixture('cost-agent');
-    const { email } = await addMember(admin, merchantAccountId, 'agent');
-    const productId = await createProduct(admin, merchantAccountId);
-    await seedProductStock(admin, productId, merchantAccountId, { unitCost: 9999 });
+  skipIfNoServiceRole(
+    'agent: selecting unit_cost errors (column revoked), other columns stay readable',
+    async () => {
+      const { admin, merchantAccountId } = await createOwnerFixture('cost-agent');
+      const { email } = await addMember(admin, merchantAccountId, 'agent');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, { unitCost: 9999 });
 
-    const agentClient = await signIn(email);
-    const { data } = await agentClient
-      .from('product_stock')
-      .select('qty_on_hand, unit_cost')
-      .eq('product_id', productId)
-      .maybeSingle();
+      const agentClient = await signIn(email);
 
-    // qty_on_hand should be visible, unit_cost should be null (column not granted)
-    expect(data?.qty_on_hand).toBe(50);
-    expect(data?.unit_cost).toBeNull();
-  });
+      // unit_cost est révoqué de `authenticated` (grant colonne, migration 0028).
+      // PostgREST n'omet/null-ifie pas la colonne : il erreure tout le SELECT
+      // ("permission denied for column unit_cost") → data null.
+      const { data, error } = await agentClient
+        .from('product_stock')
+        .select('qty_on_hand, unit_cost')
+        .eq('product_id', productId)
+        .maybeSingle();
+      expect(error).not.toBeNull();
+      expect(data).toBeNull();
+
+      // Les colonnes accordées restent lisibles par l'agent.
+      const { data: granted, error: grantedError } = await agentClient
+        .from('product_stock')
+        .select('qty_on_hand, qty_reserved')
+        .eq('product_id', productId)
+        .maybeSingle();
+      expect(grantedError).toBeNull();
+      expect(granted?.qty_on_hand).toBe(50);
+    },
+  );
 
   skipIfNoServiceRole('manager can read unit_cost via admin client', async () => {
     const { admin, merchantAccountId } = await createOwnerFixture('cost-manager');

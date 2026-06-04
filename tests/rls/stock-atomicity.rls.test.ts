@@ -370,19 +370,19 @@ describe('atomicité transition + mouvement stock', () => {
 
 describe('rollback : échec post_stock_movement rollback la transition', () => {
   skipIfNoServiceRole(
-    'order_line liée à un produit supprimé → la transition rollback (cod_status inchangé)',
+    'order_line résolue vers un produit d’un AUTRE marchand → guard échoue → rollback (cod_status inchangé)',
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('rollback');
-      const productId = await createProduct(admin, merchantAccountId);
-      await seedProductStock(admin, productId, merchantAccountId, 50);
 
-      // Ordre avec une order_line correctement résolue sur un produit qui va disparaître
-      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+      // Produit appartenant à un SECOND marchand : le guard de post_stock_movement
+      // (« product not found for this merchant account ») lèvera une exception
+      // → rollback complet de transition_order. product_id reste non-null
+      // (FK satisfaite), donc on teste bien le rollback et non le skip de ligne.
+      const foreign = await createOwnerFixture('rollback-foreign');
+      const foreignProductId = await createProduct(foreign.admin, foreign.merchantAccountId);
 
-      // Supprimer le produit APRÈS avoir créé l'order_line.
-      // Le guard dans post_stock_movement vérifie l'existence du produit
-      // → lèvera une exception → rollback de transition_order.
-      await admin.from('product').delete().eq('id', productId);
+      // Ordre du marchand A avec une ligne matched pointant vers le produit de B.
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, foreignProductId);
 
       const client = await signIn(email);
       const { data: newStatus, error } = await transitionRpc(client)('transition_order', {
@@ -621,7 +621,18 @@ describe('réconciliation zéro écart après valider→dispatch→livrer', () =
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('recon');
       const productId = await createProduct(admin, merchantAccountId);
-      await seedProductStock(admin, productId, merchantAccountId, 40);
+      // État initial posté via le ledger (purchase_in 40) — et NON un upsert
+      // direct : ledger et projection doivent concorder pour que la
+      // réconciliation ne trouve aucun écart.
+      await admin.rpc('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'purchase_in',
+        p_qty: 40,
+        p_idempotency_key: `recon-seed:${productId}`,
+        p_created_by: userId,
+        p_unit_cost: 5000,
+      });
       const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
 
       const client = await signIn(email);
