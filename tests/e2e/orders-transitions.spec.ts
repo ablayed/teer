@@ -222,6 +222,27 @@ async function cleanupUsers(admin: AdminClient, userIds: string[]) {
   await Promise.all(userIds.map((userId) => admin.auth.admin.deleteUser(userId)));
 }
 
+async function createProductInCatalog(
+  admin: AdminClient,
+  merchantAccountId: string,
+  title: string,
+  sku?: string,
+) {
+  const { data, error } = await admin
+    .from('product')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      title,
+      sku: sku ?? null,
+      unit_cost: 0,
+      is_active: true,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
 async function waitForOrderStatus(
   admin: AdminClient,
   orderId: string,
@@ -375,23 +396,90 @@ test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', 
   page,
 }) => {
   const fixture = await createOwnerFixture('manual-list');
+  // Products must exist before page load (server-rendered props).
+  await createProductInCatalog(fixture.admin, fixture.merchantAccountId, 'Sac Dakar E2E');
 
   try {
     await signIn(page, fixture.email, '/commandes');
 
     await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
     await page.getByLabel('Nom client').fill('Awa Manuelle');
-    await page.getByLabel('Telephone').fill('+221 77 111 22 33');
-    await page.getByRole('textbox', { name: 'Produit', exact: true }).fill('Sac manuel');
-    await page.getByRole('spinbutton', { name: 'Montant', exact: true }).fill('14500');
-    await page.getByRole('button', { name: 'Creer la commande' }).click();
+    await page.getByLabel('Téléphone').fill('+221 77 111 22 33');
 
-    await expect(page.getByText('Commande creee.')).toBeVisible({ timeout: 15_000 });
+    // Filter the product dropdown then select.
+    // select nth(0)=Source, nth(1)=first product line.
+    await page.getByPlaceholder('Rechercher titre ou SKU').fill('Sac Dakar');
+    await page.locator('select').nth(1).selectOption({ label: 'Sac Dakar E2E' });
+    await page.getByLabel('Quantité').fill('1');
+    await page.getByLabel('Prix unitaire (FCFA)').fill('14500');
+
+    await page.getByRole('button', { name: 'Créer la commande' }).click();
+
+    await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Awa Manuelle')).toBeVisible({ timeout: 15_000 });
 
     await savedViewButton(page, 'À appeler').click();
     await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-appeler(&.*)?$/);
     await expect(page.getByText('Awa Manuelle')).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page }) => {
+  const fixture = await createOwnerFixture('manual-2prods');
+  const idA = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Sac cuir E2E',
+    'SAC-01',
+  );
+  const idB = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Ceinture E2E',
+    'CEIN-01',
+  );
+
+  try {
+    await signIn(page, fixture.email, '/commandes');
+
+    await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
+    await page.getByLabel('Nom client').fill('Multi Produit');
+    await page.getByLabel('Téléphone').fill('+221 77 222 33 44');
+
+    // Ligne 1 : Sac cuir
+    await page.getByPlaceholder('Rechercher titre ou SKU').first().fill('Sac');
+    await page.locator('select').nth(1).selectOption({ label: 'Sac cuir E2E (SAC-01)' });
+    await page.getByLabel('Quantité').first().fill('2');
+    await page.getByLabel('Prix unitaire (FCFA)').first().fill('10000');
+
+    // Ajouter ligne 2
+    await page.getByRole('button', { name: '+ Ajouter une ligne' }).click();
+
+    // Ligne 2 : Ceinture — nth(1) car la première search box contient encore 'Sac'
+    await page.getByPlaceholder('Rechercher titre ou SKU').nth(1).fill('Cein');
+    await page.locator('select').nth(2).selectOption({ label: 'Ceinture E2E (CEIN-01)' });
+    await page.getByLabel('Quantité').nth(1).fill('3');
+    await page.getByLabel('Prix unitaire (FCFA)').nth(1).fill('8000');
+
+    await page.getByRole('button', { name: 'Créer la commande' }).click();
+
+    await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Multi Produit')).toBeVisible({ timeout: 15_000 });
+
+    // Vérifier 2 order_line matchées en base
+    const { data: lines } = await fixture.admin
+      .from('order_line')
+      .select('product_id, qty, match_status')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .order('created_at');
+
+    expect(lines).toHaveLength(2);
+    expect(lines?.every((l) => l.match_status === 'matched')).toBe(true);
+    expect(lines?.map((l) => l.product_id).sort()).toEqual([idA, idB].sort());
+    expect(lines?.find((l) => l.product_id === idA)?.qty).toBe(2);
+    expect(lines?.find((l) => l.product_id === idB)?.qty).toBe(3);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
