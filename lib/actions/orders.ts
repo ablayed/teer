@@ -223,7 +223,7 @@ async function findOrCreateCustomerByPhone({
   if (!normalizedPhone) {
     return {
       ok: false,
-      message: 'Le numero de telephone doit etre un mobile senegalais valide.',
+      message: 'Numéro de téléphone sénégalais invalide.',
     };
   }
 

@@ -2,6 +2,7 @@
 
 import { createManualOrderAction } from '@/lib/actions/orders';
 import { createProductAction } from '@/lib/actions/products';
+import { cn } from '@/lib/utils';
 import { Search } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -25,6 +26,21 @@ type NewOrderFormProps = {
   products: ProductOption[];
 };
 
+type FieldErrors = Partial<
+  Record<'customerName' | 'phone' | 'productId' | 'quantity' | 'totalAmount', string>
+>;
+
+const inputBase = 'min-h-11 w-full rounded-lg border border-border bg-canvas px-3';
+
+function FieldError({ message }: { message: string | undefined }) {
+  if (!message) return null;
+  return (
+    <p className="text-xs text-danger" role="alert">
+      {message}
+    </p>
+  );
+}
+
 export function NewOrderForm({ products }: NewOrderFormProps) {
   const router = useRouter();
   const createOrder = useAction(createManualOrderAction);
@@ -38,7 +54,10 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
   const [quantity, setQuantity] = useState('1');
   const [totalAmount, setTotalAmount] = useState('');
   const [address, setAddress] = useState('');
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ message: string; kind: 'error' | 'success' } | null>(
+    null,
+  );
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [showCreateProduct, setShowCreateProduct] = useState(false);
   const [newProductTitle, setNewProductTitle] = useState('');
   const [newProductSku, setNewProductSku] = useState('');
@@ -50,11 +69,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
 
   const filteredProducts = useMemo(() => {
     const normalized = productSearch.trim().toLowerCase();
-
-    if (!normalized) {
-      return availableProducts;
-    }
-
+    if (!normalized) return availableProducts;
     return availableProducts.filter((product) => {
       const sku = product.sku?.toLowerCase() ?? '';
       return product.title.toLowerCase().includes(normalized) || sku.includes(normalized);
@@ -63,13 +78,10 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
 
   useEffect(() => {
     const result = createOrder.result.data;
-
-    if (!result) {
-      return;
-    }
+    if (!result) return;
 
     if (result.ok) {
-      setFeedback('Commande creee.');
+      setFeedback({ message: 'Commande créée.', kind: 'success' });
       setCustomerName('');
       setPhone('');
       setSource('manual');
@@ -78,21 +90,25 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       setQuantity('1');
       setTotalAmount('');
       setAddress('');
+      setFieldErrors({});
       setIsOpen(false);
       router.replace('/commandes');
       router.refresh();
       return;
     }
 
-    setFeedback(result.message);
+    setFeedback({ message: result.message, kind: 'error' });
   }, [createOrder.result.data, router]);
 
   useEffect(() => {
-    const result = createProduct.result.data;
-
-    if (!result) {
-      return;
+    if (createOrder.result.validationErrors) {
+      setFeedback({ message: 'Vérifiez les champs du formulaire.', kind: 'error' });
     }
+  }, [createOrder.result.validationErrors]);
+
+  useEffect(() => {
+    const result = createProduct.result.data;
+    if (!result) return;
 
     if (result.ok) {
       setAvailableProducts((current) => [result.product, ...current]);
@@ -101,30 +117,61 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       setNewProductTitle('');
       setNewProductSku('');
       setShowCreateProduct(false);
-      setFeedback('Produit cree et selectionne.');
+      setFeedback({ message: 'Produit créé et sélectionné.', kind: 'success' });
       return;
     }
 
-    setFeedback('La creation du produit a echoue.');
+    setFeedback({ message: 'La création du produit a échoué.', kind: 'error' });
   }, [createProduct.result.data]);
 
-  function submit() {
-    const parsedAmount = Number.parseFloat(totalAmount);
-    const parsedQuantity = Number.parseInt(quantity, 10);
+  function clearFieldError(field: keyof FieldErrors) {
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  }
 
+  function validate(): FieldErrors {
+    const errors: FieldErrors = {};
+
+    if (customerName.trim().length < 2) {
+      errors.customerName = 'Le nom est requis (2 caractères min.).';
+    }
+    if (!phone.trim()) {
+      errors.phone = 'Le téléphone est requis.';
+    }
     if (!selectedProductId) {
-      setFeedback('Selectionnez un produit.');
+      errors.productId = 'Sélectionnez un produit.';
+    }
+    const parsedQty = Number.parseInt(quantity, 10);
+    if (!Number.isFinite(parsedQty) || parsedQty < 1) {
+      errors.quantity = 'La quantité est requise (min. 1).';
+    }
+    const parsedAmount = Number.parseFloat(totalAmount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      errors.totalAmount = 'Le prix est requis.';
+    }
+
+    return errors;
+  }
+
+  function submit() {
+    const errors = validate();
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setFeedback(null);
       return;
     }
 
+    setFieldErrors({});
     setFeedback(null);
     createOrder.execute({
       customerName,
       phone,
       source,
       productId: selectedProductId,
-      quantity: Number.isFinite(parsedQuantity) ? parsedQuantity : Number.NaN,
-      totalAmount: Number.isFinite(parsedAmount) ? parsedAmount : Number.NaN,
+      quantity: Number.parseInt(quantity, 10),
+      totalAmount: Number.parseFloat(totalAmount),
       ...(address.trim() ? { address: address.trim() } : {}),
     });
   }
@@ -144,7 +191,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
         <div>
           <p className="text-sm font-semibold">Nouvelle commande</p>
           <p className="text-sm text-muted">
-            Creation manuelle avec client, produit catalogue, quantite et montant.
+            Création manuelle avec client, produit catalogue, quantité et montant.
           </p>
         </div>
         <button
@@ -161,23 +208,33 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
           <label className="space-y-2 md:col-span-2">
             <span className="text-sm font-medium">Nom client</span>
             <input
-              className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
-              onChange={(event) => setCustomerName(event.target.value)}
+              aria-invalid={!!fieldErrors.customerName}
+              className={cn(inputBase, fieldErrors.customerName && 'border-danger')}
+              onChange={(event) => {
+                setCustomerName(event.target.value);
+                clearFieldError('customerName');
+              }}
               placeholder="Ex : Awa Diop"
               type="text"
               value={customerName}
             />
+            <FieldError message={fieldErrors.customerName} />
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium">Telephone</span>
+            <span className="text-sm font-medium">Téléphone</span>
             <input
-              className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
-              onChange={(event) => setPhone(event.target.value)}
+              aria-invalid={!!fieldErrors.phone}
+              className={cn(inputBase, fieldErrors.phone && 'border-danger')}
+              onChange={(event) => {
+                setPhone(event.target.value);
+                clearFieldError('phone');
+              }}
               placeholder="+221 77 123 45 67"
               type="tel"
               value={phone}
             />
+            <FieldError message={fieldErrors.phone} />
           </label>
 
           <label className="space-y-2">
@@ -217,11 +274,18 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
           <label className="space-y-2 md:col-span-2">
             <span className="text-sm font-medium">Produit</span>
             <select
-              className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
-              onChange={(event) => setSelectedProductId(event.target.value)}
+              aria-invalid={!!fieldErrors.productId}
+              className={cn(
+                'min-h-11 w-full rounded-lg border border-border bg-canvas px-3',
+                fieldErrors.productId && 'border-danger',
+              )}
+              onChange={(event) => {
+                setSelectedProductId(event.target.value);
+                clearFieldError('productId');
+              }}
               value={selectedProductId}
             >
-              <option value="">Selectionner un produit</option>
+              <option value="">Sélectionner un produit</option>
               {filteredProducts.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.title}
@@ -229,6 +293,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
                 </option>
               ))}
             </select>
+            <FieldError message={fieldErrors.productId} />
           </label>
 
           <div className="md:col-span-2">
@@ -237,7 +302,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
               onClick={() => setShowCreateProduct((value) => !value)}
               type="button"
             >
-              {showCreateProduct ? 'Masquer la creation de produit' : 'Creer un nouveau produit'}
+              {showCreateProduct ? 'Masquer la création de produit' : 'Créer un nouveau produit'}
             </button>
           </div>
 
@@ -246,7 +311,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
               <label className="space-y-2">
                 <span className="text-sm font-medium">Titre du produit</span>
                 <input
-                  className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                  className={inputBase}
                   onChange={(event) => setNewProductTitle(event.target.value)}
                   placeholder="Ex : Sac cuir noir"
                   type="text"
@@ -256,7 +321,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
               <label className="space-y-2">
                 <span className="text-sm font-medium">SKU (optionnel)</span>
                 <input
-                  className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                  className={inputBase}
                   onChange={(event) => setNewProductSku(event.target.value)}
                   placeholder="Ex : SAC-NOIR"
                   type="text"
@@ -270,36 +335,46 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
                   onClick={createInlineProduct}
                   type="button"
                 >
-                  {createProduct.isExecuting ? 'Creation…' : 'Creer et selectionner'}
+                  {createProduct.isExecuting ? 'Création…' : 'Créer et sélectionner'}
                 </button>
               </div>
             </>
           ) : null}
 
           <label className="space-y-2">
-            <span className="text-sm font-medium">Quantite</span>
+            <span className="text-sm font-medium">Quantité</span>
             <input
-              className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+              aria-invalid={!!fieldErrors.quantity}
+              className={cn(inputBase, fieldErrors.quantity && 'border-danger')}
               min="1"
-              onChange={(event) => setQuantity(event.target.value)}
+              onChange={(event) => {
+                setQuantity(event.target.value);
+                clearFieldError('quantity');
+              }}
               placeholder="1"
               step="1"
               type="number"
               value={quantity}
             />
+            <FieldError message={fieldErrors.quantity} />
           </label>
 
           <label className="space-y-2">
             <span className="text-sm font-medium">Montant total</span>
             <input
-              className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+              aria-invalid={!!fieldErrors.totalAmount}
+              className={cn(inputBase, fieldErrors.totalAmount && 'border-danger')}
               min="0"
-              onChange={(event) => setTotalAmount(event.target.value)}
+              onChange={(event) => {
+                setTotalAmount(event.target.value);
+                clearFieldError('totalAmount');
+              }}
               placeholder="12500"
               step="0.01"
               type="number"
               value={totalAmount}
             />
+            <FieldError message={fieldErrors.totalAmount} />
           </label>
 
           <label className="space-y-2 md:col-span-2">
@@ -307,7 +382,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
             <textarea
               className="min-h-24 w-full rounded-lg border border-border bg-canvas px-3 py-2"
               onChange={(event) => setAddress(event.target.value)}
-              placeholder="Quartier, repere, ville"
+              placeholder="Quartier, repère, ville"
               value={address}
             />
           </label>
@@ -319,12 +394,20 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
               onClick={submit}
               type="button"
             >
-              {createOrder.isExecuting ? 'Creation…' : 'Creer la commande'}
+              {createOrder.isExecuting ? 'Création…' : 'Créer la commande'}
             </button>
           </div>
         </div>
       ) : null}
-      {feedback ? <p className="mt-4 text-sm text-muted">{feedback}</p> : null}
+
+      {feedback ? (
+        <p
+          className={cn('mt-4 text-sm', feedback.kind === 'error' ? 'text-danger' : 'text-success')}
+          role="alert"
+        >
+          {feedback.message}
+        </p>
+      ) : null}
     </div>
   );
 }
