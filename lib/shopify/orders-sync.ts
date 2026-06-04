@@ -1,3 +1,4 @@
+import { parseItemsummary, resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, TablesInsert, TablesUpdate } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -317,15 +318,22 @@ export async function persistShopifyOrder({
         return { ok: false, error: orderUpdateError.message };
       }
     } else {
-      const { error: orderInsertError } = await supabaseServiceClient
+      const { data: insertedOrder, error: orderInsertError } = await supabaseServiceClient
         .from('orders')
         .insert(orderData)
         .select('id')
         .single();
 
-      if (orderInsertError) {
-        return { ok: false, error: orderInsertError.message };
+      if (orderInsertError || !insertedOrder) {
+        return { ok: false, error: orderInsertError?.message ?? 'Insert returned no row' };
       }
+
+      // Best-effort: resolution failure never blocks ingestion.
+      await resolveAndInsertOrderLines(supabaseServiceClient, {
+        merchantAccountId,
+        orderId: insertedOrder.id,
+        lineItems: parseItemsummary(orderData.items_summary as Json),
+      }).catch(() => undefined);
     }
 
     return { ok: true };

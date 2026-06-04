@@ -18,6 +18,7 @@ import {
   logCallInputSchema,
 } from '@/lib/orders/call-log-validation';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
+import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
@@ -448,7 +449,7 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       return {
         ok: false as const,
         errorCode: 'merchant_not_found' as const,
-        message: 'Aucun compte marchand n’a ete trouve.',
+        message: "Aucun compte marchand n'a ete trouve.",
       };
     }
 
@@ -522,9 +523,24 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       return {
         ok: false as const,
         errorCode: 'update_failed' as const,
-        message: 'La commande manuelle n’a pas pu etre creee.',
+        message: "La commande manuelle n'a pas pu etre creee.",
       };
     }
+
+    // Best-effort: resolution failure never blocks order creation.
+    await resolveAndInsertOrderLines(supabase, {
+      merchantAccountId,
+      orderId: order.id,
+      lineItems: [
+        {
+          product_id: product.id,
+          title: product.title,
+          sku: product.sku,
+          quantity: parsedInput.quantity,
+          price: parsedInput.totalAmount / parsedInput.quantity,
+        },
+      ],
+    }).catch(() => undefined);
 
     revalidatePath('/commandes');
     revalidatePath('/tableau');

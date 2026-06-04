@@ -18,6 +18,7 @@ import {
   transitionActions,
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
+import { applyTransitionStockMovements } from '@/lib/stock/movements';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import type { TeamRole } from '@/lib/team/permissions';
 import {
@@ -273,6 +274,16 @@ export async function performTransitionForContext({
     );
   }
 
+  // Capture the transition record created by the RPC for idempotency keying.
+  const { data: lastTransition } = await supabase
+    .from('order_state_transition')
+    .select('id')
+    .eq('order_id', order.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const transitionId = lastTransition?.id ?? null;
+
   const { data: updatedOrder, error: updatedOrderError } = await supabase
     .from('orders')
     .select('*')
@@ -324,6 +335,16 @@ export async function performTransitionForContext({
   if (auditError) {
     return transitionError('audit_failed', "La transition est appliquee, mais l'audit a echoue.");
   }
+
+  // Fire-and-forget: stock is a side-effect, never a precondition for transition success.
+  applyTransitionStockMovements(createSupabaseAdminClient(), supabase, {
+    action,
+    actorUserId,
+    currentDeliveryState: currentDimensions.deliveryState,
+    merchantAccountId: order.merchant_account_id,
+    orderId: order.id,
+    transitionId,
+  }).catch(() => undefined);
 
   revalidateOrderPaths(order.id);
 
