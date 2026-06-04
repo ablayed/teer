@@ -1,0 +1,223 @@
+import { existsSync, readFileSync } from 'node:fs';
+import messages from '@/messages/fr.json';
+import { type Page, expect, test } from '@playwright/test';
+import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+
+function readLocalEnv(): Record<string, string> {
+  if (!existsSync('.env.local')) {
+    return {};
+  }
+  return Object.fromEntries(
+    readFileSync('.env.local', 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#') && line.includes('='))
+      .map((line) => {
+        const [key, ...valueParts] = line.split('=');
+        return [key, valueParts.join('=').replace(/^["']|["']$/g, '')];
+      }),
+  );
+}
+
+const localEnv = readLocalEnv();
+const supabaseUrl =
+  process.env.SUPABASE_URL ??
+  process.env.NEXT_PUBLIC_SUPABASE_URL ??
+  localEnv.SUPABASE_URL ??
+  localEnv.NEXT_PUBLIC_SUPABASE_URL ??
+  '';
+const serviceRoleKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? localEnv.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
+const password = 'Mot-de-passe-e2e-2026!';
+
+test.setTimeout(60_000);
+
+type AdminClient = SupabaseClient;
+
+function adminClient(): AdminClient {
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+function e2eEmail(label: string): string {
+  return `e2e+phase4-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+}
+
+async function createConfirmedUser(admin: AdminClient, email: string) {
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (error || !data.user) throw error ?? new Error('Utilisateur E2E non cree');
+  return data.user.id;
+}
+
+async function waitForMerchant(admin: AdminClient, userId: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const { data } = await admin
+      .from('merchant_member')
+      .select('merchant_account_id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+    if (data?.merchant_account_id) return data.merchant_account_id as string;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('Merchant E2E introuvable');
+}
+
+async function createOwnerFixture(label: string) {
+  const admin = adminClient();
+  const email = e2eEmail(label);
+  const userId = await createConfirmedUser(admin, email);
+  const merchantAccountId = await waitForMerchant(admin, userId);
+  await admin
+    .from('merchant_account')
+    .update({ name: `Tëër E2E ${label}`, onboarded_at: new Date().toISOString() })
+    .eq('id', merchantAccountId);
+  return { admin, email, merchantAccountId, userIds: [userId] };
+}
+
+async function createDriver(admin: AdminClient, merchantAccountId: string, fullName: string) {
+  const { data, error } = await admin
+    .from('driver')
+    .insert({ merchant_account_id: merchantAccountId, full_name: fullName, phone: '+221770000000' })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+async function createProduct(admin: AdminClient, merchantAccountId: string, title: string) {
+  const { data, error } = await admin
+    .from('product')
+    .insert({ merchant_account_id: merchantAccountId, title, unit_cost: 0, is_active: true })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+async function seedDeliveredCashOrder(
+  admin: AdminClient,
+  merchantAccountId: string,
+  driverId: string,
+  totalAmount: number,
+) {
+  const { data, error } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      order_number: `E2E-LIV-${Date.now()}`,
+      total_amount: totalAmount,
+      currency: 'XOF',
+      cod_status: 'LIVREE',
+      order_state: 'completed',
+      call_state: 'validated',
+      delivery_state: 'delivered',
+      cash_state: 'collected',
+      assigned_driver_id: driverId,
+      payment_channel_at_delivery: 'ESPECES',
+      cash_collectable_minor: totalAmount,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+async function cleanupUsers(admin: AdminClient, userIds: string[]) {
+  await Promise.all(userIds.map((userId) => admin.auth.admin.deleteUser(userId)));
+}
+
+async function signIn(page: Page, email: string, redirectTo: string) {
+  await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
+  await page.getByLabel(messages.auth.email_label).fill(email);
+  await page.getByLabel(messages.auth.password_label).fill(password);
+  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.waitForURL(`**${redirectTo}`);
+  await page.waitForLoadState('networkidle');
+}
+
+test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E livreurs');
+
+test('allouer un lot fait monter le stock en main du livreur', async ({ page }) => {
+  const fixture = await createOwnerFixture('lot');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa Lot');
+  await createProduct(fixture.admin, fixture.merchantAccountId, 'Sac lot E2E');
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+
+    await expect(page.getByRole('heading', { name: 'Moussa Lot' })).toBeVisible();
+
+    // Mode "Allouer un lot" est actif par défaut ; choisir le produit + qté
+    await page.locator('select').filter({ hasText: 'Sac lot E2E' }).selectOption({
+      label: 'Sac lot E2E',
+    });
+    await page.getByPlaceholder('10').fill('15');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+
+    // Le mouvement est posté hors commande ; le stock en main remonte
+    await expect(page.getByText('Lot alloué au livreur.')).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole('row').filter({ hasText: 'Sac lot E2E' }).getByText('15'),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Vérifie le mouvement en base
+    const { data: movements } = await fixture.admin
+      .from('stock_movement')
+      .select('movement_type, qty, driver_id')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId);
+    const alloc = (movements ?? []).find((m) => m.movement_type === 'allocate_to_courier');
+    expect(alloc?.qty).toBe(-15);
+    expect(alloc?.driver_id).toBe(driverId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('cash livreur: commande livrée affiche le collecté puis la remise globale met à jour le remis', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cash');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Awa Cash');
+  await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 20000);
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+
+    await expect(page.getByRole('heading', { name: 'Awa Cash' })).toBeVisible();
+
+    // Performance: 1 livrée
+    await expect(
+      page.locator('section').filter({ hasText: 'Performance' }).getByText('1').first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Enregistrer une remise globale de 12 000
+    await page.getByPlaceholder('0').fill('12000');
+    await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    await expect(page.getByText('Versement enregistré.')).toBeVisible({ timeout: 15_000 });
+
+    // Le versement est bien enregistré en base
+    const { data: settlements } = await fixture.admin
+      .from('cash_settlement')
+      .select('amount_received_minor')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId);
+    expect(settlements?.[0]?.amount_received_minor).toBe(12000);
+
+    // Une allocation a été créée (remise globale auto-répartie)
+    const { data: allocations } = await fixture.admin
+      .from('settlement_allocation')
+      .select('allocated_minor')
+      .eq('merchant_account_id', fixture.merchantAccountId);
+    expect((allocations ?? []).reduce((s, a) => s + a.allocated_minor, 0)).toBe(12000);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
