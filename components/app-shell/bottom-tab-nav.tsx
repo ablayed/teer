@@ -9,12 +9,20 @@ import {
   Settings,
   ShoppingBag,
   Store,
+  Truck,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-type BottomTabKey = 'tableau' | 'commandes' | 'produits' | 'finances' | 'boutiques' | 'parametres';
+type BottomTabKey =
+  | 'tableau'
+  | 'commandes'
+  | 'produits'
+  | 'livreurs'
+  | 'finances'
+  | 'boutiques'
+  | 'parametres';
 
 type BottomTabItem = {
   href: string;
@@ -27,6 +35,7 @@ const bottomTabItems: BottomTabItem[] = [
   { href: '/tableau', icon: LayoutDashboard, labelKey: 'tableau' },
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
+  { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerManagerOnly: true },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },

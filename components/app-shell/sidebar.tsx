@@ -11,6 +11,7 @@ import {
   Settings,
   ShoppingBag,
   Store,
+  Truck,
   Users,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -22,6 +23,7 @@ type NavKey =
   | 'commandes'
   | 'clients'
   | 'produits'
+  | 'livreurs'
   | 'finances'
   | 'boutiques'
   | 'parametres';
@@ -38,6 +40,7 @@ const sidebarItems: SidebarItem[] = [
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/clients', icon: Users, labelKey: 'clients' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
+  { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerManagerOnly: true },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
