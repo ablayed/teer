@@ -471,6 +471,7 @@ export type Database = {
         Row: {
           cogs_known: boolean;
           default_delivery_cost_minor: number;
+          default_low_stock_threshold: number | null;
           free_money_fee_bps: number;
           merchant_account_id: string;
           merchant_levy_bps: number;
@@ -483,6 +484,7 @@ export type Database = {
         Insert: {
           cogs_known?: boolean;
           default_delivery_cost_minor?: number;
+          default_low_stock_threshold?: number | null;
           free_money_fee_bps?: number;
           merchant_account_id: string;
           merchant_levy_bps?: number;
@@ -495,6 +497,7 @@ export type Database = {
         Update: {
           cogs_known?: boolean;
           default_delivery_cost_minor?: number;
+          default_low_stock_threshold?: number | null;
           free_money_fee_bps?: number;
           merchant_account_id?: string;
           merchant_levy_bps?: number;
@@ -510,6 +513,70 @@ export type Database = {
             columns: ['merchant_account_id'];
             isOneToOne: true;
             referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      order_line: {
+        Row: {
+          created_at: string;
+          id: string;
+          match_status: string;
+          merchant_account_id: string;
+          order_id: string;
+          product_id: string | null;
+          qty: number;
+          raw_shopify_product_id: string | null;
+          raw_shopify_variant_id: string | null;
+          raw_sku: string | null;
+          raw_title: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          match_status: string;
+          merchant_account_id: string;
+          order_id: string;
+          product_id?: string | null;
+          qty: number;
+          raw_shopify_product_id?: string | null;
+          raw_shopify_variant_id?: string | null;
+          raw_sku?: string | null;
+          raw_title: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          match_status?: string;
+          merchant_account_id?: string;
+          order_id?: string;
+          product_id?: string | null;
+          qty?: number;
+          raw_shopify_product_id?: string | null;
+          raw_shopify_variant_id?: string | null;
+          raw_sku?: string | null;
+          raw_title?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'order_line_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'order_line_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'order_line_product_id_fkey';
+            columns: ['product_id'];
+            isOneToOne: false;
+            referencedRelation: 'product';
             referencedColumns: ['id'];
           },
         ];
@@ -724,6 +791,51 @@ export type Database = {
           },
         ];
       };
+      product_stock: {
+        Row: {
+          low_stock_threshold: number;
+          merchant_account_id: string;
+          product_id: string;
+          qty_on_hand: number;
+          qty_reserved: number;
+          unit_cost: number;
+          updated_at: string;
+        };
+        Insert: {
+          low_stock_threshold?: number;
+          merchant_account_id: string;
+          product_id: string;
+          qty_on_hand?: number;
+          qty_reserved?: number;
+          unit_cost?: number;
+          updated_at?: string;
+        };
+        Update: {
+          low_stock_threshold?: number;
+          merchant_account_id?: string;
+          product_id?: string;
+          qty_on_hand?: number;
+          qty_reserved?: number;
+          unit_cost?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'product_stock_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_stock_product_id_fkey';
+            columns: ['product_id'];
+            isOneToOne: true;
+            referencedRelation: 'product';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       settlement_allocation: {
         Row: {
           allocated_minor: number;
@@ -880,6 +992,80 @@ export type Database = {
             columns: ['merchant_account_id'];
             isOneToOne: true;
             referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      stock_movement: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          id: string;
+          idempotency_key: string;
+          merchant_account_id: string;
+          movement_type: string;
+          order_id: string | null;
+          product_id: string;
+          qty: number;
+          reason: string | null;
+          transition_id: string | null;
+          unit_cost: number | null;
+        };
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          id?: string;
+          idempotency_key: string;
+          merchant_account_id: string;
+          movement_type: string;
+          order_id?: string | null;
+          product_id: string;
+          qty: number;
+          reason?: string | null;
+          transition_id?: string | null;
+          unit_cost?: number | null;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          idempotency_key?: string;
+          merchant_account_id?: string;
+          movement_type?: string;
+          order_id?: string | null;
+          product_id?: string;
+          qty?: number;
+          reason?: string | null;
+          transition_id?: string | null;
+          unit_cost?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'stock_movement_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movement_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movement_product_id_fkey';
+            columns: ['product_id'];
+            isOneToOne: false;
+            referencedRelation: 'product';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movement_transition_id_fkey';
+            columns: ['transition_id'];
+            isOneToOne: false;
+            referencedRelation: 'order_state_transition';
             referencedColumns: ['id'];
           },
         ];
