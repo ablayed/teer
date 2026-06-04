@@ -1202,6 +1202,21 @@ export type Database = {
         }[];
       };
       order_items_search_text: { Args: { p_items: Json }; Returns: string };
+      post_stock_movement: {
+        Args: {
+          p_created_by: string;
+          p_idempotency_key: string;
+          p_merchant_account_id: string;
+          p_movement_type: string;
+          p_order_id?: string;
+          p_product_id: string;
+          p_qty: number;
+          p_reason?: string;
+          p_transition_id?: string;
+          p_unit_cost?: number;
+        };
+        Returns: string;
+      };
       reconcile_order_cod_status: {
         Args: never;
         Returns: {
