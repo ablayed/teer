@@ -1,10 +1,18 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) **and Codex CLI** when working with code in this repository. It is the **shared source of truth** for both agents — the solo developer alternates between them depending on token budget, so this file guarantees one agent resumes exactly where the other left off. **Read it fully before changing anything. Update the "Phase tracker" section at the end of every phase.**
+
+> `AGENTS.md` mirrors this file (symlink or one-line pointer). If they ever diverge, this file wins.
 
 ## Project
 
-Tëër is a PWA (Next.js 15 App Router, React 19) for cash-on-delivery (COD) operations of Senegalese Shopify merchants. Backend is Supabase (Postgres + Auth + RLS). Requires Node 22, pnpm, and the Supabase CLI.
+Tëër (Wolof: "to receive / welcome") is a **mobile-first, French-only PWA** (Next.js 15 App Router, React 19) for **cash-on-delivery (COD) operations** of Senegalese Shopify merchants. It is a **COD operations cockpit, not an ERP and not a Shopify clone**. Backend is Supabase (Postgres + Auth + RLS). Requires Node 22, pnpm, and the Supabase CLI. In production at `teer-dev.vercel.app`.
+
+**The pain point:** Shopify wasn't designed for African commerce. Merchants fall back to Excel for stock, driver cash, cancellations, and margin. Shopify doesn't track the COD operational cycle (confirmation calls, attempts, driver assignment, cash remittance, returns). Tëër owns that loop: call → confirm → schedule → assign to a driver → deliver → collect cash → reconcile the till → track stock and real margin — all in one place.
+
+**Market:** Senegalese Shopify merchants who also sell via WhatsApp/TikTok/Facebook; cash delivery; **successful-delivery rate ~25-30%** (high cancellation/refusal — structural, and it drives several design decisions, see "Locked decisions"). Persona: importer-reseller, 5-50 orders/day with peaks at 120 (Tabaski, Black Friday), 2 part-time tele-operators + moto drivers.
+
+**The moat:** the full COD operational loop — Shopify OAuth multi-shop + call workflow + COD state machine + driver cash reconciliation + per-customer/per-product reliability + stock & landed cost for import-resale. No Francophone West African competitor combines all of it. Competitors own the storefront (YouCan, Storeino, EasyAfrik), the trucks (Logidoo, Paps), or the ledger (STOCKALIO) — Tëër owns the operational loop.
 
 ## Commands
 
@@ -15,7 +23,7 @@ pnpm lint         # biome check . (lint + format check)
 pnpm format       # biome format --write .
 pnpm typecheck    # tsc --noEmit
 pnpm test:unit    # vitest run tests/unit
-pnpm test:rls      # vitest run tests/rls (needs a running Supabase, see below)
+pnpm test:rls     # vitest run tests/rls (needs a running Supabase, see below)
 pnpm test:e2e     # playwright test (auto-starts `pnpm dev` as webServer)
 pnpm db:types     # regenerate lib/supabase/database.types.ts from the linked project
 ```
@@ -23,9 +31,21 @@ pnpm db:types     # regenerate lib/supabase/database.types.ts from the linked pr
 Run a single unit test: `pnpm vitest run tests/unit/orders/<file>.test.ts` (or `pnpm vitest -t "<test name>"`).
 Run a single e2e spec/project: `pnpm exec playwright test tests/e2e/orders-transitions.spec.ts --project=chromium`.
 
-CI (`.github/workflows/ci.yml`) runs lint → typecheck/test-unit/test-rls → test-e2e. `test:rls` spins up a local stack via `supabase start` and reads keys from `supabase status`; locally it needs `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (RLS tests `skipIf` the service role key is absent).
+CI (`.github/workflows/ci.yml`) runs lint → typecheck/test-unit/test-rls → test-e2e. `test:rls` spins up a local stack via `supabase start` and reads keys from `supabase status`; locally it needs `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (loaded via `.env.test`; RLS tests `skipIf` the service role key is absent). **Ports 54321-54324 are shared with another local project — stop it before starting Tëër's stack.**
 
-DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM.
+DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM. **Latest applied migration: `0028`.**
+
+## Engineering rules (non-negotiable)
+
+1. **Invent NOTHING.** No table, column, function, action, route, or component that doesn't exist exactly in the repo. If a referenced name is missing → **STOP** and flag it. (This guardrail already prevented building the stock module on a `product` table that didn't exist yet.)
+2. **Migration → STOP.** Write the `.sql` file and stop. The developer runs `pnpm exec supabase db push` then `pnpm db:types` locally, confirms, then implementation continues. You never run `db push` yourself.
+3. **Schema deploys to prod BEFORE code.** No TS line references a table/column until its migration is confirmed applied in prod. (Pushing code before schema caused a production error screen in Phase 2.)
+4. **One commit per deliverable**, French message prefixed by phase (e.g. `phase3:`). No opportunistic refactors bundled in.
+5. **Sanity loop before every code commit:** `pnpm typecheck && pnpm lint && pnpm test:unit && pnpm build`, plus `pnpm test:rls` **non-skipped** (RLS tests prove tenant isolation; never ignored). Never commit red.
+6. **`performTransition` is the ONLY write gate for order state.** No applicative `.from('orders').update(...)` on state. The client never decides a transition; it only renders the `allowedActions` the server returns.
+7. **Stock is a SIDE EFFECT, never a precondition.** An order line that can't be resolved to a product never fails a transition — skip the stock movement for that line.
+8. **Schema/RBAC discipline:** RLS FORCE + deny-by-default; separate policies per operation; every `UPDATE` policy has `WITH CHECK`; new columns start nullable until a phase explicitly requires `NOT NULL` (a transition must never be silently rejected by a constraint). `unit_cost`/margin are hidden from `agent` at the column level.
+9. **Never switch agents on a dirty tree.** Commit + push before changing agent; `git status` must be empty (otherwise the other agent doesn't see in-progress work and may overwrite it).
 
 ## Architecture
 
@@ -34,39 +54,98 @@ DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations
 - `authActionClient` — adds `ctx.user` + `ctx.supabase` (throws `UNAUTHENTICATED`).
 - `requireRole(...roles)` — adds `ctx.member` (`{ id, merchantAccountId, role }`) by looking up `merchant_member`; throws `FORBIDDEN`.
 
-Server errors are flattened to opaque strings (`UNEXPECTED_ERROR`, `UNAUTHENTICATED`, `FORBIDDEN`). Each file in `lib/actions/` exposes one domain's server actions (`orders`, `customers`, `finance`, `team`, `shops`, `shopify`, `auth`, …).
+Server errors are flattened to opaque strings (`UNEXPECTED_ERROR`, `UNAUTHENTICATED`, `FORBIDDEN`). Each file in `lib/actions/` exposes one domain's server actions (`orders`, `customers`, `finance`, `team`, `shops`, `shopify`, `products`, `auth`, …).
 
-**The COD order lifecycle is the core domain.** It is defined in three layers that must stay in sync:
-1. `lib/domain/order-state-machine.ts` — the 8 statuses (`A_APPELER`, `TENTEE`, `CONFIRMEE`, `PROGRAMMEE`, `EN_LIVRAISON`, `LIVREE`, `REFUSEE`, `ANNULEE`), the `legalTransitions` graph, and `canTransition`/`assertTransition`. `LIVREE`/`REFUSEE`/`ANNULEE` are terminal.
-2. `lib/domain/order-transition-actions.ts` — maps user *actions* (`confirmer`, `livrer`, …) to target statuses via `transitionCatalog`, and encodes which `TeamRole` may perform each action.
-3. `lib/actions/transitions.ts` — `performTransitionForContext` orchestrates: role check → load order → `canTransition` guard → call the `transition_order` Postgres RPC → reload → write `audit_log` (via service-role admin client) → `revalidatePath`.
+**The COD order lifecycle is the core domain — now a four-dimension model.** Since migration `0021`, an order is NOT a single status. It has **four orthogonal dimensions** stored in separate columns on `orders`:
 
-The actual state write happens in the **`transition_order` Postgres function** (migrations `0008`, `0016`, `0020`), not in TS — the TS layer guards and audits, Postgres enforces. When changing the lifecycle, update the TS state machine, the catalog, the RPC, and the RLS policies together.
+| Dimension | Column | Values |
+|---|---|---|
+| Lifecycle | `order_state` | `open · completed · cancelled · returned` |
+| Calls | `call_state` | `to_call · callback · validated · unreachable` |
+| Delivery | `delivery_state` | `unassigned · scheduled · assigned · out_for_delivery · delivered · failed · returned` |
+| Cash | `cash_state` | `not_due · expected · collected · remitted · discrepancy` |
 
-**Roles and permissions.** Three roles: `owner`, `manager`, `agent` (`lib/team/permissions.ts`). Capabilities are checked in TS (`hasCapability`, `canChangeMemberRole`, …) AND enforced in Postgres RLS. Notably agents have a narrow, status-scoped view of orders — see the role-scoped RLS in `supabase/migrations/0012`. Every tenant table uses RLS keyed on `merchant_account_id` via `current_member_role(...)`; the project rule is **RLS FORCE on all tenant tables**, and `tests/rls/` exists to prove tenant isolation.
+Support columns: `attempt_count`, `next_contact_at`, `scheduled_for`, `cancel_reason`, `assigned_driver_id`.
+
+**`cod_status` (legacy 8 values: `A_APPELER · TENTEE · CONFIRMEE · PROGRAMMEE · EN_LIVRAISON · LIVREE · REFUSEE · ANNULEE`) is NOT the source of truth and NOT a generated column.** It is a real column kept in sync by a **`BEFORE INSERT OR UPDATE` dual-write trigger** (`derive_legacy_cod_status`, migration `0023`, `SECURITY DEFINER`). You write the **four dimensions**; the trigger derives and writes `cod_status` in the same operation. **Never write `cod_status` directly.** Derivation priority (top→bottom): `delivery_state ∈ {failed,returned}` or `order_state=returned` → `REFUSEE` · `order_state=cancelled` → `ANNULEE` · `delivery_state=delivered` → `LIVREE` · `delivery_state ∈ {out_for_delivery,assigned}` → `EN_LIVRAISON` · `delivery_state=scheduled` → `PROGRAMMEE` · `call_state=validated` → `CONFIRMEE` · `call_state=callback` → `TENTEE` · else → `A_APPELER`. `cod_status` is not yet dropped (transition window); `reconcile_order_cod_status()` (`0024`) proves zero drift dimensions↔legacy.
+
+The lifecycle is defined in layers that must stay in sync:
+1. `lib/domain/order-state-machine.ts` — legal transitions, `canTransition`/`assertTransition`.
+2. `lib/domain/order-transition-actions.ts` — maps user *actions* (`confirmer`, `livrer`, …) to dimension changes via `transitionCatalog`, and which `TeamRole` may perform each action.
+3. `lib/actions/transitions.ts` — `performTransitionForContext` orchestrates: role check → load order → `canTransition` guard → call the `transition_order` Postgres RPC (which writes the dimensions atomically; the trigger derives `cod_status`) → reload → write `audit_log` (with first-class `prior_state`/`next_state`/`source`/`reason`, extended in Phase 1, via the service-role admin client) → `revalidatePath`, returning `{ order, allowedActions }`.
+
+The actual state write happens in the **`transition_order` Postgres function** (migrations `0008`, `0016`, `0020`, extended in Phase 1 to write dimensions), not in TS — the TS layer guards and audits, Postgres enforces. When changing the lifecycle, update the TS state machine, the catalog, the RPC, and the RLS policies together.
+
+**Roles and permissions.** Three roles: `owner`, `manager`, `agent` (`lib/team/permissions.ts`). Capabilities are checked in TS (`hasCapability`, `canChangeMemberRole`, …) AND enforced in Postgres RLS, keyed on `merchant_account_id` via `current_member_role(...)`; **RLS FORCE on all tenant tables**, and `tests/rls/` proves tenant isolation.
+
+> **Corrected (was stale):** agents are **no longer** given a status-scoped row view. Migration `0020` (Phase 0) **removed the status filter from `orders_select`** — it was the cause of a white-screen bug (a confirmed order disappeared from the agent's view mid-workflow). The agent now **sees all of the tenant's orders**; the per-view filtering is **application-level** (saved views), not RLS. What RLS still restricts is the agent's **write scope**: `orders_update`'s `WITH CHECK` limits an `agent` to producing `cod_status ∈ {TENTEE, CONFIRMEE, PROGRAMMEE, EN_LIVRAISON}` (owner/manager: all). Because `cod_status` is trigger-derived, the post-trigger row must satisfy that `WITH CHECK` — verified by `tests/rls/orders-dimensions.rls.test.ts`.
 
 **Two Supabase clients.** `lib/supabase/server.ts` (`createSupabaseServerClient`, cookie-based, respects RLS — use this in actions/RSC) vs. the **service-role admin client** created inline in `transitions.ts` (bypasses RLS — only for audit writes and trusted server work). `lib/supabase/client.ts` is the browser client.
 
 **Env is validated with Zod** in `lib/env.ts`: `publicEnv` (NEXT_PUBLIC_*) and `env` (adds server secrets like `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, Shopify keys). Import from here, not `process.env` directly.
 
-**Routing.** `app/(app)/` is the authenticated shell (commandes, clients, produits, finances, tableau, boutiques, parametres); `app/(marketing)/` is public. `app/api/` holds the non-action route handlers: `shopify/` (OAuth install/callback + HMAC-verified webhooks), `rapport/` (PDF generation), `cron/keep-alive`. Shopify integration logic lives in `lib/shopify/` (oauth, webhook-verify, orders/shop sync, token crypto).
+**Routing.** `app/(app)/` is the authenticated shell (commandes, clients, produits, finances, tableau, boutiques, parametres); `app/(marketing)/` is public. `app/api/` holds non-action route handlers: `shopify/` (OAuth install/callback + HMAC-verified webhooks), `rapport/` (PDF generation), `cron/keep-alive`. Shopify integration lives in `lib/shopify/` (oauth, webhook-verify, orders/shop/product sync, token crypto).
 
-**i18n.** Single locale `fr`, no URL prefix (`i18n/request.ts`), via `next-intl`. All UI strings are centralized in `messages/fr.json` and consumed with `useTranslations`/`getTranslations` — do not hardcode UI text. Wolof is planned (cookie-switched). `html lang="fr-SN"`; dates/money formatted for Senegal (FCFA, `Africa/Dakar`) — see `lib/format/`.
+**i18n.** Single locale `fr`, no URL prefix (`i18n/request.ts`), via `next-intl`. All UI strings centralized in `messages/fr.json`, consumed with `useTranslations`/`getTranslations` — **do not hardcode UI text**. Wolof planned (cookie-switched). `html lang="fr-SN"`; dates/money formatted for Senegal (FCFA, `Africa/Dakar`) — see `lib/format/`. Phone normalization in `lib/address/phone-sn.ts` (`normalizeSenegalPhone`).
+
+## Data model — canonical entities (exact names)
+
+Tenant tables (all carry `merchant_account_id`, RLS FORCE): `merchant_account` · `merchant_member` (role `owner|manager|agent`) · `shop` · `webhook_event` · `customer` · `product` (catalogue, Phase 3a/`0027`) · `orders` · `order_state_transition` · `order_line` (Phase 3b/`0028`) · `call_log` · `audit_log` (extended: `prior_state, next_state, source, reason`) · `invitation` · `driver` (non-auth) · `cash_settlement` · `settlement_allocation` · `settlement_shortfall` · `merchant_settings` · `stock_movement` (append-only, Phase 3b/`0028`) · `product_stock` (denormalized projection, Phase 3b/`0028`).
+
+Key functions/RPC: `transition_order` · `derive_legacy_cod_status` (trigger) · `current_member_role(merchant_account_id)` (SECURITY DEFINER) · `reconcile_order_cod_status()`.
+
+## Locked decisions (do not re-litigate without explicit reason)
+
+- **Stock — decrement at DISPATCH, not at validation.** The reserve at validation is **soft and non-blocking** (`qty_reserved`; never touches `qty_on_hand`; never blocks a new order). The **only** hard `qty_on_hand` decrement is at dispatch (assign/out_for_delivery). *Reason: ~25-30% delivery rate → hard-reserving at validation would create massive phantom reservations.*
+- **RTO/return:** after dispatch the stock is physically with the courier. Cancel/fail does **not** auto-restore stock — it returns via a separate `courier_return` movement posted at physical return.
+- **Stock = append-only `stock_movement` ledger + denormalized `product_stock` projection**, maintained in the same transaction (`SELECT … FOR UPDATE` + `idempotency_key`). No trigger as the primary mechanism (the engine is the sole gate). `stock_movement` is immutable: no `UPDATE`/`DELETE` policy; corrections are compensating movements. `manual_adjustment` requires a mandatory reason.
+- **Cost:** moving weighted-average (CUMP), recomputed on `purchase_in`, **snapshotted** onto every outbound movement (COGS frozen at the cost in force when goods leave). SYSCOHADA/OHADA-compliant (AUDCIF Art. 44: PEPS or CMP; LIFO forbidden). *Validate the account mapping (601/6031/31) and CUMP timing with a Senegalese OHADA accountant before any tax use.*
+- **Orders:** one canonical list + 8 saved views (filters, no Kanban): **Toutes · À appeler · Tentée/À rappeler · Confirmée · À livrer aujourd'hui · Cash à remettre · Annulées · Retours**. Inline status change via the engine. Manual creation uses a **product selector** (no free-text title). Search by name/phone/product.
+- **Phasing:** driver stock (`driver_stock`) = Phase 4, not before. Real `unit_cost` from purchase lots = Phase 5; manual until then. Margin = Phase 6. AI assistant = Phase 8 (read-only, function-calling, never free SQL).
+- **Shopify is the upstream channel, never the operational source of truth.** Call outcomes, driver assignment, stock ownership, cash remittance, cancel reasons, landed cost all live in Tëër.
 
 ## Conventions
 
 - **All UI text is French.** Use `messages/fr.json` keys.
-- Biome (not ESLint/Prettier): single quotes, semicolons, trailing commas, 100-col, 2-space. `noExplicitAny` and `noUnusedVariables` are **errors**; `useImportType` is enforced (use `import type`). `console` is a warning.
+- Biome (not ESLint/Prettier): single quotes, semicolons, trailing commas, 100-col, 2-space. `noExplicitAny` and `noUnusedVariables` are **errors**; `useImportType` enforced (use `import type`). `console` is a warning.
 - Path alias `@/*` → repo root.
-- Design constraint: text on the orange brand color must be `#111`.
-- `@react-pdf/renderer` is a `serverExternalPackages` entry and the report route bundles fonts from `lib/pdf/fonts/` — keep PDF code server-only.
+- Design constraint: text/icon on the orange brand color is **always `#111`, never white**. Touch targets ≥ 44px on COD actions. Numbers in Geist Mono tabular-nums.
+- `@react-pdf/renderer` is a `serverExternalPackages` entry; the report route bundles fonts from `lib/pdf/fonts/` — keep PDF code server-only.
 - Sentry wraps the Next config (`next.config.mjs`) with a `/monitoring` tunnel route; PostHog analytics via `components/analytics-provider`.
 
 ## Critical gotchas
 
-- Order status column is `cod_status` (text), not `status`. Order total column is `total_amount` (numeric).
+- Order status legacy column is `cod_status` (text), trigger-derived, **never written directly** — see Architecture. Order total column is `total_amount` (numeric).
 - All money is stored as minor-unit bigint (FCFA, 0 decimals). Never render a raw amount — always pass through `formatMoney(amount, currency)`. The cash field is `cash_collectable_minor` (bigint).
-- **Migrations: write the file and stop.** Do not apply it. Ablaye runs `pnpm exec supabase db push` then `pnpm db:types` locally, confirms, then implementation continues.
-- Every new RLS `UPDATE` policy must include a `WITH CHECK` clause. New columns start `nullable` until a phase explicitly requires `NOT NULL` — a transition must never be silently rejected by a constraint.
-- The client never decides a transition. `performTransition` / `transition_order` RPC validates preconditions and returns `allowed_actions[]`; the UI only renders what the server returns.
-- Shopify is the upstream sync channel, not the source of operational truth. Call outcomes, driver assignment, stock ownership, cash remittance, cancel reasons, and landed cost all live in Tëër.
+- **Migrations: write the file and stop. Schema to prod before code.** (See Engineering rules 2 & 3.)
+- Every new RLS `UPDATE` policy includes a `WITH CHECK`. New columns start nullable.
+- The client never decides a transition. `performTransition`/`transition_order` validate preconditions and return `allowedActions`; the UI only renders what the server returns.
+- `orders.items_summary` (jsonb) holds line items; since Phase 3a it also captures Shopify `product/variant/sku` ids per line (older orders have free-text titles only → resolved best-effort). `orders.source` distinguishes origin.
+
+## Phase tracker (update at the end of every phase)
+
+| Phase | Scope | Migrations | Status |
+|---|---|---|---|
+| **0** | Server transition engine + confirm/schedule bug fix + critical-path E2E | 0020 | ✅ Done |
+| **1** | 4-dimension model + backfill + dual-write trigger + extended audit log | 0021–0024 | ✅ Done (zero reconciliation drift, RLS green) |
+| **2** | Unified list + 8 saved views + inline status + manual creation + search + remove "Frais & taxes" | 0025–0026 | ✅ Done |
+| **3a** | Product catalogue (`product` table, `read_products` scope, capture Shopify line ids, product selector) | 0027 | ✅ Done (catalogue populated in prod) |
+| **3b** | Stock: `stock_movement` + `product_stock` + `order_line` + movements wired to transitions + thresholds + manual adjustment + Stock page | 0028 | ⏳ **In progress** (schema applied; TS code remaining) |
+| **4** | Drivers: `driver_stock` (lot + per-order) + cash consolidation + performance | — | ⬜ Next |
+| **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | — | ⬜ |
+| **6** | Finance: returns-aware revenue + COGS + expenses + net profit + 0.5% default | — | ⬜ |
+| **7** | Shopify sync hardening + customer enrichment + cancellation/return analytics | — | ⬜ |
+| **8** | AI assistant (metrics function-calling, read-only, RLS-scoped) | — | ⬜ |
+
+**Remaining on 3b:** manual-order-creation UX fixes (missing price fails silently → make validation visible; invalid-phone toast barely visible → make it visible with a clear message) → `order_line` resolution (manual creation + Shopify sync + best-effort historical backfill) → movements wired in `performTransition` (`FOR UPDATE` + idempotency + CUMP snapshot, mapping below) → manual purchase-in + adjustment + CUMP → Stock page → reconciliation + tests.
+
+**Transition → movement mapping (3b):** validate→`reserve` (soft, +qty_reserved) · dispatch→`dispatch` (−qty_on_hand, −qty_reserved, CUMP snapshot) · mark_delivered→`sold` (COGS snapshot, 0 qty) · cancel-before-dispatch→`release` · cancel-after-dispatch / mark_returned→`courier_return` (+qty_on_hand at return) · mark_failed→none (stock with courier).
+
+## Agent alternation workflow (Codex CLI ↔ Claude Code)
+
+- On session start: read this file, then the **current phase prompt** (provided by the developer) which carries the precise task. This file = durable context; the phase prompt = the task.
+- Commit + push before switching agents (`git status` empty).
+- At end of phase: update the Phase tracker (status + migrations + remaining) in the **same final commit**.
+
+---
+*This file supersedes any implicit understanding. If in doubt between this file and an ad-hoc instruction, ask the developer.*
