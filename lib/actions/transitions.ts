@@ -18,7 +18,6 @@ import {
   transitionActions,
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
-import { applyTransitionStockMovements } from '@/lib/stock/movements';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import type { TeamRole } from '@/lib/team/permissions';
 import {
@@ -274,16 +273,6 @@ export async function performTransitionForContext({
     );
   }
 
-  // Capture the transition record created by the RPC for idempotency keying.
-  const { data: lastTransition } = await supabase
-    .from('order_state_transition')
-    .select('id')
-    .eq('order_id', order.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const transitionId = lastTransition?.id ?? null;
-
   const { data: updatedOrder, error: updatedOrderError } = await supabase
     .from('orders')
     .select('*')
@@ -336,23 +325,8 @@ export async function performTransitionForContext({
     return transitionError('audit_failed', "La transition est appliquee, mais l'audit a echoue.");
   }
 
-  // Stock movements run after the transition commits. An error here never rolls back the
-  // transition — but we await and log so divergences are visible and recoverable.
-  const stockErr = await applyTransitionStockMovements(createSupabaseAdminClient(), supabase, {
-    action,
-    actorUserId,
-    currentDeliveryState: currentDimensions.deliveryState,
-    merchantAccountId: order.merchant_account_id,
-    orderId: order.id,
-    transitionId,
-  }).catch((e: unknown) => e);
-  if (stockErr instanceof Error) {
-    console.error('[stock] movement failed', {
-      transitionId,
-      orderId: order.id,
-      error: stockErr.message,
-    });
-  }
+  // Stock movements are now posted atomically inside transition_order (SQL).
+  // Nothing to do here — the RPC already committed them in the same transaction.
 
   revalidateOrderPaths(order.id);
 

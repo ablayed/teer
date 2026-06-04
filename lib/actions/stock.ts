@@ -2,7 +2,6 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
-import { applySingleMovement } from '@/lib/stock/movements';
 import { parseItemsummary, resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -80,7 +79,7 @@ export const backfillOrderLinesAction = requireRole('owner', 'manager')
     return { ok: true as const, processed, failed };
   });
 
-// Records a stock receipt (purchase_in) and recalculates CUMP.
+// Records a stock receipt (purchase_in) and recalculates CUMP (atomic via RPC).
 export const purchaseInAction = requireRole('owner', 'manager')
   .metadata({ actionName: 'stock.purchase_in', section: 'stock' })
   .inputSchema(
@@ -97,26 +96,22 @@ export const purchaseInAction = requireRole('owner', 'manager')
     }
 
     const admin = createSupabaseAdminClient();
-
-    const result = await applySingleMovement(admin, {
-      actorUserId: ctx.user.id,
-      idempotencyKey: `purchase:${parsedInput.productId}:${ctx.user.id}:${Date.now()}`,
-      merchantAccountId,
-      movementType: 'purchase_in',
-      orderId: null,
-      productId: parsedInput.productId,
-      qty: parsedInput.qty,
-      transitionId: null,
-      unitCost: parsedInput.unitCost,
+    const { error } = await admin.rpc('post_stock_movement', {
+      p_merchant_account_id: merchantAccountId,
+      p_product_id: parsedInput.productId,
+      p_movement_type: 'purchase_in',
+      p_qty: parsedInput.qty,
+      p_idempotency_key: `purchase:${parsedInput.productId}:${ctx.user.id}:${Date.now()}`,
+      p_created_by: ctx.user.id,
+      p_unit_cost: parsedInput.unitCost,
     });
 
+    if (error) return { ok: false as const, message: error.message };
     revalidatePath('/produits');
-    return result
-      ? { ok: true as const, stock: result }
-      : { ok: false as const, message: 'Mouvement dupliqué ignoré.' };
+    return { ok: true as const };
   });
 
-// Records a manual stock adjustment (+/-) with a required reason.
+// Records a manual stock adjustment (+/-) with a required reason (atomic via RPC).
 export const manualAdjustmentAction = requireRole('owner', 'manager')
   .metadata({ actionName: 'stock.manual_adjustment', section: 'stock' })
   .inputSchema(
@@ -130,9 +125,6 @@ export const manualAdjustmentAction = requireRole('owner', 'manager')
     if (parsedInput.qty === 0) {
       return { ok: false as const, message: 'La quantité ne peut pas être 0.' };
     }
-    if (parsedInput.reason.trim().length < 3) {
-      return { ok: false as const, message: 'La raison est obligatoire (3 car. min.).' };
-    }
 
     const merchantAccountId = await getMerchantAccountId(ctx.user.id);
     if (!merchantAccountId) {
@@ -140,26 +132,22 @@ export const manualAdjustmentAction = requireRole('owner', 'manager')
     }
 
     const admin = createSupabaseAdminClient();
-
-    const result = await applySingleMovement(admin, {
-      actorUserId: ctx.user.id,
-      idempotencyKey: `adj:${parsedInput.productId}:${ctx.user.id}:${Date.now()}`,
-      merchantAccountId,
-      movementType: 'manual_adjustment',
-      orderId: null,
-      productId: parsedInput.productId,
-      qty: parsedInput.qty,
-      reason: parsedInput.reason,
-      transitionId: null,
+    const { error } = await admin.rpc('post_stock_movement', {
+      p_merchant_account_id: merchantAccountId,
+      p_product_id: parsedInput.productId,
+      p_movement_type: 'manual_adjustment',
+      p_qty: parsedInput.qty,
+      p_idempotency_key: `adj:${parsedInput.productId}:${ctx.user.id}:${Date.now()}`,
+      p_created_by: ctx.user.id,
+      p_reason: parsedInput.reason,
     });
 
+    if (error) return { ok: false as const, message: error.message };
     revalidatePath('/produits');
-    return result
-      ? { ok: true as const, stock: result }
-      : { ok: false as const, message: 'Mouvement dupliqué ignoré.' };
+    return { ok: true as const };
   });
 
-// Records a courier return (physical return of dispatched stock).
+// Records a courier return — physical return of dispatched stock (atomic via RPC).
 export const courierReturnAction = requireRole('owner', 'manager')
   .metadata({ actionName: 'stock.courier_return', section: 'stock' })
   .inputSchema(
@@ -176,22 +164,19 @@ export const courierReturnAction = requireRole('owner', 'manager')
     }
 
     const admin = createSupabaseAdminClient();
-
-    const result = await applySingleMovement(admin, {
-      actorUserId: ctx.user.id,
-      idempotencyKey: `return:${parsedInput.productId}:${parsedInput.orderId ?? 'none'}:${ctx.user.id}:${Date.now()}`,
-      merchantAccountId,
-      movementType: 'courier_return',
-      orderId: parsedInput.orderId ?? null,
-      productId: parsedInput.productId,
-      qty: parsedInput.qty,
-      transitionId: null,
+    const { error } = await admin.rpc('post_stock_movement', {
+      p_merchant_account_id: merchantAccountId,
+      p_product_id: parsedInput.productId,
+      p_movement_type: 'courier_return',
+      p_qty: parsedInput.qty,
+      p_idempotency_key: `return:${parsedInput.productId}:${parsedInput.orderId ?? 'none'}:${ctx.user.id}:${Date.now()}`,
+      p_created_by: ctx.user.id,
+      p_order_id: parsedInput.orderId,
     });
 
+    if (error) return { ok: false as const, message: error.message };
     revalidatePath('/produits');
-    return result
-      ? { ok: true as const, stock: result }
-      : { ok: false as const, message: 'Mouvement dupliqué ignoré.' };
+    return { ok: true as const };
   });
 
 // Updates the low-stock threshold for a product.
