@@ -2,6 +2,7 @@
 
 import { createManualOrderAction } from '@/lib/actions/orders';
 import { createProductAction } from '@/lib/actions/products';
+import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import { cn } from '@/lib/utils';
 import { Search } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
@@ -124,6 +125,15 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
     setFeedback({ message: 'La création du produit a échoué.', kind: 'error' });
   }, [createProduct.result.data]);
 
+  useEffect(() => {
+    if (createProduct.result.validationErrors) {
+      setFeedback({
+        message: 'Le titre du produit est requis (2 caractères min.).',
+        kind: 'error',
+      });
+    }
+  }, [createProduct.result.validationErrors]);
+
   function clearFieldError(field: keyof FieldErrors) {
     if (fieldErrors[field]) {
       setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -138,6 +148,8 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
     }
     if (!phone.trim()) {
       errors.phone = 'Le téléphone est requis.';
+    } else if (!normalizeSenegalPhone(phone)) {
+      errors.phone = 'Numéro sénégalais invalide (ex : 77 123 45 67).';
     }
     if (!selectedProductId) {
       errors.productId = 'Sélectionnez un produit.';
@@ -364,7 +376,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
             <input
               aria-invalid={!!fieldErrors.totalAmount}
               className={cn(inputBase, fieldErrors.totalAmount && 'border-danger')}
-              min="0"
+              min="1"
               onChange={(event) => {
                 setTotalAmount(event.target.value);
                 clearFieldError('totalAmount');
@@ -401,12 +413,17 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       ) : null}
 
       {feedback ? (
-        <p
-          className={cn('mt-4 text-sm', feedback.kind === 'error' ? 'text-danger' : 'text-success')}
+        <div
+          className={cn(
+            'mt-4 rounded-lg border p-3 text-sm font-medium',
+            feedback.kind === 'error'
+              ? 'border-danger/30 bg-danger-subtle text-danger'
+              : 'border-success/25 bg-success-subtle text-success',
+          )}
           role="alert"
         >
           {feedback.message}
-        </p>
+        </div>
       ) : null}
     </div>
   );
