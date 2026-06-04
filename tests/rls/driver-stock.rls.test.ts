@@ -208,6 +208,62 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
     },
   );
 
+  skipIfNoServiceRole(
+    'réconciliation après allocation de lot : 0 écart + rebuild reconstruit la bonne valeur',
+    async () => {
+      const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-recon');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const post = postMovementRpc(admin);
+
+      // purchase_in 100 puis allocate_to_courier -30 → entrepôt 70.
+      await post('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'purchase_in',
+        p_qty: 100,
+        p_idempotency_key: `recon-lot:${productId}:in`,
+        p_created_by: userId,
+        p_unit_cost: 5000,
+      });
+      await post('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'allocate_to_courier',
+        p_qty: -30,
+        p_idempotency_key: `recon-lot:${productId}:alloc`,
+        p_created_by: userId,
+        p_driver_id: driverId,
+      });
+
+      const rpc = admin.rpc.bind(admin) as unknown as (
+        fn: string,
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+
+      // reconcile : allocate_to_courier est désormais compté (0032) → aucun écart.
+      const { data: discrepancies, error: reconErr } = await rpc('reconcile_product_stock');
+      expect(reconErr).toBeNull();
+      const productDiscrepancies = (discrepancies as { product_id: string }[] | null)?.filter(
+        (row) => row.product_id === productId,
+      );
+      expect(productDiscrepancies).toHaveLength(0);
+
+      // rebuild : on corrompt la projection, rebuild doit la ramener à 70
+      // (somme ledger incluant le lot), pas à 100.
+      await admin.from('product_stock').update({ qty_on_hand: 999 }).eq('product_id', productId);
+
+      const { error: rebuildErr } = await rpc('rebuild_product_stock');
+      expect(rebuildErr).toBeNull();
+
+      const { data: rebuilt } = await admin
+        .from('product_stock')
+        .select('qty_on_hand')
+        .eq('product_id', productId)
+        .single();
+      expect(rebuilt?.qty_on_hand).toBe(70);
+    },
+  );
+
   skipIfNoServiceRole('idempotence : même clé d’allocation de lot → no-op', async () => {
     const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-idem');
     const productId = await createProduct(admin, merchantAccountId);
