@@ -33,7 +33,7 @@ Run a single e2e spec/project: `pnpm exec playwright test tests/e2e/orders-trans
 
 CI (`.github/workflows/ci.yml`) runs lint → typecheck/test-unit/test-rls → test-e2e. `test:rls` spins up a local stack via `supabase start` and reads keys from `supabase status`; locally it needs `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (loaded via `.env.test`; RLS tests `skipIf` the service role key is absent). **Ports 54321-54324 are shared with another local project — stop it before starting Tëër's stack.**
 
-DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM. **Latest applied migration: `0030`.**
+DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM. **Latest applied migration: `0031`.**
 
 ## Engineering rules (non-negotiable)
 
@@ -131,8 +131,8 @@ Key functions/RPC: `transition_order` (writes dimensions + derives `cod_status` 
 | **2** | Unified list + 8 saved views + inline status + manual creation + search + remove "Frais & taxes" | 0025–0026 | ✅ Done |
 | **3a** | Product catalogue (`product` table, `read_products` scope, capture Shopify line ids, product selector) | 0027 | ✅ Done (catalogue populated in prod) |
 | **3b** | Stock module: `stock_movement` + `product_stock` + `order_line` + `post_stock_movement` (atomic) + movements in `transition_order` + CUMP + thresholds + manual adjustment + courier_return + Stock page + reconciliation filet | 0028–0030 | ✅ Done |
-| **4** | Drivers: `driver_stock` (lot + per-order) + cash consolidation + performance | — | ⬜ Next |
-| **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | — | ⬜ |
+| **4** | Drivers: `stock_movement.driver_id` + `allocate_to_courier`/`courier_return_lot` (stock en main **dérivé du ledger**, lot + per-order) + cash consolidation (reuses cash tables) + performance + Livreurs tab | 0031 | ✅ Done (RLS green incl. invariant, E2E green) |
+| **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | — | 🔄 En cours |
 | **6** | Finance: returns-aware revenue + COGS + expenses + net profit + 0.5% default | — | ⬜ |
 | **7** | Shopify sync hardening + customer enrichment + cancellation/return analytics | — | ⬜ |
 | **8** | AI assistant (metrics function-calling, read-only, RLS-scoped) | — | ⬜ |
@@ -140,6 +140,8 @@ Key functions/RPC: `transition_order` (writes dimensions + derives `cod_status` 
 **Transition → movement mapping (authoritative SQL, `0029`):** call→validated (delivery=unassigned) → `reserve` (+qty_reserved, soft) · delivery→assigned/out_for_delivery → `dispatch` (−qty_on_hand, −qty_reserved, CUMP snapshot) · delivery→delivered → `sold` (COGS snapshot) · cancel/refuse when delivery∈{unassigned,scheduled} → `release` (−qty_reserved) · cancel/refuse/fail when delivery∈{assigned,out_for_delivery} → **no movement** (stock with courier; `courier_return` posted manually at physical return).
 
 **Stock atomicity:** `transition_order` (0029) calls `post_stock_movement` per resolved `order_line` **within its own transaction**. An exception in `post_stock_movement` rolls back the entire transition. Unresolved lines (match_status ≠ 'matched') are silently skipped. Autonomous stock actions (`purchaseInAction`, `manualAdjustmentAction`, `courierReturnAction`) call `post_stock_movement` via `supabase.rpc()` — single atomic HTTP call. Nightly pg_cron (`0030`) runs `reconcile_product_stock()` and persists discrepancies in `stock_reconciliation_alert`; `rebuild_product_stock()` reconstructs from the ledger on demand.
+
+**Driver stock (Phase 4, `0031`):** `stock_movement.driver_id` (nullable) attributes a movement to a `driver`. `post_stock_movement` accepts `p_driver_id` and two lot movement types: `allocate_to_courier` (advance lot leaving the warehouse to a courier, `−qty_on_hand`, CUMP snapshot, no order) and `courier_return_lot` (unsold lot back, `+qty_on_hand`); both require a driver (CHECK). `transition_order` now passes the order's effective driver to every per-order movement. **Driver stock-in-hand is DERIVED from the ledger** (`lib/drivers/stock-on-hand.ts`: `Σ −qty` over `dispatch/allocate_to_courier/sold/courier_return/courier_return_lot` for the driver) — never a separate source of truth; invariant `Σ driver-in-hand + warehouse = ledger` holds. Cash per driver **reuses** `cash_settlement`/`settlement_allocation`/`settlement_shortfall` (`record_cash_settlement` global remittance) — `lib/drivers/cash-consolidation.ts` derives dû/collecté/remis/écart. Livreurs tab (`/livreurs`, owner/manager) shows stock-in-hand, cash, performance per driver. Autonomous lot actions: `allocateToCourierAction`, `courierReturnLotAction`.
 
 ## Agent alternation workflow (Codex CLI ↔ Claude Code)
 
