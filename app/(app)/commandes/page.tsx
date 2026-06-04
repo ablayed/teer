@@ -5,6 +5,7 @@ import { OrderInlineActions } from '@/components/orders/order-inline-actions';
 import { OrdersSearchInput } from '@/components/orders/orders-search-input';
 import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
+import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantAccount } from '@/lib/actions/merchant';
 import { type OrderListItem, getOrders } from '@/lib/actions/orders';
 import { getProductCatalogPageData } from '@/lib/actions/products';
@@ -144,11 +145,12 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const params = await searchParams;
   const activeView = parseOrderSavedViewId(params.vue);
   const search = normalizeOrderSearch(params.q);
-  const [orders, shopConnection, merchant, productCatalog] = await Promise.all([
+  const [orders, shopConnection, merchant, productCatalog, drivers] = await Promise.all([
     getOrders(),
     getShopConnection(),
     getMerchantAccount(),
     getProductCatalogPageData(),
+    getActiveDrivers(),
   ]);
   const productOptions = productCatalog.ok
     ? productCatalog.products
@@ -302,6 +304,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                   </p>
                   <OrderInlineActions
                     allowedActions={order.allowedActions}
+                    drivers={drivers}
                     orderId={order.id}
                     phone={order.customer?.phone ?? null}
                     whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}

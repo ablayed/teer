@@ -1,5 +1,6 @@
 import { OrderDetailPanel } from '@/components/orders/order-detail-panel';
 import { OrderSideSheet } from '@/components/orders/order-side-sheet';
+import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantAccount } from '@/lib/actions/merchant';
 import { getOrderById, getOrderTimeline } from '@/lib/actions/orders';
 import { getTranslations } from 'next-intl/server';
@@ -11,10 +12,11 @@ type OrderDetailScreenProps = {
 };
 
 export async function OrderDetailScreen({ mode, orderId }: OrderDetailScreenProps) {
-  const [order, timeline, merchant] = await Promise.all([
+  const [order, timeline, merchant, drivers] = await Promise.all([
     getOrderById(orderId),
     getOrderTimeline(orderId),
     getMerchantAccount(),
+    getActiveDrivers(),
   ]);
   const t = await getTranslations('orders');
   const whatsappLabels = {
@@ -29,6 +31,7 @@ export async function OrderDetailScreen({ mode, orderId }: OrderDetailScreenProp
   if (mode === 'sheet') {
     return (
       <OrderSideSheet
+        drivers={drivers}
         order={order}
         shopName={merchant?.name ?? 'Tëër'}
         timeline={timeline}
@@ -40,6 +43,7 @@ export async function OrderDetailScreen({ mode, orderId }: OrderDetailScreenProp
   return (
     <main id="main">
       <OrderDetailPanel
+        drivers={drivers}
         mode="page"
         order={order}
         shopName={merchant?.name ?? 'Tëër'}

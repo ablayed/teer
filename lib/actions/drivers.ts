@@ -103,6 +103,27 @@ export const courierReturnLotAction = requireRole('owner', 'manager')
     return { ok: true as const };
   });
 
+export type ActiveDriverOption = { id: string; fullName: string };
+
+// Lists the tenant's active drivers for the assignment selector (RLS-scoped via
+// the server client — driver_select allows owner/manager/agent). Read-only, used
+// from RSC; returns [] on error so the UI degrades to "aucun livreur actif".
+export async function getActiveDrivers(): Promise<ActiveDriverOption[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('driver')
+    .select('id, full_name')
+    .eq('is_active', true)
+    .order('full_name', { ascending: true });
+
+  if (error || !data) {
+    return [];
+  }
+
+  const rows = data as { id: string; full_name: string }[];
+  return rows.map((driver) => ({ id: driver.id, fullName: driver.full_name }));
+}
+
 export type DriverStockRow = {
   productId: string;
   title: string;

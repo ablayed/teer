@@ -1,5 +1,11 @@
 'use client';
 
+import {
+  type DriverOption,
+  type PayloadDialogAction,
+  TransitionDialog,
+  type TransitionPayload,
+} from '@/components/orders/transition-dialog';
 import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { Button } from '@/components/ui/button';
 import { performTransition } from '@/lib/actions/transitions';
@@ -10,11 +16,17 @@ import { useEffect, useMemo, useState } from 'react';
 
 type OrderInlineActionsProps = {
   allowedActions: TransitionAction[];
+  drivers: DriverOption[];
   orderId: string;
   phone: string | null;
   whatsappMissingPhoneLabel: string;
   whatsappUrl: string | null;
 };
+
+// Actions that need an extra input collected via a dialog before running.
+function isPayloadDialogAction(action: TransitionAction): action is PayloadDialogAction {
+  return action === 'assigner' || action === 'programmer';
+}
 
 const transitionLabels: Partial<Record<TransitionAction, string>> = {
   confirmer: 'Confirmer',
@@ -36,6 +48,7 @@ const inlineTransitionOrder: TransitionAction[] = [
 
 export function OrderInlineActions({
   allowedActions,
+  drivers,
   orderId,
   phone,
   whatsappMissingPhoneLabel,
@@ -44,6 +57,7 @@ export function OrderInlineActions({
   const router = useRouter();
   const transition = useAction(performTransition);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
   const visibleActions = useMemo(
     () =>
       inlineTransitionOrder.filter(
@@ -57,7 +71,22 @@ export function OrderInlineActions({
 
   function handleTransition(action: TransitionAction) {
     setFeedback(null);
+
+    if (isPayloadDialogAction(action)) {
+      setPendingAction(action);
+      return;
+    }
+
     transition.execute({ orderId, action });
+  }
+
+  function handleDialogConfirm(payload: TransitionPayload) {
+    if (!pendingAction) {
+      return;
+    }
+
+    transition.execute({ orderId, action: pendingAction, payload });
+    setPendingAction(null);
   }
 
   useEffect(() => {
@@ -113,6 +142,15 @@ export function OrderInlineActions({
         ))}
       </div>
       {feedback ? <p className="text-sm text-muted">{feedback}</p> : null}
+      {pendingAction ? (
+        <TransitionDialog
+          action={pendingAction}
+          drivers={drivers}
+          isSubmitting={transition.isExecuting}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={handleDialogConfirm}
+        />
+      ) : null}
     </div>
   );
 }

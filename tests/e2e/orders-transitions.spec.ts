@@ -243,6 +243,72 @@ async function createProductInCatalog(
   return data.id as string;
 }
 
+async function createDriver(admin: AdminClient, merchantAccountId: string, fullName: string) {
+  const { data, error } = await admin
+    .from('driver')
+    .insert({ merchant_account_id: merchantAccountId, full_name: fullName, phone: '+221770000000' })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+// Confirmed order (call validated, delivery unassigned) carrying one matched
+// order_line, so a later dispatch posts a stock movement attributed to the driver.
+async function createConfirmedOrderWithLine(
+  admin: AdminClient,
+  merchantAccountId: string,
+  productId: string,
+  productTitle: string,
+  qty: number,
+) {
+  const dimensions = legacyStatusToDimensions('CONFIRMEE');
+  const { data: customer, error: customerError } = await admin
+    .from('customer')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      full_name: 'Client Assignation',
+      phone: '+221770000001',
+      shipping_address: { address1: 'Almadies', city: 'Dakar', country: 'SN' },
+    })
+    .select('id')
+    .single();
+  if (customerError) throw customerError;
+
+  const { data: order, error: orderError } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      customer_id: customer.id,
+      order_number: `E2E-ASSIGN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      total_amount: 20000,
+      currency: 'XOF',
+      cod_status: 'CONFIRMEE',
+      order_state: dimensions.orderState,
+      call_state: dimensions.callState,
+      delivery_state: dimensions.deliveryState,
+      cash_state: dimensions.cashState,
+      items_summary: [{ title: productTitle, quantity: qty, price: 20000 }],
+      shipping_address: { address1: 'Almadies', city: 'Dakar', country: 'SN' },
+      created_at_shopify: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+  if (orderError) throw orderError;
+
+  const { error: lineError } = await admin.from('order_line').insert({
+    merchant_account_id: merchantAccountId,
+    order_id: order.id,
+    product_id: productId,
+    raw_title: productTitle,
+    qty,
+    match_status: 'matched',
+  });
+  if (lineError) throw lineError;
+
+  return order.id as string;
+}
+
 async function waitForOrderStatus(
   admin: AdminClient,
   orderId: string,
@@ -294,6 +360,7 @@ test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E c
 
 test('chemin nominal confirmer programmer assigner livrer en especes', async ({ page }) => {
   const fixture = await createOwnerFixture('nominal');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Nominal');
   const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
 
   try {
@@ -303,12 +370,17 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await waitForOrderStatus(fixture.admin, orderId, 'CONFIRMEE');
     await expect(page.getByText('Confirmée').first()).toBeVisible({ timeout: 15_000 });
 
+    // Programmer ouvre un dialog (date du jour par défaut) avant la transition.
     await actionButton(page, 'Programmer la livraison').click();
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
     await page.reload();
     await expect(actionButton(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
 
+    // Assigner ouvre un dialog imposant le choix d'un livreur actif.
     await actionButton(page, 'Assigner').click();
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
     await page.reload();
     await expect(actionButton(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
@@ -320,7 +392,7 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     const { data: order, error } = await fixture.admin
       .from('orders')
       .select(
-        'cod_status, order_state, call_state, delivery_state, cash_state, cash_collectable_minor, payment_channel_at_delivery',
+        'cod_status, order_state, call_state, delivery_state, cash_state, cash_collectable_minor, payment_channel_at_delivery, assigned_driver_id',
       )
       .eq('id', orderId)
       .single();
@@ -333,6 +405,120 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     expect(order?.cash_state).toBe('collected');
     expect(order?.payment_channel_at_delivery).toBe('ESPECES');
     expect(order?.cash_collectable_minor).toBe(12345);
+    // Le livreur choisi dans le dialog est bien persisté.
+    expect(order?.assigned_driver_id).toBe(driverId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('assigner a un livreur precis renseigne assigned_driver_id et monte le stock en main', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('assign-driver');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Stock');
+  const productTitle = 'Sac Assign E2E';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  // Stock entrepôt via purchase_in (crée la position product_stock).
+  await fixture.admin.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'purchase_in',
+    p_qty: 10,
+    p_idempotency_key: `assign-in:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_unit_cost: 5000,
+  });
+  const orderId = await createConfirmedOrderWithLine(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productId,
+    productTitle,
+    2,
+  );
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await actionButton(page, 'Programmer la livraison').click();
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
+
+    await actionButton(page, 'Assigner').click();
+    // Sans livreur choisi, le bouton Valider reste désactivé.
+    await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeDisabled();
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+
+    // assigned_driver_id renseigné avec le livreur ciblé.
+    const { data: order } = await fixture.admin
+      .from('orders')
+      .select('assigned_driver_id, delivery_state')
+      .eq('id', orderId)
+      .single();
+    expect(order?.delivery_state).toBe('assigned');
+    expect(order?.assigned_driver_id).toBe(driverId);
+
+    // Le dispatch est attribué au livreur → stock en main du livreur dérivé = +2.
+    const { data: movements } = await fixture.admin
+      .from('stock_movement')
+      .select('movement_type, qty, driver_id')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId);
+    const dispatch = (movements ?? []).find((m) => m.movement_type === 'dispatch');
+    expect(dispatch?.qty).toBe(-2);
+    expect(dispatch?.driver_id).toBe(driverId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('programmer avec la date du jour fait apparaitre la commande dans A livrer aujourdhui', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('schedule-today');
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'CONFIRMEE',
+    customerName: 'Client Programme',
+    phone: '+221772223344',
+  });
+  const { data: createdOrder } = await fixture.admin
+    .from('orders')
+    .select('id')
+    .eq('merchant_account_id', fixture.merchantAccountId)
+    .limit(1)
+    .single();
+  const orderId = createdOrder?.id as string;
+
+  try {
+    await signIn(page, fixture.email, '/commandes?vue=confirmee');
+    await expect(page.getByText('Client Programme')).toBeVisible({ timeout: 15_000 });
+
+    // Programmer (inline) ouvre le dialog date — défaut aujourd'hui.
+    await actionButton(page, 'Programmer').click();
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+
+    // scheduled_for renseigné (le filtre de la vue compare scheduled_for::date a today).
+    const { data: order } = await fixture.admin
+      .from('orders')
+      .select('delivery_state, scheduled_for')
+      .eq('id', orderId)
+      .single();
+    expect(order?.delivery_state).toBe('scheduled');
+    expect(order?.scheduled_for).not.toBeNull();
+
+    // La commande tombe bien dans la vue "À livrer aujourd'hui".
+    await page.goto('/commandes?vue=a-livrer-aujourdhui');
+    await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-livrer-aujourdhui(&.*)?$/);
+    await expect(page.getByText('Client Programme')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -370,6 +556,7 @@ test('confirmer puis programmer ne casse pas le rendu et survit au refresh', asy
     await expect(page.getByText('Confirmée').first()).toBeVisible({ timeout: 15_000 });
 
     await actionButton(page, 'Programmer la livraison').click();
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await expect(page.locator('body')).not.toBeEmpty();
     await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
 

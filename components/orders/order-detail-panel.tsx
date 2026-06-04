@@ -2,6 +2,12 @@
 
 import { CallLogForm } from '@/components/orders/call-log-form';
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
+import {
+  type DriverOption,
+  type PayloadDialogAction,
+  TransitionDialog,
+  type TransitionPayload,
+} from '@/components/orders/transition-dialog';
 import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { Button } from '@/components/ui/button';
 import type { OrderDetail, OrderTimelineEvent } from '@/lib/actions/orders';
@@ -30,6 +36,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 type OrderDetailPanelProps = {
+  drivers: DriverOption[];
   mode: 'page' | 'sheet';
   onClose?: () => void;
   order: OrderDetail;
@@ -40,6 +47,11 @@ type OrderDetailPanelProps = {
     missingPhone: string;
   };
 };
+
+// Actions that need an extra input collected via a dialog before running.
+function isPayloadDialogAction(action: TransitionAction): action is PayloadDialogAction {
+  return action === 'assigner' || action === 'programmer';
+}
 
 type ShippingAddress = {
   address1: string | null;
@@ -207,11 +219,13 @@ function Timeline({
 
 function ActionBar({
   allowedActions,
+  drivers,
   onAllowedActionsChange,
   onStatusChange,
   orderId,
 }: {
   allowedActions: TransitionAction[];
+  drivers: DriverOption[];
   onAllowedActionsChange: (actions: TransitionAction[]) => void;
   onStatusChange: (status: OrderStatus) => void;
   orderId: string;
@@ -219,6 +233,7 @@ function ActionBar({
   const router = useRouter();
   const transitionStatus = useAction(performTransition);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
   const visibleTransitions = primaryActionOrder
     .filter((action) => allowedActions.includes(action))
     .map((action) => transitionButtonConfigs[action]);
@@ -226,7 +241,22 @@ function ActionBar({
 
   function executeTransition(action: TransitionAction) {
     setFeedback(null);
+
+    if (isPayloadDialogAction(action)) {
+      setPendingAction(action);
+      return;
+    }
+
     transitionStatus.execute({ orderId, action });
+  }
+
+  function handleDialogConfirm(payload: TransitionPayload) {
+    if (!pendingAction) {
+      return;
+    }
+
+    transitionStatus.execute({ orderId, action: pendingAction, payload });
+    setPendingAction(null);
   }
 
   useEffect(() => {
@@ -292,11 +322,21 @@ function ActionBar({
           {feedback}
         </output>
       ) : null}
+      {pendingAction ? (
+        <TransitionDialog
+          action={pendingAction}
+          drivers={drivers}
+          isSubmitting={transitionStatus.isExecuting}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={handleDialogConfirm}
+        />
+      ) : null}
     </div>
   );
 }
 
 export function OrderDetailPanel({
+  drivers,
   mode,
   onClose,
   order,
@@ -338,6 +378,7 @@ export function OrderDetailPanel({
       <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
       <ActionBar
         allowedActions={allowedActions}
+        drivers={drivers}
         onAllowedActionsChange={setAllowedActions}
         onStatusChange={setOptimisticStatus}
         orderId={order.id}
