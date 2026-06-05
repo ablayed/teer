@@ -261,14 +261,9 @@ export const receiveLotAction = requireRole('owner')
       landed_unit_cost: allocated[i].landedUnitCost,
     }));
 
-    // Appel RPC atomique — une transaction Postgres.
-    // Cast nécessaire : receive_purchase_lot absent des types générés
-    // tant que la migration 0034 n'a pas été poussée et db:types relancé.
-    type GenericRpc = (
-      fn: string,
-      args: Record<string, unknown>,
-    ) => Promise<{ data: unknown; error: { message: string } | null }>;
-    const { error: rpcErr } = await (admin.rpc as unknown as GenericRpc)('receive_purchase_lot', {
+    // Appel RPC atomique — une transaction Postgres (0034 appliquée en prod,
+    // receive_purchase_lot typé nativement dans database.types.ts).
+    const { error: rpcErr } = await admin.rpc('receive_purchase_lot', {
       p_lot_id: parsedInput.lotId,
       p_merchant_account_id: merchantAccountId,
       p_actor_id: ctx.user.id,

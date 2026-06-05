@@ -1413,6 +1413,15 @@ export type Database = {
         Returns: string;
       };
       rebuild_product_stock: { Args: never; Returns: number };
+      receive_purchase_lot: {
+        Args: {
+          p_actor_id: string;
+          p_lines: Json;
+          p_lot_id: string;
+          p_merchant_account_id: string;
+        };
+        Returns: undefined;
+      };
       reconcile_order_cod_status: {
         Args: never;
         Returns: {

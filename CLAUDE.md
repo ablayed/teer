@@ -33,7 +33,7 @@ Run a single e2e spec/project: `pnpm exec playwright test tests/e2e/orders-trans
 
 CI (`.github/workflows/ci.yml`) runs lint → typecheck/test-unit/test-rls → test-e2e. `test:rls` spins up a local stack via `supabase start` and reads keys from `supabase status`; locally it needs `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (loaded via `.env.test`; RLS tests `skipIf` the service role key is absent). **Ports 54321-54324 are shared with another local project — stop it before starting Tëër's stack.**
 
-DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM. **Latest migration applied in prod: `0033`. `0034` is written + applied locally but NOT yet pushed to prod (run `pnpm exec supabase db push` then `pnpm db:types`).**
+DB setup: `supabase link --project-ref <ref>` → `supabase db push`. Migrations live in `supabase/migrations/` and are applied in order; there is no migration ORM. **Latest applied migration: `0034` (in prod, types regenerated).**
 
 ## Engineering rules (non-negotiable)
 
@@ -133,7 +133,7 @@ Key functions/RPC: `transition_order` (writes dimensions + derives `cod_status` 
 | **3a** | Product catalogue (`product` table, `read_products` scope, capture Shopify line ids, product selector) | 0027 | ✅ Done (catalogue populated in prod) |
 | **3b** | Stock module: `stock_movement` + `product_stock` + `order_line` + `post_stock_movement` (atomic) + movements in `transition_order` + CUMP + thresholds + manual adjustment + courier_return + Stock page + reconciliation filet | 0028–0030 | ✅ Done |
 | **4** | Drivers: `stock_movement.driver_id` + `allocate_to_courier`/`courier_return_lot` (stock en main **dérivé du ledger**, lot + per-order) + cash consolidation (reuses cash tables) + performance + Livreurs tab | 0031 | ✅ Done (RLS green incl. invariant, E2E green) |
-| **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | 0033–0034 | 🔄 Code + RLS green (36/36). **Reste : push `0034` en prod ; run E2E `tests/e2e/purchases.spec.ts` (bloqué localement par port 3000 occupé) ; retirer le cast `GenericRpc` de `receiveLotAction` après `db:types`.** |
+| **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | 0033–0034 | ✅ Done (0034 en prod, types régénérés, cast `GenericRpc` retiré, RLS 36/36 verts). **Reste à lancer : E2E `tests/e2e/purchases.spec.ts` non encore exécuté localement (port 3000 occupé) → `pnpm test:e2e`.** |
 | **6** | Finance: returns-aware revenue + COGS + expenses + net profit + 0.5% default | — | ⬜ |
 | **7** | Shopify sync hardening + customer enrichment + cancellation/return analytics | — | ⬜ |
 | **8** | AI assistant (metrics function-calling, read-only, RLS-scoped) | — | ⬜ |
