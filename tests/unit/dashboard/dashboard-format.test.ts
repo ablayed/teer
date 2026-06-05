@@ -8,9 +8,9 @@ describe('dashboard formatters', () => {
     );
   });
 
-  it('formate USD avec les decimales CLDR et le code devise', () => {
+  it('force FCFA meme quand la devise stockee est USD (mono-devise)', () => {
     expect(formatDashboardMoney(1_500_000, 'USD')).toMatch(
-      /1[\s\u202F]500[\s\u202F]000,00[\s\u00A0]\$US/,
+      /1[\s\u202F]500[\s\u202F]000[\s\u202F]F[\s\u202F]CFA/,
     );
   });
 });

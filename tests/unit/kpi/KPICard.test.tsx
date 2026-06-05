@@ -37,11 +37,11 @@ describe('KPICard', () => {
     });
   });
 
-  it('formate une valeur monetaire avec la devise fournie', async () => {
+  it('force FCFA meme quand la devise stockee est USD (mono-devise)', async () => {
     render(<KPICard currency="USD" label="CA collecté" value={1825} unit="currency" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/1\s825,00\s\$US/)).toBeTruthy();
+      expect(screen.getByText(/1\s825\sF CFA/)).toBeTruthy();
     });
   });
 

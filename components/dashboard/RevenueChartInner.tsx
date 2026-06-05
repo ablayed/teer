@@ -1,8 +1,8 @@
 'use client';
 
 import type { DashboardRevenuePoint } from '@/lib/actions/dashboard';
+import { formatFCFA } from '@/lib/format/fcfa';
 import { useReducedMotion } from 'framer-motion';
-import { useMemo } from 'react';
 import {
   Area,
   AreaChart,
@@ -27,10 +27,6 @@ type TooltipPayload = {
   };
 };
 
-function normalizeCurrency(currency: string | null | undefined): string {
-  return currency?.trim().toUpperCase() || 'XOF';
-}
-
 function formatCompact(value: number): string {
   return new Intl.NumberFormat('fr-FR', {
     compactDisplay: 'short',
@@ -48,11 +44,9 @@ function formatDate(value: string): string {
 
 function RevenueTooltip({
   active,
-  currencyFormatter,
   payload,
 }: {
   active?: boolean;
-  currencyFormatter: Intl.NumberFormat;
   payload?: readonly TooltipPayload[];
 }) {
   const point = payload?.[0]?.payload;
@@ -64,29 +58,15 @@ function RevenueTooltip({
   return (
     <div className="rounded-md border border-border bg-surface px-3 py-2 shadow-2">
       <p className="font-mono text-sm font-semibold tabular-nums text-text">
-        {currencyFormatter.format(point.value)}
+        {formatFCFA(point.value)}
       </p>
       <p className="text-xs text-muted">{formatDate(point.date)}</p>
     </div>
   );
 }
 
-export default function RevenueChartInner({
-  currency,
-  data,
-  emptyLabel,
-  title,
-}: RevenueChartInnerProps) {
+export default function RevenueChartInner({ data, emptyLabel, title }: RevenueChartInnerProps) {
   const prefersReducedMotion = useReducedMotion();
-  const normalizedCurrency = normalizeCurrency(currency);
-  const currencyFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat('fr-FR', {
-        currency: normalizedCurrency,
-        style: 'currency',
-      }),
-    [normalizedCurrency],
-  );
   const hasRevenue = data.some((point) => point.value > 0);
 
   return (
@@ -126,7 +106,6 @@ export default function RevenueChartInner({
                 content={(props) => (
                   <RevenueTooltip
                     active={props.active}
-                    currencyFormatter={currencyFormatter}
                     payload={props.payload as readonly TooltipPayload[] | undefined}
                   />
                 )}

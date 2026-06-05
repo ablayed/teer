@@ -1,6 +1,7 @@
 'use client';
 
 import { Sparkline } from '@/components/kpi/Sparkline';
+import { formatFCFA } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { animate, useReducedMotion } from 'framer-motion';
 import React, { useEffect, useMemo, useRef } from 'react';
@@ -47,26 +48,10 @@ function formatPct(value: number): string {
     .concat(' %');
 }
 
-function normalizeCurrency(currency: string | null | undefined): string {
-  return currency?.trim().toUpperCase() || 'XOF';
-}
-
-function useCurrencyFormatter(currency: string | null | undefined): Intl.NumberFormat {
-  const normalizedCurrency = normalizeCurrency(currency);
-
-  return useMemo(
-    () =>
-      new Intl.NumberFormat('fr-FR', {
-        currency: normalizedCurrency,
-        style: 'currency',
-      }),
-    [normalizedCurrency],
-  );
-}
-
-function formatValue(value: number, unit: KPIUnit, currencyFormatter: Intl.NumberFormat): string {
+function formatValue(value: number, unit: KPIUnit): string {
+  // Mono-devise : toute valeur monetaire s'affiche en « F CFA » arrondi a l'entier.
   if (unit === 'currency') {
-    return currencyFormatter.format(value);
+    return formatFCFA(value);
   }
 
   if (unit === '%') {
@@ -174,7 +159,6 @@ function resolveTone({ accentColor, tone }: Pick<KPICardProps, 'accentColor' | '
 
 export function KPICard({
   accentColor,
-  currency,
   deltaAbs,
   deltaPct,
   deltaType = 'pct',
@@ -189,11 +173,7 @@ export function KPICard({
   value,
 }: KPICardProps) {
   const cardTone = resolveTone({ accentColor, tone });
-  const currencyFormatter = useCurrencyFormatter(currency);
-  const format = useMemo(
-    () => (nextValue: number) => formatValue(nextValue, unit, currencyFormatter),
-    [currencyFormatter, unit],
-  );
+  const format = useMemo(() => (nextValue: number) => formatValue(nextValue, unit), [unit]);
   const { formattedValue, outputRef } = useCountUp({ format, loading: loading || error, value });
   const chartData = useMemo(() => sparkline ?? [], [sparkline]);
 
