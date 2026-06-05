@@ -133,7 +133,7 @@ Key functions/RPC: `transition_order` (writes dimensions + derives `cod_status` 
 | **3a** | Product catalogue (`product` table, `read_products` scope, capture Shopify line ids, product selector) | 0027 | ✅ Done (catalogue populated in prod) |
 | **3b** | Stock module: `stock_movement` + `product_stock` + `order_line` + `post_stock_movement` (atomic) + movements in `transition_order` + CUMP + thresholds + manual adjustment + courier_return + Stock page + reconciliation filet | 0028–0030 | ✅ Done |
 | **4** | Drivers: `stock_movement.driver_id` + `allocate_to_courier`/`courier_return_lot` (stock en main **dérivé du ledger**, lot + per-order) + cash consolidation (reuses cash tables) + performance + Livreurs tab | 0031 | ✅ Done (RLS green incl. invariant, E2E green) |
-| **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | 0033–0034 | ✅ Done (0034 en prod, types régénérés, cast `GenericRpc` retiré, RLS 36/36 verts). **Reste à lancer : E2E `tests/e2e/purchases.spec.ts` non encore exécuté localement (port 3000 occupé) → `pnpm test:e2e`.** |
+| **5** | Purchases: supplier lots + business-day ETA + landed cost → CUMP | 0033–0034 | ✅ Done (0034 en prod, types régénérés, cast `GenericRpc` retiré, RLS 36/36 verts, **E2E `purchases.spec.ts` 6/6 verts sur chromium/pixel-7/iphone-14**). |
 | **6** | Finance: returns-aware revenue + COGS + expenses + net profit + 0.5% default | — | ⬜ |
 | **7** | Shopify sync hardening + customer enrichment + cancellation/return analytics | — | ⬜ |
 | **8** | AI assistant (metrics function-calling, read-only, RLS-scoped) | — | ⬜ |

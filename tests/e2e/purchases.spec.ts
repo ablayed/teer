@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 
@@ -94,12 +95,12 @@ async function createProduct(admin: AdminClient, merchantAccountId: string) {
   return { id: data.id as string };
 }
 
-async function signIn(page: Page, email: string) {
-  await page.goto('/connexion');
-  await page.getByLabel(/e-?mail/i).fill(email);
-  await page.getByLabel(/mot de passe/i).fill(password);
-  await page.getByRole('button', { name: /connexion/i }).click();
-  await page.waitForURL('**/tableau');
+async function signIn(page: Page, email: string, redirectTo = '/produits') {
+  await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
+  await page.getByLabel(messages.auth.email_label).fill(email);
+  await page.getByLabel(messages.auth.password_label).fill(password);
+  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.waitForURL(`**${redirectTo}`);
   await page.waitForLoadState('networkidle');
 }
 
@@ -119,9 +120,7 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
   const { id: productId } = await createProduct(fixture.admin, fixture.merchantAccountId);
 
   try {
-    await signIn(page, fixture.email);
-    await page.goto('/produits');
-    await page.waitForLoadState('networkidle');
+    await signIn(page, fixture.email, '/produits');
 
     // La section "Achats fournisseur" doit être visible pour l'owner.
     await expect(page.getByText('Achats fournisseur')).toBeVisible({ timeout: 15_000 });
@@ -130,9 +129,9 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     await page.getByRole('button', { name: 'Nouveau lot' }).click();
     await expect(page.getByText("Nouveau lot d'achat")).toBeVisible({ timeout: 5_000 });
 
-    // Remplir le formulaire.
-    await page.getByLabel('Fournisseur').fill('Guangzhou Imports');
-    await page.getByLabel('Date de commande').fill('2026-06-01');
+    // Remplir le formulaire (ids dédiés pour éviter l'ambiguïté de label).
+    await page.locator('#f-supplier').fill('Guangzhou Imports');
+    await page.locator('#f-ordered-at').fill('2026-06-01');
 
     // Remplir les frais.
     await page.locator('#f-fee-freightTotal').fill('15000');
@@ -148,16 +147,16 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     // Créer le lot.
     await page.getByRole('button', { name: 'Créer le lot' }).click();
 
-    // Le lot doit apparaître dans la liste avec le statut "Commandé".
+    // Le lot doit apparaître dans la liste avec le statut "Commandé" (badge exact).
     await expect(page.getByText('Guangzhou Imports')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Commandé')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Commandé', { exact: true })).toBeVisible({ timeout: 5_000 });
 
     // Marquer le lot reçu (bouton toujours disponible en statut "Commandé").
     await page.getByRole('button', { name: 'Marquer reçu' }).click();
     await expect(page.getByText('Lot reçu. Stock mis à jour.')).toBeVisible({ timeout: 15_000 });
 
-    // Vérifier que le statut est passé à "Reçu".
-    await expect(page.getByText('Reçu')).toBeVisible({ timeout: 10_000 });
+    // Vérifier que le statut est passé à "Reçu" (badge exact, pas "Reçu le …").
+    await expect(page.getByText('Reçu', { exact: true })).toBeVisible({ timeout: 10_000 });
 
     // Vérifier en base : qty_on_hand = 10, unit_cost = (8000×10 + 20000) / 10 = 10000.
     // lineValue = 10 × 8000 = 80_000
@@ -195,14 +194,14 @@ test('section Achats masquée pour un agent', async ({ page }) => {
   });
 
   try {
-    await signIn(page, agentEmail);
-    await page.goto('/produits');
-    await page.waitForLoadState('networkidle');
+    await signIn(page, agentEmail, '/produits');
 
+    // Le catalogue produit est toujours visible (la page a chargé) — heading exact.
+    await expect(page.getByRole('heading', { name: 'Catalogue', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
     // La section "Achats fournisseur" ne doit PAS être visible pour un agent.
-    await expect(page.getByText('Achats fournisseur')).not.toBeVisible();
-    // Le catalogue produit est toujours visible.
-    await expect(page.getByText('Catalogue')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'Achats fournisseur' })).toHaveCount(0);
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
     await fixture.admin.auth.admin.deleteUser(agentUserId);
