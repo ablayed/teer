@@ -473,6 +473,7 @@ export type Database = {
           default_delivery_cost_minor: number;
           default_low_stock_threshold: number | null;
           free_money_fee_bps: number;
+          import_vat_recoverable: boolean;
           merchant_account_id: string;
           merchant_levy_bps: number;
           orange_money_fee_bps: number;
@@ -486,6 +487,7 @@ export type Database = {
           default_delivery_cost_minor?: number;
           default_low_stock_threshold?: number | null;
           free_money_fee_bps?: number;
+          import_vat_recoverable?: boolean;
           merchant_account_id: string;
           merchant_levy_bps?: number;
           orange_money_fee_bps?: number;
@@ -499,6 +501,7 @@ export type Database = {
           default_delivery_cost_minor?: number;
           default_low_stock_threshold?: number | null;
           free_money_fee_bps?: number;
+          import_vat_recoverable?: boolean;
           merchant_account_id?: string;
           merchant_levy_bps?: number;
           orange_money_fee_bps?: number;
@@ -832,6 +835,141 @@ export type Database = {
             columns: ['product_id'];
             isOneToOne: true;
             referencedRelation: 'product';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      purchase_lot: {
+        Row: {
+          allocation_method: string;
+          created_at: string;
+          customs_total: number;
+          eta_override: string | null;
+          freight_total: number;
+          id: string;
+          local_buffer_days: number;
+          local_transport_total: number;
+          merchant_account_id: string;
+          ordered_at: string;
+          received_at: string | null;
+          reference: string | null;
+          shipping_mode: string;
+          status: string;
+          supplier_name: string;
+          supplier_prep_days: number;
+          transit_total: number;
+          transport_days: number;
+        };
+        Insert: {
+          allocation_method?: string;
+          created_at?: string;
+          customs_total?: number;
+          eta_override?: string | null;
+          freight_total?: number;
+          id?: string;
+          local_buffer_days?: number;
+          local_transport_total?: number;
+          merchant_account_id: string;
+          ordered_at: string;
+          received_at?: string | null;
+          reference?: string | null;
+          shipping_mode?: string;
+          status?: string;
+          supplier_name: string;
+          supplier_prep_days?: number;
+          transit_total?: number;
+          transport_days?: number;
+        };
+        Update: {
+          allocation_method?: string;
+          created_at?: string;
+          customs_total?: number;
+          eta_override?: string | null;
+          freight_total?: number;
+          id?: string;
+          local_buffer_days?: number;
+          local_transport_total?: number;
+          merchant_account_id?: string;
+          ordered_at?: string;
+          received_at?: string | null;
+          reference?: string | null;
+          shipping_mode?: string;
+          status?: string;
+          supplier_name?: string;
+          supplier_prep_days?: number;
+          transit_total?: number;
+          transport_days?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'purchase_lot_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      purchase_lot_line: {
+        Row: {
+          allocated_fees: number | null;
+          created_at: string;
+          id: string;
+          landed_total_value: number | null;
+          landed_unit_cost: number | null;
+          line_value: number | null;
+          merchant_account_id: string;
+          product_id: string;
+          purchase_lot_id: string;
+          qty: number;
+          unit_purchase_price: number;
+        };
+        Insert: {
+          allocated_fees?: number | null;
+          created_at?: string;
+          id?: string;
+          landed_total_value?: number | null;
+          landed_unit_cost?: number | null;
+          line_value?: number | null;
+          merchant_account_id: string;
+          product_id: string;
+          purchase_lot_id: string;
+          qty: number;
+          unit_purchase_price: number;
+        };
+        Update: {
+          allocated_fees?: number | null;
+          created_at?: string;
+          id?: string;
+          landed_total_value?: number | null;
+          landed_unit_cost?: number | null;
+          line_value?: number | null;
+          merchant_account_id?: string;
+          product_id?: string;
+          purchase_lot_id?: string;
+          qty?: number;
+          unit_purchase_price?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'purchase_lot_line_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_product_id_fkey';
+            columns: ['product_id'];
+            isOneToOne: false;
+            referencedRelation: 'product';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_purchase_lot_id_fkey';
+            columns: ['purchase_lot_id'];
+            isOneToOne: false;
+            referencedRelation: 'purchase_lot';
             referencedColumns: ['id'];
           },
         ];
@@ -1268,6 +1406,7 @@ export type Database = {
           p_product_id: string;
           p_qty: number;
           p_reason?: string;
+          p_received_value?: number;
           p_transition_id?: string;
           p_unit_cost?: number;
         };
