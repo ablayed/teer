@@ -355,3 +355,50 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
 });
+
+test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait disparaitre', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('ecart');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Bilal Ecart');
+  await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 100000);
+
+  const remit = async (amount: string) => {
+    const input = page.getByPlaceholder('0');
+    await input.fill(amount);
+    await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    await expect(page.getByText('Versement enregistré.')).toBeVisible({ timeout: 15_000 });
+  };
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+    await expect(page.getByRole('heading', { name: 'Bilal Ecart' })).toBeVisible();
+
+    // Remise partielle 50 000 / 100 000 collectés → bandeau d'écart affiché.
+    await remit('50000');
+    await expect(page.getByText('Écart non résolu')).toBeVisible({ timeout: 15_000 });
+
+    // Remise du solde 50 000 → remis = collecté = 100 000 → l'écart disparaît.
+    await remit('50000');
+    await expect(page.getByText('Écart non résolu')).toHaveCount(0, { timeout: 15_000 });
+
+    // Le total remis couvre bien le collecté.
+    const { data: allocations } = await fixture.admin
+      .from('settlement_allocation')
+      .select('allocated_minor')
+      .eq('merchant_account_id', fixture.merchantAccountId);
+    expect((allocations ?? []).reduce((s, a) => s + a.allocated_minor, 0)).toBe(100000);
+
+    // Un settlement_shortfall figé (ROLLED_FORWARD) de la remise partielle subsiste
+    // en base : le bandeau ne s'efface que parce que l'écart est dérivé du live
+    // (collecté − remis), pas de cette ligne figée.
+    const { data: shortfalls } = await fixture.admin
+      .from('settlement_shortfall')
+      .select('resolution')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId);
+    expect((shortfalls ?? []).some((s) => s.resolution === 'ROLLED_FORWARD')).toBe(true);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});

@@ -22,7 +22,6 @@ describe('deriveDriverCashConsolidation', () => {
         order({ cashState: 'collected', cashCollectableMinor: 3000 }),
       ],
       remittedMinor: 6000,
-      shortfalls: [],
     });
     expect(result.collectedMinor).toBe(8000);
     expect(result.remittedMinor).toBe(6000);
@@ -36,7 +35,6 @@ describe('deriveDriverCashConsolidation', () => {
         order({ cashState: 'collected', cashCollectableMinor: 4000 }),
       ],
       remittedMinor: 0,
-      shortfalls: [],
     });
     expect(result.expectedMinor).toBe(2000);
     expect(result.collectedMinor).toBe(4000);
@@ -49,7 +47,6 @@ describe('deriveDriverCashConsolidation', () => {
         order({ cashState: 'discrepancy', cashCollectableMinor: 500 }),
       ],
       remittedMinor: 0,
-      shortfalls: [],
     });
     expect(result.collectedMinor).toBe(1500);
   });
@@ -58,29 +55,30 @@ describe('deriveDriverCashConsolidation', () => {
     const result = deriveDriverCashConsolidation({
       orders: [order({ cashState: 'collected', cashCollectableMinor: 1000 })],
       remittedMinor: 5000,
-      shortfalls: [],
     });
     expect(result.cashOnHandMinor).toBe(0);
   });
 
-  it('écart = somme des shortfalls non résolus uniquement', () => {
+  it('écart = solde non remis (collecté − remis), affiché après remise partielle', () => {
     const result = deriveDriverCashConsolidation({
-      orders: [],
-      remittedMinor: 0,
-      shortfalls: [
-        { shortfallMinor: 1500, resolution: 'ROLLED_FORWARD' },
-        { shortfallMinor: 800, resolution: 'WRITTEN_OFF' },
-        { shortfallMinor: 200, resolution: 'ROLLED_FORWARD' },
-      ],
+      orders: [order({ cashState: 'collected', cashCollectableMinor: 100000 })],
+      remittedMinor: 50000,
     });
-    expect(result.discrepancyMinor).toBe(1700);
+    expect(result.discrepancyMinor).toBe(50000);
+  });
+
+  it('écart à zéro une fois le solde entièrement remis', () => {
+    const result = deriveDriverCashConsolidation({
+      orders: [order({ cashState: 'collected', cashCollectableMinor: 100000 })],
+      remittedMinor: 100000,
+    });
+    expect(result.discrepancyMinor).toBe(0);
   });
 
   it('mobile money: cash_collectable 0 → pas de cash attendu', () => {
     const result = deriveDriverCashConsolidation({
       orders: [order({ cashState: 'collected', cashCollectableMinor: 0, paymentChannel: 'WAVE' })],
       remittedMinor: 0,
-      shortfalls: [],
     });
     expect(result.collectedMinor).toBe(0);
   });

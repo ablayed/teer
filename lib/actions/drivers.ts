@@ -228,23 +228,18 @@ export async function getDriverCashConsolidation(driverId: string): Promise<Driv
 
   const orderIds = (orders ?? []).map((o) => o.id);
 
-  const [allocationsResult, shortfallsResult] = await Promise.all([
+  // « remis » = Σ allocations ; l'écart est dérivé du live (collecté − remis),
+  // pas d'une ligne settlement_shortfall figée → plus besoin de la requête.
+  const allocationsResult =
     orderIds.length > 0
-      ? admin
+      ? await admin
           .from('settlement_allocation')
           .select('allocated_minor')
           .eq('merchant_account_id', merchantAccountId)
           .in('order_id', orderIds)
-      : Promise.resolve({ data: [] as { allocated_minor: number }[], error: null }),
-    admin
-      .from('settlement_shortfall')
-      .select('shortfall_minor, resolution')
-      .eq('merchant_account_id', merchantAccountId)
-      .eq('driver_id', driverId),
-  ]);
+      : { data: [] as { allocated_minor: number }[], error: null };
 
   if (allocationsResult.error) return { ok: false, message: allocationsResult.error.message };
-  if (shortfallsResult.error) return { ok: false, message: shortfallsResult.error.message };
 
   const remittedMinor = (allocationsResult.data ?? []).reduce(
     (total, a) => total + a.allocated_minor,
@@ -259,10 +254,6 @@ export async function getDriverCashConsolidation(driverId: string): Promise<Driv
       totalAmount: o.total_amount,
     })),
     remittedMinor,
-    shortfalls: (shortfallsResult.data ?? []).map((s) => ({
-      shortfallMinor: s.shortfall_minor ?? 0,
-      resolution: s.resolution,
-    })),
   });
 
   return { ok: true, consolidation };
