@@ -116,7 +116,8 @@ Key functions/RPC: `transition_order` (writes dimensions + derives `cod_status` 
 ## Critical gotchas
 
 - Order status legacy column is `cod_status` (text), trigger-derived, **never written directly** — see Architecture. Order total column is `total_amount` (numeric).
-- All money is stored as minor-unit bigint (FCFA, 0 decimals). Never render a raw amount — always pass through `formatMoney(amount, currency)`. The cash field is `cash_collectable_minor` (bigint).
+- All money is stored as minor-unit bigint (FCFA, 0 decimals). Never render a raw amount — always pass through `formatMoney(amount)`. The cash field is `cash_collectable_minor` (bigint).
+- **Devise : FCFA exclusivement à l'affichage (mono-devise ; multi-devise différé).** `formatMoney` **ignore volontairement** la devise stockée (`orders.currency`) et affiche toujours « F CFA » arrondi à l'entier. La colonne `orders.currency` est conservée pour un éventuel multi-devise futur (marché hors zone CFA) mais ne pilote plus l'affichage. Ne pas réintroduire de lecture de devise « au hasard » (l'ancien `limit(1)` côté Clients a été retiré).
 - **Migrations: write the file and stop. Schema to prod before code.** (See Engineering rules 2 & 3.)
 - Every new RLS `UPDATE` policy includes a `WITH CHECK`. New columns start nullable.
 - The client never decides a transition. `performTransition`/`transition_order` validate preconditions and return `allowedActions`; the UI only renders what the server returns.

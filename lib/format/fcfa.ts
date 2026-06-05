@@ -20,19 +20,12 @@ export function formatFCFA(amount: number): string {
   return `${formatRoundedNumber(amount)}${NARROW_NO_BREAK_SPACE}F CFA`;
 }
 
-export function formatMoney(amount: number, currency: string | null | undefined): string {
-  assertValidAmount(amount);
-
-  const normalizedCurrency = currency?.trim().toUpperCase() || 'XOF';
-
-  if (normalizedCurrency === 'XOF') {
-    return formatFCFA(amount);
-  }
-
-  return new Intl.NumberFormat('fr-FR', {
-    currency: normalizedCurrency,
-    style: 'currency',
-  }).format(amount);
+// Tëër est mono-devise FCFA à l'affichage : on ignore volontairement la devise
+// stockée (multi-devise différé à un futur marché hors zone CFA). La signature
+// conserve le paramètre `currency` pour ne pas casser les appelants et faciliter
+// un éventuel retour au multi-devise, mais il n'est plus utilisé.
+export function formatMoney(amount: number, _currency?: string | null): string {
+  return formatFCFA(amount);
 }
 
 export function formatFCFACompact(amount: number): string {

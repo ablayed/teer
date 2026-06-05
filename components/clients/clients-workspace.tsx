@@ -83,11 +83,9 @@ function ScoreValue({ customer }: { customer: Pick<CustomerListItem, 'score' | '
 }
 
 function CustomerCard({
-  currency,
   customer,
   onSelect,
 }: {
-  currency: string;
   customer: CustomerListItem;
   onSelect: (customerId: string) => void;
 }) {
@@ -116,7 +114,7 @@ function CustomerCard({
         <div>
           <p className="text-xs text-muted">{t('list.delivered')}</p>
           <p className="font-mono font-semibold tabular-nums">
-            {formatMoney(customer.deliveredLifetime, currency)}
+            {formatMoney(customer.deliveredLifetime)}
           </p>
         </div>
         <div>
@@ -202,12 +200,10 @@ function DetailActionBar({
 }
 
 function CustomerSheet({
-  currency,
   customer,
   loading,
   onClose,
 }: {
-  currency: string;
   customer: CustomerDetail | null;
   loading: boolean;
   onClose: () => void;
@@ -335,7 +331,7 @@ function CustomerSheet({
                             ) : null}
                           </div>
                           <p className="mt-2 font-mono text-sm font-semibold tabular-nums">
-                            {formatMoney(order.total_amount, order.currency)}
+                            {formatMoney(order.total_amount)}
                           </p>
                         </Link>
                       ))}
@@ -363,7 +359,7 @@ function CustomerSheet({
                   <div className="rounded-lg border border-border p-3">
                     <p className="text-xs text-muted">{t('stats.delivered')}</p>
                     <p className="font-mono text-sm font-semibold tabular-nums">
-                      {formatMoney(customer.deliveredLifetime, currency)}
+                      {formatMoney(customer.deliveredLifetime)}
                     </p>
                   </div>
                 </section>
@@ -389,7 +385,6 @@ export function ClientsWorkspace() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const listData = listCustomers.result.data?.ok ? listCustomers.result.data : null;
   const customers = listData?.customers ?? [];
-  const currency = listData?.currency ?? 'XOF';
   const loading = listCustomers.isExecuting && !listData;
 
   useEffect(() => {
@@ -502,7 +497,7 @@ export function ClientsWorkspace() {
         >
           {customers.map((customer) => (
             <motion.div key={customer.customerId} {...motionProps}>
-              <CustomerCard currency={currency} customer={customer} onSelect={selectCustomer} />
+              <CustomerCard customer={customer} onSelect={selectCustomer} />
             </motion.div>
           ))}
         </motion.div>
@@ -510,7 +505,6 @@ export function ClientsWorkspace() {
 
       {selectedCustomerId ? (
         <CustomerSheet
-          currency={currency}
           customer={selectedCustomer}
           loading={detailLoading}
           onClose={() => {
