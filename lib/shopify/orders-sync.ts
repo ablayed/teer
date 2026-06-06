@@ -176,6 +176,19 @@ export function extractShopifyId(gid: string): string {
   return gid.split('/').at(-1) ?? gid;
 }
 
+// Garde hors-ordre : un webhook est périmé si son updated_at est antérieur ou égal à celui
+// déjà appliqué (shopify_updated_at stocké). Si l'un des deux manque, on n'a pas de quoi
+// décider → non périmé (on applique).
+export function isStaleShopifyUpdate(
+  incoming: string | null | undefined,
+  stored: string | null | undefined,
+): boolean {
+  if (!incoming || !stored) {
+    return false;
+  }
+  return Date.parse(incoming) <= Date.parse(stored);
+}
+
 export function mapShopifyCustomer(
   node: ShopifyOrderNode,
   merchantAccountId: string,
@@ -312,9 +325,7 @@ export async function persistShopifyOrder({
 
     if (existingOrder) {
       // Garde hors-ordre : ignorer un webhook plus ancien que le dernier déjà appliqué.
-      const incoming = orderData.shopify_updated_at;
-      const stored = existingOrder.shopify_updated_at;
-      if (incoming && stored && Date.parse(incoming) <= Date.parse(stored)) {
+      if (isStaleShopifyUpdate(orderData.shopify_updated_at, existingOrder.shopify_updated_at)) {
         return { ok: true, skipped: 'stale' };
       }
 

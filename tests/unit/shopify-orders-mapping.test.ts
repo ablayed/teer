@@ -1,6 +1,7 @@
 import {
   type ShopifyOrderNode,
   extractShopifyId,
+  isStaleShopifyUpdate,
   mapShopifyCustomer,
   mapShopifyOrder,
 } from '@/lib/shopify/orders-sync';
@@ -158,5 +159,53 @@ describe('mapShopifyOrder', () => {
     });
 
     expect(order.shipping_address).toBeNull();
+  });
+
+  it('pose les 4 dimensions aux defauts a l_insert (Shopify n_ecrase pas l_etat operationnel)', () => {
+    const order = mapShopifyOrder(makeOrder(), {
+      merchantAccountId: 'merchant_123',
+      shopId: 'shop_123',
+      customerId: null,
+    });
+
+    expect(order.order_state).toBe('open');
+    expect(order.call_state).toBe('to_call');
+    expect(order.delivery_state).toBe('unassigned');
+    expect(order.cash_state).toBe('not_due');
+  });
+
+  it('ecrit les colonnes miroir de canal shopify_* (distinctes des dimensions)', () => {
+    const order = mapShopifyOrder(
+      makeOrder({
+        updatedAt: '2026-06-01T10:00:00Z',
+        cancelledAt: '2026-06-01T11:00:00Z',
+        displayFinancialStatus: 'REFUNDED',
+        displayFulfillmentStatus: 'FULFILLED',
+      }),
+      { merchantAccountId: 'm', shopId: 's', customerId: null },
+    );
+
+    expect(order.shopify_financial_status).toBe('REFUNDED');
+    expect(order.shopify_fulfillment_status).toBe('FULFILLED');
+    expect(order.shopify_cancelled_at).toBe('2026-06-01T11:00:00Z');
+    expect(order.shopify_updated_at).toBe('2026-06-01T10:00:00Z');
+  });
+});
+
+describe('isStaleShopifyUpdate (garde hors-ordre)', () => {
+  it('webhook plus ancien que le stocke → perime (ignore)', () => {
+    expect(isStaleShopifyUpdate('2026-06-01T10:00:00Z', '2026-06-01T12:00:00Z')).toBe(true);
+  });
+
+  it('webhook identique au stocke → perime (ignore)', () => {
+    expect(isStaleShopifyUpdate('2026-06-01T12:00:00Z', '2026-06-01T12:00:00Z')).toBe(true);
+  });
+
+  it('webhook plus recent → applique', () => {
+    expect(isStaleShopifyUpdate('2026-06-01T13:00:00Z', '2026-06-01T12:00:00Z')).toBe(false);
+  });
+
+  it('stocke absent (premiere fois) → applique', () => {
+    expect(isStaleShopifyUpdate('2026-06-01T13:00:00Z', null)).toBe(false);
   });
 });
