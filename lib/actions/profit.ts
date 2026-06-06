@@ -162,8 +162,11 @@ export const getFinanceReportAction = requireRole('owner')
       transferTaxCapMinor: settingsRow?.transfer_tax_cap_minor ?? 2_000,
     };
 
-    // 7. Infos produit (titre + CUMP courant) pour le tableau par produit
-    const allProductIds = [...new Set(soldForCollected.map((m) => m.product_id))];
+    // 7. Infos produit (titre + CUMP courant) — pour le tableau par produit ET le fallback
+    // d'estimation du COGS (coût figé = 0 → CUMP courant). Couvre collected + returned.
+    const allProductIds = [
+      ...new Set([...soldForCollected, ...soldForReturned].map((m) => m.product_id)),
+    ];
     const productInfo = new Map<string, { title: string; currentUnitCostMinor: number }>();
     if (allProductIds.length > 0) {
       const [productsRes, stockRes] = await Promise.all([

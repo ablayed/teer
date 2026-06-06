@@ -225,3 +225,71 @@ describe('computeFinanceReport — cas intégré', () => {
     expect(report.grossMarginMinor).toBe(0);
   });
 });
+
+describe('computeFinanceReport — qualité du COGS (fix marge 100 %)', () => {
+  const productInfo = new Map([['p1', { title: 'Sac cuir', currentUnitCostMinor: 4_000 }]]);
+
+  it('coût figé ≠ 0 → utilisé tel quel, marge réelle (pas estimée)', () => {
+    const report = computeFinanceReport({
+      collectedOrders: [{ id: 'o1', totalAmount: 20_000, paymentChannelAtDelivery: 'ESPECES' }],
+      soldMovementsForCollected: [{ orderId: 'o1', productId: 'p1', qty: 2, unitCost: 5_000 }],
+      returnedOrders: [],
+      courierReturns: [],
+      soldMovementsForReturned: [],
+      expenses: [],
+      settings,
+      productInfo,
+    });
+
+    // coût figé 5 000 prioritaire (≠ CUMP courant 4 000)
+    expect(report.cogsMinor).toBe(10_000);
+    expect(report.cogsEstimated).toBe(false);
+    expect(report.cogsEstimatedMinor).toBe(0);
+    expect(report.cogsCostedOrderCount).toBe(1);
+    expect(report.cogsExcludedOrderCount).toBe(0);
+    expect(report.grossMarginBps).toBe(5_000); // 50 %, ≠ 100 %
+  });
+
+  it('coût figé = 0 mais produit a un CUMP → fallback estimé, marge < 100 %', () => {
+    const report = computeFinanceReport({
+      collectedOrders: [{ id: 'o1', totalAmount: 20_000, paymentChannelAtDelivery: 'ESPECES' }],
+      soldMovementsForCollected: [{ orderId: 'o1', productId: 'p1', qty: 2, unitCost: 0 }],
+      returnedOrders: [],
+      courierReturns: [],
+      soldMovementsForReturned: [],
+      expenses: [],
+      settings,
+      productInfo,
+    });
+
+    // fallback sur CUMP courant 4 000 → COGS 8 000 (aurait été 0 → marge 100 % avant le fix)
+    expect(report.cogsMinor).toBe(8_000);
+    expect(report.cogsEstimated).toBe(true);
+    expect(report.cogsEstimatedMinor).toBe(8_000);
+    expect(report.cogsExcludedOrderCount).toBe(0);
+    expect(report.grossMarginMinor).toBe(12_000);
+    expect(report.grossMarginBps).toBeLessThan(10_000); // pas 100 %
+    expect(report.productBreakdown[0].estimated).toBe(true);
+  });
+
+  it('commande sans ligne sold → exclue du COGS, signalée (pas 0 silencieux)', () => {
+    const report = computeFinanceReport({
+      collectedOrders: [
+        { id: 'o1', totalAmount: 20_000, paymentChannelAtDelivery: 'ESPECES' },
+        { id: 'o2', totalAmount: 30_000, paymentChannelAtDelivery: 'ESPECES' },
+      ],
+      // seule o1 a une ligne ; o2 (sans order_line) n'a aucun mouvement sold
+      soldMovementsForCollected: [{ orderId: 'o1', productId: 'p1', qty: 1, unitCost: 5_000 }],
+      returnedOrders: [],
+      courierReturns: [],
+      soldMovementsForReturned: [],
+      expenses: [],
+      settings,
+      productInfo,
+    });
+
+    expect(report.cogsCostedOrderCount).toBe(1);
+    expect(report.cogsExcludedOrderCount).toBe(1); // o2 signalée, pas comptée comme COGS 0
+    expect(report.cogsMinor).toBe(5_000); // uniquement o1
+  });
+});

@@ -88,17 +88,37 @@ export function ProfitSection({ report, from, to }: Props) {
   const netProfitVariant =
     report.netProfitMinor > 0 ? 'positive' : report.netProfitMinor < 0 ? 'negative' : 'bold';
 
+  const marginEstimated = report.cogsEstimated;
+
   return (
     <section className="rounded-lg border border-border bg-surface p-5 shadow-1">
       <div className="mb-4 flex items-center justify-between gap-4">
         <h2 className="text-base font-semibold text-text">{t('title')}</h2>
-        <button
-          className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
-          onClick={handleCsvExport}
-          type="button"
-        >
-          {t('csv')}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              marginEstimated
+                ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+                : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
+            }`}
+            title={
+              marginEstimated
+                ? t('marginEstimatedHint', {
+                    amount: formatMoney(report.cogsEstimatedMinor, 'XOF'),
+                  })
+                : t('marginRealHint')
+            }
+          >
+            {marginEstimated ? t('marginEstimated') : t('marginReal')}
+          </span>
+          <button
+            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+            onClick={handleCsvExport}
+            type="button"
+          >
+            {t('csv')}
+          </button>
+        </div>
       </div>
 
       <div className="divide-y divide-border">
@@ -130,6 +150,12 @@ export function ProfitSection({ report, from, to }: Props) {
           value={report.grossMarginMinor}
           variant="bold"
         />
+        <p className="pb-2 text-xs text-muted">{t('grossMarginHint')}</p>
+        {report.cogsExcludedOrderCount > 0 && (
+          <p className="pb-2 text-xs text-amber-700 dark:text-amber-300">
+            {t('excludedOrders', { count: report.cogsExcludedOrderCount })}
+          </p>
+        )}
 
         <Divider />
 
