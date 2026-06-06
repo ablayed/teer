@@ -1,3 +1,4 @@
+import { compileCustomerData, redactCustomer, redactShop } from '@/lib/shopify/gdpr';
 import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
 import { type ShopifyProductNode, persistShopifyProductWebhook } from '@/lib/shopify/products-sync';
 import { processFinishedBulkForShop } from '@/lib/shopify/reconcile';
@@ -404,10 +405,17 @@ async function handleAppUninstalledWebhook({
     return;
   }
 
+  // Désinstallation PAR BOUTIQUE : on marque UNIQUEMENT cette boutique (shop_domain unique)
+  // uninstalled + on révoque ses tokens (le refresh + les expirations) → sa sync s'arrête
+  // (les selects filtrent status='active'). Les autres boutiques et le compte ne sont pas touchés.
   const { error: updateError } = await supabase
     .from('shop')
     .update({
       status: 'uninstalled',
+      uninstalled_at: new Date().toISOString(),
+      refresh_token_encrypted: null,
+      access_token_expires_at: null,
+      refresh_token_expires_at: null,
       updated_at: new Date().toISOString(),
     })
     .eq('shop_domain', resolvedShopDomain);
@@ -559,18 +567,55 @@ async function handleGdprWebhook({
     return;
   }
 
-  // TODO Phase 2: implémenter l'export/suppression réelle des données quand le schéma sera stable. Pour l'instant: log + audit (conformité technique au stade pilote).
+  // Identifiant client Shopify (numérique) depuis le payload, pour data_request / redact.
+  const customerRecord = isRecord(payload) ? nestedRecord(payload, 'customer') : null;
+  const shopifyCustomerId = customerRecord ? stringField(customerRecord, 'id') : null;
+
+  let outcome: Json = { shopDomain: resolvedShopDomain, topic };
+  try {
+    switch (topic) {
+      case 'customers/data_request': {
+        if (!shopifyCustomerId) break;
+        const data = await compileCustomerData(supabase, {
+          merchantAccountId: shop.merchant_account_id,
+          shopifyCustomerId,
+        });
+        // La donnée compilée est consignée pour que le marchand puisse la fournir au client.
+        outcome = toJson({ compiled: data, shopDomain: resolvedShopDomain, topic });
+        break;
+      }
+      case 'customers/redact': {
+        if (!shopifyCustomerId) break;
+        const result = await redactCustomer(supabase, {
+          merchantAccountId: shop.merchant_account_id,
+          shopifyCustomerId,
+        });
+        outcome = toJson({ ...result, shopDomain: resolvedShopDomain, topic });
+        break;
+      }
+      case 'shop/redact': {
+        const result = await redactShop(supabase, {
+          merchantAccountId: shop.merchant_account_id,
+          shopId: shop.id,
+        });
+        outcome = toJson({ ...result, shopDomain: resolvedShopDomain, topic });
+        break;
+      }
+      default:
+        break;
+    }
+  } catch (gdprError) {
+    logWebhookError('[webhook] GDPR processing failed', { topic, shopDomain: resolvedShopDomain });
+    throw gdprError;
+  }
+
   const { error } = await supabase.from('audit_log').insert({
     merchant_account_id: shop.merchant_account_id,
     actor_user_id: null,
     action: `gdpr.${topic}`,
     resource_type: 'shop',
     resource_id: shop.id,
-    payload: toJson({
-      payload,
-      shopDomain: resolvedShopDomain,
-      topic,
-    }),
+    payload: outcome,
   });
 
   if (error) {
