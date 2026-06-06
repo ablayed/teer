@@ -483,9 +483,9 @@
       "rto": "Taux de refus / RTO"
     },
     "charts": {
-      "revenue": "CA livré sur 30 jours",
-      "funnel": "Entonnoir COD",
-      "shops": "CA par boutique",
+      "revenue": "CA encaissé par jour",
+      "funnel": "Entonnoir COD (période)",
+      "shops": "CA encaissé par boutique",
       "aging": "Cash-aging par livreur",
       "empty": "Aucune donnée à afficher."
     },

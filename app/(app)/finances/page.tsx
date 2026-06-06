@@ -7,9 +7,8 @@ import { ExpenseSection } from '@/components/finance/ExpenseSection';
 import { FinanceChartsLoader } from '@/components/finance/FinanceChartsLoader';
 import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
-import { getCodBreakdown, getRevenue30d, getShopPerformance } from '@/lib/actions/dashboard';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
-import { getFinanceReportAction } from '@/lib/actions/profit';
+import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
 import { cashCollectableMinor } from '@/lib/finance/cash';
 import {
   type MerchantFeeSettings,
@@ -197,44 +196,33 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
     );
   }
 
-  const [
-    kpisResult,
-    agingResult,
-    settingsResult,
-    settlementsResult,
-    deliveredCountResult,
-    revenueResult,
-    codBreakdownResult,
-    shopPerformanceResult,
-  ] = await Promise.all([
-    financeKpisRpc(supabase)('finance_kpis', {
-      p_from: from.toISOString(),
-      p_merchant: merchantAccountId,
-      p_to: to.toISOString(),
-    }),
-    cashAgingRpc(supabase)('cash_aging', { p_merchant: merchantAccountId }),
-    supabase
-      .from('merchant_settings')
-      .select('*')
-      .eq('merchant_account_id', merchantAccountId)
-      .maybeSingle(),
-    supabase
-      .from('cash_settlement')
-      .select('amount_received_minor, method')
-      .eq('merchant_account_id', merchantAccountId)
-      .gte('settled_at', from.toISOString())
-      .lte('settled_at', to.toISOString()),
-    supabase
-      .from('order_state_transition')
-      .select('id', { count: 'exact', head: true })
-      .eq('merchant_account_id', merchantAccountId)
-      .eq('to_status', 'LIVREE')
-      .gte('created_at', from.toISOString())
-      .lte('created_at', to.toISOString()),
-    getRevenue30d(),
-    getCodBreakdown(),
-    getShopPerformance(),
-  ]);
+  const [kpisResult, agingResult, settingsResult, settlementsResult, deliveredCountResult] =
+    await Promise.all([
+      financeKpisRpc(supabase)('finance_kpis', {
+        p_from: from.toISOString(),
+        p_merchant: merchantAccountId,
+        p_to: to.toISOString(),
+      }),
+      cashAgingRpc(supabase)('cash_aging', { p_merchant: merchantAccountId }),
+      supabase
+        .from('merchant_settings')
+        .select('*')
+        .eq('merchant_account_id', merchantAccountId)
+        .maybeSingle(),
+      supabase
+        .from('cash_settlement')
+        .select('amount_received_minor, method')
+        .eq('merchant_account_id', merchantAccountId)
+        .gte('settled_at', from.toISOString())
+        .lte('settled_at', to.toISOString()),
+      supabase
+        .from('order_state_transition')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('to_status', 'LIVREE')
+        .gte('created_at', from.toISOString())
+        .lte('created_at', to.toISOString()),
+    ]);
 
   const [outstandingOrdersResult, driversResult, shortfallsResult] = await Promise.all([
     supabase
@@ -371,19 +359,21 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
     reason: shortfall.reason,
     shortfallMinor: shortfall.shortfall_minor,
   }));
-  const revenue = revenueResult.ok ? revenueResult.data.points : [];
-  const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
-  const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
   const hasFinancialData = kpis.ca_livre > 0 || kpis.encaisse > 0 || kpis.cash_chez_livreurs > 0;
   const periods = ['today', '7j', '30j'] as const;
 
-  const [profitResult, expensesResult, categoriesResult] = await Promise.all([
+  const [profitResult, chartsResult, expensesResult, categoriesResult] = await Promise.all([
     getFinanceReportAction({ from: from.toISOString(), to: to.toISOString() }),
+    getFinanceChartsAction({ from: from.toISOString(), to: to.toISOString() }),
     listExpensesAction({ from: toDateInput(from), to: toDateInput(to) }),
     listExpenseCategoriesAction({}),
   ]);
 
   const profitReport = profitResult?.data?.ok ? profitResult.data.report : null;
+  const charts = chartsResult?.data?.ok ? chartsResult.data.charts : null;
+  const revenue = charts?.revenue ?? [];
+  const codFunnel = charts?.funnel ?? [];
+  const shopPerformance = charts?.shops ?? [];
   const expenses = expensesResult?.data?.ok ? expensesResult.data.expenses : [];
   const categories = categoriesResult?.data?.ok ? categoriesResult.data.categories : [];
 
@@ -528,14 +518,14 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         agingTitle={t('charts.aging')}
         currency="XOF"
         emptyLabel={t('charts.empty')}
-        funnel={codBreakdown.map((item) => ({
+        funnel={codFunnel.map((item) => ({
           count: item.count,
           label: t(`status.${item.status}`),
         }))}
         funnelTitle={t('charts.funnel')}
         revenue={revenue}
         revenueTitle={t('charts.revenue')}
-        shops={shopPerformance.map((shop) => ({ name: shop.name, revenue: shop.revenue }))}
+        shops={shopPerformance}
         shopsTitle={t('charts.shops')}
       />
     </main>
