@@ -450,7 +450,8 @@
   "finance": {
     "title": "Finances",
     "subtitle": "Suivez le cash collecté, les versements livreurs et la marge estimée.",
-    "restricted": "Accès réservé au propriétaire et aux gestionnaires.",
+    "restricted": "Accès réservé au propriétaire.",
+    "disclaimer": "Vue de gestion — indicateurs de pilotage non certifiés. Consultez un expert-comptable OHADA avant tout usage fiscal.",
     "empty": "Aucune donnée financière pour cette période.",
     "report": {
       "download": "Télécharger le rapport PDF",
@@ -539,6 +540,51 @@
       "save": "Enregistrer les frais",
       "success": "Paramètres de frais mis à jour.",
       "error": "Une erreur est survenue, réessayez."
+    },
+    "profit": {
+      "title": "Compte de résultat simplifié",
+      "ca": "CA encaissé",
+      "returns": "Retours (contra-revenue)",
+      "netCa": "CA net",
+      "cogs": "Coût des ventes (COGS)",
+      "cogsReversal": "Reprise COGS retours restockés",
+      "netCogs": "COGS net",
+      "grossMargin": "Marge brute",
+      "grossMarginRate": "Taux de marge brute",
+      "mobileMoney": "Frais mobile money",
+      "expenses": "Charges d'exploitation",
+      "netProfit": "Résultat net",
+      "netProfitRate": "Taux de résultat net",
+      "noData": "Aucune commande encaissée sur cette période.",
+      "csv": "Exporter CSV (SYSCOHADA)"
+    },
+    "expense": {
+      "title": "Dépenses",
+      "add": "Ajouter une dépense",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer cette dépense ?",
+      "category": "Catégorie",
+      "amount": "Montant (FCFA)",
+      "date": "Date",
+      "note": "Note (optionnel)",
+      "freeText": "Préciser",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "success": "Dépense enregistrée.",
+      "updateSuccess": "Dépense mise à jour.",
+      "deleteSuccess": "Dépense supprimée.",
+      "error": "Une erreur est survenue, réessayez.",
+      "empty": "Aucune dépense sur cette période.",
+      "total": "Total dépenses"
+    },
+    "products": {
+      "title": "Détail par produit",
+      "product": "Produit",
+      "qtySold": "Qté vendue",
+      "cogs": "COGS",
+      "currentCost": "CUMP actuel",
+      "empty": "Aucune vente sur cette période."
     }
   },
   "report": {

@@ -3,9 +3,13 @@ import type {
   FinanceDriverOutstanding,
   FinanceShortfall,
 } from '@/components/finance/DriverSettlementsPanel';
+import { ExpenseSection } from '@/components/finance/ExpenseSection';
 import { FinanceChartsLoader } from '@/components/finance/FinanceChartsLoader';
+import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
 import { getCodBreakdown, getRevenue30d, getShopPerformance } from '@/lib/actions/dashboard';
+import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
+import { getFinanceReportAction } from '@/lib/actions/profit';
 import { cashCollectableMinor } from '@/lib/finance/cash';
 import {
   type MerchantFeeSettings,
@@ -15,7 +19,7 @@ import {
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { ArrowRight, LockKeyhole, Wallet } from 'lucide-react';
+import { AlertCircle, ArrowRight, LockKeyhole, Wallet } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
@@ -179,7 +183,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
   const { activePeriod, from, to } = periodRange(params);
   const { merchantAccountId, role, supabase } = await getCurrentMember();
 
-  if (!merchantAccountId || (role !== 'owner' && role !== 'manager')) {
+  if (!merchantAccountId || role !== 'owner') {
     return (
       <main className="space-y-6" id="main">
         <header className="space-y-2">
@@ -373,6 +377,16 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
   const hasFinancialData = kpis.ca_livre > 0 || kpis.encaisse > 0 || kpis.cash_chez_livreurs > 0;
   const periods = ['today', '7j', '30j'] as const;
 
+  const [profitResult, expensesResult, categoriesResult] = await Promise.all([
+    getFinanceReportAction({ from: from.toISOString(), to: to.toISOString() }),
+    listExpensesAction({ from: toDateInput(from), to: toDateInput(to) }),
+    listExpenseCategoriesAction({}),
+  ]);
+
+  const profitReport = profitResult?.data?.ok ? profitResult.data.report : null;
+  const expenses = expensesResult?.data?.ok ? expensesResult.data.expenses : [];
+  const categories = categoriesResult?.data?.ok ? categoriesResult.data.categories : [];
+
   return (
     <main className="space-y-6" id="main">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -429,6 +443,22 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
           </form>
         </div>
       </header>
+
+      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
+        <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        <p className="text-xs">{t('disclaimer')}</p>
+      </div>
+
+      {profitReport ? (
+        <ProfitSection from={toDateInput(from)} report={profitReport} to={toDateInput(to)} />
+      ) : null}
+
+      <ExpenseSection
+        categories={categories}
+        currentPeriodFrom={toDateInput(from)}
+        currentPeriodTo={toDateInput(to)}
+        expenses={expenses}
+      />
 
       {!hasFinancialData ? (
         <section className="rounded-lg border border-border bg-surface p-5 text-muted shadow-1">

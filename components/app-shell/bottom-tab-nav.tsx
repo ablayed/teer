@@ -29,6 +29,7 @@ type BottomTabItem = {
   icon: LucideIcon;
   labelKey: BottomTabKey;
   ownerManagerOnly?: boolean;
+  ownerOnly?: boolean;
 };
 
 const bottomTabItems: BottomTabItem[] = [
@@ -36,7 +37,7 @@ const bottomTabItems: BottomTabItem[] = [
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
   { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
-  { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerManagerOnly: true },
+  { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
@@ -49,7 +50,9 @@ export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const items = bottomTabItems.filter(
-    (item) => !item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager',
+    (item) =>
+      (!item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager') &&
+      (!item.ownerOnly || currentRole === 'owner'),
   );
 
   return (

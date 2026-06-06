@@ -33,6 +33,7 @@ type SidebarItem = {
   icon: LucideIcon;
   labelKey: NavKey;
   ownerManagerOnly?: boolean;
+  ownerOnly?: boolean;
 };
 
 const sidebarItems: SidebarItem[] = [
@@ -41,7 +42,7 @@ const sidebarItems: SidebarItem[] = [
   { href: '/clients', icon: Users, labelKey: 'clients' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
   { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
-  { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerManagerOnly: true },
+  { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
@@ -54,7 +55,9 @@ export function Sidebar({ currentRole }: { currentRole?: string | null }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const items = sidebarItems.filter(
-    (item) => !item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager',
+    (item) =>
+      (!item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager') &&
+      (!item.ownerOnly || currentRole === 'owner'),
   );
 
   return (
