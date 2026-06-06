@@ -1,7 +1,11 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
-import { REFUSAL_THRESHOLD, formatCustomerAddress } from '@/lib/customers/enrichment';
+import {
+  formatCustomerAddress,
+  isRecurringCustomer,
+  isRefuserCustomer,
+} from '@/lib/customers/enrichment';
 import type { ReliabilityTier } from '@/lib/customers/reliability';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -88,8 +92,8 @@ function toListItem(row: CustomerReliabilityRow): CustomerListItem {
     email: row.email ?? null,
     fullName: row.full_name ?? null,
     isProvisional: row.is_provisional,
-    isRecurring: row.order_count > 1,
-    isRefuser: row.refused_count >= REFUSAL_THRESHOLD,
+    isRecurring: isRecurringCustomer(row.order_count),
+    isRefuser: isRefuserCustomer(row.refused_count),
     orderCount: row.order_count,
     phone: row.phone ?? null,
     refusedCount: row.refused_count,

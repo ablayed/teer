@@ -7,6 +7,17 @@ import type { Json } from '@/lib/supabase/database.types';
 // à la volée par la RPC 0014 (cod_status='REFUSEE') — pas de compteur stocké concurrent.
 export const REFUSAL_THRESHOLD = 2;
 
+// Récurrence : forte valeur COD (meilleur taux de livraison). Dérivée du nombre de commandes
+// Tëër du client — pas de colonne stockée.
+export function isRecurringCustomer(orderCount: number): boolean {
+  return orderCount > 1;
+}
+
+// Refuseur répété : refused_count (cod_status='REFUSEE', dérivé) au-delà du seuil.
+export function isRefuserCustomer(refusedCount: number): boolean {
+  return refusedCount >= REFUSAL_THRESHOLD;
+}
+
 function asRecord(value: Json | null | undefined): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
