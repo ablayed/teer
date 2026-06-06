@@ -1,66 +1,102 @@
-import { ProductsCatalog } from '@/components/products/products-catalog';
+import { ProductsPageLoader } from '@/components/products/products-page-loader';
 import { PurchaseLotsView } from '@/components/purchases/purchase-lots-view';
-import { StockTable } from '@/components/stock/stock-table';
-import { getProductCatalogPageData } from '@/lib/actions/products';
+import { getProductCatalogPageData, getProductsPageData } from '@/lib/actions/products';
 import { getPurchaseLotPageData } from '@/lib/actions/purchases';
-import { getStockPageData } from '@/lib/actions/stock';
 import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
 
-export default async function ProduitsPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function ProduitsPage({ searchParams }: { searchParams: SearchParams }) {
   const nav = await getTranslations('nav');
-  const [catalogResult, stockResult, purchaseResult] = await Promise.all([
-    getProductCatalogPageData(),
-    getStockPageData(),
-    getPurchaseLotPageData(),
-  ]);
+  const params = await searchParams;
+  const q = typeof params.q === 'string' ? params.q : '';
+  const tab = typeof params.tab === 'string' ? params.tab : '';
 
-  const isOwner = catalogResult.ok && catalogResult.currentRole === 'owner';
+  if (tab === 'achats') {
+    const [catalogResult, purchaseResult] = await Promise.all([
+      getProductCatalogPageData(),
+      getPurchaseLotPageData(),
+    ]);
 
-  return (
-    <main className="space-y-10" id="main">
-      <h1 className="font-display text-4xl md:text-5xl">{nav('produits')}</h1>
+    const isOwner = catalogResult.ok && catalogResult.currentRole === 'owner';
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Catalogue</h2>
-        {!catalogResult.ok ? (
+    return (
+      <main className="space-y-8" id="main">
+        <h1 className="font-display text-4xl md:text-5xl">{nav('produits')}</h1>
+        <TabBar isOwner={isOwner} tab="achats" />
+        {!isOwner ? (
           <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
-            {catalogResult.errorCode === 'unauthenticated'
-              ? 'Session introuvable.'
-              : catalogResult.errorCode === 'forbidden'
-                ? "Vous n'avez pas accès au catalogue produit."
-                : 'Le catalogue produit est indisponible pour le moment.'}
+            Accès réservé au propriétaire.
+          </div>
+        ) : !purchaseResult.ok ? (
+          <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
+            {purchaseResult.message}
           </div>
         ) : (
-          <ProductsCatalog
-            currentRole={catalogResult.currentRole}
-            products={catalogResult.products}
+          <PurchaseLotsView
+            lots={purchaseResult.lots}
+            products={catalogResult.ok ? catalogResult.products : []}
           />
         )}
-      </section>
+      </main>
+    );
+  }
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Stock</h2>
-        {!stockResult.ok ? (
-          <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
-            {stockResult.message}
-          </div>
-        ) : (
-          <StockTable canSeeCost={stockResult.canSeeCost} rows={stockResult.rows} />
-        )}
-      </section>
+  const productsResult = await getProductsPageData({ q: q.trim() || undefined });
 
-      {isOwner && (
-        <section className="space-y-4">
-          <h2 className="text-xl font-semibold">Achats fournisseur</h2>
-          {!purchaseResult.ok ? (
-            <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
-              {purchaseResult.message}
-            </div>
-          ) : (
-            <PurchaseLotsView lots={purchaseResult.lots} products={catalogResult.products} />
-          )}
-        </section>
+  const isOwner = productsResult.ok && productsResult.currentRole === 'owner';
+
+  return (
+    <main className="space-y-8" id="main">
+      <h1 className="font-display text-4xl md:text-5xl">{nav('produits')}</h1>
+      <TabBar isOwner={isOwner} tab="" />
+      {!productsResult.ok ? (
+        <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
+          {productsResult.errorCode === 'unauthenticated'
+            ? 'Session introuvable.'
+            : productsResult.errorCode === 'forbidden'
+              ? "Vous n'avez pas accès au catalogue produit."
+              : 'Le catalogue est indisponible pour le moment.'}
+        </div>
+      ) : (
+        <ProductsPageLoader
+          canSeeCost={productsResult.canSeeCost}
+          currentRole={productsResult.currentRole}
+          initialHasMore={productsResult.hasMore}
+          initialItems={productsResult.items}
+          initialNextOffset={productsResult.nextOffset}
+          searchQuery={q}
+        />
       )}
     </main>
+  );
+}
+
+function TabBar({ isOwner, tab }: { isOwner: boolean; tab: string }) {
+  const isAchats = tab === 'achats';
+  return (
+    <nav aria-label="Onglets produits" className="flex gap-1 border-b border-border">
+      <Link
+        aria-current={!isAchats ? 'page' : undefined}
+        className={`px-4 py-2 text-sm font-medium ${
+          !isAchats ? 'border-b-2 border-accent text-text' : 'text-muted hover:text-text'
+        }`}
+        href="/produits"
+      >
+        Catalogue &amp; Stock
+      </Link>
+      {isOwner && (
+        <Link
+          aria-current={isAchats ? 'page' : undefined}
+          className={`px-4 py-2 text-sm font-medium ${
+            isAchats ? 'border-b-2 border-accent text-text' : 'text-muted hover:text-text'
+          }`}
+          href="/produits?tab=achats"
+        >
+          Achats fournisseur
+        </Link>
+      )}
+    </nav>
   );
 }

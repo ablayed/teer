@@ -9,6 +9,8 @@ import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+const PRODUCTS_PER_PAGE = 25;
+
 type SupabaseServerClient = SupabaseClient<Database>;
 type ProductRow = Tables<'product'>;
 export type ProductCatalogItem = Pick<
@@ -84,6 +86,119 @@ async function getCurrentMember() {
       merchantAccountId: member.merchant_account_id,
       role: member.role,
     },
+  };
+}
+
+export type ProductsPageItem = {
+  id: string;
+  title: string;
+  sku: string | null;
+  unit_cost: number | null;
+  is_active: boolean;
+  shopify_product_id: string | null;
+  shopify_variant_id: string | null;
+  created_at: string;
+  updated_at: string;
+  qtyOnHand: number;
+  qtyReserved: number;
+  qtyAvailable: number;
+  lowStockThreshold: number;
+  isLowStock: boolean;
+  stockUnitCost: number | null;
+  stockValue: number | null;
+};
+
+type ProductsPageResult =
+  | {
+      ok: true;
+      items: ProductsPageItem[];
+      hasMore: boolean;
+      nextOffset: number;
+      canSeeCost: boolean;
+      currentRole: TeamRole;
+    }
+  | { ok: false; errorCode: string };
+
+export async function getProductsPageData(params: {
+  q?: string;
+  offset?: number;
+}): Promise<ProductsPageResult> {
+  const currentMember = await getCurrentMember();
+  if (!currentMember.ok) return currentMember;
+
+  const { merchantAccountId, role } = currentMember.member;
+  const canSeeCost = role === 'owner' || role === 'manager';
+  const offset = params.offset ?? 0;
+  const limit = PRODUCTS_PER_PAGE + 1;
+
+  const admin = createSupabaseAdminClient();
+
+  let productQuery = admin
+    .from('product')
+    .select(
+      'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at',
+    )
+    .eq('merchant_account_id', merchantAccountId)
+    .order('title', { ascending: true })
+    .order('id', { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  if (params.q?.trim()) {
+    const q = params.q.trim();
+    productQuery = productQuery.or(`title.ilike.%${q}%,sku.ilike.%${q}%`);
+  }
+
+  const { data: productData, error: productError } = await productQuery;
+  if (productError) return { ok: false, errorCode: 'load_failed' };
+
+  const hasMore = (productData?.length ?? 0) > PRODUCTS_PER_PAGE;
+  const products = hasMore ? productData.slice(0, PRODUCTS_PER_PAGE) : (productData ?? []);
+  const productIds = products.map((p) => p.id);
+
+  const { data: stocks } =
+    productIds.length > 0
+      ? await admin
+          .from('product_stock')
+          .select('product_id, qty_on_hand, qty_reserved, unit_cost, low_stock_threshold')
+          .eq('merchant_account_id', merchantAccountId)
+          .in('product_id', productIds)
+      : { data: [] };
+
+  const stockMap = new Map((stocks ?? []).map((s) => [s.product_id, s]));
+
+  const items: ProductsPageItem[] = products.map((p) => {
+    const s = stockMap.get(p.id);
+    const qtyOnHand = s?.qty_on_hand ?? 0;
+    const qtyReserved = s?.qty_reserved ?? 0;
+    const qtyAvailable = Math.max(0, qtyOnHand - qtyReserved);
+    const threshold = s?.low_stock_threshold ?? 10;
+    return {
+      id: p.id,
+      title: p.title,
+      sku: p.sku,
+      unit_cost: canSeeCost ? (p.unit_cost ?? 0) : null,
+      is_active: p.is_active,
+      shopify_product_id: p.shopify_product_id,
+      shopify_variant_id: p.shopify_variant_id,
+      created_at: p.created_at,
+      updated_at: p.updated_at,
+      qtyOnHand,
+      qtyReserved,
+      qtyAvailable,
+      lowStockThreshold: threshold,
+      isLowStock: qtyOnHand <= threshold,
+      stockUnitCost: canSeeCost ? (s?.unit_cost ?? 0) : null,
+      stockValue: canSeeCost ? qtyOnHand * (s?.unit_cost ?? 0) : null,
+    };
+  });
+
+  return {
+    ok: true,
+    items,
+    hasMore,
+    nextOffset: offset + PRODUCTS_PER_PAGE,
+    canSeeCost,
+    currentRole: role,
   };
 }
 
@@ -198,4 +313,86 @@ export const updateProductUnitCostAction = requireRole('owner', 'manager')
     revalidatePath('/produits');
 
     return { ok: true as const };
+  });
+
+export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
+  .metadata({ actionName: 'products.load_more', section: 'products' })
+  .inputSchema(
+    z.object({
+      q: z.string().optional(),
+      offset: z.number().int().min(0),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId, role } = ctx.member;
+    const canSeeCost = role === 'owner' || role === 'manager';
+    const limit = PRODUCTS_PER_PAGE + 1;
+
+    const admin = createSupabaseAdminClient();
+
+    let productQuery = admin
+      .from('product')
+      .select(
+        'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at',
+      )
+      .eq('merchant_account_id', merchantAccountId)
+      .order('title', { ascending: true })
+      .order('id', { ascending: true })
+      .range(parsedInput.offset, parsedInput.offset + limit - 1);
+
+    if (parsedInput.q?.trim()) {
+      const q = parsedInput.q.trim();
+      productQuery = productQuery.or(`title.ilike.%${q}%,sku.ilike.%${q}%`);
+    }
+
+    const { data: productData, error: productError } = await productQuery;
+    if (productError) return { ok: false as const, errorCode: 'load_failed' as const };
+
+    const hasMore = (productData?.length ?? 0) > PRODUCTS_PER_PAGE;
+    const products = hasMore ? productData.slice(0, PRODUCTS_PER_PAGE) : (productData ?? []);
+    const productIds = products.map((p) => p.id);
+
+    const { data: stocks } =
+      productIds.length > 0
+        ? await admin
+            .from('product_stock')
+            .select('product_id, qty_on_hand, qty_reserved, unit_cost, low_stock_threshold')
+            .eq('merchant_account_id', merchantAccountId)
+            .in('product_id', productIds)
+        : { data: [] };
+
+    const stockMap = new Map((stocks ?? []).map((s) => [s.product_id, s]));
+
+    const items: ProductsPageItem[] = products.map((p) => {
+      const s = stockMap.get(p.id);
+      const qtyOnHand = s?.qty_on_hand ?? 0;
+      const qtyReserved = s?.qty_reserved ?? 0;
+      const qtyAvailable = Math.max(0, qtyOnHand - qtyReserved);
+      const threshold = s?.low_stock_threshold ?? 10;
+      return {
+        id: p.id,
+        title: p.title,
+        sku: p.sku,
+        unit_cost: canSeeCost ? (p.unit_cost ?? 0) : null,
+        is_active: p.is_active,
+        shopify_product_id: p.shopify_product_id,
+        shopify_variant_id: p.shopify_variant_id,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+        qtyOnHand,
+        qtyReserved,
+        qtyAvailable,
+        lowStockThreshold: threshold,
+        isLowStock: qtyOnHand <= threshold,
+        stockUnitCost: canSeeCost ? (s?.unit_cost ?? 0) : null,
+        stockValue: canSeeCost ? qtyOnHand * (s?.unit_cost ?? 0) : null,
+      };
+    });
+
+    return {
+      ok: true as const,
+      items,
+      hasMore,
+      nextOffset: parsedInput.offset + PRODUCTS_PER_PAGE,
+    };
   });

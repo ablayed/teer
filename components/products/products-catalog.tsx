@@ -5,10 +5,10 @@ import {
   createProductAction,
   updateProductUnitCostAction,
 } from '@/lib/actions/products';
-import { Search, Store, Tag } from 'lucide-react';
+import { Store, Tag } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type ProductsCatalogProps = {
   currentRole: 'agent' | 'manager' | 'owner';
@@ -27,33 +27,15 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
   const canManage = currentRole === 'owner' || currentRole === 'manager';
   const createProduct = useAction(createProductAction);
   const updateUnitCost = useAction(updateProductUnitCostAction);
-  const [search, setSearch] = useState('');
   const [title, setTitle] = useState('');
   const [sku, setSku] = useState('');
   const [unitCost, setUnitCost] = useState('0');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [unitCostDrafts, setUnitCostDrafts] = useState<Record<string, string>>({});
 
-  const filteredProducts = useMemo(() => {
-    const normalized = search.trim().toLowerCase();
-
-    if (!normalized) {
-      return products;
-    }
-
-    return products.filter((product) => {
-      const skuText = product.sku?.toLowerCase() ?? '';
-      return product.title.toLowerCase().includes(normalized) || skuText.includes(normalized);
-    });
-  }, [products, search]);
-
   useEffect(() => {
     const result = createProduct.result.data;
-
-    if (!result) {
-      return;
-    }
-
+    if (!result) return;
     if (result.ok) {
       setFeedback('Produit créé.');
       setTitle('');
@@ -62,29 +44,22 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
       router.refresh();
       return;
     }
-
     setFeedback('La création du produit a échoué.');
   }, [createProduct.result.data, router]);
 
   useEffect(() => {
     const result = updateUnitCost.result.data;
-
-    if (!result) {
-      return;
-    }
-
+    if (!result) return;
     if (result.ok) {
       setFeedback('Coût unitaire mis à jour.');
       router.refresh();
       return;
     }
-
     setFeedback('La mise à jour du coût a échoué.');
   }, [router, updateUnitCost.result.data]);
 
   function onCreateProduct() {
     const parsedUnitCost = Number.parseInt(unitCost, 10);
-
     setFeedback(null);
     createProduct.execute({
       sku,
@@ -96,7 +71,6 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
   function onSaveUnitCost(product: ProductCatalogItem) {
     const rawValue = unitCostDrafts[product.id] ?? String(product.unit_cost ?? 0);
     const parsedUnitCost = Number.parseInt(rawValue, 10);
-
     setFeedback(null);
     updateUnitCost.execute({
       productId: product.id,
@@ -106,31 +80,10 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
 
   return (
     <div className="space-y-6">
-      <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-text">Catalogue produit</p>
-            <p className="text-sm text-muted">
-              Recherchez par titre ou SKU. Les coûts restent invisibles pour les agents.
-            </p>
-          </div>
-          <label className="relative block w-full max-w-md">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
-            />
-            <input
-              className="min-h-11 w-full rounded-lg border border-border bg-canvas pl-10 pr-3 text-sm text-text shadow-1"
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Rechercher un produit ou un SKU"
-              type="search"
-              value={search}
-            />
-          </label>
-        </div>
-
-        {canManage ? (
-          <div className="mt-4 grid gap-3 border-t border-border pt-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(140px,180px)_auto]">
+      {canManage ? (
+        <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
+          <p className="mb-3 text-sm text-muted">Les coûts restent invisibles pour les agents.</p>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(140px,180px)_auto]">
             <label className="space-y-2">
               <span className="text-sm font-medium">Titre</span>
               <input
@@ -174,22 +127,18 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
               </button>
             </div>
           </div>
-        ) : null}
+          {feedback ? <p className="mt-4 text-sm text-muted">{feedback}</p> : null}
+        </section>
+      ) : null}
 
-        {feedback ? <p className="mt-4 text-sm text-muted">{feedback}</p> : null}
-      </section>
-
-      {filteredProducts.length === 0 ? (
+      {products.length === 0 ? (
         <section className="rounded-lg border border-dashed border-border bg-surface p-6 text-sm text-muted shadow-1">
-          {products.length === 0
-            ? 'Aucun produit dans le catalogue pour le moment.'
-            : 'Aucun produit ne correspond à cette recherche.'}
+          Aucun produit dans le catalogue pour le moment.
         </section>
       ) : (
         <div className="grid gap-3">
-          {filteredProducts.map((product) => {
+          {products.map((product) => {
             const unitCostValue = unitCostDrafts[product.id] ?? String(product.unit_cost ?? 0);
-
             return (
               <article
                 className="rounded-lg border border-border bg-surface p-4 shadow-1"
@@ -205,7 +154,6 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                         {product.is_active ? 'Actif' : 'Inactif'}
                       </span>
                     </div>
-
                     <div className="space-y-1">
                       <h2 className="text-lg font-semibold text-text">{product.title}</h2>
                       <div className="flex flex-wrap gap-4 text-sm text-muted">
@@ -222,7 +170,6 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                       </div>
                     </div>
                   </div>
-
                   {canManage ? (
                     <div className="grid gap-2 sm:grid-cols-[minmax(140px,180px)_auto] sm:items-end">
                       <label className="space-y-2">
@@ -254,10 +201,9 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                     <div className="text-sm text-muted">Coût unitaire masqué pour ce rôle.</div>
                   )}
                 </div>
-
                 {canManage && product.unit_cost !== null ? (
                   <p className="mt-3 text-sm text-muted">
-                    Valeur enregistrée: {formatMinorAmount(product.unit_cost)} XOF
+                    Valeur enregistrée : {formatMinorAmount(product.unit_cost)} XOF
                   </p>
                 ) : null}
               </article>
