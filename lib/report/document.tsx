@@ -7,6 +7,7 @@ type ReportLabels = {
   cashDrivers: string;
   collected: string;
   deliveredRevenue: string;
+  disclaimer: string;
   empty: string;
   estimatedMargin: string;
   feesTitle: string;
@@ -17,6 +18,8 @@ type ReportLabels = {
   method: Record<string, string>;
   pending: string;
   period: string;
+  // Compte de résultat (P&L) — clés finance.profit.* + marge par produit.
+  pnl: Record<string, string>;
   productsTitle: string;
   quantity: string;
   reconciliationTitle: string;
@@ -277,6 +280,155 @@ function Empty({ label }: { label: string }) {
   return <Text style={styles.muted}>{label}</Text>;
 }
 
+function PnlLine({
+  bold,
+  formatMoney,
+  currency,
+  label,
+  last,
+  value,
+}: {
+  bold?: boolean;
+  currency: string;
+  formatMoney: (amount: number, currency?: string | null) => string;
+  label: string;
+  last?: boolean;
+  value: number;
+}) {
+  return (
+    <View style={rowStyle(Boolean(last))} wrap={false}>
+      <Text style={[styles.cellGrow, bold ? { fontWeight: 700 } : {}]}>{label}</Text>
+      <Text style={[styles.cellSmall, bold ? { fontWeight: 700 } : {}]}>
+        {formatMoney(value, currency)}
+      </Text>
+    </View>
+  );
+}
+
+function PnlSection({
+  currency,
+  formatMoney,
+  labels,
+  profit,
+}: {
+  currency: string;
+  formatMoney: (amount: number, currency?: string | null) => string;
+  labels: ReportLabels;
+  profit: NonNullable<ReportData['profit']>;
+}) {
+  const products = profit.productBreakdown;
+  return (
+    <>
+      <View style={styles.section}>
+        <Text style={styles.h2}>{labels.pnl.title}</Text>
+        <PnlLine
+          currency={currency}
+          formatMoney={formatMoney}
+          label={labels.pnl.ca}
+          value={profit.caMinor}
+        />
+        {profit.returnContraRevenueMinor > 0 ? (
+          <PnlLine
+            currency={currency}
+            formatMoney={formatMoney}
+            label={labels.pnl.returns}
+            value={-profit.returnContraRevenueMinor}
+          />
+        ) : null}
+        <PnlLine
+          bold
+          currency={currency}
+          formatMoney={formatMoney}
+          label={labels.pnl.netCa}
+          value={profit.netCAMinor}
+        />
+        <PnlLine
+          currency={currency}
+          formatMoney={formatMoney}
+          label={labels.pnl.cogs}
+          value={-profit.netCogsMinor}
+        />
+        <PnlLine
+          bold
+          currency={currency}
+          formatMoney={formatMoney}
+          label={labels.pnl.grossMargin}
+          value={profit.grossMarginMinor}
+        />
+        {profit.mobileMoneyFeesMinor > 0 ? (
+          <PnlLine
+            currency={currency}
+            formatMoney={formatMoney}
+            label={labels.pnl.mobileMoney}
+            value={-profit.mobileMoneyFeesMinor}
+          />
+        ) : null}
+        {profit.expensesMinor > 0 ? (
+          <PnlLine
+            currency={currency}
+            formatMoney={formatMoney}
+            label={labels.pnl.expenses}
+            value={-profit.expensesMinor}
+          />
+        ) : null}
+        <PnlLine
+          bold
+          currency={currency}
+          formatMoney={formatMoney}
+          label={labels.pnl.netProfit}
+          last
+          value={profit.netProfitMinor}
+        />
+        <Text style={[styles.muted, { fontSize: 8, marginTop: 6 }]}>
+          {profit.cogsEstimated ? labels.pnl.marginEstimated : labels.pnl.marginReal}
+        </Text>
+      </View>
+
+      <View style={styles.twoCols}>
+        <View style={[styles.section, styles.col]}>
+          <Text style={styles.h2}>{labels.pnl.expensesTitle}</Text>
+          {profit.expensesByCategory.length > 0 ? (
+            profit.expensesByCategory.map((cat, index) => (
+              <View
+                key={cat.code}
+                style={rowStyle(index === profit.expensesByCategory.length - 1)}
+                wrap={false}
+              >
+                <Text style={styles.cellGrow}>{cat.label}</Text>
+                <Text style={styles.cellSmall}>{formatMoney(cat.totalMinor, currency)}</Text>
+              </View>
+            ))
+          ) : (
+            <Empty label={labels.empty} />
+          )}
+        </View>
+
+        <View style={[styles.section, styles.col]}>
+          <Text style={styles.h2}>{labels.pnl.productMarginTitle}</Text>
+          {products.length > 0 ? (
+            products.slice(0, 10).map((product, index) => (
+              <View
+                key={product.productId}
+                style={rowStyle(index === Math.min(products.length, 10) - 1)}
+                wrap={false}
+              >
+                <Text style={styles.cellGrow}>
+                  {product.title}
+                  {product.estimated ? ' *' : ''}
+                </Text>
+                <Text style={styles.cellSmall}>{product.qtySold}</Text>
+                <Text style={styles.cellSmall}>{formatMoney(product.cogsMinor, currency)}</Text>
+              </View>
+            ))
+          ) : (
+            <Empty label={labels.empty} />
+          )}
+        </View>
+      </View>
+    </>
+  );
+}
+
 export function ReportDocument({
   data,
   formatDate,
@@ -308,6 +460,7 @@ export function ReportDocument({
           <Text style={[styles.muted, { marginTop: 4 }]}>
             {labels.generatedOn} : {formatDateTime(data.generatedAt)}
           </Text>
+          <Text style={[styles.muted, { fontSize: 8, marginTop: 6 }]}>{labels.disclaimer}</Text>
         </View>
 
         <View style={styles.grid}>
@@ -417,6 +570,15 @@ export function ReportDocument({
             )}
           </View>
         </View>
+
+        {data.profit ? (
+          <PnlSection
+            currency={currency}
+            formatMoney={formatMoney}
+            labels={labels}
+            profit={data.profit}
+          />
+        ) : null}
       </Page>
     </Document>
   );

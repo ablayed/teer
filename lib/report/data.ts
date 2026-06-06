@@ -5,6 +5,8 @@ import {
   digitalSettlementFeesMinor,
   estimatedMarginMinor,
 } from '@/lib/finance/fees';
+import type { FinanceReport } from '@/lib/finance/profit';
+import { createFinanceAdminClient, fetchFinanceReport } from '@/lib/finance/report-data';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -80,6 +82,8 @@ export type ReportData = {
   generatedAt: Date;
   kpis: FinanceKpiRow & { margin_estimee: number };
   methods: ReportMethodFees[];
+  // Compte de résultat (P&L) returns-aware — owner-only ; null pour un manager.
+  profit: FinanceReport | null;
   revenue: ReportRevenuePoint[];
   shop: {
     domain: string | null;
@@ -261,7 +265,7 @@ async function getReportContext() {
     throw new Error('FORBIDDEN');
   }
 
-  return { merchantAccountId: member.merchant_account_id, supabase };
+  return { merchantAccountId: member.merchant_account_id, role: member.role, supabase };
 }
 
 export function reportFilename({
@@ -285,7 +289,7 @@ export async function getReportData({
   shopId?: string | null;
   to: Date;
 }): Promise<ReportData> {
-  const { merchantAccountId, supabase } = await getReportContext();
+  const { merchantAccountId, role, supabase } = await getReportContext();
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
 
@@ -494,6 +498,21 @@ export async function getReportData({
 
   const shopName = merchant?.name ?? selectedShop?.shop_domain ?? 'Boutique';
 
+  // Compte de résultat P&L — owner-only (unit_cost caché aux non-owner → service role).
+  let profit: FinanceReport | null = null;
+  if (role === 'owner') {
+    try {
+      profit = await fetchFinanceReport(
+        createFinanceAdminClient(),
+        merchantAccountId,
+        fromIso,
+        toIso,
+      );
+    } catch {
+      profit = null;
+    }
+  }
+
   return {
     cashAging: agingResult.data ?? [],
     currency: orders[0]?.currency ?? 'XOF',
@@ -505,6 +524,7 @@ export async function getReportData({
     generatedAt: new Date(),
     kpis: { ...kpis, margin_estimee: marginMinor },
     methods: [...methods.values()].sort((left, right) => right.settledMinor - left.settledMinor),
+    profit,
     revenue: aggregateRevenue(orders, from, to),
     shop: {
       domain: selectedShop?.shop_domain ?? null,

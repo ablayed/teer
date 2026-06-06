@@ -570,7 +570,9 @@
       "netProfit": "Résultat net",
       "netProfitRate": "Taux de résultat net",
       "noData": "Aucune commande encaissée sur cette période.",
-      "csv": "Exporter CSV (SYSCOHADA)"
+      "csv": "Exporter CSV (SYSCOHADA)",
+      "pdfExpensesTitle": "Charges par catégorie",
+      "pdfProductMarginTitle": "Coût des produits vendus (qté · COGS)"
     },
     "expense": {
       "title": "Dépenses",
