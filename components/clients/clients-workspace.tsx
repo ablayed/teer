@@ -15,7 +15,17 @@ import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN, toWhatsAppLink } from '@/lib/format/phone';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { AlertCircle, ArrowRight, MessageCircle, Phone, Search, X } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  Ban,
+  MapPin,
+  MessageCircle,
+  Phone,
+  Repeat,
+  Search,
+  X,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
@@ -82,6 +92,35 @@ function ScoreValue({ customer }: { customer: Pick<CustomerListItem, 'score' | '
   return <span className="font-mono text-2xl font-semibold tabular-nums">{customer.score}</span>;
 }
 
+function CustomerBadges({
+  customer,
+}: {
+  customer: Pick<CustomerListItem, 'isRecurring' | 'isRefuser'>;
+}) {
+  const t = useTranslations('clients');
+
+  if (!customer.isRecurring && !customer.isRefuser) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {customer.isRecurring ? (
+        <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-semibold text-success">
+          <Repeat aria-hidden="true" className="size-3" />
+          {t('badges.recurring')}
+        </span>
+      ) : null}
+      {customer.isRefuser ? (
+        <span className="inline-flex items-center gap-1 rounded-full border border-danger/40 bg-danger-subtle px-2 py-0.5 text-xs font-semibold text-danger">
+          <Ban aria-hidden="true" className="size-3" />
+          {t('badges.refuser')}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function CustomerCard({
   customer,
   onSelect,
@@ -103,6 +142,9 @@ function CustomerCard({
           <p className="mt-1 text-sm text-muted">
             {customer.phone ? formatPhoneSN(customer.phone) : t('fallbackPhone')}
           </p>
+          <div className="mt-2">
+            <CustomerBadges customer={customer} />
+          </div>
         </div>
         <TierBadge isProvisional={customer.isProvisional} tier={customer.tier} />
       </div>
@@ -272,9 +314,39 @@ function CustomerSheet({
                       ) : null}
                     </div>
                   </div>
+                  <div className="mt-3">
+                    <CustomerBadges customer={customer} />
+                  </div>
                   {customer.isProvisional ? (
                     <p className="mt-3 text-xs text-muted">{t('score.provisional')}</p>
                   ) : null}
+                </section>
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">{t('contact.title')}</h3>
+                  <div className="rounded-lg border border-border bg-canvas p-3 text-sm">
+                    <p className="text-xs text-muted">
+                      {customer.phone ? formatPhoneSN(customer.phone) : t('fallbackPhone')}
+                    </p>
+                    <p className="mt-2 flex items-start gap-2">
+                      <MapPin aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted" />
+                      <span className={customer.addressText ? undefined : 'text-muted'}>
+                        {customer.addressText ?? t('contact.noAddress')}
+                      </span>
+                    </p>
+                    {customer.tags && customer.tags.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {customer.tags.map((tag) => (
+                          <span
+                            className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted"
+                            key={tag}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </section>
 
                 {(customer.flags.confirmsThenRefuses ||
@@ -351,6 +423,17 @@ function CustomerSheet({
                     </p>
                   </div>
                   <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted">{t('stats.refused')}</p>
+                    <p
+                      className={cn(
+                        'font-mono text-lg font-semibold tabular-nums',
+                        customer.isRefuser ? 'text-danger' : undefined,
+                      )}
+                    >
+                      {customer.refusedCount}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
                     <p className="text-xs text-muted">{t('stats.cancelled')}</p>
                     <p className="font-mono text-lg font-semibold tabular-nums">
                       {customer.cancelledCount}
@@ -362,6 +445,22 @@ function CustomerSheet({
                       {formatMoney(customer.deliveredLifetime)}
                     </p>
                   </div>
+                  {customer.shopifyOrdersCount !== null ? (
+                    <div className="rounded-lg border border-border p-3">
+                      <p className="text-xs text-muted">{t('stats.shopifyOrders')}</p>
+                      <p className="font-mono text-lg font-semibold tabular-nums">
+                        {customer.shopifyOrdersCount}
+                      </p>
+                    </div>
+                  ) : null}
+                  {customer.shopifyAmountSpentMinor !== null ? (
+                    <div className="rounded-lg border border-border p-3">
+                      <p className="text-xs text-muted">{t('stats.shopifySpent')}</p>
+                      <p className="font-mono text-sm font-semibold tabular-nums">
+                        {formatMoney(customer.shopifyAmountSpentMinor)}
+                      </p>
+                    </div>
+                  ) : null}
                 </section>
               </div>
             ) : null}

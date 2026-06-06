@@ -1,6 +1,7 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
+import { REFUSAL_THRESHOLD, formatCustomerAddress } from '@/lib/customers/enrichment';
 import type { ReliabilityTier } from '@/lib/customers/reliability';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -18,8 +19,12 @@ export type CustomerListItem = {
   email: string | null;
   fullName: string | null;
   isProvisional: boolean;
+  // Récurrence dérivée (order_count Tëër > 1) — pas de colonne stockée. Forte valeur COD.
+  isRecurring: boolean;
+  isRefuser: boolean;
   orderCount: number;
   phone: string | null;
+  refusedCount: number;
   score: number;
   tier: ReliabilityTier;
 };
@@ -37,6 +42,7 @@ export type CustomerOrderHistoryItem = Pick<
 
 export type CustomerDetail = CustomerListItem & {
   actionsKey: 'new' | 'reliable' | 'risk' | 'watch';
+  addressText: string | null;
   confirmScore: number | null;
   deliveryScore: number;
   flags: {
@@ -45,6 +51,9 @@ export type CustomerDetail = CustomerListItem & {
     hardToReach: boolean;
   };
   history: CustomerOrderHistoryItem[];
+  shopifyAmountSpentMinor: number | null;
+  shopifyOrdersCount: number | null;
+  tags: string[] | null;
 };
 
 const listCustomersSchema = z.object({
@@ -79,8 +88,11 @@ function toListItem(row: CustomerReliabilityRow): CustomerListItem {
     email: row.email ?? null,
     fullName: row.full_name ?? null,
     isProvisional: row.is_provisional,
+    isRecurring: row.order_count > 1,
+    isRefuser: row.refused_count >= REFUSAL_THRESHOLD,
     orderCount: row.order_count,
     phone: row.phone ?? null,
+    refusedCount: row.refused_count,
     score: row.score,
     tier: toTier(row.tier),
   };
@@ -115,7 +127,7 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
   .inputSchema(getCustomerSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
-    const [customerResult, historyResult] = await Promise.all([
+    const [customerResult, historyResult, enrichmentResult] = await Promise.all([
       supabase.rpc('get_customer_reliability', {
         p_merchant_id: ctx.member.merchantAccountId,
         p_customer_id: parsedInput.customerId,
@@ -129,9 +141,16 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
         .eq('customer_id', parsedInput.customerId)
         .order('created_at_shopify', { ascending: false, nullsFirst: false })
         .limit(30),
+      // Colonnes PII enrichies (Phase 7b) absentes de la RPC de fiabilité.
+      supabase
+        .from('customer')
+        .select('address, shipping_address, tags, shopify_orders_count, shopify_amount_spent_minor')
+        .eq('merchant_account_id', ctx.member.merchantAccountId)
+        .eq('id', parsedInput.customerId)
+        .maybeSingle(),
     ]);
 
-    if (customerResult.error || historyResult.error) {
+    if (customerResult.error || historyResult.error || enrichmentResult.error) {
       return { ok: false as const, errorCode: 'get_failed' as const };
     }
 
@@ -141,10 +160,15 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
       return { ok: false as const, errorCode: 'customer_not_found' as const };
     }
 
+    const enrichment = enrichmentResult.data;
     const customer = toListItem(row);
     const detail: CustomerDetail = {
       ...customer,
       actionsKey: customer.tier,
+      addressText: formatCustomerAddress(
+        enrichment?.address ?? null,
+        enrichment?.shipping_address ?? null,
+      ),
       confirmScore: row.confirm_score,
       deliveryScore: row.delivery_score,
       flags: {
@@ -153,6 +177,9 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
         hardToReach: row.flag_hard_to_reach,
       },
       history: (historyResult.data ?? []) as CustomerOrderHistoryItem[],
+      shopifyAmountSpentMinor: enrichment?.shopify_amount_spent_minor ?? null,
+      shopifyOrdersCount: enrichment?.shopify_orders_count ?? null,
+      tags: enrichment?.tags ?? null,
     };
 
     return {

@@ -415,6 +415,16 @@
       "watch": "Confirmer avant d’expédier.",
       "risk": "Exiger un paiement à l’avance avant expédition."
     },
+    "badges": {
+      "recurring": "Client récurrent",
+      "refuser": "Refus répétés"
+    },
+    "contact": {
+      "title": "Coordonnées",
+      "address": "Adresse",
+      "noAddress": "Adresse non renseignée",
+      "tags": "Tags"
+    },
     "flags": {
       "title": "Signaux",
       "confirmsThenRefuses": "Confirme mais refuse souvent à la livraison.",
@@ -440,7 +450,10 @@
     "stats": {
       "orders": "Commandes",
       "cancelled": "Annulations",
-      "delivered": "Livré"
+      "delivered": "Livré",
+      "refused": "Refus",
+      "shopifyOrders": "Commandes Shopify",
+      "shopifySpent": "Total Shopify"
     },
     "errors": {
       "list": "Une erreur est survenue, réessayez.",
