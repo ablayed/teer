@@ -469,9 +469,16 @@
     "kpis": {
       "caLivre": "Chiffre d'affaires livré",
       "encaisseAEncaisser": "Encaissé / À encaisser",
+      "encaisse": "Encaissé",
+      "aEncaisser": "À encaisser",
       "cashDrivers": "Cash chez les livreurs",
       "driversConcerned": "{count, plural, =0 {Aucun livreur concerné} one {# livreur concerné} other {# livreurs concernés}}",
       "margin": "Marge brute estimée",
+      "grossMargin": "Marge brute",
+      "grossMarginDescReal": "CA net − coût des produits vendus (≠ résultat net)",
+      "grossMarginDescEstimated": "Estimée — une partie du coût des produits est au coût moyen courant",
+      "netProfit": "Résultat net",
+      "netProfitDesc": "Marge brute − charges − frais mobile money",
       "marginEstimate": "Estimation — coût des produits non pris en compte",
       "rto": "Taux de refus / RTO"
     },

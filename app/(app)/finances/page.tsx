@@ -466,17 +466,30 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         </section>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {kpiCard(t('kpis.caLivre'), formatMoney(kpis.ca_livre, 'XOF'))}
-        {kpiCard(
-          t('kpis.encaisseAEncaisser'),
-          `${formatMoney(kpis.encaisse, 'XOF')} / ${formatMoney(kpis.a_encaisser, 'XOF')}`,
-        )}
-        {kpiCard(
-          t('kpis.margin'),
-          formatMoney(marginMinor, 'XOF'),
-          settings.cogs_known ? undefined : t('kpis.marginEstimate'),
-        )}
+        {kpiCard(t('kpis.encaisse'), formatMoney(kpis.encaisse, 'XOF'))}
+        {kpiCard(t('kpis.aEncaisser'), formatMoney(kpis.a_encaisser, 'XOF'))}
+        {profitReport
+          ? kpiCard(
+              t('kpis.grossMargin'),
+              formatMoney(profitReport.grossMarginMinor, 'XOF'),
+              profitReport.cogsEstimated
+                ? t('kpis.grossMarginDescEstimated')
+                : t('kpis.grossMarginDescReal'),
+            )
+          : kpiCard(
+              t('kpis.margin'),
+              formatMoney(marginMinor, 'XOF'),
+              settings.cogs_known ? undefined : t('kpis.marginEstimate'),
+            )}
+        {profitReport
+          ? kpiCard(
+              t('kpis.netProfit'),
+              formatMoney(profitReport.netProfitMinor, 'XOF'),
+              t('kpis.netProfitDesc'),
+            )
+          : null}
         {kpiCard(t('kpis.rto'), `${new Intl.NumberFormat('fr-FR').format(kpis.taux_refus)} %`)}
       </section>
 
