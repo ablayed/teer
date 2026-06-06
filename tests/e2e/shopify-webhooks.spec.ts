@@ -172,12 +172,29 @@ test('webhook orders/create crée la commande ; rejeu (même webhook-id) → pas
     expect(res2.status()).toBe(200);
     await new Promise((r) => setTimeout(r, 1_500));
 
+    // Un seul effet #1 : aucune commande en double.
     const { count } = await admin
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .eq('merchant_account_id', merchantAccountId)
       .eq('shopify_order_id', shopifyOrderId);
     expect(count).toBe(1);
+
+    // Un seul effet #2 : le registre de dédup (webhook_event) ne contient qu'UNE ligne pour ce
+    // webhook-id, malgré les deux POST → la dédup par X-Shopify-Webhook-Id a bien rejeté le rejeu.
+    const { count: eventCount } = await admin
+      .from('webhook_event')
+      .select('id', { count: 'exact', head: true })
+      .eq('shopify_webhook_id', webhookId);
+    expect(eventCount).toBe(1);
+
+    // Un seul effet #3 : pas de double stock. L'ingestion webhook n'écrit JAMAIS les 4 dimensions
+    // et ne poste donc aucun mouvement de stock — un rejeu ne peut rien doubler côté stock/cash.
+    const { count: stockCount } = await admin
+      .from('stock_movement')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', order?.id ?? '');
+    expect(stockCount).toBe(0);
   } finally {
     await admin.auth.admin.deleteUser(userId);
   }
