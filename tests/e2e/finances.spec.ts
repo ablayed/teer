@@ -92,6 +92,63 @@ async function createOwnerFixture(label: string) {
   return { admin, email, merchantAccountId, userId };
 }
 
+// Sème une commande encaissée dans la période + un mouvement sold au coût figé connu,
+// pour prouver un COGS non nul (marge brute ≠ 100 %) bout-en-bout.
+async function seedCollectedOrderWithCogs(
+  admin: AdminClient,
+  merchantAccountId: string,
+  userId: string,
+) {
+  const { data: product } = await admin
+    .from('product')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      title: `Produit COGS ${Date.now()}`,
+      unit_cost: 5000,
+    })
+    .select('id')
+    .single();
+  if (!product) throw new Error('product insert returned no row');
+  await admin.from('product_stock').upsert(
+    {
+      product_id: product.id,
+      merchant_account_id: merchantAccountId,
+      qty_on_hand: 50,
+      unit_cost: 5000,
+    },
+    { onConflict: 'product_id' },
+  );
+  const { data: order } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      source: 'manual',
+      order_number: `COGS-${Date.now()}`,
+      total_amount: 20000,
+      currency: 'XOF',
+      items_summary: [{ title: 'Produit COGS', quantity: 2, price: 10000 }],
+      order_state: 'completed',
+      call_state: 'validated',
+      delivery_state: 'delivered',
+      cash_state: 'collected',
+      cash_collected_at: new Date().toISOString(),
+      payment_channel_at_delivery: 'ESPECES',
+    })
+    .select('id')
+    .single();
+  if (!order) throw new Error('order insert returned no row');
+  await admin.from('stock_movement').insert({
+    merchant_account_id: merchantAccountId,
+    product_id: product.id,
+    order_id: order.id,
+    movement_type: 'sold',
+    qty: 2,
+    unit_cost: 5000,
+    idempotency_key: `e2e-sold-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    created_by: userId,
+  });
+}
+
 async function signIn(page: Page, email: string, redirectTo = '/finances') {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
   await page.getByLabel(messages.auth.email_label).fill(email);
@@ -181,6 +238,60 @@ test('nav finances absente pour un manager', async ({ page }) => {
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
     await fixture.admin.auth.admin.deleteUser(managerUserId);
+  }
+});
+
+test('cards séparées + résultat net + graphe CA par boutique + exports PDF/CSV (owner)', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cards-charts');
+  try {
+    await signIn(page, fixture.email, '/finances');
+
+    // Cards Encaissé / À encaisser séparées + Résultat net
+    await expect(page.getByText(messages.finance.kpis.encaisse, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText(messages.finance.kpis.aEncaisser, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(messages.finance.kpis.netProfit, { exact: true }).first(),
+    ).toBeVisible();
+
+    // Graphe CA encaissé par boutique (titre rendu même sans données)
+    await expect(page.getByText(messages.finance.charts.shops, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Exports : PDF (lien) + CSV SYSCOHADA (bouton) coexistent
+    await expect(page.getByRole('link', { name: messages.finance.report.download })).toBeVisible();
+    await expect(page.getByRole('button', { name: messages.finance.profit.csv })).toBeVisible();
+
+    // Le PDF se génère réellement sur la période (cookies de session transmis)
+    const today = new Date().toISOString().slice(0, 10);
+    const pdf = await page.request.get(`/api/rapport?from=${today}&to=${today}`);
+    expect(pdf.status()).toBe(200);
+    expect(pdf.headers()['content-type']).toContain('application/pdf');
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test('COGS réel sur commande encaissée à coût connu → marge brute < 100 %', async ({ page }) => {
+  const fixture = await createOwnerFixture('cogs');
+  try {
+    await seedCollectedOrderWithCogs(fixture.admin, fixture.merchantAccountId, fixture.userId);
+    await signIn(page, fixture.email, '/finances');
+
+    const pnl = page.locator('section').filter({ hasText: messages.finance.profit.title });
+
+    // COGS issu du coût figé → badge « Marge réelle »…
+    await expect(pnl.getByText(messages.finance.profit.marginReal)).toBeVisible({
+      timeout: 15_000,
+    });
+    // …et marge brute ≠ 100 % (le bug COGS=0 affichait 100 %). CA 20 000 − COGS 10 000 = 50 %.
+    await expect(pnl.getByText('100 %')).toHaveCount(0);
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
   }
 });
 
