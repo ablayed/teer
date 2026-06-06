@@ -1,5 +1,6 @@
 import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
 import { type ShopifyProductNode, persistShopifyProductWebhook } from '@/lib/shopify/products-sync';
+import { processFinishedBulkForShop } from '@/lib/shopify/reconcile';
 import { verifyWebhookHmac } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
@@ -484,6 +485,47 @@ async function handleRefundWebhook({
   });
 }
 
+// bulk_operations/finish : la bulk operation est terminée → traite le JSONL (fallback du polling).
+async function handleBulkFinishWebhook({
+  payload,
+  shopDomain,
+  supabase,
+  topic,
+}: {
+  payload: unknown;
+  shopDomain: string | null;
+  supabase: NonNullable<SupabaseAdminClient>;
+  topic: string;
+}) {
+  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+  if (!resolvedShopDomain) {
+    logWebhookError('[webhook] bulk finish missing shop domain', { topic });
+    return;
+  }
+
+  const clientId = process.env.SHOPIFY_API_KEY;
+  const clientSecret = process.env.SHOPIFY_API_SECRET;
+  if (!clientId || !clientSecret) {
+    logWebhookError('[webhook] bulk finish missing Shopify credentials', { topic });
+    return;
+  }
+
+  const { data: shop, error } = await supabase
+    .from('shop')
+    .select('*')
+    .eq('shop_domain', resolvedShopDomain)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (error || !shop) {
+    logWebhookInfo('[webhook] no active shop for bulk finish', { topic, resolvedShopDomain });
+    return;
+  }
+
+  const result = await processFinishedBulkForShop(supabase, shop, clientId, clientSecret);
+  logWebhookInfo('[webhook] bulk finish processed', { resolvedShopDomain, ok: result.ok });
+}
+
 async function handleGdprWebhook({
   payload,
   shopDomain,
@@ -648,6 +690,9 @@ async function processWebhook({
       break;
     case 'refunds/create':
       await handleRefundWebhook({ payload, shopDomain, supabase, topic });
+      break;
+    case 'bulk_operations/finish':
+      await handleBulkFinishWebhook({ payload, shopDomain, supabase, topic });
       break;
     case 'products/create':
     case 'products/update':
