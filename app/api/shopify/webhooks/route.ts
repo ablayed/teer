@@ -1,5 +1,10 @@
 import { compileCustomerData, redactCustomer, redactShop } from '@/lib/shopify/gdpr';
-import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
+import {
+  type ShopifyAddress,
+  type ShopifyCustomerNode,
+  type ShopifyOrderNode,
+  persistShopifyOrder,
+} from '@/lib/shopify/orders-sync';
 import { type ShopifyProductNode, persistShopifyProductWebhook } from '@/lib/shopify/products-sync';
 import { processFinishedBulkForShop } from '@/lib/shopify/reconcile';
 import { verifyWebhookHmac } from '@/lib/shopify/webhook-verify';
@@ -92,6 +97,73 @@ function buildCustomerName(customer: Record<string, unknown>, fallbackName: stri
   return fullName || stringField(customer, 'name') || fallbackName;
 }
 
+function mapWebhookAddress(rec: Record<string, unknown> | null): ShopifyAddress | null {
+  if (!rec) {
+    return null;
+  }
+  return {
+    address1: stringField(rec, 'address1'),
+    address2: stringField(rec, 'address2'),
+    city: stringField(rec, 'city'),
+    province: stringField(rec, 'province'),
+    country: stringField(rec, 'country'),
+    zip: stringField(rec, 'zip'),
+    phone: stringField(rec, 'phone'),
+    name: stringField(rec, 'name'),
+  };
+}
+
+// Consentement marketing REST : objet email_marketing_consent { state } (récent) ou champ legacy
+// accepts_marketing (bool). On normalise vers la forme GraphQL { marketingState } ; mapShopifyCustomer
+// dérive le booléen (SUBSCRIBED).
+function deriveWebhookConsent(
+  customer: Record<string, unknown>,
+): { marketingState: string | null } | null {
+  const consent = nestedRecord(customer, 'email_marketing_consent');
+  if (consent) {
+    return { marketingState: stringField(consent, 'state') };
+  }
+  const accepts = customer.accepts_marketing;
+  if (typeof accepts === 'boolean') {
+    return { marketingState: accepts ? 'SUBSCRIBED' : 'NOT_SUBSCRIBED' };
+  }
+  return null;
+}
+
+// Enrichissement client (Phase 7b) depuis le bloc customer d'un webhook commande REST.
+function mapWebhookCustomer(
+  customer: Record<string, unknown>,
+  customerId: string,
+  shippingAddress: Record<string, unknown> | null,
+  shippingName: string | null,
+): ShopifyCustomerNode {
+  const tagsRaw = customer.tags;
+  const tags =
+    typeof tagsRaw === 'string'
+      ? tagsRaw
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : null;
+  const ordersCount = customer.orders_count;
+  const totalSpent = stringField(customer, 'total_spent');
+
+  return {
+    id: customerId,
+    displayName: buildCustomerName(customer, shippingName),
+    firstName: stringField(customer, 'first_name'),
+    lastName: stringField(customer, 'last_name'),
+    phone: stringField(customer, 'phone') ?? nullableStringField(shippingAddress, 'phone'),
+    email: stringField(customer, 'email'),
+    numberOfOrders: typeof ordersCount === 'number' ? ordersCount : null,
+    amountSpent: totalSpent ? { amount: totalSpent } : null,
+    tags: tags && tags.length > 0 ? tags : null,
+    emailMarketingConsent: deriveWebhookConsent(customer),
+    createdAt: stringField(customer, 'created_at'),
+    defaultAddress: mapWebhookAddress(nestedRecord(customer, 'default_address')),
+  };
+}
+
 function mapOrderWebhookToOrderNode(payload: unknown): ShopifyOrderNode | null {
   if (!isRecord(payload)) {
     return null;
@@ -125,12 +197,7 @@ function mapOrderWebhookToOrderNode(payload: unknown): ShopifyOrderNode | null {
     },
     customer:
       customer && customerId
-        ? {
-            id: customerId,
-            displayName: buildCustomerName(customer, shippingName),
-            phone: stringField(customer, 'phone') ?? nullableStringField(shippingAddress, 'phone'),
-            email: stringField(customer, 'email'),
-          }
+        ? mapWebhookCustomer(customer, customerId, shippingAddress, shippingName)
         : null,
     shippingAddress: shippingAddress
       ? {

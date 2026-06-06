@@ -67,13 +67,28 @@ describe('extractShopifyId', () => {
 });
 
 describe('mapShopifyCustomer', () => {
-  it('maps a Shopify customer from an order node', () => {
+  it('maps a Shopify customer from an order node (enrichi Phase 7b)', () => {
     expect(mapShopifyCustomer(makeOrder(), 'merchant_123')).toEqual({
       merchant_account_id: 'merchant_123',
+      source: 'shopify',
       shopify_customer_id: '987654321',
+      shopify_customer_gids: ['987654321'],
       full_name: 'Awa Diop',
+      first_name: null,
+      last_name: null,
       phone: '+221771234567',
+      phone_e164: '+221771234567',
       email: 'awa@example.com',
+      accepts_marketing: null,
+      tags: null,
+      address: {
+        raw: 'Rue 10, Dakar, Dakar',
+        landmark: null,
+        quartier: null,
+        city: 'Dakar',
+        region: 'Dakar',
+        notes: null,
+      },
       shipping_address: {
         address1: 'Rue 10',
         address2: null,
@@ -81,6 +96,61 @@ describe('mapShopifyCustomer', () => {
         province: 'Dakar',
         country: 'Senegal',
         zip: '12500',
+      },
+      shopify_orders_count: null,
+      shopify_amount_spent_minor: null,
+      first_seen_at: null,
+    });
+  });
+
+  it('enrichit nom/numberOfOrders/amountSpent/tags/consentement/adresse par defaut', () => {
+    const enriched = mapShopifyCustomer(
+      makeOrder({
+        customer: {
+          id: 'gid://shopify/Customer/555',
+          displayName: 'Fatou Sow',
+          firstName: 'Fatou',
+          lastName: 'Sow',
+          phone: '771112233',
+          email: 'fatou@example.com',
+          numberOfOrders: '4',
+          amountSpent: { amount: '125000.00', currencyCode: 'XOF' },
+          tags: ['VIP', 'fidele'],
+          emailMarketingConsent: { marketingState: 'SUBSCRIBED' },
+          createdAt: '2025-01-15T08:00:00Z',
+          defaultAddress: {
+            address1: 'Cite Keur Gorgui',
+            address2: 'Pres de la mosquee',
+            city: 'Dakar',
+            province: 'Dakar',
+            country: 'Senegal',
+            zip: null,
+            phone: null,
+            name: 'Fatou Sow',
+          },
+        },
+      }),
+      'merchant_123',
+    );
+
+    expect(enriched).toMatchObject({
+      shopify_customer_id: '555',
+      shopify_customer_gids: ['555'],
+      first_name: 'Fatou',
+      last_name: 'Sow',
+      phone_e164: '+221771112233',
+      accepts_marketing: true,
+      tags: ['VIP', 'fidele'],
+      shopify_orders_count: 4,
+      shopify_amount_spent_minor: 125000,
+      first_seen_at: '2025-01-15T08:00:00Z',
+      address: {
+        raw: 'Cite Keur Gorgui, Pres de la mosquee, Dakar, Dakar',
+        landmark: 'Pres de la mosquee',
+        quartier: null,
+        city: 'Dakar',
+        region: 'Dakar',
+        notes: null,
       },
     });
   });

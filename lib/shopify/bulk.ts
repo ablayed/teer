@@ -3,7 +3,11 @@
 // Utilisé par la réconciliation nocturne et le webhook bulk_operations/finish (fallback polling).
 
 import { shopifyGraphQL } from '@/lib/shopify/graphql';
-import type { ShopifyOrderNode } from '@/lib/shopify/orders-sync';
+import type {
+  ShopifyAddress,
+  ShopifyCustomerNode,
+  ShopifyOrderNode,
+} from '@/lib/shopify/orders-sync';
 
 // La query bulk ne pagine pas (le bulk gère tout) ; les connexions imbriquées (lineItems)
 // sont aplaties en lignes JSONL séparées portant __parentId. `query:` filtre par date de MAJ.
@@ -23,7 +27,20 @@ export function buildBulkOrdersQuery(updatedSinceIso: string | null): string {
         displayFinancialStatus
         displayFulfillmentStatus
         currentTotalPriceSet { shopMoney { amount currencyCode } }
-        customer { id displayName phone email }
+        customer {
+          id
+          displayName
+          firstName
+          lastName
+          phone
+          email
+          numberOfOrders
+          amountSpent { amount currencyCode }
+          tags
+          emailMarketingConsent { marketingState }
+          createdAt
+          defaultAddress { address1 address2 city province country zip phone name }
+        }
         shippingAddress { address1 address2 city province country zip phone name }
         lineItems {
           edges {
@@ -177,6 +194,59 @@ function moneyAmount(node: Record<string, unknown>, key: string): string {
   return '0';
 }
 
+function mapAddressRecord(rec: Record<string, unknown> | null): ShopifyAddress | null {
+  if (!rec) {
+    return null;
+  }
+  return {
+    address1: str(rec, 'address1'),
+    address2: str(rec, 'address2'),
+    city: str(rec, 'city'),
+    province: str(rec, 'province'),
+    country: str(rec, 'country'),
+    zip: str(rec, 'zip'),
+    phone: str(rec, 'phone'),
+    name: str(rec, 'name'),
+  };
+}
+
+// Enrichissement client (Phase 7b) : extrait les champs ajoutés à la bulk query depuis l'objet
+// customer inline du JSONL (les objets imbriqués non-connexions restent sur la ligne parente).
+function mapBulkCustomer(customer: Record<string, unknown>): ShopifyCustomerNode | null {
+  if (typeof customer.id !== 'string') {
+    return null;
+  }
+  const amountSpent = customer.amountSpent as Record<string, unknown> | null;
+  const consent = customer.emailMarketingConsent as Record<string, unknown> | null;
+  const defaultAddress = customer.defaultAddress as Record<string, unknown> | null;
+  const tags = Array.isArray(customer.tags)
+    ? customer.tags.filter((tag): tag is string => typeof tag === 'string')
+    : null;
+
+  return {
+    id: customer.id,
+    displayName: (customer.displayName as string | null) ?? null,
+    firstName: (customer.firstName as string | null) ?? null,
+    lastName: (customer.lastName as string | null) ?? null,
+    phone: (customer.phone as string | null) ?? null,
+    email: (customer.email as string | null) ?? null,
+    numberOfOrders: (customer.numberOfOrders as string | null) ?? null,
+    amountSpent:
+      amountSpent && typeof amountSpent.amount === 'string'
+        ? {
+            amount: amountSpent.amount,
+            currencyCode: (amountSpent.currencyCode as string | undefined) ?? undefined,
+          }
+        : null,
+    tags,
+    emailMarketingConsent: consent
+      ? { marketingState: (consent.marketingState as string | null) ?? null }
+      : null,
+    createdAt: (customer.createdAt as string | null) ?? null,
+    defaultAddress: mapAddressRecord(defaultAddress),
+  };
+}
+
 // Réassemble le JSONL bulk en ShopifyOrderNode[] : les lignes sans __parentId sont des Order,
 // celles avec __parentId sont des enfants (LineItem) rattachés à leur commande parente.
 export function parseBulkOrdersJsonl(jsonl: string): ShopifyOrderNode[] {
@@ -238,27 +308,8 @@ export function parseBulkOrdersJsonl(jsonl: string): ShopifyOrderNode[] {
       currentTotalPriceSet: {
         shopMoney: { amount: moneyAmount(parsed, 'currentTotalPriceSet'), currencyCode },
       },
-      customer:
-        customer && typeof customer.id === 'string'
-          ? {
-              id: customer.id,
-              displayName: (customer.displayName as string | null) ?? null,
-              phone: (customer.phone as string | null) ?? null,
-              email: (customer.email as string | null) ?? null,
-            }
-          : null,
-      shippingAddress: shippingAddress
-        ? {
-            address1: (shippingAddress.address1 as string | null) ?? null,
-            address2: (shippingAddress.address2 as string | null) ?? null,
-            city: (shippingAddress.city as string | null) ?? null,
-            province: (shippingAddress.province as string | null) ?? null,
-            country: (shippingAddress.country as string | null) ?? null,
-            zip: (shippingAddress.zip as string | null) ?? null,
-            phone: (shippingAddress.phone as string | null) ?? null,
-            name: (shippingAddress.name as string | null) ?? null,
-          }
-        : null,
+      customer: customer ? mapBulkCustomer(customer) : null,
+      shippingAddress: mapAddressRecord(shippingAddress),
       lineItems: { edges: [] },
     });
   }
