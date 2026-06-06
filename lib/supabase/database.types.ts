@@ -343,6 +343,104 @@ export type Database = {
           },
         ];
       };
+      expense: {
+        Row: {
+          amount_minor: number;
+          category_id: string;
+          created_at: string;
+          created_by: string;
+          free_text_category: string | null;
+          id: string;
+          merchant_account_id: string;
+          note: string | null;
+          spent_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          amount_minor: number;
+          category_id: string;
+          created_at?: string;
+          created_by: string;
+          free_text_category?: string | null;
+          id?: string;
+          merchant_account_id: string;
+          note?: string | null;
+          spent_at: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount_minor?: number;
+          category_id?: string;
+          created_at?: string;
+          created_by?: string;
+          free_text_category?: string | null;
+          id?: string;
+          merchant_account_id?: string;
+          note?: string | null;
+          spent_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'expense_category_id_fkey';
+            columns: ['category_id'];
+            isOneToOne: false;
+            referencedRelation: 'expense_category';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'expense_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      expense_category: {
+        Row: {
+          code: string;
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          is_system: boolean;
+          label_fr: string;
+          merchant_account_id: string;
+          sort_order: number;
+          syscohada_account: string | null;
+        };
+        Insert: {
+          code: string;
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          is_system?: boolean;
+          label_fr: string;
+          merchant_account_id: string;
+          sort_order?: number;
+          syscohada_account?: string | null;
+        };
+        Update: {
+          code?: string;
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          is_system?: boolean;
+          label_fr?: string;
+          merchant_account_id?: string;
+          sort_order?: number;
+          syscohada_account?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'expense_category_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       invitation: {
         Row: {
           accepted_at: string | null;
@@ -639,6 +737,7 @@ export type Database = {
           call_state: string | null;
           cancel_reason: string | null;
           cash_collectable_minor: number | null;
+          cash_collected_at: string | null;
           cash_state: string | null;
           cod_status: string;
           created_at: string;
@@ -655,6 +754,7 @@ export type Database = {
           order_number: string | null;
           order_state: string | null;
           payment_channel_at_delivery: string | null;
+          returned_at: string | null;
           scheduled_for: string | null;
           shipping_address: Json | null;
           shop_id: string | null;
@@ -669,6 +769,7 @@ export type Database = {
           call_state?: string | null;
           cancel_reason?: string | null;
           cash_collectable_minor?: number | null;
+          cash_collected_at?: string | null;
           cash_state?: string | null;
           cod_status?: string;
           created_at?: string;
@@ -685,6 +786,7 @@ export type Database = {
           order_number?: string | null;
           order_state?: string | null;
           payment_channel_at_delivery?: string | null;
+          returned_at?: string | null;
           scheduled_for?: string | null;
           shipping_address?: Json | null;
           shop_id?: string | null;
@@ -699,6 +801,7 @@ export type Database = {
           call_state?: string | null;
           cancel_reason?: string | null;
           cash_collectable_minor?: number | null;
+          cash_collected_at?: string | null;
           cash_state?: string | null;
           cod_status?: string;
           created_at?: string;
@@ -715,6 +818,7 @@ export type Database = {
           order_number?: string | null;
           order_state?: string | null;
           payment_channel_at_delivery?: string | null;
+          returned_at?: string | null;
           scheduled_for?: string | null;
           shipping_address?: Json | null;
           shop_id?: string | null;
