@@ -94,9 +94,12 @@ export async function GET(request: NextRequest) {
           refresh_token_expires_at: tokenResponse.refreshTokenExpiresAt?.toISOString() ?? null,
           scopes: tokenResponse.scope,
           status: 'active',
+          uninstalled_at: null,
           updated_at: now,
         },
-        { onConflict: 'merchant_account_id' },
+        // Multi-boutiques : la clé d'unicité est le domaine (un marchand peut connecter
+        // plusieurs boutiques). Une reconnexion sur le même domaine remplace le couple de tokens.
+        { onConflict: 'shop_domain' },
       )
       .select('id')
       .single();

@@ -1,5 +1,4 @@
 import { env } from '@/lib/env';
-import { decryptToken } from '@/lib/shopify/crypto';
 import { shopifyGraphQL } from '@/lib/shopify/graphql';
 import {
   SHOPIFY_ORDERS_QUERY,
@@ -7,6 +6,7 @@ import {
   persistShopifyOrder,
 } from '@/lib/shopify/orders-sync';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
+import { getValidShopAccessToken } from '@/lib/shopify/token';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -86,13 +86,25 @@ export async function syncShopOrders({
     return { ok: false, errorCode: 'no_shop' };
   }
 
-  let accessToken: string;
-  try {
-    accessToken = decryptToken(shop.access_token_encrypted);
-  } catch (error) {
-    logSyncError('[sync] token decrypt failed', error);
+  if (!env.SHOPIFY_API_KEY || !env.SHOPIFY_API_SECRET) {
+    logSyncError('[sync] missing Shopify credentials', new Error('missing_shopify_credentials'));
     return { ok: false, errorCode: 'token_error' };
   }
+
+  // Token valide avec refresh proactif (offline expirant) ; needs_reauth → re-OAuth requis.
+  const tokenResult = await getValidShopAccessToken(
+    admin,
+    shop,
+    env.SHOPIFY_API_KEY,
+    env.SHOPIFY_API_SECRET,
+  );
+
+  if (!tokenResult.ok) {
+    logSyncError('[sync] token unavailable', new Error(tokenResult.reason));
+    return { ok: false, errorCode: 'token_error' };
+  }
+
+  const accessToken = tokenResult.accessToken;
 
   try {
     const productsSyncResult = await syncProductsForShop({

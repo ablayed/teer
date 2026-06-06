@@ -758,7 +758,11 @@ export type Database = {
           scheduled_for: string | null;
           shipping_address: Json | null;
           shop_id: string | null;
+          shopify_cancelled_at: string | null;
+          shopify_financial_status: string | null;
+          shopify_fulfillment_status: string | null;
           shopify_order_id: string | null;
+          shopify_updated_at: string | null;
           source: string | null;
           total_amount: number;
           updated_at: string;
@@ -790,7 +794,11 @@ export type Database = {
           scheduled_for?: string | null;
           shipping_address?: Json | null;
           shop_id?: string | null;
+          shopify_cancelled_at?: string | null;
+          shopify_financial_status?: string | null;
+          shopify_fulfillment_status?: string | null;
           shopify_order_id?: string | null;
+          shopify_updated_at?: string | null;
           source?: string | null;
           total_amount?: number;
           updated_at?: string;
@@ -822,7 +830,11 @@ export type Database = {
           scheduled_for?: string | null;
           shipping_address?: Json | null;
           shop_id?: string | null;
+          shopify_cancelled_at?: string | null;
+          shopify_financial_status?: string | null;
+          shopify_fulfillment_status?: string | null;
           shopify_order_id?: string | null;
+          shopify_updated_at?: string | null;
           source?: string | null;
           total_amount?: number;
           updated_at?: string;
@@ -1192,47 +1204,59 @@ export type Database = {
         Row: {
           access_token_encrypted: string;
           access_token_expires_at: string | null;
+          api_version: string;
           id: string;
           installed_at: string;
+          last_reconciled_at: string | null;
           merchant_account_id: string;
           refresh_token_encrypted: string | null;
           refresh_token_expires_at: string | null;
           scopes: string;
           shop_domain: string;
+          shop_gid: string | null;
           status: string;
+          uninstalled_at: string | null;
           updated_at: string;
         };
         Insert: {
           access_token_encrypted: string;
           access_token_expires_at?: string | null;
+          api_version?: string;
           id?: string;
           installed_at?: string;
+          last_reconciled_at?: string | null;
           merchant_account_id: string;
           refresh_token_encrypted?: string | null;
           refresh_token_expires_at?: string | null;
           scopes: string;
           shop_domain: string;
+          shop_gid?: string | null;
           status?: string;
+          uninstalled_at?: string | null;
           updated_at?: string;
         };
         Update: {
           access_token_encrypted?: string;
           access_token_expires_at?: string | null;
+          api_version?: string;
           id?: string;
           installed_at?: string;
+          last_reconciled_at?: string | null;
           merchant_account_id?: string;
           refresh_token_encrypted?: string | null;
           refresh_token_expires_at?: string | null;
           scopes?: string;
           shop_domain?: string;
+          shop_gid?: string | null;
           status?: string;
+          uninstalled_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
           {
             foreignKeyName: 'shop_merchant_account_id_fkey';
             columns: ['merchant_account_id'];
-            isOneToOne: true;
+            isOneToOne: false;
             referencedRelation: 'merchant_account';
             referencedColumns: ['id'];
           },
@@ -1370,29 +1394,59 @@ export type Database = {
       webhook_event: {
         Row: {
           id: string;
+          merchant_account_id: string | null;
+          payload: Json | null;
           processed: boolean;
           received_at: string;
           shop_domain: string | null;
+          shop_id: string | null;
           shopify_webhook_id: string;
+          status: string;
           topic: string;
+          triggered_at: string | null;
         };
         Insert: {
           id?: string;
+          merchant_account_id?: string | null;
+          payload?: Json | null;
           processed?: boolean;
           received_at?: string;
           shop_domain?: string | null;
+          shop_id?: string | null;
           shopify_webhook_id: string;
+          status?: string;
           topic: string;
+          triggered_at?: string | null;
         };
         Update: {
           id?: string;
+          merchant_account_id?: string | null;
+          payload?: Json | null;
           processed?: boolean;
           received_at?: string;
           shop_domain?: string | null;
+          shop_id?: string | null;
           shopify_webhook_id?: string;
+          status?: string;
           topic?: string;
+          triggered_at?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'webhook_event_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'webhook_event_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
     Views: {

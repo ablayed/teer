@@ -96,28 +96,16 @@ function expirationDateFromSeconds(expiresIn: number | undefined): Date | undefi
   return new Date(Date.now() + expiresIn * 1000);
 }
 
-export async function exchangeCodeForToken({
-  shop,
-  clientId,
-  clientSecret,
-  code,
-}: ExchangeCodeForTokenInput): Promise<TokenResponse> {
-  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-    }),
-  });
+type RefreshTokenInput = {
+  shop: string;
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+};
 
-  if (!response.ok) {
-    throw new Error(`Shopify token exchange failed with status ${response.status}`);
-  }
-
-  const payload: unknown = await response.json();
-
+// Parse la réponse du endpoint token (échange code OU refresh) en TokenResponse.
+// Pour un token offline expirant, Shopify renvoie expires_in + refresh_token (+ expiry).
+function parseTokenResponse(payload: unknown): TokenResponse {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Shopify token exchange response is invalid');
   }
@@ -143,4 +131,54 @@ export async function exchangeCodeForToken({
       readNumberProperty(record, 'refresh_token_expires_in'),
     ),
   };
+}
+
+export async function exchangeCodeForToken({
+  shop,
+  clientId,
+  clientSecret,
+  code,
+}: ExchangeCodeForTokenInput): Promise<TokenResponse> {
+  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Shopify token exchange failed with status ${response.status}`);
+  }
+
+  return parseTokenResponse(await response.json());
+}
+
+// Renouvelle un access token offline expirant via le refresh token (grant_type=refresh_token).
+// Renvoie le nouveau couple access/refresh + expirations. Lève si le refresh est refusé
+// (ex. refresh token expiré → re-OAuth nécessaire). Aucun token n'est journalisé ici.
+export async function refreshAccessToken({
+  shop,
+  clientId,
+  clientSecret,
+  refreshToken,
+}: RefreshTokenInput): Promise<TokenResponse> {
+  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Shopify token refresh failed with status ${response.status}`);
+  }
+
+  return parseTokenResponse(await response.json());
 }
