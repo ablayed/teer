@@ -11,6 +11,8 @@ query Orders($cursor: String) {
         id
         name
         createdAt
+        updatedAt
+        cancelledAt
         displayFinancialStatus
         displayFulfillmentStatus
         currentTotalPriceSet { shopMoney { amount currencyCode } }
@@ -79,6 +81,9 @@ export type ShopifyOrderNode = {
   id: string;
   name: string;
   createdAt: string | null;
+  // Horodatage Shopify du dernier changement + annulation → miroir de canal & garde hors-ordre.
+  updatedAt?: string | null;
+  cancelledAt?: string | null;
   displayFinancialStatus: string | null;
   displayFulfillmentStatus: string | null;
   currentTotalPriceSet: {
@@ -123,6 +128,10 @@ type OrderShopifyUpdate = Pick<
   | 'currency'
   | 'financial_status'
   | 'fulfillment_status'
+  | 'shopify_financial_status'
+  | 'shopify_fulfillment_status'
+  | 'shopify_cancelled_at'
+  | 'shopify_updated_at'
   | 'items_summary'
   | 'shipping_address'
   | 'customer_id'
@@ -206,6 +215,11 @@ export function mapShopifyOrder(
     currency: money.currencyCode ?? 'XOF',
     financial_status: node.displayFinancialStatus,
     fulfillment_status: node.displayFulfillmentStatus,
+    // Colonnes miroir de canal (distinctes des 4 dimensions, jamais l'état opérationnel).
+    shopify_financial_status: node.displayFinancialStatus,
+    shopify_fulfillment_status: node.displayFulfillmentStatus,
+    shopify_cancelled_at: node.cancelledAt ?? null,
+    shopify_updated_at: node.updatedAt ?? null,
     items_summary: node.lineItems.edges.map(({ node: lineItem }) => ({
       title: lineItem.title,
       sku: lineItem.sku,
@@ -224,7 +238,7 @@ export async function persistShopifyOrder({
   orderNode,
   shopId,
   supabaseServiceClient,
-}: PersistShopifyOrderInput): Promise<{ ok: boolean; error?: string }> {
+}: PersistShopifyOrderInput): Promise<{ ok: boolean; error?: string; skipped?: 'stale' }> {
   try {
     const customerData = mapShopifyCustomer(orderNode, merchantAccountId);
     let customerId: string | null = null;
@@ -287,7 +301,7 @@ export async function persistShopifyOrder({
 
     const { data: existingOrder, error: orderSelectError } = await supabaseServiceClient
       .from('orders')
-      .select('id, cod_status')
+      .select('id, cod_status, shopify_updated_at')
       .eq('merchant_account_id', merchantAccountId)
       .eq('shopify_order_id', shopifyOrderId)
       .maybeSingle();
@@ -297,12 +311,25 @@ export async function persistShopifyOrder({
     }
 
     if (existingOrder) {
+      // Garde hors-ordre : ignorer un webhook plus ancien que le dernier déjà appliqué.
+      const incoming = orderData.shopify_updated_at;
+      const stored = existingOrder.shopify_updated_at;
+      if (incoming && stored && Date.parse(incoming) <= Date.parse(stored)) {
+        return { ok: true, skipped: 'stale' };
+      }
+
+      // JAMAIS les 4 dimensions (order_state/call_state/delivery_state/cash_state) : Shopify
+      // n'écrase pas l'état opérationnel. On met à jour le contenu + le miroir de canal.
       const orderUpdate: OrderShopifyUpdate = {
         order_number: orderData.order_number,
         total_amount: orderData.total_amount,
         currency: orderData.currency,
         financial_status: orderData.financial_status,
         fulfillment_status: orderData.fulfillment_status,
+        shopify_financial_status: orderData.shopify_financial_status,
+        shopify_fulfillment_status: orderData.shopify_fulfillment_status,
+        shopify_cancelled_at: orderData.shopify_cancelled_at,
+        shopify_updated_at: orderData.shopify_updated_at,
         items_summary: orderData.items_summary,
         shipping_address: orderData.shipping_address,
         customer_id: orderData.customer_id,

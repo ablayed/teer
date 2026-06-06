@@ -3,6 +3,7 @@ import { type ShopifyProductNode, persistShopifyProductWebhook } from '@/lib/sho
 import { verifyWebhookHmac } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
+import { after } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,6 +111,8 @@ function mapOrderWebhookToOrderNode(payload: unknown): ShopifyOrderNode | null {
     id: orderId,
     name: stringField(payload, 'name') ?? orderId,
     createdAt: stringField(payload, 'created_at'),
+    updatedAt: stringField(payload, 'updated_at'),
+    cancelledAt: stringField(payload, 'cancelled_at'),
     displayFinancialStatus: stringField(payload, 'financial_status'),
     displayFulfillmentStatus: stringField(payload, 'fulfillment_status'),
     currentTotalPriceSet: {
@@ -442,6 +445,45 @@ async function handleAppUninstalledWebhook({
   logWebhookInfo('[webhook] app/uninstalled processed', { resolvedShopDomain });
 }
 
+// refunds/create : le payload est un objet « refund » (pas une commande complète) et ne permet
+// pas de déduire de façon fiable plein/partiel. On enregistre l'événement canal (audit) sans
+// muter l'état : le statut financier est porté par le orders/updated jumeau (déjà miroité).
+async function handleRefundWebhook({
+  payload,
+  shopDomain,
+  supabase,
+  topic,
+}: {
+  payload: unknown;
+  shopDomain: string | null;
+  supabase: NonNullable<SupabaseAdminClient>;
+  topic: string;
+}) {
+  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+
+  if (!resolvedShopDomain) {
+    logWebhookError('[webhook] refund missing shop domain', { topic });
+    return;
+  }
+
+  const shop = await getActiveShopByDomain({ shopDomain: resolvedShopDomain, supabase });
+
+  if (!shop) {
+    logWebhookInfo('[webhook] no active shop for refund webhook', { topic, resolvedShopDomain });
+    return;
+  }
+
+  const orderId = isRecord(payload) ? stringField(payload, 'order_id') : null;
+  await supabase.from('audit_log').insert({
+    merchant_account_id: shop.merchant_account_id,
+    actor_user_id: null,
+    action: 'shopify.refund_received',
+    resource_type: 'shop',
+    resource_id: shop.id,
+    payload: toJson({ orderId, shopDomain: resolvedShopDomain }),
+  });
+}
+
 async function handleGdprWebhook({
   payload,
   shopDomain,
@@ -501,16 +543,27 @@ async function handleGdprWebhook({
   }
 }
 
-async function insertWebhookEvent({
+// Idempotence : insert dédup par webhook_id (contrainte unique). Un conflit (23505) = rejeu →
+// duplicate. On stocke le contexte boutique/tenant + triggered_at + payload brut pour la
+// réconciliation et la garde hors-ordre. Un rejeu identique n'a donc aucun effet métier.
+async function recordWebhookReceipt({
   supabase,
   webhookId,
   topic,
   shopDomain,
+  shopId,
+  merchantAccountId,
+  triggeredAt,
+  payload,
 }: {
   supabase: NonNullable<SupabaseAdminClient>;
   webhookId: string;
   topic: string;
   shopDomain: string | null;
+  shopId: string | null;
+  merchantAccountId: string | null;
+  triggeredAt: string | null;
+  payload: Json;
 }): Promise<{ duplicate: boolean; eventId: string | null }> {
   const { data, error } = await supabase
     .from('webhook_event')
@@ -518,6 +571,11 @@ async function insertWebhookEvent({
       shopify_webhook_id: webhookId,
       topic,
       shop_domain: shopDomain,
+      shop_id: shopId,
+      merchant_account_id: merchantAccountId,
+      triggered_at: triggeredAt,
+      payload,
+      status: 'processing',
     })
     .select('id')
     .single();
@@ -542,76 +600,54 @@ async function insertWebhookEvent({
   return { duplicate: false, eventId: data.id };
 }
 
-async function markWebhookProcessed({
+async function markWebhookStatus({
   supabase,
   eventId,
+  status,
 }: {
   supabase: NonNullable<SupabaseAdminClient>;
   eventId: string;
+  status: 'done' | 'error';
 }) {
   const { error } = await supabase
     .from('webhook_event')
-    .update({ processed: true })
+    .update({ status, processed: status === 'done' })
     .eq('id', eventId);
 
   if (error) {
-    logWebhookError('[webhook] processed update failed', {
+    logWebhookError('[webhook] status update failed', {
       code: error.code,
       details: error.details,
       hint: error.hint,
       message: error.message,
       eventId,
+      status,
     });
   }
 }
 
-export async function POST(request: Request) {
-  const rawBody = await request.text();
-  const hmacHeader = request.headers.get('x-shopify-hmac-sha256');
-  const topic = request.headers.get('x-shopify-topic') ?? 'unknown';
-  const shopDomain = request.headers.get('x-shopify-shop-domain');
-  const webhookId = request.headers.get('x-shopify-webhook-id');
-
-  if (!verifyWebhookHmac(rawBody, hmacHeader, process.env.SHOPIFY_API_SECRET ?? '')) {
-    logWebhookError('[webhook] invalid hmac', { topic });
-    return new Response(null, { status: 401 });
-  }
-
-  const supabase = createSupabaseAdminClient();
-
-  if (!supabase) {
-    logWebhookError('[webhook] missing supabase service-role env', { topic });
-    return ok();
-  }
-
-  if (!webhookId) {
-    logWebhookError('[webhook] missing webhook id', { topic });
-    return ok();
-  }
-
-  const { duplicate, eventId } = await insertWebhookEvent({
-    supabase,
-    webhookId,
-    topic,
-    shopDomain,
-  });
-
-  if (duplicate) {
-    return ok();
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(rawBody) as unknown;
-  } catch (error) {
-    logWebhookError('[webhook] invalid json payload', { error, topic });
-    return ok();
-  }
-
+async function processWebhook({
+  payload,
+  shopDomain,
+  supabase,
+  topic,
+}: {
+  payload: unknown;
+  shopDomain: string | null;
+  supabase: NonNullable<SupabaseAdminClient>;
+  topic: string;
+}) {
   switch (topic) {
+    // orders/cancelled et orders/fulfilled portent un objet commande complet → miroir de canal
+    // (shopify_*), JAMAIS les 4 dimensions. Un « fulfilled » Shopify ne marque pas LIVREE.
     case 'orders/create':
     case 'orders/updated':
+    case 'orders/cancelled':
+    case 'orders/fulfilled':
       await handleOrderWebhook({ payload, shopDomain, supabase, topic });
+      break;
+    case 'refunds/create':
+      await handleRefundWebhook({ payload, shopDomain, supabase, topic });
       break;
     case 'products/create':
     case 'products/update':
@@ -629,10 +665,80 @@ export async function POST(request: Request) {
       logWebhookInfo('[webhook] unhandled topic', topic);
       break;
   }
+}
 
-  if (eventId) {
-    await markWebhookProcessed({ supabase, eventId });
+export async function POST(request: Request) {
+  const rawBody = await request.text();
+  const hmacHeader = request.headers.get('x-shopify-hmac-sha256');
+  const topic = request.headers.get('x-shopify-topic') ?? 'unknown';
+  const shopDomain = request.headers.get('x-shopify-shop-domain');
+  const webhookId = request.headers.get('x-shopify-webhook-id');
+  const triggeredAt = request.headers.get('x-shopify-triggered-at');
+
+  // HMAC vérifié AVANT tout traitement.
+  if (!verifyWebhookHmac(rawBody, hmacHeader, process.env.SHOPIFY_API_SECRET ?? '')) {
+    logWebhookError('[webhook] invalid hmac', { topic });
+    return new Response(null, { status: 401 });
   }
+
+  const supabase = createSupabaseAdminClient();
+
+  if (!supabase) {
+    logWebhookError('[webhook] missing supabase service-role env', { topic });
+    return ok();
+  }
+
+  if (!webhookId) {
+    logWebhookError('[webhook] missing webhook id', { topic });
+    return ok();
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody) as unknown;
+  } catch (error) {
+    logWebhookError('[webhook] invalid json payload', { error, topic });
+    return ok();
+  }
+
+  // Contexte boutique/tenant pour la ligne de dédup (résolution légère par domaine).
+  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+  const shop = resolvedShopDomain
+    ? await getShopByDomain({ shopDomain: resolvedShopDomain, supabase })
+    : null;
+
+  // Idempotence : insert dédup par webhook_id. Rejeu → duplicate → 200 sans effet.
+  const { duplicate, eventId } = await recordWebhookReceipt({
+    supabase,
+    webhookId,
+    topic,
+    shopDomain: resolvedShopDomain,
+    shopId: shop?.id ?? null,
+    merchantAccountId: shop?.merchant_account_id ?? null,
+    triggeredAt,
+    payload: toJson(payload),
+  });
+
+  if (duplicate) {
+    return ok();
+  }
+
+  // 200 rapide (< 5 s) : le traitement métier s'exécute APRÈS la réponse (after()).
+  // Les upserts sont idempotents par clé naturelle (shop_id, shopify_order_id) et la garde
+  // hors-ordre protège ; un échec est rattrapé par la réconciliation nocturne (pas de retry).
+  after(async () => {
+    try {
+      await processWebhook({ payload, shopDomain, supabase, topic });
+      if (eventId) {
+        await markWebhookStatus({ supabase, eventId, status: 'done' });
+      }
+    } catch (error) {
+      logWebhookError('[webhook] async processing failed', { error, topic });
+      if (eventId) {
+        await markWebhookStatus({ supabase, eventId, status: 'error' });
+      }
+    }
+  });
 
   return ok();
 }
