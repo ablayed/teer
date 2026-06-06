@@ -71,34 +71,37 @@ export type FinanceReport = {
   // Qualité du COGS — coût de revient figé (sold.unit_cost) vs fallback CUMP courant.
   cogsEstimated: boolean; // ≥1 ligne estimée au CUMP courant (coût figé = 0) → marge « estimée »
   cogsEstimatedMinor: number; // part du COGS issue du fallback CUMP
-  cogsCostedOrderCount: number; // commandes encaissées avec ≥1 mouvement sold
-  cogsExcludedOrderCount: number; // commandes encaissées sans aucune ligne → COGS inconnu, exclues
+  cogsCostedOrderCount: number; // commandes encaissées avec ≥1 ligne à coût connu (figé ou estimé)
+  cogsExcludedOrderCount: number; // commandes encaissées sans aucune ligne à coût connu → exclues
+  cogsUnknownLineCount: number; // lignes sold au coût totalement inconnu (figé ET CUMP = 0) → exclues, signalées
 };
 
-// Mouvement sold avec son coût de revient résolu (figé prioritaire, sinon fallback CUMP).
-type CostedMovement = SoldMovement & { fallback: boolean };
+// Mouvement sold avec son coût de revient résolu.
+// fallback = coût estimé au CUMP courant (figé manquant) ; unknown = aucun coût connu (figé ET CUMP = 0).
+type CostedMovement = SoldMovement & { fallback: boolean; unknown: boolean };
 
 // Coût de revient effectif d'une ligne : le coût figé prime quand il existe (> 0) ;
-// sinon fallback sur le CUMP courant du produit (estimation). 0 si aucun coût connu.
+// sinon fallback sur le CUMP courant du produit (estimation) ; sinon coût totalement inconnu
+// (`unknown`) → la ligne sera EXCLUE du COGS et signalée, jamais comptée 0 silencieusement.
 function effectiveUnitCost(
   frozen: number,
   currentCump: number,
-): { unit: number; fallback: boolean } {
-  if (frozen > 0) return { unit: frozen, fallback: false };
-  if (currentCump > 0) return { unit: currentCump, fallback: true };
-  return { unit: 0, fallback: false };
+): { unit: number; fallback: boolean; unknown: boolean } {
+  if (frozen > 0) return { unit: frozen, fallback: false, unknown: false };
+  if (currentCump > 0) return { unit: currentCump, fallback: true, unknown: false };
+  return { unit: 0, fallback: false, unknown: true };
 }
 
 // Résout le coût de chaque mouvement sold : coût figé si > 0, sinon CUMP courant du produit
-// (marqué `fallback` = estimation). Le coût figé réel reste toujours prioritaire.
+// (marqué `fallback` = estimation), sinon `unknown`. Le coût figé réel reste toujours prioritaire.
 export function applyEffectiveCost(
   movements: SoldMovement[],
   productInfo: Map<string, { title: string; currentUnitCostMinor: number }>,
 ): CostedMovement[] {
   return movements.map((m) => {
     const cump = productInfo.get(m.productId)?.currentUnitCostMinor ?? 0;
-    const { unit, fallback } = effectiveUnitCost(m.unitCost, cump);
-    return { ...m, unitCost: unit, fallback };
+    const { unit, fallback, unknown } = effectiveUnitCost(m.unitCost, cump);
+    return { ...m, unitCost: unit, fallback, unknown };
   });
 }
 
@@ -226,25 +229,33 @@ export function computeFinanceReport({
   const returnContraRevenueMinor = computeReturnContraRevenue(returnedOrders);
   const netCAMinor = caMinor - returnContraRevenueMinor;
 
-  // Résout le coût de chaque ligne : coût figé prioritaire, sinon fallback CUMP courant (estimé).
+  // Résout le coût de chaque ligne : coût figé prioritaire, sinon fallback CUMP courant (estimé),
+  // sinon `unknown` (coût totalement inconnu) → exclu du COGS.
   const costedCollected = applyEffectiveCost(soldMovementsForCollected, productInfo);
   const costedReturned = applyEffectiveCost(soldMovementsForReturned, productInfo);
 
-  const cogsMinor = computeCOGS(costedCollected);
-  const cogsEstimatedMinor = costedCollected
+  // Seules les lignes à coût connu (figé ou estimé) entrent dans le COGS. Les lignes `unknown`
+  // sont exclues et signalées (cogsUnknownLineCount) — jamais comptées 0 silencieusement.
+  const knownCollected = costedCollected.filter((m) => !m.unknown);
+  const knownReturned = costedReturned.filter((m) => !m.unknown);
+
+  const cogsMinor = computeCOGS(knownCollected);
+  const cogsEstimatedMinor = knownCollected
     .filter((m) => m.fallback)
     .reduce((sum, m) => sum + m.unitCost * m.qty, 0);
   const cogsEstimated = cogsEstimatedMinor > 0;
+  const cogsUnknownLineCount = costedCollected.filter((m) => m.unknown).length;
 
-  // Commandes encaissées avec ≥1 mouvement sold → COGS calculable ; sans aucune ligne → exclues.
-  const costedOrderIds = new Set(soldMovementsForCollected.map((m) => m.orderId));
+  // Commandes encaissées avec ≥1 ligne à coût connu → COGS calculable ; sans aucune (pas de ligne
+  // OU toutes les lignes au coût inconnu) → exclues, même traitement.
+  const costedOrderIds = new Set(knownCollected.map((m) => m.orderId));
   const cogsCostedOrderCount = costedOrderIds.size;
   const cogsExcludedOrderCount = collectedOrders.filter((o) => !costedOrderIds.has(o.id)).length;
 
   // Build unit_cost lookup from both sets (Case 1: collected+returned same period is in both),
-  // coût effectif (figé prioritaire, sinon CUMP) pour rester cohérent avec le COGS.
+  // coût effectif connu (figé prioritaire, sinon CUMP) pour rester cohérent avec le COGS.
   const soldByOrderProduct = new Map<string, number>();
-  for (const m of [...costedCollected, ...costedReturned]) {
+  for (const m of [...knownCollected, ...knownReturned]) {
     const key = `${m.orderId}:${m.productId}`;
     if (!soldByOrderProduct.has(key)) soldByOrderProduct.set(key, m.unitCost);
   }
@@ -260,7 +271,7 @@ export function computeFinanceReport({
   const expensesMinor = expenses.reduce((sum, e) => sum + e.amountMinor, 0);
   const netProfitMinor = grossMarginMinor - expensesMinor - mobileMoneyFeesMinor;
 
-  const productBreakdown = computeProductBreakdown(costedCollected, productInfo);
+  const productBreakdown = computeProductBreakdown(knownCollected, productInfo);
 
   return {
     caMinor,
@@ -280,5 +291,6 @@ export function computeFinanceReport({
     cogsEstimatedMinor,
     cogsCostedOrderCount,
     cogsExcludedOrderCount,
+    cogsUnknownLineCount,
   };
 }

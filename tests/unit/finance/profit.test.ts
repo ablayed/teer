@@ -292,4 +292,38 @@ describe('computeFinanceReport — qualité du COGS (fix marge 100 %)', () => {
     expect(report.cogsExcludedOrderCount).toBe(1); // o2 signalée, pas comptée comme COGS 0
     expect(report.cogsMinor).toBe(5_000); // uniquement o1
   });
+
+  it('coût figé 0 ET CUMP 0 (inconnu) → ligne exclue du COGS et signalée, pas 0 silencieux', () => {
+    // p2 sans CUMP courant (jamais acheté) ; o2 n'a que cette ligne au coût inconnu.
+    const productInfoWithBlind = new Map([
+      ['p1', { title: 'Sac cuir', currentUnitCostMinor: 4_000 }],
+      ['p2', { title: 'Ceinture', currentUnitCostMinor: 0 }],
+    ]);
+    const report = computeFinanceReport({
+      collectedOrders: [
+        { id: 'o1', totalAmount: 20_000, paymentChannelAtDelivery: 'ESPECES' },
+        { id: 'o2', totalAmount: 8_000, paymentChannelAtDelivery: 'ESPECES' },
+      ],
+      soldMovementsForCollected: [
+        { orderId: 'o1', productId: 'p1', qty: 1, unitCost: 5_000 }, // coût figé réel
+        { orderId: 'o2', productId: 'p2', qty: 1, unitCost: 0 }, // figé 0 ET CUMP 0 → inconnu
+      ],
+      returnedOrders: [],
+      courierReturns: [],
+      soldMovementsForReturned: [],
+      expenses: [],
+      settings,
+      productInfo: productInfoWithBlind,
+    });
+
+    expect(report.cogsUnknownLineCount).toBe(1); // la ligne p2 signalée
+    expect(report.cogsMinor).toBe(5_000); // o2/p2 exclue, PAS comptée 0 dans un COGS « réel »
+    expect(report.cogsEstimated).toBe(false); // aucune estimation (CUMP indispo)
+    expect(report.cogsCostedOrderCount).toBe(1); // seule o1 a un coût connu
+    expect(report.cogsExcludedOrderCount).toBe(1); // o2 traitée comme une commande sans ligne
+    // Le CA de o2 reste compté (on n'exclut que sa ligne COGS inconnue, pas son revenu) :
+    // marge brute = CA net (28 000) − COGS connu (5 000) = 23 000. o2 est signalée comme exclue/inconnue.
+    expect(report.netCAMinor).toBe(28_000);
+    expect(report.grossMarginMinor).toBe(28_000 - 5_000);
+  });
 });

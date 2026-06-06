@@ -156,6 +156,11 @@ export function ProfitSection({ report, from, to }: Props) {
             {t('excludedOrders', { count: report.cogsExcludedOrderCount })}
           </p>
         )}
+        {report.cogsUnknownLineCount > 0 && (
+          <p className="pb-2 text-xs text-amber-700 dark:text-amber-300">
+            {t('blindSpotLines', { count: report.cogsUnknownLineCount })}
+          </p>
+        )}
 
         <Divider />
 
