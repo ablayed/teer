@@ -104,6 +104,14 @@ async function signIn(page: Page, email: string, redirectTo = '/produits') {
   await page.waitForLoadState('networkidle');
 }
 
+async function openPurchasesTab(page: Page) {
+  const purchasesTab = page.getByRole('link', { name: 'Achats fournisseur' });
+  await expect(purchasesTab).toBeVisible({ timeout: 15_000 });
+  await purchasesTab.click();
+  await page.waitForURL('**/produits?tab=achats', { timeout: 10_000 });
+  await page.waitForLoadState('networkidle');
+}
+
 async function getProductStock(admin: AdminClient, productId: string) {
   const { data } = await admin
     .from('product_stock')
@@ -122,8 +130,8 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
   try {
     await signIn(page, fixture.email, '/produits');
 
-    // La section "Achats fournisseur" doit être visible pour l'owner.
-    await expect(page.getByText('Achats fournisseur')).toBeVisible({ timeout: 15_000 });
+    // Les achats sont dans l'onglet dédié de la page Produits.
+    await openPurchasesTab(page);
 
     // Ouvrir le formulaire de création.
     await page.getByRole('button', { name: 'Nouveau lot' }).click();
