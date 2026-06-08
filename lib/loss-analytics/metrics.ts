@@ -12,6 +12,7 @@ export type LossAnalyticsOrder = {
   deliveryState: string | null;
   id: string;
   orderState: string | null;
+  returnedAt?: string | null;
   source: string | null;
 };
 
@@ -353,6 +354,24 @@ function hasRtoEvent(orderEvents: Set<LossEventType>): boolean {
   return orderEvents.has('rto');
 }
 
+function isCurrentCancellation(order: LossAnalyticsOrder): boolean {
+  return (
+    order.orderState === 'cancelled' &&
+    order.deliveryState !== null &&
+    CANCELLATION_PRIOR_STATES.has(order.deliveryState)
+  );
+}
+
+function isCurrentReturn(order: LossAnalyticsOrder): boolean {
+  return (
+    order.orderState === 'returned' && order.deliveryState === 'returned' && !!order.returnedAt
+  );
+}
+
+function isCurrentRto(order: LossAnalyticsOrder): boolean {
+  return order.deliveryState === 'failed';
+}
+
 export function computeLossAnalytics({
   auditLogs,
   customers,
@@ -406,9 +425,9 @@ export function computeLossAnalytics({
     const customer = order.customerId ? customerById.get(order.customerId) : undefined;
     const zoneKey = zoneLabel(customer);
     const orderEvents = eventsByOrderId.get(order.id) ?? new Set<LossEventType>();
-    const isCancellation = orderEvents.has('cancellation');
-    const isReturn = hasReturnEvent(orderEvents);
-    const isRto = hasRtoEvent(orderEvents);
+    const isCancellation = orderEvents.has('cancellation') || isCurrentCancellation(order);
+    const isReturn = hasReturnEvent(orderEvents) || isCurrentReturn(order);
+    const isRto = hasRtoEvent(orderEvents) || isCurrentRto(order);
     const isDelivered = order.deliveryState === 'delivered';
     const hasOutcome = order.deliveryState !== null && RTO_OUTCOME_STATES.has(order.deliveryState);
 

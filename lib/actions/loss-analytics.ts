@@ -78,7 +78,7 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
       supabase
         .from('orders')
         .select(
-          'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at',
+          'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at, returned_at',
         )
         .eq('merchant_account_id', merchantId)
         .gte('created_at', from)
@@ -162,6 +162,7 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
         deliveryState: row.delivery_state,
         id: row.id,
         orderState: row.order_state,
+        returnedAt: row.returned_at,
         source: row.source,
       })),
       reliability: reliabilityResult.data,

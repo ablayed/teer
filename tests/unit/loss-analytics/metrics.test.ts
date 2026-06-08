@@ -406,4 +406,76 @@ describe('computeLossAnalytics', () => {
     expect(result.summary.returnRate).toBe(0);
     expect(result.summary.rtoRate).toBe(0);
   });
+
+  it('derives losses from the current order state when audit events are missing', () => {
+    const result = computeLossAnalytics({
+      auditLogs: [],
+      customers: [
+        customer({ id: 'customer-cancel' }),
+        customer({ id: 'customer-rto' }),
+        customer({ id: 'customer-return' }),
+      ],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          customerId: 'customer-cancel',
+          deliveryState: 'scheduled',
+          id: 'order-cancel',
+          orderState: 'cancelled',
+        }),
+        order({
+          customerId: 'customer-rto',
+          deliveryState: 'failed',
+          id: 'order-rto',
+          orderState: 'open',
+        }),
+        order({
+          customerId: 'customer-return',
+          deliveryState: 'returned',
+          id: 'order-return',
+          orderState: 'returned',
+          returnedAt: '2026-06-03T10:00:00.000Z',
+        }),
+        order({
+          customerId: 'customer-delivered',
+          deliveryState: 'delivered',
+          id: 'order-delivered',
+          orderState: 'completed',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    expect(result.summary.totalOrders).toBe(4);
+    expect(result.summary.cancellationCount).toBe(1);
+    expect(result.summary.rtoCount).toBe(1);
+    expect(result.summary.returnCount).toBe(1);
+    expect(result.summary.deliveredCount).toBe(1);
+  });
+
+  it('does not count a returned order as a return when returned_at is absent', () => {
+    const result = computeLossAnalytics({
+      auditLogs: [],
+      customers: [customer({ id: 'customer-return' })],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          customerId: 'customer-return',
+          deliveryState: 'returned',
+          id: 'order-return',
+          orderState: 'returned',
+          returnedAt: null,
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    expect(result.summary.returnCount).toBe(0);
+  });
 });
