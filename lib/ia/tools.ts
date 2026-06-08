@@ -1,5 +1,6 @@
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import { logToolAudit } from '@/lib/ia/audit';
+import { fetchFinanceReportRls } from '@/lib/ia/finance-data';
 import { fetchLossSummary } from '@/lib/ia/loss-data';
 import { channelSchema, periodSchema, resolvePeriod } from '@/lib/ia/periods';
 import { type IaTool, type IaToolContext, type IaToolRunResult, defineTool } from '@/lib/ia/types';
@@ -298,6 +299,108 @@ const getDriverPerformance = defineTool({
   },
 });
 
+// ───────────────────────────── Outils finance (Stage 4) ────────────────────
+// Lectures SOUS LE JWT (RLS) — jamais service-role. Le coût (unit_cost) passe
+// par les RPC SECURITY DEFINER role-gardées (owner/manager). FCFA = 0 décimale,
+// donc les montants en unités mineures sont déjà des entiers F CFA.
+
+// 8. Chiffre d'affaires — owner + manager (via finance_kpis, sous JWT).
+const getRevenue = defineTool({
+  name: 'get_revenue',
+  description:
+    "Chiffre d'affaires sur une période : encaissé (cash réellement collecté), à encaisser, et CA livré. Montants en F CFA. Aucune marge ni coût.",
+  allowedRoles: ['owner', 'manager'],
+  inputSchema: z.object({ period: periodSchema }),
+  async execute(ctx, input) {
+    const { from, to } = resolvePeriod(input.period);
+    const { data, error } = await ctx.supabase.rpc('finance_kpis', {
+      p_merchant: ctx.merchantAccountId,
+      p_from: from,
+      p_to: to,
+    });
+    if (error) {
+      throw new Error('data_error');
+    }
+    const row = Array.isArray(data) ? data[0] : null;
+    return {
+      period: input.period,
+      encaisseFcfa: toNumber(row?.encaisse),
+      aEncaisserFcfa: toNumber(row?.a_encaisser),
+      caLivreFcfa: toNumber(row?.ca_livre),
+    };
+  },
+});
+
+// 9. COGS (coût des marchandises vendues) — owner + manager.
+const getCogs = defineTool({
+  name: 'get_cogs',
+  description:
+    "Coût des marchandises vendues (COGS) sur une période, au coût figé (fallback CUMP). Montant en F CFA. N'expose pas la marge.",
+  allowedRoles: ['owner', 'manager'],
+  inputSchema: z.object({ period: periodSchema }),
+  async execute(ctx, input) {
+    const { from, to } = resolvePeriod(input.period);
+    const report = await fetchFinanceReportRls(ctx, from, to);
+    if (!report) {
+      throw new Error('data_error');
+    }
+    return {
+      period: input.period,
+      cogsFcfa: report.netCogsMinor,
+      estimated: report.cogsEstimated,
+      excludedOrderCount: report.cogsExcludedOrderCount,
+    };
+  },
+});
+
+// 10. Marge brute — owner uniquement.
+const getMargin = defineTool({
+  name: 'get_margin',
+  description:
+    'Marge brute (CA encaissé net des retours − COGS) sur une période, et taux de marge brute. Montant en F CFA. Réservé au propriétaire.',
+  allowedRoles: ['owner'],
+  inputSchema: z.object({ period: periodSchema }),
+  async execute(ctx, input) {
+    const { from, to } = resolvePeriod(input.period);
+    const report = await fetchFinanceReportRls(ctx, from, to);
+    if (!report) {
+      throw new Error('data_error');
+    }
+    return {
+      period: input.period,
+      netCaFcfa: report.netCAMinor,
+      cogsFcfa: report.netCogsMinor,
+      grossMarginFcfa: report.grossMarginMinor,
+      grossMarginPercent: report.grossMarginBps / 100,
+      estimated: report.cogsEstimated,
+    };
+  },
+});
+
+// 11. Résultat net — owner uniquement.
+const getNetProfit = defineTool({
+  name: 'get_net_profit',
+  description:
+    'Résultat net sur une période : marge brute − frais mobile money − charges. Montant en F CFA. Réservé au propriétaire.',
+  allowedRoles: ['owner'],
+  inputSchema: z.object({ period: periodSchema }),
+  async execute(ctx, input) {
+    const { from, to } = resolvePeriod(input.period);
+    const report = await fetchFinanceReportRls(ctx, from, to);
+    if (!report) {
+      throw new Error('data_error');
+    }
+    return {
+      period: input.period,
+      grossMarginFcfa: report.grossMarginMinor,
+      mobileMoneyFeesFcfa: report.mobileMoneyFeesMinor,
+      expensesFcfa: report.expensesMinor,
+      netProfitFcfa: report.netProfitMinor,
+      estimated: report.cogsEstimated,
+    };
+  },
+});
+
 // ───────────────────────────── Catalogue + exécution ───────────────────────
 
 // Catalogue FIXE. Source unique de vérité ; le LLM ne voit que ce qui est ici.
@@ -309,6 +412,10 @@ export const IA_TOOL_CATALOG: IaTool[] = [
   getRtoRate,
   getCancellationRate,
   getDriverPerformance,
+  getRevenue,
+  getCogs,
+  getMargin,
+  getNetProfit,
 ];
 
 // Couche A : sous-ensemble du catalogue autorisé pour un rôle.

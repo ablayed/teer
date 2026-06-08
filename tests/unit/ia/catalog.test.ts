@@ -4,35 +4,51 @@ import type { TeamRole } from '@/lib/team/permissions';
 import { describe, expect, it } from 'vitest';
 
 describe("catalogue d'outils IA — couche A (filtrage par rôle)", () => {
-  const FINANCE_OR_ANALYTICS = new Set([
+  // Analytics pertes (owner+manager) et coût/CA (owner+manager).
+  const OWNER_MANAGER_ONLY = new Set([
     'get_rto_rate',
     'get_cancellation_rate',
     'get_driver_performance',
+    'get_revenue',
+    'get_cogs',
   ]);
+  // Marge et profit : owner uniquement.
+  const OWNER_ONLY = new Set(['get_margin', 'get_net_profit']);
 
-  it('expose tous les outils non sensibles à un agent et aucun outil analytics', () => {
+  it("expose à l'agent les outils opérationnels et AUCUN outil sensible", () => {
     const names = getToolsForRole('agent').map((t) => t.name);
     expect(names).toContain('get_order_status_summary');
     expect(names).toContain('get_low_stock');
     expect(names).toContain('get_top_products');
     expect(names).toContain('get_customer_reliability');
-    for (const restricted of FINANCE_OR_ANALYTICS) {
+    for (const restricted of [...OWNER_MANAGER_ONLY, ...OWNER_ONLY]) {
       expect(names).not.toContain(restricted);
     }
   });
 
-  it('expose les outils RTO/annulation/perf livreur à owner et manager', () => {
+  it('expose RTO/annulation/perf livreur + CA/COGS à owner et manager', () => {
     for (const role of ['owner', 'manager'] as TeamRole[]) {
       const names = getToolsForRole(role).map((t) => t.name);
-      for (const restricted of FINANCE_OR_ANALYTICS) {
-        expect(names).toContain(restricted);
+      for (const tool of OWNER_MANAGER_ONLY) {
+        expect(names).toContain(tool);
       }
     }
   });
 
-  it('aucun outil v1 ne porte sur la marge / le coût / le profit', () => {
+  it('réserve la marge et le résultat net au seul owner', () => {
+    const ownerNames = getToolsForRole('owner').map((t) => t.name);
+    const managerNames = getToolsForRole('manager').map((t) => t.name);
+    for (const tool of OWNER_ONLY) {
+      expect(ownerNames).toContain(tool);
+      expect(managerNames).not.toContain(tool);
+    }
+  });
+
+  it('les outils marge/profit déclarent allowedRoles = [owner]', () => {
     for (const tool of IA_TOOL_CATALOG) {
-      expect(tool.name).not.toMatch(/margin|marge|cogs|cout|profit|net/i);
+      if (OWNER_ONLY.has(tool.name)) {
+        expect([...tool.allowedRoles]).toEqual(['owner']);
+      }
     }
   });
 
