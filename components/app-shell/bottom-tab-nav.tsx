@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import {
+  ChartColumnIncreasing,
   LayoutDashboard,
   type LucideIcon,
   Package,
@@ -20,6 +21,7 @@ type BottomTabKey =
   | 'commandes'
   | 'produits'
   | 'livreurs'
+  | 'analyses'
   | 'finances'
   | 'boutiques'
   | 'parametres';
@@ -37,6 +39,12 @@ const bottomTabItems: BottomTabItem[] = [
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
   { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
+  {
+    href: '/analyses',
+    icon: ChartColumnIncreasing,
+    labelKey: 'analyses',
+    ownerManagerOnly: true,
+  },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },

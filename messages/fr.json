@@ -15,6 +15,7 @@
     "clients": "Clients",
     "produits": "Produits",
     "livreurs": "Livreurs",
+    "analyses": "Analyses",
     "finances": "Finances",
     "boutiques": "Boutiques",
     "parametres": "Paramètres",
@@ -614,6 +615,89 @@
       "cogs": "COGS",
       "currentCost": "CUMP actuel",
       "empty": "Aucune vente sur cette période."
+    }
+  },
+  "analytics": {
+    "title": "Analyses pertes COD",
+    "subtitle": "Reperez ou le cash se perd : annulations avant expedition, refus a la livraison et retours apres livraison.",
+    "restricted": "Acces reserve au proprietaire et aux managers.",
+    "empty": "Aucune donnee exploitable sur cette periode.",
+    "error": "Les analytics n'ont pas pu etre chargees. Reessayez.",
+    "periods": {
+      "today": "Aujourd'hui",
+      "7j": "7 j",
+      "30j": "30 j",
+      "custom": "Appliquer",
+      "from": "Du",
+      "to": "Au"
+    },
+    "summary": {
+      "totalOrders": "Commandes analysees",
+      "cancellationRate": "Taux d'annulation",
+      "rtoRate": "Taux de refus / RTO",
+      "returnRate": "Taux de retour",
+      "rtoBase": "Base RTO : livrees + echecs",
+      "returnBase": "Base retour : livrees + retours"
+    },
+    "scorecard": {
+      "title": "Scorecard par canal",
+      "source": "Canal",
+      "totalOrders": "Commandes",
+      "completionRate": "Completion cash",
+      "cancellationRate": "Annulation",
+      "rtoRate": "Refus / RTO",
+      "returnRate": "Retour"
+    },
+    "trends": {
+      "title": "Tendance refus / RTO",
+      "empty": "Aucun evenement RTO ou livraison sur la periode."
+    },
+    "products": {
+      "title": "Refus par produit",
+      "product": "Produit",
+      "orders": "Commandes",
+      "rtoOrders": "Refus",
+      "returnOrders": "Retours",
+      "cancellationOrders": "Annulations",
+      "rtoRate": "Taux RTO"
+    },
+    "zones": {
+      "title": "Zones a risque",
+      "zone": "Zone",
+      "orders": "Commandes",
+      "rtoOrders": "Refus",
+      "returnOrders": "Retours",
+      "cancellationOrders": "Annulations",
+      "rtoRate": "Taux RTO"
+    },
+    "drivers": {
+      "title": "Performance livreur",
+      "driver": "Livreur",
+      "outcomeOrders": "Courses analysees",
+      "rtoOrders": "Refus",
+      "returnOrders": "Retours",
+      "rtoRate": "Taux RTO"
+    },
+    "reasons": {
+      "title": "Raisons d'annulation",
+      "reason": "Raison",
+      "count": "Volume"
+    },
+    "refusers": {
+      "title": "Refuseurs repetes",
+      "customer": "Client",
+      "orders": "Commandes",
+      "refused": "Refus",
+      "tier": "Niveau",
+      "action": "Action",
+      "empty": "Aucun refuseur repete sur cette periode.",
+      "deposit": "Exiger un acompte ou une preconfirmation."
+    },
+    "labels": {
+      "unknownSource": "inconnu",
+      "unknownZone": "Zone inconnue",
+      "unknownDriver": "Livreur",
+      "unknownReason": "Sans motif"
     }
   },
   "report": {
