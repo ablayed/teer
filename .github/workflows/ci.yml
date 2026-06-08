@@ -62,9 +62,21 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: supabase start
       - run: |
-          supabase status -o env \
-            --override-name auth.anon_key=SUPABASE_ANON_KEY \
-            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY >> $GITHUB_ENV
+          while IFS= read -r line; do
+            case "$line" in
+              *=*)
+                key="${line%%=*}"
+                value="${line#*=}"
+                value="${value#\"}"
+                value="${value%\"}"
+                printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+                ;;
+            esac
+          done < <(
+            supabase status -o env \
+              --override-name auth.anon_key=SUPABASE_ANON_KEY \
+              --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY
+          )
       - run: pnpm test:rls
         env:
           SUPABASE_URL: http://127.0.0.1:54321
