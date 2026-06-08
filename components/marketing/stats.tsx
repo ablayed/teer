@@ -39,7 +39,7 @@ export async function StatsSection() {
           ))}
         </Reveal>
 
-        <p className="mt-12 text-center text-[12px] text-[#f4f3ed]/45">{t('disclaimer')}</p>
+        <p className="mt-12 text-center text-[12px] text-[#f4f3ed]/65">{t('disclaimer')}</p>
       </div>
     </section>
   );

@@ -10,7 +10,7 @@ type Tone = 'neutral' | 'confirmed' | 'delivering' | 'delivered' | 'returned';
 
 function StatusPill({ label, tone }: { label: string; tone: Tone }) {
   const tones: Record<Tone, string> = {
-    neutral: 'bg-sunken text-text/65',
+    neutral: 'bg-sunken text-text/75',
     confirmed: 'bg-success-subtle text-success',
     delivering: 'bg-accent-subtle text-accent-deep',
     delivered: 'bg-success text-white',
@@ -169,7 +169,7 @@ export async function CockpitMock() {
       </div>
 
       {/* Badge honnêteté */}
-      <p className="border-border/60 border-t px-4 py-2 text-center text-[10px] text-muted/80 uppercase tracking-wide">
+      <p className="border-border/60 border-t px-4 py-2 text-center text-[10px] text-muted uppercase tracking-wide">
         {t('badge')}
       </p>
     </div>
