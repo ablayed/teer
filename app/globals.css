@@ -105,6 +105,13 @@ body {
   font-family: var(--font-display);
   font-optical-sizing: auto;
 }
+/* Italique de marque (mots d'accent) : famille italique dédiée + style italique.
+   Police non preloadée, donc swap après le paint initial en fallback. */
+.font-display-italic {
+  font-family: var(--font-fraunces-italic), Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-optical-sizing: auto;
+}
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;

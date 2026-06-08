@@ -96,7 +96,7 @@ export default async function MarketingPage() {
           <div className="mx-auto max-w-5xl px-5 pt-16 pb-10 text-center md:pt-24">
             <h1 className="mx-auto max-w-4xl text-balance font-display text-[2.75rem] leading-[1.04] tracking-[-0.02em] md:text-7xl">
               {t('hero.title_a')} {t('hero.title_b')}{' '}
-              <span className="text-accent-deep italic">{t('hero.title_c')}</span>
+              <span className="font-display-italic text-accent-deep">{t('hero.title_c')}</span>
               <br className="hidden sm:block" /> {t('hero.title_d')}
             </h1>
 
