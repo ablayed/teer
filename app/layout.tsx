@@ -1,5 +1,3 @@
-import { AnalyticsProvider } from '@/components/analytics-provider';
-import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { env } from '@/lib/env';
 import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
@@ -49,8 +47,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="fr-SN" className={fraunces.variable}>
       <body className={`${GeistSans.variable} ${GeistMono.variable} min-h-dvh bg-canvas`}>
-        <AnalyticsProvider />
-        <ServiceWorkerRegister />
         <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
       </body>
     </html>

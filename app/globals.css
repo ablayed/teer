@@ -128,6 +128,44 @@ body {
   }
 }
 
+/* Reveal au scroll — CSS pur (piloté par IntersectionObserver côté composant),
+   sans lib d'animation. Le texte reste dans le DOM (lisible par les crawlers).
+   Sous reduced-motion : tout est visible, sans transition. */
+.reveal {
+  opacity: 0;
+  transform: translateY(var(--reveal-y, 16px));
+  transition: opacity var(--dur-l) var(--ease-standard), transform var(--dur-l) var(--ease-standard);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+.reveal[data-shown="true"],
+.stagger[data-shown="true"] > .reveal {
+  opacity: 1;
+  transform: none;
+}
+.stagger[data-shown="true"] > .reveal:nth-child(2) {
+  --reveal-delay: 70ms;
+}
+.stagger[data-shown="true"] > .reveal:nth-child(3) {
+  --reveal-delay: 140ms;
+}
+.stagger[data-shown="true"] > .reveal:nth-child(4) {
+  --reveal-delay: 210ms;
+}
+.stagger[data-shown="true"] > .reveal:nth-child(5) {
+  --reveal-delay: 280ms;
+}
+.stagger[data-shown="true"] > .reveal:nth-child(6) {
+  --reveal-delay: 350ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 /* Grille technique discrète (fond hero), via tokens — pas de décoration orange. */
 .bg-grid {
   background-image: linear-gradient(to right, var(--border) 1px, transparent 1px),

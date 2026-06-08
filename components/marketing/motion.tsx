@@ -1,14 +1,39 @@
 'use client';
 
-import { type Variants, motion, useReducedMotion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 
-// Primitives motion réutilisables pour la landing.
-// Hors du chemin critique (scroll-triggered, once), respectent prefers-reduced-motion.
-// Pas de parallax.
+// Primitives reveal au scroll, SANS lib d'animation (zéro framer-motion sur la
+// landing). IntersectionObserver + transitions CSS (cf. .reveal/.stagger dans
+// globals.css). reduced-motion géré en CSS. Le contenu reste dans le DOM.
 
-const EASE = [0.2, 0, 0, 1] as const;
-const VIEWPORT = { once: true, margin: '-80px' } as const;
+function useInViewOnce<T extends Element>(margin = '-80px') {
+  const ref = useRef<T>(null);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || shown) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setShown(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setShown(true);
+            io.disconnect();
+          }
+        }
+      },
+      { rootMargin: margin },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [shown, margin]);
+
+  return { ref, shown };
+}
 
 type RevealProps = {
   children: ReactNode;
@@ -17,43 +42,32 @@ type RevealProps = {
   y?: number;
 };
 
-/** Fade + rise au scroll. Sous reduced-motion : fade seul. */
+/** Fade + rise au scroll (une fois). */
 export function Reveal({ children, className, delay = 0, y = 16 }: RevealProps) {
-  const reduce = useReducedMotion();
+  const { ref, shown } = useInViewOnce<HTMLDivElement>();
   return (
-    <motion.div
-      className={className}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y }}
-      whileInView={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
-      viewport={VIEWPORT}
-      transition={{ duration: 0.5, ease: EASE, delay }}
+    <div
+      ref={ref}
+      data-shown={shown}
+      className={`reveal ${className ?? ''}`}
+      style={{ '--reveal-y': `${y}px`, '--reveal-delay': `${delay * 1000}ms` } as CSSProperties}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
 
-const containerVariants: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
-};
-
-/** Conteneur qui décale l'apparition de ses <StaggerItem> enfants. */
+/** Conteneur qui décale l'apparition de ses <StaggerItem> (délais en CSS, nth-child). */
 export function Stagger({ children, className }: { children: ReactNode; className?: string }) {
+  const { ref, shown } = useInViewOnce<HTMLDivElement>();
   return (
-    <motion.div
-      className={className}
-      initial="hidden"
-      whileInView="show"
-      viewport={VIEWPORT}
-      variants={containerVariants}
-    >
+    <div ref={ref} data-shown={shown} className={`stagger ${className ?? ''}`}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
-/** Élément animé par un <Stagger> parent. */
+/** Élément animé par un <Stagger> parent (visibilité pilotée par le parent). */
 export function StaggerItem({
   children,
   className,
@@ -63,14 +77,12 @@ export function StaggerItem({
   className?: string;
   y?: number;
 }) {
-  const reduce = useReducedMotion();
-  const variants: Variants = {
-    hidden: reduce ? { opacity: 0 } : { opacity: 0, y },
-    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
-  };
   return (
-    <motion.div className={className} variants={variants}>
+    <div
+      className={`reveal ${className ?? ''}`}
+      style={{ '--reveal-y': `${y}px` } as CSSProperties}
+    >
       {children}
-    </motion.div>
+    </div>
   );
 }

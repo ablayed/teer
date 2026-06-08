@@ -1,10 +1,9 @@
 'use client';
 
-import { useInView, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 
-// Compteur count-up déclenché au scroll (une fois). Sous reduced-motion :
-// affiche directement la valeur finale. Chiffres en mono tnum.
+// Compteur count-up au scroll, SANS framer-motion : IntersectionObserver + rAF.
+// reduced-motion → valeur finale directe. Chiffres en mono tnum.
 type CountUpProps = {
   value: number;
   prefix?: string;
@@ -21,27 +20,53 @@ export function CountUp({
   className,
 }: CountUpProps) {
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: '-60px' });
-  const reduce = useReducedMotion();
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    if (!inView) return;
-    if (reduce) {
-      setDisplay(value);
+    const el = ref.current;
+    if (!el) return;
+    let raf = 0;
+    let started = false;
+
+    const run = () => {
+      if (started) return;
+      started = true;
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (reduce) {
+        setDisplay(value);
+        return;
+      }
+      const start = performance.now();
+      const tick = (now: number) => {
+        const p = Math.min((now - start) / (duration * 1000), 1);
+        const eased = 1 - (1 - p) ** 3;
+        setDisplay(Math.round(eased * value));
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    };
+
+    if (typeof IntersectionObserver === 'undefined') {
+      run();
       return;
     }
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min((now - start) / (duration * 1000), 1);
-      const eased = 1 - (1 - p) ** 3;
-      setDisplay(Math.round(eased * value));
-      if (p < 1) raf = requestAnimationFrame(tick);
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            run();
+            io.disconnect();
+          }
+        }
+      },
+      { rootMargin: '-60px' },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [inView, value, duration, reduce]);
+  }, [value, duration]);
 
   return (
     <span ref={ref} className={`font-mono tabular-nums ${className ?? ''}`}>
