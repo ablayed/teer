@@ -6,7 +6,7 @@ export default async function MarketingPage() {
   const t = await getTranslations('marketing');
 
   return (
-    <main className="min-h-dvh bg-canvas text-text">
+    <main className="landing min-h-dvh bg-canvas text-text">
       <header className="sticky top-0 z-10 h-16 border-b border-border/80 bg-canvas/90 backdrop-blur">
         <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-5">
           <Wordmark size="md" />

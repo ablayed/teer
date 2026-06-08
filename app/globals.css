@@ -1,24 +1,45 @@
 @import "tailwindcss";
 
 :root {
-  --canvas: #f4f3ed;
-  --surface: #ffffff;
+  /* Crème — 3 couches pour le rythme des sections */
+  --canvas: #f4f3ed; /* base */
+  --surface: #ffffff; /* cartes app (inchangé) */
+  --cream: #fbfaf6; /* carte crème claire (marketing) */
+  --sunken: #eae7de; /* bande de section plus sombre (marketing) */
   --border: #e5e2d8;
+
+  /* Encre + gris (défaut global app, inchangé ; réchauffé en .landing) */
   --text: #111111;
   --muted: #666666;
+
+  /* Accent orange — réservé (CTA, tréma, liens, états actifs, highlights) */
   --accent: #ee8243;
   --accent-hover: #e5762f;
-  --accent-ink: #111111;
+  --accent-deep: #c9651d; /* orange assombri : texte/petits éléments AA sur crème */
+  --accent-soft: #f2bc97;
+  --accent-ink: #111111; /* texte/icône SUR orange = toujours #111, jamais blanc */
+  --accent-fg: #111111;
   --accent-subtle: rgba(238, 130, 67, 0.1);
+
   --success: #0e7c3a;
   --success-subtle: rgba(14, 124, 58, 0.1);
   --danger: #b42318;
   --danger-subtle: rgba(180, 35, 24, 0.1);
+
+  --ring: var(--accent);
+
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 20px;
+
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.06);
+  /* Ombres chaudes basses-opacité (teinte encre) */
+  --shadow-warm-1: 0 1px 2px rgba(42, 38, 34, 0.05);
+  --shadow-warm-2: 0 8px 24px -8px rgba(42, 38, 34, 0.12);
+  --shadow-warm-3: 0 28px 70px -28px rgba(42, 38, 34, 0.2);
+
   --dur-xs: 120ms;
   --dur-s: 200ms;
   --dur-m: 320ms;
@@ -29,32 +50,39 @@
 @theme {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
+  --color-cream: var(--cream);
+  --color-sunken: var(--sunken);
   --color-border: var(--border);
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
-  --color-accent-deep: #c9651d;
-  --color-accent-soft: #f2bc97;
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-soft: var(--accent-soft);
   --color-accent-hover: var(--accent-hover);
   --color-accent-ink: var(--accent-ink);
+  --color-accent-fg: var(--accent-fg);
   --color-accent-subtle: var(--accent-subtle);
   --color-success: var(--success);
   --color-success-subtle: var(--success-subtle);
   --color-warning: #b45309;
   --color-danger: var(--danger);
   --color-danger-subtle: var(--danger-subtle);
+  --color-ring: var(--ring);
 
   --font-sans: "Geist", system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
-  /* TODO: swap to PP Editorial New Italic when commercial license acquired */
-  --font-display: Georgia, "Times New Roman", serif;
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
 
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 20px;
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-warm-1: 0 1px 2px rgba(42, 38, 34, 0.05);
+  --shadow-warm-2: 0 8px 24px -8px rgba(42, 38, 34, 0.12);
+  --shadow-warm-3: 0 28px 70px -28px rgba(42, 38, 34, 0.2);
 
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
@@ -71,13 +99,30 @@ body {
   font-family: var(--font-mono);
   font-feature-settings: "tnum";
 }
+/* Serif display Fraunces — ROMAN par défaut ; italique opt-in via la classe `italic`
+   (réservée aux mots d'accent, ex. « Livrez. » en orange). */
 .font-display {
   font-family: var(--font-display);
-  font-style: italic;
+  font-optical-sizing: auto;
 }
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* Portée marketing : encre chaude + gris chauds, sans toucher l'app.
+   Les utilitaires text-text / text-muted résolvent var(--text)/var(--muted)
+   au point d'usage → l'override en cascade suffit. */
+.landing {
+  --text: #2a2622;
+  --muted: #5f574d;
+}
+
+/* Grille technique discrète (fond hero), via tokens — pas de décoration orange. */
+.bg-grid {
+  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 56px 56px;
 }
 
 @keyframes dashboard-shimmer {
