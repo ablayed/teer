@@ -9,6 +9,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingBag,
+  Sparkles,
   Store,
   Truck,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ type BottomTabKey =
   | 'livreurs'
   | 'analyses'
   | 'finances'
+  | 'assistant'
   | 'boutiques'
   | 'parametres';
 
@@ -46,6 +48,7 @@ const bottomTabItems: BottomTabItem[] = [
     ownerManagerOnly: true,
   },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
+  { href: '/assistant', icon: Sparkles, labelKey: 'assistant' },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];

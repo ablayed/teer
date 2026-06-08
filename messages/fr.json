@@ -17,9 +17,14 @@
     "livreurs": "Livreurs",
     "analyses": "Analyses",
     "finances": "Finances",
+    "assistant": "Assistant",
     "boutiques": "Boutiques",
     "parametres": "Paramètres",
     "signOut": "Se déconnecter"
+  },
+  "assistant": {
+    "title": "Assistant",
+    "subtitle": "Pose tes questions sur l’activité. Lecture seule : je rapporte uniquement des données enregistrées."
   },
   "marketing": {
     "header": {

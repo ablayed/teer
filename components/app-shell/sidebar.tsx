@@ -11,6 +11,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingBag,
+  Sparkles,
   Store,
   Truck,
   Users,
@@ -27,6 +28,7 @@ type NavKey =
   | 'livreurs'
   | 'analyses'
   | 'finances'
+  | 'assistant'
   | 'boutiques'
   | 'parametres';
 
@@ -51,6 +53,7 @@ const sidebarItems: SidebarItem[] = [
     ownerManagerOnly: true,
   },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
+  { href: '/assistant', icon: Sparkles, labelKey: 'assistant' },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
