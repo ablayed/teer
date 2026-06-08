@@ -27,19 +27,139 @@
     "subtitle": "Pose tes questions sur l’activité. Lecture seule : je rapporte uniquement des données enregistrées."
   },
   "marketing": {
-    "header": {
-      "connexion": "Connexion"
+    "nav": {
+      "features": "Fonctionnalités",
+      "pricing": "Tarifs",
+      "faq": "FAQ",
+      "connexion": "Connexion",
+      "cta": "Commencer"
     },
     "hero": {
       "title_a": "Recevez.",
       "title_b": "Confirmez.",
       "title_c": "Livrez.",
-      "subtitle": "Le tableau de bord COD pour marchands Shopify sénégalais.",
+      "title_d": "Sans rien perdre.",
+      "subtitle": "Le tableau de bord qui suit vos commandes, votre stock et votre argent — pour les marchands Shopify au Sénégal.",
+      "cta": "Commencer gratuitement",
+      "ctaSecondary": "Voir comment ça marche",
+      "trust": "Gratuit pour commencer · Sans carte bancaire"
+    },
+    "mock": {
+      "badge": "Aperçu — données illustratives",
+      "url": "teer-dev.vercel.app/commandes",
+      "ordersTitle": "Commandes du jour",
+      "statusToCall": "À appeler",
+      "statusConfirmed": "Confirmée",
+      "statusDelivering": "En livraison",
+      "statusDelivered": "Livrée",
+      "statusReturned": "Retour",
+      "cashTitle": "Cash à remettre",
+      "cashReconciled": "Réconcilié",
+      "cashDriver": "Moussa · 4 livraisons",
+      "lossesTitle": "Pertes cette semaine",
+      "lossesCaption": "Annulations · retours · ratées"
+    },
+    "problem": {
+      "kicker": "Le vrai problème",
+      "title": "Gérer le paiement à la livraison sur Excel, c'est perdre de l'argent.",
+      "body": "Une commande confirmée sur WhatsApp. Un livreur qui ne rend pas tout le cash. Un client absent, le colis revient. Des retours qui mangent ta marge. À la fin du mois, tu ne sais même pas combien tu as vraiment gagné."
+    },
+    "steps": {
+      "kicker": "Comment ça marche",
+      "title": "Trois étapes, un seul écran.",
+      "one_title": "Connecte ta boutique Shopify",
+      "one_body": "En 2 minutes, tes commandes arrivent automatiquement.",
+      "two_title": "Suis tout au même endroit",
+      "two_body": "Commandes, stock, livreurs, cash : un seul écran.",
+      "three_title": "Vois où tu perds de l'argent",
+      "three_body": "Annulations, retours, cash non remis : Tëër te montre les fuites."
+    },
+    "features": {
+      "kicker": "Tout le cycle COD",
+      "title": "De la réception du colis au cash réconcilié.",
+      "losses_title": "Analyse des pertes",
+      "losses_body": "Tëër calcule où ton argent fuit — annulations, retours, livraisons ratées.",
+      "dashboard_title": "Dashboard opérationnel",
+      "dashboard_body": "Chaque commande, de la réception à la livraison, sans rien oublier.",
+      "stock_title": "Stock + coût de revient",
+      "stock_body": "Sache ce qu'il te reste et combien ça t'a coûté (coût au débarqué inclus).",
+      "cash_title": "Suivi du cash",
+      "cash_body": "Quel livreur a rendu l'argent ? Combien il manque ? En temps réel.",
+      "ai_title": "Assistant IA",
+      "ai_body": "Pose ta question en français, l'assistant répond à partir de tes données (lecture seule).",
+      "shopify_title": "Sync multi-boutiques",
+      "shopify_body": "Plusieurs boutiques ? Tout se synchronise automatiquement."
+    },
+    "stats": {
+      "kicker": "Ce que visent nos marchands",
+      "title": "Des objectifs concrets, pas des promesses en l'air.",
+      "disclaimer": "Objectifs de référence, pas des résultats garantis. On est early-stage et on l'assume.",
+      "delivered_label": "de commandes livrées en plus visées",
+      "delivered_suffix": " pts",
+      "cash_label": "du cash livreur suivi et réconcilié",
+      "cash_suffix": " %",
+      "hours_label": "gagnées par semaine, sans Excel",
+      "hours_suffix": " h"
+    },
+    "founder": {
+      "kicker": "Pourquoi nous faire confiance",
+      "title": "Conçu à Dakar, pour la réalité du COD sénégalais.",
+      "body": "Tëër est construit par un développeur qui connaît le terrain : Shopify qui ne suit pas le paiement à la livraison, les livreurs, le cash, les retours. Pas un ERP importé — un outil pensé ici.",
+      "privacy_title": "Tes données t'appartiennent.",
+      "privacy_body": "Chiffrées, isolées par marchand, jamais revendues.",
+      "early": "Rejoins les premiers marchands."
+    },
+    "pricing": {
+      "kicker": "Tarifs",
+      "title": "Gratuit pour commencer.",
+      "subtitle": "Pas de carte bancaire. Annule quand tu veux.",
+      "free_name": "Gratuit",
+      "free_price": "0",
+      "free_currency": "FCFA",
+      "free_period": "/ mois",
+      "free_tagline": "Pour démarrer ton suivi COD.",
+      "free_f1": "Sync Shopify d'une boutique",
+      "free_f2": "Commandes + workflow d'appel",
+      "free_f3": "Suivi stock de base",
+      "free_f4": "Ajout manuel des commandes",
+      "free_cta": "Commencer gratuitement",
+      "pro_name": "Pro",
+      "pro_price": "Bientôt",
+      "pro_badge": "En préparation",
+      "pro_tagline": "Multi-boutiques, cash livreurs, analyse des pertes, assistant IA.",
+      "pro_f1": "Tout le plan Gratuit",
+      "pro_f2": "Cash livreurs + réconciliation",
+      "pro_f3": "Analyse des pertes + marge réelle",
+      "pro_f4": "Assistant IA sur tes données",
+      "pro_cta": "Être prévenu"
+    },
+    "faq": {
+      "kicker": "FAQ",
+      "title": "Les questions qu'on nous pose.",
+      "data_q": "Mes données sont-elles en sécurité ?",
+      "data_a": "Oui. Tes données sont chiffrées, isolées par marchand (personne d'autre ne les voit) et jamais revendues.",
+      "channels_q": "Et si je vends surtout sur WhatsApp ou Instagram ?",
+      "channels_a": "Tu peux ajouter tes commandes manuellement en quelques secondes, en plus de la sync Shopify.",
+      "cancel_q": "Je peux annuler quand je veux ?",
+      "cancel_a": "Oui. Pas d'engagement, et pas de carte bancaire pour commencer.",
+      "mobile_q": "Ça marche sur mon téléphone ?",
+      "mobile_a": "Oui. Tëër est pensé mobile d'abord, fluide même en 4G sur Android."
+    },
+    "finalCta": {
+      "title": "Arrête de perdre de l'argent sur tes livraisons.",
+      "subtitle": "Tout ton business COD, au même endroit. Gratuit pour commencer.",
       "cta": "Commencer gratuitement"
     },
     "footer": {
+      "tagline": "Le cockpit du paiement à la livraison pour marchands Shopify au Sénégal.",
       "copyright": "© 2026 Tëër",
-      "privacy": "Confidentialité"
+      "privacy": "Confidentialité",
+      "contactTitle": "Contact",
+      "email": "diaablaye09@gmail.com",
+      "whatsappLabel": "WhatsApp",
+      "whatsappNumber": "",
+      "phoneLabel": "Téléphone",
+      "phoneNumber": ""
     }
   },
   "auth": {
