@@ -1718,6 +1718,23 @@ export type Database = {
         Args: { p_merchant_account_id: string; p_since: string };
         Returns: number;
       };
+      ia_finance_cost_movements: {
+        Args: { p_merchant: string; p_order_ids: string[] };
+        Returns: {
+          movement_type: string;
+          order_id: string;
+          product_id: string;
+          qty: number;
+          unit_cost: number;
+        }[];
+      };
+      ia_product_cump: {
+        Args: { p_merchant: string; p_product_ids: string[] };
+        Returns: {
+          product_id: string;
+          unit_cost: number;
+        }[];
+      };
       is_member_of: {
         Args: { p_merchant_account_id: string };
         Returns: boolean;
