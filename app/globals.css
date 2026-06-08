@@ -116,6 +116,16 @@ body {
 .landing {
   --text: #2a2622;
   --muted: #5f574d;
+  /* Orange assombri pour le TEXTE/petits éléments : ~5:1 sur crème (AA).
+     L'orange vif (--accent) reste réservé aux fonds CTA + chiffres sur fond sombre. */
+  --accent-deep: #a8500f;
+}
+
+/* Défilement doux pour les ancres de la nav (désactivé sous reduced-motion). */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 /* Grille technique discrète (fond hero), via tokens — pas de décoration orange. */

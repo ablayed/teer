@@ -11,14 +11,71 @@ import { PricingSection } from '@/components/marketing/pricing';
 import { ProblemSection } from '@/components/marketing/problem';
 import { StatsSection } from '@/components/marketing/stats';
 import { StepsSection } from '@/components/marketing/steps';
+import { env } from '@/lib/env';
 import { ArrowRight, Check } from 'lucide-react';
+import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('marketing');
+  const title = 'Tëër — Tableau de bord COD pour marchands Shopify au Sénégal';
+  const description = t('hero.subtitle');
+
+  return {
+    title,
+    description,
+    keywords: [
+      'paiement à la livraison',
+      'COD Sénégal',
+      'Shopify Sénégal',
+      'tableau de bord COD',
+      'cash à la livraison',
+      'gestion livraison Dakar',
+    ],
+    alternates: { canonical: '/' },
+    openGraph: {
+      title,
+      description,
+      url: '/',
+      siteName: 'Tëër',
+      locale: 'fr_SN',
+      type: 'website',
+    },
+    twitter: { card: 'summary_large_image', title, description },
+  };
+}
 
 export default async function MarketingPage() {
   const t = await getTranslations('marketing');
 
+  const appUrl = env.NEXT_PUBLIC_APP_URL;
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        name: 'Tëër',
+        url: appUrl,
+        logo: `${appUrl}/icon-512.png`,
+      },
+      {
+        '@type': 'SoftwareApplication',
+        name: 'Tëër',
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web, Android, iOS',
+        description: t('hero.subtitle'),
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'XOF' },
+      },
+    ],
+  };
+
   return (
-    <div className="landing min-h-dvh bg-canvas text-text">
+    <div className="landing min-h-dvh bg-canvas pb-[76px] text-text md:pb-0">
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD statique de confiance
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <MarketingNav />
 
       <main>
@@ -39,7 +96,7 @@ export default async function MarketingPage() {
           <div className="mx-auto max-w-5xl px-5 pt-16 pb-10 text-center md:pt-24">
             <h1 className="mx-auto max-w-4xl text-balance font-display text-[2.75rem] leading-[1.04] tracking-[-0.02em] md:text-7xl">
               {t('hero.title_a')} {t('hero.title_b')}{' '}
-              <span className="text-accent italic">{t('hero.title_c')}</span>
+              <span className="text-accent-deep italic">{t('hero.title_c')}</span>
               <br className="hidden sm:block" /> {t('hero.title_d')}
             </h1>
 
@@ -80,6 +137,16 @@ export default async function MarketingPage() {
       </main>
 
       <MarketingFooter />
+
+      {/* Barre CTA sticky mobile (server, zéro JS), safe-area iOS incluse */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-border border-t bg-canvas/90 px-4 py-3 backdrop-blur md:hidden"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+      >
+        <CtaButton href="/connexion?mode=signup" className="w-full">
+          {t('hero.cta')}
+        </CtaButton>
+      </div>
     </div>
   );
 }
