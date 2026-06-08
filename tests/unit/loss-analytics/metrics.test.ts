@@ -160,9 +160,9 @@ describe('computeLossAnalytics', () => {
     expect(result.summary.cancellationRate).toBeCloseTo(0.25, 5);
     expect(result.summary.returnCount).toBe(1);
     expect(result.summary.returnRate).toBeCloseTo(0.5, 5);
-    expect(result.summary.rtoCount).toBe(2);
-    expect(result.summary.rtoDenominator).toBe(3);
-    expect(result.summary.rtoRate).toBeCloseTo(2 / 3, 5);
+    expect(result.summary.rtoCount).toBe(1);
+    expect(result.summary.rtoDenominator).toBe(2);
+    expect(result.summary.rtoRate).toBeCloseTo(0.5, 5);
   });
 
   it('builds source scorecards and trends from the retained definitions', () => {
@@ -314,5 +314,96 @@ describe('computeLossAnalytics', () => {
         refusedCount: 3,
       }),
     ]);
+  });
+
+  it('counts failed as RTO only and returned-after-delivered as return only', () => {
+    const result = computeLossAnalytics({
+      auditLogs: [
+        audit({
+          createdAt: '2026-06-02T08:00:00.000Z',
+          payload: {
+            nextDimensions: { delivery_state: 'failed', order_state: 'cancelled' },
+            priorDimensions: { delivery_state: 'out_for_delivery', order_state: 'open' },
+          },
+          resourceId: 'order-failed',
+        }),
+        audit({
+          createdAt: '2026-06-02T09:00:00.000Z',
+          payload: {
+            nextDimensions: { delivery_state: 'delivered', order_state: 'completed' },
+            priorDimensions: { delivery_state: 'assigned', order_state: 'open' },
+          },
+          resourceId: 'order-returned',
+        }),
+        audit({
+          createdAt: '2026-06-03T09:00:00.000Z',
+          payload: {
+            nextDimensions: { delivery_state: 'returned', order_state: 'returned' },
+            priorDimensions: { delivery_state: 'delivered', order_state: 'completed' },
+          },
+          resourceId: 'order-returned',
+        }),
+      ],
+      customers: [customer({ id: 'customer-failed' }), customer({ id: 'customer-returned' })],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          customerId: 'customer-failed',
+          deliveryState: 'failed',
+          id: 'order-failed',
+          orderState: 'cancelled',
+        }),
+        order({
+          customerId: 'customer-returned',
+          deliveryState: 'returned',
+          id: 'order-returned',
+          orderState: 'returned',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-04T23:59:59.999Z',
+    });
+
+    expect(result.summary.rtoCount).toBe(1);
+    expect(result.summary.returnCount).toBe(1);
+    expect(result.summary.rtoDenominator).toBe(1);
+    expect(result.summary.returnRate).toBe(1);
+    expect(result.summary.rtoRate).toBe(1);
+  });
+
+  it('ignores returned without prior delivered for return counting', () => {
+    const result = computeLossAnalytics({
+      auditLogs: [
+        audit({
+          createdAt: '2026-06-03T09:00:00.000Z',
+          payload: {
+            nextDimensions: { delivery_state: 'returned', order_state: 'returned' },
+            priorDimensions: { delivery_state: 'assigned', order_state: 'open' },
+          },
+          resourceId: 'order-returned-without-delivered',
+        }),
+      ],
+      customers: [customer({ id: 'customer-returned-without-delivered' })],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          customerId: 'customer-returned-without-delivered',
+          deliveryState: 'returned',
+          id: 'order-returned-without-delivered',
+          orderState: 'returned',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-04T23:59:59.999Z',
+    });
+
+    expect(result.summary.returnCount).toBe(0);
+    expect(result.summary.rtoCount).toBe(0);
+    expect(result.summary.returnRate).toBe(0);
+    expect(result.summary.rtoRate).toBe(0);
   });
 });

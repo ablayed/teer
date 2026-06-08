@@ -1,7 +1,7 @@
 import type { Json } from '@/lib/supabase/database.types';
 
-const RTO_DELIVERY_STATES = new Set(['failed', 'returned']);
-const RTO_OUTCOME_STATES = new Set(['delivered', 'failed', 'returned']);
+const RTO_DELIVERY_STATES = new Set(['failed']);
+const RTO_OUTCOME_STATES = new Set(['delivered', 'failed']);
 const CANCELLATION_PRIOR_STATES = new Set(['unassigned', 'scheduled']);
 
 export type LossAnalyticsOrder = {
@@ -345,6 +345,14 @@ function rateSummary(
   };
 }
 
+function hasReturnEvent(orderEvents: Set<LossEventType>): boolean {
+  return orderEvents.has('return');
+}
+
+function hasRtoEvent(orderEvents: Set<LossEventType>): boolean {
+  return orderEvents.has('rto');
+}
+
 export function computeLossAnalytics({
   auditLogs,
   customers,
@@ -399,8 +407,8 @@ export function computeLossAnalytics({
     const zoneKey = zoneLabel(customer);
     const orderEvents = eventsByOrderId.get(order.id) ?? new Set<LossEventType>();
     const isCancellation = orderEvents.has('cancellation');
-    const isReturn = orderEvents.has('return');
-    const isRto = order.deliveryState !== null && RTO_DELIVERY_STATES.has(order.deliveryState);
+    const isReturn = hasReturnEvent(orderEvents);
+    const isRto = hasRtoEvent(orderEvents);
     const isDelivered = order.deliveryState === 'delivered';
     const hasOutcome = order.deliveryState !== null && RTO_OUTCOME_STATES.has(order.deliveryState);
 
