@@ -474,6 +474,173 @@ export type Database = {
           },
         ];
       };
+      ia_conversation: {
+        Row: {
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          summary: string | null;
+          title: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          summary?: string | null;
+          title?: string | null;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          summary?: string | null;
+          title?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'ia_conversation_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      ia_faq: {
+        Row: {
+          answer_fr: string;
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          min_role: string;
+          question_fr: string;
+          sort_order: number;
+        };
+        Insert: {
+          answer_fr: string;
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          min_role?: string;
+          question_fr: string;
+          sort_order?: number;
+        };
+        Update: {
+          answer_fr?: string;
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          min_role?: string;
+          question_fr?: string;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      ia_message: {
+        Row: {
+          content: string;
+          conversation_id: string;
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          role: string;
+        };
+        Insert: {
+          content: string;
+          conversation_id: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          role: string;
+        };
+        Update: {
+          content?: string;
+          conversation_id?: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          role?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'ia_message_conversation_id_fkey';
+            columns: ['conversation_id'];
+            isOneToOne: false;
+            referencedRelation: 'ia_conversation';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'ia_message_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      ia_tool_audit: {
+        Row: {
+          allowed: boolean;
+          conversation_id: string | null;
+          created_at: string;
+          denied_reason: string | null;
+          id: string;
+          latency_ms: number | null;
+          merchant_account_id: string;
+          tool_args: Json;
+          tool_name: string;
+          user_id: string;
+          user_role: string;
+        };
+        Insert: {
+          allowed: boolean;
+          conversation_id?: string | null;
+          created_at?: string;
+          denied_reason?: string | null;
+          id?: string;
+          latency_ms?: number | null;
+          merchant_account_id: string;
+          tool_args?: Json;
+          tool_name: string;
+          user_id: string;
+          user_role: string;
+        };
+        Update: {
+          allowed?: boolean;
+          conversation_id?: string | null;
+          created_at?: string;
+          denied_reason?: string | null;
+          id?: string;
+          latency_ms?: number | null;
+          merchant_account_id?: string;
+          tool_args?: Json;
+          tool_name?: string;
+          user_id?: string;
+          user_role?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'ia_tool_audit_conversation_id_fkey';
+            columns: ['conversation_id'];
+            isOneToOne: false;
+            referencedRelation: 'ia_conversation';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'ia_tool_audit_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       invitation: {
         Row: {
           accepted_at: string | null;
@@ -1547,6 +1714,10 @@ export type Database = {
         }[];
       };
       get_dashboard_kpi: { Args: { p_merchant_id: string }; Returns: Json };
+      ia_count_recent_tool_calls: {
+        Args: { p_merchant_account_id: string; p_since: string };
+        Returns: number;
+      };
       is_member_of: {
         Args: { p_merchant_account_id: string };
         Returns: boolean;
@@ -1584,6 +1755,19 @@ export type Database = {
           score: number;
           tier: string;
         }[];
+      };
+      log_ia_tool_audit: {
+        Args: {
+          p_allowed: boolean;
+          p_conversation_id?: string;
+          p_denied_reason?: string;
+          p_latency_ms?: number;
+          p_merchant_account_id: string;
+          p_tool_args: Json;
+          p_tool_name: string;
+          p_user_role: string;
+        };
+        Returns: string;
       };
       order_items_search_text: { Args: { p_items: Json }; Returns: string };
       post_stock_movement: {
