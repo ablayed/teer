@@ -7,6 +7,7 @@ import {
 } from '@/lib/shopify/orders-sync';
 import { type ShopifyProductNode, persistShopifyProductWebhook } from '@/lib/shopify/products-sync';
 import { processFinishedBulkForShop } from '@/lib/shopify/reconcile';
+import { deriveRefundWebhook } from '@/lib/shopify/refunds';
 import { verifyWebhookHmac } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
@@ -521,9 +522,6 @@ async function handleAppUninstalledWebhook({
   logWebhookInfo('[webhook] app/uninstalled processed', { resolvedShopDomain });
 }
 
-// refunds/create : le payload est un objet « refund » (pas une commande complète) et ne permet
-// pas de déduire de façon fiable plein/partiel. On enregistre l'événement canal (audit) sans
-// muter l'état : le statut financier est porté par le orders/updated jumeau (déjà miroité).
 async function handleRefundWebhook({
   payload,
   shopDomain,
@@ -549,14 +547,64 @@ async function handleRefundWebhook({
     return;
   }
 
-  const orderId = isRecord(payload) ? stringField(payload, 'order_id') : null;
+  const refund = deriveRefundWebhook(payload);
+  let localOrderId: string | null = null;
+
+  if (refund.orderId) {
+    const { data: localOrder, error: orderLookupError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('merchant_account_id', shop.merchant_account_id)
+      .eq('shopify_order_id', refund.orderId)
+      .maybeSingle();
+
+    if (orderLookupError) {
+      logWebhookError('[webhook] refund order lookup failed', {
+        error: orderLookupError.message,
+        orderId: refund.orderId,
+        resolvedShopDomain,
+      });
+    } else {
+      localOrderId = localOrder?.id ?? null;
+    }
+  }
+
+  if (refund.shouldUpdateFinancialStatus && localOrderId) {
+    const { error: orderUpdateError } = await supabase
+      .from('orders')
+      .update({
+        financial_status: 'partially_refunded',
+        shopify_financial_status: 'partially_refunded',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', localOrderId);
+
+    if (orderUpdateError) {
+      logWebhookError('[webhook] refund order update failed', {
+        error: orderUpdateError.message,
+        localOrderId,
+        orderId: refund.orderId,
+        resolvedShopDomain,
+      });
+    }
+  }
+
   await supabase.from('audit_log').insert({
     merchant_account_id: shop.merchant_account_id,
     actor_user_id: null,
     action: 'shopify.refund_received',
-    resource_type: 'shop',
-    resource_id: shop.id,
-    payload: toJson({ orderId, shopDomain: resolvedShopDomain }),
+    resource_type: localOrderId ? 'orders' : 'shop',
+    resource_id: localOrderId ?? shop.id,
+    payload: toJson({
+      cashStillHeldByTeer: refund.cashStillHeldByTeer,
+      localOrderId,
+      nonCashRefundedMinor: refund.nonCashRefundedMinor,
+      orderId: refund.orderId,
+      shopDomain: resolvedShopDomain,
+      shouldUpdateFinancialStatus: refund.shouldUpdateFinancialStatus,
+      successfulRefundCount: refund.successfulRefundCount,
+      transactionSummary: refund.transactionSummary,
+    }),
   });
 }
 

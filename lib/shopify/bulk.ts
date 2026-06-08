@@ -97,18 +97,55 @@ type BulkRunResponse = {
 
 type CurrentBulkResponse = { currentBulkOperation: BulkOperation | null };
 
+type RetryOptions = {
+  baseDelayMs?: number;
+  maxRetries?: number;
+  sleep?: (delayMs: number) => Promise<void>;
+};
+
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+export function isShopifyThrottleError(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase().includes('throttled');
+}
+
+export function throttleBackoffDelayMs(attempt: number, baseDelayMs = 1_000): number {
+  return baseDelayMs * 2 ** attempt;
+}
+
+export async function withShopifyThrottleBackoff<T>(
+  operation: () => Promise<T>,
+  { baseDelayMs = 1_000, maxRetries = 4, sleep: sleepFn = sleep }: RetryOptions = {},
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isShopifyThrottleError(error) || attempt >= maxRetries) {
+        throw error;
+      }
+
+      await sleepFn(throttleBackoffDelayMs(attempt, baseDelayMs));
+    }
+  }
+}
+
 // Lance une bulk operation pour les commandes modifiées depuis `updatedSinceIso` (ou tout).
 export async function startBulkOrdersOperation(
   shopDomain: string,
   accessToken: string,
   updatedSinceIso: string | null,
 ): Promise<{ id: string; status: string }> {
-  const data = await shopifyGraphQL<BulkRunResponse>({
-    shopDomain,
-    accessToken,
-    query: BULK_RUN_MUTATION,
-    variables: { query: buildBulkOrdersQuery(updatedSinceIso) },
-  });
+  const data = await withShopifyThrottleBackoff(() =>
+    shopifyGraphQL<BulkRunResponse>({
+      shopDomain,
+      accessToken,
+      query: BULK_RUN_MUTATION,
+      variables: { query: buildBulkOrdersQuery(updatedSinceIso) },
+    }),
+  );
 
   const userErrors = data.bulkOperationRunQuery.userErrors;
   if (userErrors.length > 0) {
@@ -128,11 +165,13 @@ export async function pollBulkOperation(
   shopDomain: string,
   accessToken: string,
 ): Promise<BulkOperation | null> {
-  const data = await shopifyGraphQL<CurrentBulkResponse>({
-    shopDomain,
-    accessToken,
-    query: CURRENT_BULK_OPERATION_QUERY,
-  });
+  const data = await withShopifyThrottleBackoff(() =>
+    shopifyGraphQL<CurrentBulkResponse>({
+      shopDomain,
+      accessToken,
+      query: CURRENT_BULK_OPERATION_QUERY,
+    }),
+  );
   return data.currentBulkOperation;
 }
 
