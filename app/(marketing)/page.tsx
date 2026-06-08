@@ -1,10 +1,15 @@
 import { CockpitMock } from '@/components/marketing/cockpit-mock';
 import { CtaButton } from '@/components/marketing/cta-button';
+import { FaqSection } from '@/components/marketing/faq';
 import { FeaturesBento } from '@/components/marketing/features-bento';
+import { FinalCta } from '@/components/marketing/final-cta';
 import { MarketingFooter } from '@/components/marketing/footer';
+import { FounderSection } from '@/components/marketing/founder';
 import { Reveal } from '@/components/marketing/motion';
 import { MarketingNav } from '@/components/marketing/nav';
+import { PricingSection } from '@/components/marketing/pricing';
 import { ProblemSection } from '@/components/marketing/problem';
+import { StatsSection } from '@/components/marketing/stats';
 import { StepsSection } from '@/components/marketing/steps';
 import { ArrowRight, Check } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -67,6 +72,11 @@ export default async function MarketingPage() {
         <ProblemSection />
         <StepsSection />
         <FeaturesBento />
+        <StatsSection />
+        <FounderSection />
+        <PricingSection />
+        <FaqSection />
+        <FinalCta />
       </main>
 
       <MarketingFooter />
