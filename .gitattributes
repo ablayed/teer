@@ -1,0 +1,4 @@
+# Normalise les fins de ligne : LF dans le dépôt ET dans le working tree.
+# Tue le bruit CRLF local Windows (core.autocrlf) qui faisait échouer
+# `pnpm lint` (Biome attend LF) sans jamais toucher la CI Linux.
+* text=auto eol=lf
