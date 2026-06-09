@@ -117,8 +117,15 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       setAddress('');
       setFieldErrors({});
       setIsOpen(false);
-      router.replace('/commandes');
+      // On revient sur la vue « Toutes » (/commandes nu) car la commande créée
+      // (call_state=to_call) n'apparaît pas dans une vue filtrée (ex. « À livrer
+      // aujourd'hui »). ORDRE CRITIQUE (issue #3) : refresh() AVANT replace().
+      // refresh() invalide TOUT le Router Cache client ; la navigation qui suit
+      // refait alors un rendu serveur frais. Inversé (replace puis refresh), en
+      // build de prod la navigation servait l'entrée bare /commandes cachée et
+      // périmée → la commande tout juste créée restait invisible.
       router.refresh();
+      router.replace('/commandes');
       return;
     }
 
