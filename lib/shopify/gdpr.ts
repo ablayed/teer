@@ -36,7 +36,9 @@ async function findCustomerIdsByShopifyId(
     .from('customer')
     .select('id')
     .eq('merchant_account_id', merchantAccountId)
-    .contains('shopify_customer_gids', [shopifyCustomerId]);
+    // jsonb containment : passer une chaîne JSON (et non un tableau JS) — sinon postgrest-js émet
+    // un littéral tableau Postgres `{...}` invalide en json. Cf. lib/shopify/orders-sync.ts.
+    .contains('shopify_customer_gids', JSON.stringify([shopifyCustomerId]));
   for (const row of byGid ?? []) {
     ids.add((row as { id: string }).id);
   }

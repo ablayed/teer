@@ -46,6 +46,9 @@ export default defineConfig({
     baseURL: process.env.E2E_URL ?? 'http://localhost:3000',
     locale: 'fr-FR',
     timezoneId: 'Africa/Dakar',
+    // Capture une trace au 1er retry (et donc sur l'échec final, retries=1) pour diagnostiquer
+    // les actions qui pendent (call log + snapshot DOM/ARIA au timeout). Uploadée en CI on-failure.
+    trace: 'on-first-retry',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
