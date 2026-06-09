@@ -4,9 +4,9 @@ import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { computeEta, formatEtaDate } from '@/lib/purchases/eta';
 import { allocateFees } from '@/lib/purchases/fee-allocation';
-import type { Database } from '@/lib/supabase/database.types';
+import type { Database, Json } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
+import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -14,6 +14,22 @@ function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+// receive_purchase_lot est SECURITY DEFINER avec garde de rôle NULL-safe (0043) :
+// l'appelant DOIT être membre (current_member_role non NULL) sinon « forbidden ».
+// On l'appelle donc via le client authentifié (owner) — jamais en service-role,
+// qui n'a pas d'auth.uid() et serait rejeté.
+function receivePurchaseLotRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'receive_purchase_lot',
+    args: {
+      p_lot_id: string;
+      p_merchant_account_id: string;
+      p_actor_id: string;
+      p_lines: Json;
+    },
+  ) => Promise<{ data: null; error: { message: string } | null }>;
 }
 
 const lotBaseSchema = z.object({
@@ -261,13 +277,14 @@ export const receiveLotAction = requireRole('owner')
       landed_unit_cost: allocated[i].landedUnitCost,
     }));
 
-    // Appel RPC atomique — une transaction Postgres (0034 appliquée en prod,
-    // receive_purchase_lot typé nativement dans database.types.ts).
-    const { error: rpcErr } = await admin.rpc('receive_purchase_lot', {
+    // Appel RPC atomique — une transaction Postgres (0034 appliquée en prod).
+    // Via le client authentifié (owner) : la garde NULL-safe 0043 rejette le service-role.
+    const receive = receivePurchaseLotRpc(ctx.supabase);
+    const { error: rpcErr } = await receive('receive_purchase_lot', {
       p_lot_id: parsedInput.lotId,
       p_merchant_account_id: merchantAccountId,
       p_actor_id: ctx.user.id,
-      p_lines: linesJson,
+      p_lines: linesJson as Json,
     });
 
     if (rpcErr) return { ok: false as const, message: rpcErr.message };
