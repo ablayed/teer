@@ -1,13 +1,33 @@
-import { AnalyticsProvider } from '@/components/analytics-provider';
-import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { env } from '@/lib/env';
 import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata, Viewport } from 'next';
-import { NextIntlClientProvider } from 'next-intl';
-import { getMessages, getTranslations } from 'next-intl/server';
+import { getTranslations } from 'next-intl/server';
+import { Fraunces } from 'next/font/google';
 import type { ReactNode } from 'react';
 import './globals.css';
+
+// Serif éditorial de marque. On charge des instances STATIQUES (pas le fichier
+// variable, plus lourd) et on ne PRELOAD que le roman latin — c'est ce que peint
+// le H1 hero (élément LCP). 400 = titres, 600 = numéros d'étapes.
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  weight: ['400', '600'],
+  display: 'swap',
+  variable: '--font-fraunces',
+  preload: true,
+});
+
+// Italique réservé aux mots d'accent (« Livrez. »). Hors chemin critique : non
+// preloadé, chargé après coup (swap), métriquement compatible (pas de CLS).
+const frauncesItalic = Fraunces({
+  subsets: ['latin'],
+  weight: ['400'],
+  style: 'italic',
+  display: 'swap',
+  variable: '--font-fraunces-italic',
+  preload: false,
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const common = await getTranslations('common');
@@ -32,15 +52,15 @@ export const viewport: Viewport = {
   colorScheme: 'light',
 };
 
-export default async function RootLayout({ children }: { children: ReactNode }) {
-  const messages = await getMessages();
-
+// Le root layout reste 100 % Server Component, sans provider client : la landing
+// n'hydrate aucun contexte applicatif. Le NextIntlClientProvider (i18n côté
+// client) est fourni uniquement par les routes qui en ont besoin : (app),
+// /connexion, /onboarding. Les Server Components lisent l'i18n via getTranslations.
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr-SN">
+    <html lang="fr-SN" className={`${fraunces.variable} ${frauncesItalic.variable}`}>
       <body className={`${GeistSans.variable} ${GeistMono.variable} min-h-dvh bg-canvas`}>
-        <AnalyticsProvider />
-        <ServiceWorkerRegister />
-        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        {children}
       </body>
     </html>
   );

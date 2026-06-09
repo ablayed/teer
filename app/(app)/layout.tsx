@@ -1,6 +1,10 @@
+import { AnalyticsProvider } from '@/components/analytics-provider';
 import { AppShell } from '@/components/app-shell/app-shell';
+import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { getMerchantAccount } from '@/lib/actions/merchant';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { NextIntlClientProvider } from 'next-intl';
+import { getMessages } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 
@@ -27,6 +31,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     .limit(1)
     .maybeSingle();
   const currentMember = member as { role: string } | null;
+  const messages = await getMessages();
 
-  return <AppShell currentRole={currentMember?.role ?? null}>{children}</AppShell>;
+  return (
+    <NextIntlClientProvider messages={messages}>
+      <AnalyticsProvider />
+      <ServiceWorkerRegister />
+      <AppShell currentRole={currentMember?.role ?? null}>{children}</AppShell>
+    </NextIntlClientProvider>
+  );
 }
