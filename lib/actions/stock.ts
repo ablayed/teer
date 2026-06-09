@@ -5,9 +5,18 @@ import { env } from '@/lib/env';
 import { parseItemsummary, resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
+import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+
+type PostStockMovementArgs = Database['public']['Functions']['post_stock_movement']['Args'];
+
+function postStockMovementRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'post_stock_movement',
+    args: PostStockMovementArgs,
+  ) => Promise<{ data: string | null; error: { message: string } | null }>;
+}
 
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -90,14 +99,9 @@ export const purchaseInAction = requireRole('owner', 'manager')
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
-    const merchantAccountId = await getMerchantAccountId(ctx.user.id);
-    if (!merchantAccountId) {
-      return { ok: false as const, message: 'Compte marchand introuvable.' };
-    }
-
-    const admin = createSupabaseAdminClient();
-    const { error } = await admin.rpc('post_stock_movement', {
-      p_merchant_account_id: merchantAccountId,
+    const post = postStockMovementRpc(ctx.supabase);
+    const { error } = await post('post_stock_movement', {
+      p_merchant_account_id: ctx.member.merchantAccountId,
       p_product_id: parsedInput.productId,
       p_movement_type: 'purchase_in',
       p_qty: parsedInput.qty,
@@ -126,14 +130,9 @@ export const manualAdjustmentAction = requireRole('owner', 'manager')
       return { ok: false as const, message: 'La quantité ne peut pas être 0.' };
     }
 
-    const merchantAccountId = await getMerchantAccountId(ctx.user.id);
-    if (!merchantAccountId) {
-      return { ok: false as const, message: 'Compte marchand introuvable.' };
-    }
-
-    const admin = createSupabaseAdminClient();
-    const { error } = await admin.rpc('post_stock_movement', {
-      p_merchant_account_id: merchantAccountId,
+    const post = postStockMovementRpc(ctx.supabase);
+    const { error } = await post('post_stock_movement', {
+      p_merchant_account_id: ctx.member.merchantAccountId,
       p_product_id: parsedInput.productId,
       p_movement_type: 'manual_adjustment',
       p_qty: parsedInput.qty,
@@ -158,14 +157,9 @@ export const courierReturnAction = requireRole('owner', 'manager')
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
-    const merchantAccountId = await getMerchantAccountId(ctx.user.id);
-    if (!merchantAccountId) {
-      return { ok: false as const, message: 'Compte marchand introuvable.' };
-    }
-
-    const admin = createSupabaseAdminClient();
-    const { error } = await admin.rpc('post_stock_movement', {
-      p_merchant_account_id: merchantAccountId,
+    const post = postStockMovementRpc(ctx.supabase);
+    const { error } = await post('post_stock_movement', {
+      p_merchant_account_id: ctx.member.merchantAccountId,
       p_product_id: parsedInput.productId,
       p_movement_type: 'courier_return',
       p_qty: parsedInput.qty,

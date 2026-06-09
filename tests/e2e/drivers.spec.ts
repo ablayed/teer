@@ -28,6 +28,12 @@ const supabaseUrl =
   '';
 const serviceRoleKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? localEnv.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const anonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+  process.env.SUPABASE_ANON_KEY ??
+  localEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+  localEnv.SUPABASE_ANON_KEY ??
+  '';
 const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
 const password = 'Mot-de-passe-e2e-2026!';
 
@@ -39,6 +45,17 @@ function adminClient(): AdminClient {
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+// Client authentifié (membre) pour les seeds qui passent par post_stock_movement :
+// depuis 0043 cette RPC exige current_member_role non NULL → le service-role est rejeté.
+async function signInClient(email: string): Promise<AdminClient> {
+  const client = createClient(supabaseUrl, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return client;
 }
 
 function e2eEmail(label: string): string {
@@ -193,7 +210,9 @@ test('désactiver un livreur avec données: inactif, historique + réconciliatio
 
   // Stock en main via le chemin dispatch (compté par reconcile_product_stock) :
   // purchase_in 10 puis dispatch -3 attribué au livreur → en main 3, entrepôt 7.
-  await fixture.admin.rpc('post_stock_movement', {
+  // post_stock_movement exige un membre (garde NULL-safe 0043) → client owner authentifié.
+  const ownerClient = await signInClient(fixture.email);
+  await ownerClient.rpc('post_stock_movement', {
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -202,7 +221,7 @@ test('désactiver un livreur avec données: inactif, historique + réconciliatio
     p_created_by: fixture.userIds[0],
     p_unit_cost: 5000,
   });
-  await fixture.admin.rpc('post_stock_movement', {
+  await ownerClient.rpc('post_stock_movement', {
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'dispatch',
