@@ -96,7 +96,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: supabase start
       - run: supabase db reset --local
-      - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
+      # Ces variables alimentent À LA FOIS le build (NEXT_PUBLIC_* inlinés au build-time) et
+      # le serveur `next start`. Mises dans $GITHUB_ENV pour être héritées par toutes les étapes.
+      - run: |
+          {
+            echo "SUPABASE_URL=http://127.0.0.1:54321"
+            echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321"
+            echo "RESEND_API_KEY=test-resend-api-key"
+          } >> "$GITHUB_ENV"
       - run: |
           while IFS= read -r line; do
             case "$line" in
@@ -123,6 +130,9 @@ jobs:
       # La cible iphone-14 du playwright.config tourne sous webkit ; chromium seul faisait
       # échouer tous les scénarios iphone-14 (Executable doesn't exist). On installe les deux.
       - run: pnpm exec playwright install --with-deps chromium webkit
+      # Build de production précompilé : déterministe sous la matrice (le dev-server compilait
+      # à la demande -> timeouts 90s aléatoires). next start (webServer Playwright en CI) le sert.
+      - run: pnpm build
       - run: pnpm test:e2e
         env:
           SUPABASE_URL: ${{ env.SUPABASE_URL }}

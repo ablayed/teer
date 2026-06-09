@@ -53,7 +53,12 @@ export default defineConfig({
     { name: 'iphone-14', use: { ...devices['iPhone 14'] } },
   ],
   webServer: {
-    command: 'pnpm dev',
+    // En CI : build de PRODUCTION précompilé (next start) plutôt que le dev-server. Le dev
+    // compile les routes à la demande et sature sous la matrice (webkit + chromium), ce qui
+    // provoquait des timeouts 90s non déterministes (cf. pixel-7 finances). `next start` sert
+    // un .next déjà bâti -> déterministe. Le build est fait dans l'étape CI précédente.
+    // En local : `pnpm dev` (itération rapide ; reuseExistingServer réutilise un dev déjà lancé).
+    command: process.env.CI ? 'pnpm start' : 'pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
