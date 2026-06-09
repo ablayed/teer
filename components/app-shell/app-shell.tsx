@@ -21,7 +21,14 @@ export async function AppShell({
         {t('skipToContent')}
       </a>
       <Sidebar currentRole={currentRole} />
-      <div className="min-h-dvh px-4 pt-6 pb-20 md:ml-[280px] md:px-8 md:pt-10 md:pb-8">
+      {/*
+        Mobile : zone de défilement bornée AU-DESSUS de la bottom-tab-nav fixe
+        (h = 64px + safe-area). Sans hauteur bornée, un élément amené en bas du viewport
+        (scrollIntoView) tombe SOUS la nav (z-40, opaque) et devient inatteignable au clic —
+        bug réel reproduit sur pixel-7 (clic « Ajouter une dépense » intercepté par la nav).
+        Desktop (md+) : pas de bottom-nav (md:hidden) → défilement document classique.
+      */}
+      <div className="h-[calc(100dvh-64px-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain px-4 pt-6 pb-6 md:ml-[280px] md:h-auto md:min-h-dvh md:overflow-visible md:px-8 md:pt-10 md:pb-8">
         {children}
       </div>
       <BottomTabNav currentRole={currentRole} />
