@@ -950,6 +950,7 @@ export type Database = {
           id: string;
           items_summary: Json | null;
           merchant_account_id: string;
+          next_action_at: string | null;
           next_contact_at: string | null;
           order_number: string | null;
           order_state: string | null;
@@ -963,6 +964,7 @@ export type Database = {
           shopify_fulfillment_status: string | null;
           shopify_order_id: string | null;
           shopify_updated_at: string | null;
+          sort_at: string | null;
           source: string | null;
           total_amount: number;
           updated_at: string;
@@ -986,6 +988,7 @@ export type Database = {
           id?: string;
           items_summary?: Json | null;
           merchant_account_id: string;
+          next_action_at?: string | null;
           next_contact_at?: string | null;
           order_number?: string | null;
           order_state?: string | null;
@@ -999,6 +1002,7 @@ export type Database = {
           shopify_fulfillment_status?: string | null;
           shopify_order_id?: string | null;
           shopify_updated_at?: string | null;
+          sort_at?: string | null;
           source?: string | null;
           total_amount?: number;
           updated_at?: string;
@@ -1022,6 +1026,7 @@ export type Database = {
           id?: string;
           items_summary?: Json | null;
           merchant_account_id?: string;
+          next_action_at?: string | null;
           next_contact_at?: string | null;
           order_number?: string | null;
           order_state?: string | null;
@@ -1035,6 +1040,7 @@ export type Database = {
           shopify_fulfillment_status?: string | null;
           shopify_order_id?: string | null;
           shopify_updated_at?: string | null;
+          sort_at?: string | null;
           source?: string | null;
           total_amount?: number;
           updated_at?: string;
@@ -1773,6 +1779,39 @@ export type Database = {
           tier: string;
         }[];
       };
+      list_orders_paginated: {
+        Args: {
+          p_cursor_id?: string;
+          p_cursor_sort?: string;
+          p_limit?: number;
+          p_merchant_id: string;
+          p_search?: string;
+          p_view?: string;
+        };
+        Returns: {
+          call_state: string;
+          cash_state: string;
+          cod_status: string;
+          created_at: string;
+          created_at_shopify: string;
+          currency: string;
+          customer_full_name: string;
+          customer_id: string;
+          customer_phone: string;
+          delivery_state: string;
+          id: string;
+          items_summary: Json;
+          next_action_at: string;
+          next_contact_at: string;
+          order_number: string;
+          order_state: string;
+          scheduled_for: string;
+          shipping_address: Json;
+          sort_at: string;
+          source: string;
+          total_amount: number;
+        }[];
+      };
       log_ia_tool_audit: {
         Args: {
           p_allowed: boolean;
@@ -1787,6 +1826,19 @@ export type Database = {
         Returns: string;
       };
       order_items_search_text: { Args: { p_items: Json }; Returns: string };
+      orders_view_counts: {
+        Args: { p_merchant_id: string; p_search?: string };
+        Returns: {
+          a_appeler: number;
+          a_livrer_aujourdhui: number;
+          annulees: number;
+          cash_a_remettre: number;
+          confirmee: number;
+          retours: number;
+          tentee_a_rappeler: number;
+          toutes: number;
+        }[];
+      };
       post_stock_movement: {
         Args: {
           p_created_by: string;

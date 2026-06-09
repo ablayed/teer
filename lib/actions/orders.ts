@@ -3,6 +3,11 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { performTransitionForContext } from '@/lib/actions/transitions';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
+import {
+  type OrderSavedViewId,
+  orderSavedViewIds,
+  parseOrderSavedViewId,
+} from '@/lib/domain/order-saved-views';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import {
   type TransitionAction,
@@ -32,6 +37,7 @@ type CustomerDetail = Pick<
   'email' | 'full_name' | 'phone' | 'shipping_address'
 >;
 export type DeliveryAddress = Tables<'delivery_address'>;
+type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
 
 export type OrderListItem = Pick<
   Tables<'orders'>,
@@ -48,10 +54,12 @@ export type OrderListItem = Pick<
   | 'next_contact_at'
   | 'order_state'
   | 'order_number'
+  | 'sort_at'
   | 'scheduled_for'
   | 'shipping_address'
   | 'source'
   | 'total_amount'
+  | 'next_action_at'
 > & {
   allowedActions: TransitionAction[];
   customer: CustomerSummary | null;
@@ -70,6 +78,33 @@ type GetOrdersInput = {
 
 type SupabaseServerClient = SupabaseClient<Database>;
 const manualOrderSources = ['manual', 'whatsapp', 'instagram', 'tiktok', 'facebook'] as const;
+const ORDERS_PAGE_SIZE = 25;
+
+type CurrentMember = {
+  merchantAccountId: string;
+  role: TeamRole;
+};
+
+export type OrderListCursor = {
+  id: string;
+  sort: string;
+};
+
+export type OrdersViewCounts = Record<OrderSavedViewId, number>;
+
+export type OrdersPageData = {
+  activeView: OrderSavedViewId;
+  hasMore: boolean;
+  nextCursor: OrderListCursor | null;
+  orders: OrderListItem[];
+  reliabilityTiers: Record<string, ReliabilityTier>;
+  search: string;
+  viewCounts: OrdersViewCounts;
+};
+
+type PaginatedOrderRpcRow =
+  Database['public']['Functions']['list_orders_paginated']['Returns'][number];
+type OrdersViewCountsRow = Database['public']['Functions']['orders_view_counts']['Returns'][number];
 
 export type OrderTransitionTimelineEvent = {
   id: string;
@@ -116,6 +151,11 @@ function toOrderStatus(value: string | null): OrderStatus | null {
 }
 
 async function getCurrentMemberRole(supabase: SupabaseServerClient): Promise<TeamRole | null> {
+  const member = await getCurrentMember(supabase);
+  return member?.role ?? null;
+}
+
+async function getCurrentMember(supabase: SupabaseServerClient): Promise<CurrentMember | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -126,7 +166,7 @@ async function getCurrentMemberRole(supabase: SupabaseServerClient): Promise<Tea
 
   const { data: member, error } = await supabase
     .from('merchant_member')
-    .select('role')
+    .select('merchant_account_id, role')
     .eq('user_id', user.id)
     .limit(1)
     .maybeSingle();
@@ -135,7 +175,10 @@ async function getCurrentMemberRole(supabase: SupabaseServerClient): Promise<Tea
     return null;
   }
 
-  return member.role;
+  return {
+    merchantAccountId: member.merchant_account_id,
+    role: member.role,
+  };
 }
 
 function allowedActionsForOrderRow(
@@ -155,6 +198,187 @@ function revalidateOrderPaths(orderId: string) {
 
 function toCallOutcome(value: string): CallOutcome {
   return isCallOutcome(value) ? value : 'SANS_REPONSE';
+}
+
+function mapPaginatedOrderRow(order: PaginatedOrderRpcRow, role: TeamRole): OrderListItem {
+  const mapped: Omit<OrderListItem, 'allowedActions'> = {
+    id: order.id,
+    customer_id: order.customer_id,
+    order_number: order.order_number,
+    total_amount: order.total_amount,
+    currency: order.currency,
+    cod_status: order.cod_status,
+    order_state: order.order_state,
+    call_state: order.call_state,
+    delivery_state: order.delivery_state,
+    cash_state: order.cash_state,
+    items_summary: order.items_summary,
+    shipping_address: order.shipping_address,
+    created_at: order.created_at,
+    created_at_shopify: order.created_at_shopify,
+    next_contact_at: order.next_contact_at,
+    scheduled_for: order.scheduled_for,
+    source: order.source,
+    sort_at: order.sort_at,
+    next_action_at: order.next_action_at,
+    customer:
+      order.customer_full_name || order.customer_phone
+        ? {
+            full_name: order.customer_full_name,
+            phone: order.customer_phone,
+          }
+        : null,
+  };
+
+  return {
+    ...mapped,
+    allowedActions: allowedActionsForOrderRow(mapped, role),
+  };
+}
+
+function buildNextCursor(
+  orders: OrderListItem[],
+  activeView: OrderSavedViewId,
+): OrderListCursor | null {
+  const lastOrder = orders.at(-1);
+
+  if (!lastOrder) {
+    return null;
+  }
+
+  const sort = activeView === 'tentee-a-rappeler' ? lastOrder.next_action_at : lastOrder.sort_at;
+
+  return sort ? { id: lastOrder.id, sort } : null;
+}
+
+function emptyOrdersViewCounts(): OrdersViewCounts {
+  return {
+    toutes: 0,
+    'a-appeler': 0,
+    'tentee-a-rappeler': 0,
+    confirmee: 0,
+    'a-livrer-aujourdhui': 0,
+    'cash-a-remettre': 0,
+    annulees: 0,
+    retours: 0,
+  };
+}
+
+function mapOrdersViewCounts(row: OrdersViewCountsRow | null | undefined): OrdersViewCounts {
+  if (!row) {
+    return emptyOrdersViewCounts();
+  }
+
+  return {
+    toutes: row.toutes,
+    'a-appeler': row.a_appeler,
+    'tentee-a-rappeler': row.tentee_a_rappeler,
+    confirmee: row.confirmee,
+    'a-livrer-aujourdhui': row.a_livrer_aujourdhui,
+    'cash-a-remettre': row.cash_a_remettre,
+    annulees: row.annulees,
+    retours: row.retours,
+  };
+}
+
+function isReliabilityTier(value: string | null): value is ReliabilityTier {
+  return value === 'new' || value === 'reliable' || value === 'risk' || value === 'watch';
+}
+
+async function getReliabilityTiersForOrders(
+  supabase: SupabaseServerClient,
+  merchantAccountId: string,
+  customerIds: string[],
+): Promise<Record<string, ReliabilityTier>> {
+  const uniqueCustomerIds = [...new Set(customerIds)];
+
+  if (uniqueCustomerIds.length === 0) {
+    return {};
+  }
+
+  const entries = await Promise.all(
+    uniqueCustomerIds.map(async (customerId) => {
+      const { data, error } = await supabase.rpc('get_customer_reliability', {
+        p_customer_id: customerId,
+        p_merchant_id: merchantAccountId,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const tier = data?.[0]?.tier ?? null;
+      return isReliabilityTier(tier) ? ([customerId, tier] as const) : null;
+    }),
+  );
+
+  return Object.fromEntries(
+    entries.filter((entry): entry is readonly [string, ReliabilityTier] => entry !== null),
+  );
+}
+
+async function fetchOrdersPageData({
+  activeView,
+  cursor,
+  member,
+  search,
+  supabase,
+}: {
+  activeView: OrderSavedViewId;
+  cursor: OrderListCursor | null;
+  member: CurrentMember;
+  search: string;
+  supabase: SupabaseServerClient;
+}): Promise<OrdersPageData> {
+  const [ordersResult, countsResult] = await Promise.all([
+    supabase.rpc('list_orders_paginated', {
+      p_cursor_id: cursor?.id ?? undefined,
+      p_cursor_sort: cursor?.sort ?? undefined,
+      p_limit: ORDERS_PAGE_SIZE + 1,
+      p_merchant_id: member.merchantAccountId,
+      p_search: search || undefined,
+      p_view: activeView,
+    }),
+    cursor
+      ? Promise.resolve({ data: null, error: null })
+      : supabase.rpc('orders_view_counts', {
+          p_merchant_id: member.merchantAccountId,
+          p_search: search || undefined,
+        }),
+  ]);
+
+  if (ordersResult.error) {
+    throw ordersResult.error;
+  }
+
+  if (countsResult.error) {
+    throw countsResult.error;
+  }
+
+  const rows = ordersResult.data ?? [];
+  const hasMore = rows.length > ORDERS_PAGE_SIZE;
+  const visibleRows = hasMore ? rows.slice(0, ORDERS_PAGE_SIZE) : rows;
+  const orders = visibleRows.map((order) => mapPaginatedOrderRow(order, member.role));
+  const reliabilityTiers =
+    activeView === 'a-appeler'
+      ? await getReliabilityTiersForOrders(
+          supabase,
+          member.merchantAccountId,
+          orders
+            .map((order) => order.customer_id)
+            .filter((customerId): customerId is string => Boolean(customerId)),
+        )
+      : {};
+
+  return {
+    activeView,
+    hasMore,
+    nextCursor: hasMore ? buildNextCursor(orders, activeView) : null,
+    orders,
+    reliabilityTiers,
+    search,
+    viewCounts: cursor ? emptyOrdersViewCounts() : mapOrdersViewCounts(countsResult.data?.[0]),
+  };
 }
 
 async function writeOrderAuditLog({
@@ -300,7 +524,7 @@ export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<Ord
   let query = supabase
     .from('orders')
     .select(
-      'id, customer_id, order_number, total_amount, currency, cod_status, order_state, call_state, delivery_state, cash_state, items_summary, shipping_address, created_at, created_at_shopify, next_contact_at, scheduled_for, source, customer:customer_id(full_name, phone)',
+      'id, customer_id, order_number, total_amount, currency, cod_status, order_state, call_state, delivery_state, cash_state, items_summary, shipping_address, created_at, created_at_shopify, next_contact_at, scheduled_for, source, sort_at, next_action_at, customer:customer_id(full_name, phone)',
     )
     .order('created_at_shopify', { ascending: false, nullsFirst: false });
 
@@ -319,6 +543,74 @@ export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<Ord
     allowedActions: allowedActionsForOrderRow(order, role),
   }));
 }
+
+export async function getOrdersPageData({
+  cursor = null,
+  search = '',
+  view,
+}: {
+  cursor?: OrderListCursor | null;
+  search?: string;
+  view?: string;
+} = {}): Promise<OrdersPageData> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const member = await getCurrentMember(supabase);
+
+  if (!member) {
+    return {
+      activeView: parseOrderSavedViewId(view),
+      hasMore: false,
+      nextCursor: null,
+      orders: [],
+      reliabilityTiers: {},
+      search,
+      viewCounts: emptyOrdersViewCounts(),
+    };
+  }
+
+  return fetchOrdersPageData({
+    activeView: parseOrderSavedViewId(view),
+    cursor,
+    member,
+    search,
+    supabase,
+  });
+}
+
+export const loadMoreOrdersAction = requireRole('owner', 'manager', 'agent')
+  .metadata({ actionName: 'orders.load_more', section: 'orders' })
+  .inputSchema(
+    z.object({
+      cursor: z
+        .object({
+          id: z.string().uuid(),
+          sort: z.string().trim().min(1),
+        })
+        .nullable(),
+      search: z.string().default(''),
+      view: z.enum(orderSavedViewIds).default('toutes'),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const data = await fetchOrdersPageData({
+      activeView: parsedInput.view,
+      cursor: parsedInput.cursor,
+      member: {
+        merchantAccountId: ctx.member.merchantAccountId,
+        role: ctx.member.role,
+      },
+      search: parsedInput.search,
+      supabase: asTypedSupabaseClient(ctx.supabase),
+    });
+
+    return {
+      ok: true as const,
+      hasMore: data.hasMore,
+      nextCursor: data.nextCursor,
+      orders: data.orders,
+      reliabilityTiers: data.reliabilityTiers,
+    };
+  });
 
 export async function getOrderById(id: string): Promise<OrderDetail | null> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());

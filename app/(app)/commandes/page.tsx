@@ -1,28 +1,16 @@
-import { CodStatusBadge } from '@/components/orders/cod-status-badge';
-import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
 import { NewOrderForm } from '@/components/orders/new-order-form';
-import { OrderInlineActions } from '@/components/orders/order-inline-actions';
+import { OrdersPageLoader } from '@/components/orders/orders-page-loader';
 import { OrdersSearchInput } from '@/components/orders/orders-search-input';
 import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantAccount } from '@/lib/actions/merchant';
-import { type OrderListItem, getOrders } from '@/lib/actions/orders';
+import { getOrdersPageData } from '@/lib/actions/orders';
 import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
-import {
-  compareOrdersForSavedView,
-  matchesOrderSavedView,
-  orderSavedViews,
-  parseOrderSavedViewId,
-} from '@/lib/domain/order-saved-views';
-import { orderStatusLabels } from '@/lib/domain/order-state-machine';
-import { formatDateRelative } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
-import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
-import type { Database, Json } from '@/lib/supabase/database.types';
+import { orderSavedViews } from '@/lib/domain/order-saved-views';
+import { normalizeOrderSearch } from '@/lib/orders/search';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
 import { AlertCircle, ArrowRight, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -36,10 +24,6 @@ type CommandesPageProps = {
   }>;
 };
 
-type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
-type ReliabilityRow =
-  Database['public']['Functions']['get_customer_reliability']['Returns'][number];
-
 const syncErrorCodes = ['no_shop', 'sync_failed', 'token_error'] as const;
 type SyncErrorCode = (typeof syncErrorCodes)[number];
 
@@ -47,111 +31,28 @@ function isSyncErrorCode(value: string): value is SyncErrorCode {
   return syncErrorCodes.includes(value as SyncErrorCode);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function stringField(record: Record<string, unknown>, key: string): string | null {
-  const value = record[key];
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function formatOrderAddress(value: Json | null): string | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const parts = [
-    stringField(value, 'address1'),
-    stringField(value, 'address2'),
-    stringField(value, 'city'),
-    stringField(value, 'province'),
-    stringField(value, 'country'),
-  ].filter(Boolean);
-
-  return parts.length > 0 ? parts.join(', ') : null;
-}
-
-function getCustomerReliabilityRpc(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-) {
-  const rpc = supabase.rpc.bind(supabase) as unknown as (
-    fn: 'get_customer_reliability',
-    args: { p_customer_id: string; p_merchant_id: string },
-  ) => Promise<{ data: ReliabilityRow[] | null; error: unknown }>;
-
-  return rpc;
-}
-
-function isReliabilityTier(value: string | null): value is ReliabilityTier {
-  return value === 'new' || value === 'reliable' || value === 'risk' || value === 'watch';
-}
-
-async function getReliabilityTiers(customerIds: string[]): Promise<Map<string, ReliabilityTier>> {
-  const uniqueCustomerIds = [...new Set(customerIds)];
-
-  if (uniqueCustomerIds.length === 0) {
-    return new Map();
-  }
-
+// Compte total des commandes du marchand (toutes vues, hors recherche), scopé
+// par RLS. Sert uniquement à distinguer « compte vide » de « recherche sans
+// résultat » ; on l'évite quand la recherche est vide (viewCounts.toutes suffit).
+async function countAllOrders(): Promise<number> {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return new Map();
-  }
-
-  const { data: memberRow } = await supabase
-    .from('merchant_member')
-    .select('merchant_account_id')
-    .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle();
-  const member = memberRow as { merchant_account_id: string } | null;
-
-  if (!member) {
-    return new Map();
-  }
-
-  const entries = await Promise.all(
-    uniqueCustomerIds.map(async (customerId) => {
-      const { data } = await getCustomerReliabilityRpc(supabase)('get_customer_reliability', {
-        p_customer_id: customerId,
-        p_merchant_id: member.merchant_account_id,
-      });
-      const tier = data?.[0]?.tier ?? null;
-
-      return isReliabilityTier(tier) ? ([customerId, tier] as const) : null;
-    }),
-  );
-
-  return new Map(entries.filter((entry): entry is readonly [string, ReliabilityTier] => !!entry));
-}
-
-function buildVisibleOrders(
-  orders: OrderListItem[],
-  activeView: ReturnType<typeof parseOrderSavedViewId>,
-) {
-  return orders
-    .filter((order) => matchesOrderSavedView(order, activeView))
-    .sort((left, right) => compareOrdersForSavedView(left, right, activeView));
+  const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true });
+  return count ?? 0;
 }
 
 export default async function CommandesPage({ searchParams }: CommandesPageProps) {
   const t = await getTranslations('orders');
   const clientsT = await getTranslations('clients');
   const params = await searchParams;
-  const activeView = parseOrderSavedViewId(params.vue);
   const search = normalizeOrderSearch(params.q);
-  const [orders, shopConnection, merchant, productCatalog, drivers] = await Promise.all([
-    getOrders(),
+  const [pageData, shopConnection, merchant, productCatalog, drivers] = await Promise.all([
+    getOrdersPageData({ search, view: params.vue }),
     getShopConnection(),
     getMerchantAccount(),
     getProductCatalogPageData(),
     getActiveDrivers(),
   ]);
+  const activeView = pageData.activeView;
   const productOptions = productCatalog.ok
     ? productCatalog.products
         .filter((product) => product.is_active)
@@ -162,34 +63,27 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         }))
     : [];
 
-  const searchedOrders = filterOrdersBySearch(orders, search);
-  const visibleOrders = buildVisibleOrders(searchedOrders, activeView);
   const viewCounts = orderSavedViews.map((view) => ({
     id: view.id,
     label: view.label,
-    count: searchedOrders.filter((order) => matchesOrderSavedView(order, view.id)).length,
+    count: pageData.viewCounts[view.id],
   }));
-  const reliabilityTiers =
-    activeView === 'a-appeler'
-      ? await getReliabilityTiers(
-          visibleOrders
-            .map((order) => order.customer_id)
-            .filter((customerId): customerId is string => Boolean(customerId)),
-        )
-      : new Map<string, ReliabilityTier>();
   const reliabilityLabels = {
     new: clientsT('tiers.new'),
     reliable: clientsT('tiers.reliable'),
     risk: clientsT('tiers.risk'),
     watch: clientsT('tiers.watch'),
   };
+  const searchedTotal = pageData.viewCounts.toutes;
+  const totalOrders = search.length > 0 ? await countAllOrders() : searchedTotal;
+  const visibleCount = pageData.viewCounts[activeView];
   const syncedCount = params.synced ? Number.parseInt(params.synced, 10) : null;
   const syncError =
     params.sync_error && isSyncErrorCode(params.sync_error) ? params.sync_error : null;
-  const showNoShop = orders.length === 0 && !shopConnection;
-  const showNoOrdersWithShop = orders.length === 0 && shopConnection;
-  const showSearchEmpty = orders.length > 0 && searchedOrders.length === 0 && search.length > 0;
-  const showFilteredEmpty = searchedOrders.length > 0 && visibleOrders.length === 0;
+  const showNoShop = totalOrders === 0 && !shopConnection;
+  const showNoOrdersWithShop = totalOrders === 0 && shopConnection;
+  const showSearchEmpty = totalOrders > 0 && searchedTotal === 0 && search.length > 0;
+  const showFilteredEmpty = searchedTotal > 0 && visibleCount === 0;
 
   return (
     <main className="space-y-6" id="main">
@@ -259,71 +153,20 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         </section>
       ) : null}
 
-      {visibleOrders.length > 0 ? (
-        <section className="space-y-3">
-          {visibleOrders.map((order) => (
-            <article
-              className="rounded-lg border border-border bg-surface p-4 shadow-1 transition-colors hover:bg-canvas/50"
-              key={order.id}
-            >
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <Link className="min-w-0 flex-1 space-y-3" href={`/commandes/${order.id}`}>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="font-mono text-sm font-semibold text-muted">
-                      {order.order_number ?? t('table.emptyValue')}
-                    </p>
-                    <CodStatusBadge status={order.cod_status as keyof typeof orderStatusLabels} />
-                    <span className="text-sm text-muted">
-                      {orderStatusLabels[order.cod_status as keyof typeof orderStatusLabels]}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold">
-                        {order.customer?.full_name ?? t('table.emptyValue')}
-                      </p>
-                      <CustomerReliabilityBadge
-                        labels={reliabilityLabels}
-                        tier={
-                          order.customer_id
-                            ? (reliabilityTiers.get(order.customer_id) ?? null)
-                            : null
-                        }
-                      />
-                    </div>
-                    <p className="text-sm text-muted">
-                      {formatDateRelative(order.created_at_shopify ?? order.created_at)}
-                    </p>
-                  </div>
-                </Link>
-
-                <div className="flex flex-col items-start gap-3 md:items-end">
-                  <p className="text-lg font-semibold">
-                    {formatMoney(order.total_amount, order.currency)}
-                  </p>
-                  <OrderInlineActions
-                    allowedActions={order.allowedActions}
-                    drivers={drivers}
-                    orderId={order.id}
-                    phone={order.customer?.phone ?? null}
-                    whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}
-                    whatsappUrl={buildWhatsAppConfirmationUrl({
-                      address: formatOrderAddress(order.shipping_address),
-                      currency: order.currency,
-                      customerFirstName: firstName(order.customer?.full_name),
-                      itemsSummary: order.items_summary,
-                      orderNumber: order.order_number,
-                      phone: order.customer?.phone ?? null,
-                      shopName: merchant?.name ?? 'T\u00eb\u00ebr',
-                      totalAmount: order.total_amount,
-                    })}
-                  />
-                </div>
-              </div>
-            </article>
-          ))}
-        </section>
+      {pageData.orders.length > 0 ? (
+        <OrdersPageLoader
+          activeView={activeView}
+          drivers={drivers}
+          emptyValueLabel={t('table.emptyValue')}
+          initialHasMore={pageData.hasMore}
+          initialNextCursor={pageData.nextCursor}
+          initialOrders={pageData.orders}
+          initialReliabilityTiers={pageData.reliabilityTiers}
+          merchantName={merchant?.name ?? 'Tëër'}
+          reliabilityLabels={reliabilityLabels}
+          searchQuery={search}
+          whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}
+        />
       ) : null}
     </main>
   );

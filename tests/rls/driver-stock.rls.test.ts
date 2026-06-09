@@ -142,10 +142,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   skipIfNoServiceRole(
     'allocation et retour de lot déplacent le stock entrepôt ↔ livreur ; invariant conservé',
     async () => {
-      const { admin, merchantAccountId, userId } = await createOwnerFixture('lot');
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot');
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
-      const post = postMovementRpc(admin);
+      const ownerClient = await signIn(email);
+      const post = postMovementRpc(ownerClient);
 
       // purchase_in 100 → entrepôt 100
       await post('post_stock_movement', {
@@ -211,10 +212,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   skipIfNoServiceRole(
     'réconciliation après allocation de lot : 0 écart + rebuild reconstruit la bonne valeur',
     async () => {
-      const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-recon');
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot-recon');
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
-      const post = postMovementRpc(admin);
+      const ownerClient = await signIn(email);
+      const post = postMovementRpc(ownerClient);
 
       // purchase_in 100 puis allocate_to_courier -30 → entrepôt 70.
       await post('post_stock_movement', {
@@ -265,10 +267,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   );
 
   skipIfNoServiceRole('idempotence : même clé d’allocation de lot → no-op', async () => {
-    const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-idem');
+    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot-idem');
     const productId = await createProduct(admin, merchantAccountId);
     const driverId = await createDriver(admin, merchantAccountId);
-    const post = postMovementRpc(admin);
+    const ownerClient = await signIn(email);
+    const post = postMovementRpc(ownerClient);
 
     await post('post_stock_movement', {
       p_merchant_account_id: merchantAccountId,
@@ -312,9 +315,10 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   });
 
   skipIfNoServiceRole('un lot sans livreur est rejeté (contrainte)', async () => {
-    const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-nodriver');
+    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot-nodriver');
     const productId = await createProduct(admin, merchantAccountId);
-    const post = postMovementRpc(admin);
+    const ownerClient = await signIn(email);
+    const post = postMovementRpc(ownerClient);
 
     const { error } = await post('post_stock_movement', {
       p_merchant_account_id: merchantAccountId,

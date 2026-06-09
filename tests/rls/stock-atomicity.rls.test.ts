@@ -562,14 +562,15 @@ describe('idempotence post_stock_movement', () => {
   skipIfNoServiceRole(
     'même idempotency_key → second appel retourne null, position inchangée',
     async () => {
-      const { admin, merchantAccountId, userId } = await createOwnerFixture('idem');
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('idem');
       const productId = await createProduct(admin, merchantAccountId);
       await seedProductStock(admin, productId, merchantAccountId, 100);
+      const ownerClient = await signIn(email);
 
       const key = `idem-test:${productId}:purchase_in`;
 
       // Premier appel
-      const { data: id1, error: err1 } = await admin.rpc('post_stock_movement', {
+      const { data: id1, error: err1 } = await ownerClient.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -589,7 +590,7 @@ describe('idempotence post_stock_movement', () => {
       expect(stockAfterFirst?.qty_on_hand).toBe(110);
 
       // Second appel avec la même clé → retourne null, position inchangée
-      const { data: id2, error: err2 } = await admin.rpc('post_stock_movement', {
+      const { data: id2, error: err2 } = await ownerClient.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -621,10 +622,11 @@ describe('réconciliation zéro écart après valider→dispatch→livrer', () =
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('recon');
       const productId = await createProduct(admin, merchantAccountId);
+      const ownerClient = await signIn(email);
       // État initial posté via le ledger (purchase_in 40) — et NON un upsert
       // direct : ledger et projection doivent concorder pour que la
       // réconciliation ne trouve aucun écart.
-      await admin.rpc('post_stock_movement', {
+      await ownerClient.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
