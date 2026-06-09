@@ -120,7 +120,9 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
-      - run: pnpm exec playwright install --with-deps chromium
+      # La cible iphone-14 du playwright.config tourne sous webkit ; chromium seul faisait
+      # échouer tous les scénarios iphone-14 (Executable doesn't exist). On installe les deux.
+      - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm test:e2e
         env:
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
