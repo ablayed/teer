@@ -454,7 +454,10 @@ async function resolveShopifyCustomer(
       .from('customer')
       .select(MERGE_SELECT)
       .eq('merchant_account_id', merchantAccountId)
-      .contains('shopify_customer_gids', [gid])
+      // jsonb containment : postgrest-js sérialise un tableau JS en littéral tableau Postgres
+      // `{...}` (invalide en json → "invalid input syntax for type json") ; on passe une chaîne
+      // JSON pour obtenir le filtre attendu `@> '["gid"]'::jsonb`.
+      .contains('shopify_customer_gids', JSON.stringify([gid]))
       .limit(1);
     if (error) {
       return { ok: false, error: error.message };
