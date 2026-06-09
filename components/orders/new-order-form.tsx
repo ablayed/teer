@@ -117,11 +117,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       setAddress('');
       setFieldErrors({});
       setIsOpen(false);
-      // L'action a déjà appelé revalidatePath('/commandes') : le cache serveur de la route est
-      // invalidé. Un simple router.refresh() refetch le RSC courant à jour (la commande créée
-      // apparaît). On NE fait PLUS router.replace('/commandes') EN PLUS : en build prod, le
-      // replace + refresh concurrents pouvaient appliquer un RSC périmé du Router Cache APRÈS le
-      // refresh → liste à 0 / état « Connectez votre boutique » (flake e2e déterministe 582/616).
+      router.replace('/commandes');
       router.refresh();
       return;
     }
