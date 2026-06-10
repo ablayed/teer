@@ -34,7 +34,7 @@ Pas besoin de finir la Phase 8 (IA) pour publier.
    - Justifier la **minimisation** : on ne stocke que le nécessaire à la livraison (nom, téléphone, adresse, email, consentement) ; effacement réel sur `customers/redact` / `shop/redact` (< 30 j / 48 h).
 4. Vérifier que la version API stable courante = `2026-04` sur shopify.dev avant soumission ; sinon ré-épingler.
 5. Configurer l'app comme **public unlisted** (pas custom).
-6. Variables d'env prod (Vercel) : `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_TOKEN_ENCRYPTION_KEY` (64 hex), `CRON_SECRET`.
+6. Variables d'env prod (Vercel) : `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_TOKEN_ENCRYPTION_KEY` (64 hex), `CRON_SECRET`. **Multi-app** : pour une 2e app (Teer Pilote, custom), ajouter `SHOPIFY_PILOTE_API_KEY` + `SHOPIFY_PILOTE_API_SECRET` (Prod + Preview) sans toucher aux clés Teer Dev ; les deux doivent être présentes sinon l'app Pilote est ignorée (warning au boot). Routage par `client_id` → `shop.shopify_client_id` (cf. CLAUDE.md « Shopify multi-app »).
 
 ## Restes connus (non bloquants pour 7a, à traiter en 7b/7c)
 

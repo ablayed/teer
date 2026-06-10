@@ -74,3 +74,26 @@ describe('createShopifyAppRegistry', () => {
     expect(registry.all()).toHaveLength(0);
   });
 });
+
+// Reproduit la résolution par boutique (getShopifyAppForShop) : son comportement = on prend l'app
+// du client_id stocké, sinon on retombe sur l'app par défaut (Teer Dev). Garantit la NON-RÉGRESSION
+// des boutiques existantes (shopify_client_id = Teer Dev après backfill, ou null pour un legacy).
+describe('résolution par boutique (non-régression Teer Dev)', () => {
+  const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE]);
+  const resolveForShop = (clientId: string | null | undefined) =>
+    registry.getByClientId(clientId) ?? registry.getDefault();
+
+  it('résout une boutique Teer Pilote vers les credentials Pilote', () => {
+    expect(resolveForShop(TEER_PILOTE.clientId)?.label).toBe('teer-pilote');
+  });
+
+  it('résout une boutique Teer Dev vers les credentials Dev', () => {
+    expect(resolveForShop(TEER_DEV.clientId)?.label).toBe('teer-dev');
+  });
+
+  it('retombe sur Teer Dev pour un client_id null/inconnu (boutique legacy)', () => {
+    expect(resolveForShop(null)?.label).toBe('teer-dev');
+    expect(resolveForShop(undefined)?.label).toBe('teer-dev');
+    expect(resolveForShop('boutique_sans_app_connue')?.label).toBe('teer-dev');
+  });
+});
