@@ -1,7 +1,7 @@
 # Politique de Confidentialité
 
 **Dernière mise à jour : 10 juin 2026**
-**Version : 1.0**
+**Version : 1.2**
 
 ## 1. Préambule
 
@@ -32,7 +32,7 @@ Tëër intervient à deux titres distincts :
 
 **a) En tant que responsable de traitement** — pour les données relatives au compte du Marchand (identité, coordonnées, identifiants de connexion, données de facturation). Tëër détermine les finalités et moyens de ce traitement.
 
-**b) En tant que sous-traitant** — pour les données des **Clients finaux** synchronisées depuis Shopify (noms, numéros de téléphone, adresses de livraison, adresses électroniques, données de commande). Pour ces données, **c'est le Marchand qui est le responsable de traitement** : il détermine les finalités, dispose de la base légale, et informe ses propres clients. Tëër agit uniquement sur les instructions documentées du Marchand, dans les conditions de l'Accord de Sous-Traitance (DPA) qui lie Tëër à chaque Marchand.
+**b) En tant que sous-traitant** — pour les données des **Clients finaux** synchronisées depuis Shopify (noms, numéros de téléphone, adresses de livraison, données de commande). Pour ces données, **c'est le Marchand qui est le responsable de traitement** : il détermine les finalités, dispose de la base légale, et informe ses propres clients. Tëër agit uniquement sur les instructions documentées du Marchand, dans les conditions de l'Accord de Sous-Traitance (DPA) qui lie Tëër à chaque Marchand.
 
 Cette distinction conditionne l'exercice des droits (voir article 9).
 
@@ -46,7 +46,7 @@ Cette distinction conditionne l'exercice des droits (voir article 9).
 
 **Données des Clients finaux (Tëër sous-traitant, issues de Shopify)** :
 - Identité : nom du destinataire
-- Coordonnées : numéro de téléphone, adresse électronique
+- Coordonnées : numéro de téléphone
 - Adresse de livraison
 - Données de commande (articles, montants, statut de livraison, encaissement)
 
