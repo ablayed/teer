@@ -24,6 +24,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { grantCurrentConsents } from './helpers/consent';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) {
@@ -95,6 +96,7 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
   }
 
   const userId = created.user.id;
+  await grantCurrentConsents(admin, userId);
 
   let merchantAccountId = '';
   for (let i = 0; i < 40; i++) {

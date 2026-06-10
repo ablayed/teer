@@ -3,6 +3,7 @@ import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions'
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { grantCurrentConsents } from './helpers/consent';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) {
@@ -76,6 +77,7 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
     throw error ?? new Error('Utilisateur E2E non cree');
   }
 
+  await grantCurrentConsents(admin, data.user.id);
   return data.user.id;
 }
 
