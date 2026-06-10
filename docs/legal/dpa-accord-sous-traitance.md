@@ -1,7 +1,7 @@
 # Accord de Sous-Traitance (Data Processing Agreement – DPA)
 
 **Dernière mise à jour : 10 juin 2026**
-**Version : 1.0**
+**Version : 1.2**
 
 ## Entre les parties
 
@@ -16,7 +16,7 @@ Tëër traite, pour le compte du Responsable, les données des clients finaux du
 
 ## 2. Type de données et catégories de personnes concernées
 
-- **Catégories de données** : noms des destinataires, numéros de téléphone, adresses de livraison, adresses électroniques, données de commande.
+- **Catégories de données** : noms des destinataires, numéros de téléphone, adresses de livraison, données de commande.
 - **Catégories de personnes concernées** : les clients finaux du Responsable.
 
 ## 3. Obligations du Responsable de traitement
