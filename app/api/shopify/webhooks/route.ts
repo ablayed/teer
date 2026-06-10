@@ -156,7 +156,6 @@ function mapWebhookCustomer(
     firstName: stringField(customer, 'first_name'),
     lastName: stringField(customer, 'last_name'),
     phone: stringField(customer, 'phone') ?? nullableStringField(shippingAddress, 'phone'),
-    email: stringField(customer, 'email'),
     numberOfOrders: typeof ordersCount === 'number' ? ordersCount : null,
     amountSpent: totalSpent ? { amount: totalSpent } : null,
     tags: tags && tags.length > 0 ? tags : null,

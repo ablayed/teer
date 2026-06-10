@@ -20,7 +20,6 @@ export type CustomerListItem = {
   customerId: string;
   decided: number;
   deliveredLifetime: number;
-  email: string | null;
   fullName: string | null;
   isProvisional: boolean;
   // Récurrence dérivée (order_count Tëër > 1) — pas de colonne stockée. Forte valeur COD.
@@ -89,7 +88,6 @@ function toListItem(row: CustomerReliabilityRow): CustomerListItem {
     customerId: row.customer_id,
     decided: row.decided,
     deliveredLifetime: row.delivered_lifetime,
-    email: row.email ?? null,
     fullName: row.full_name ?? null,
     isProvisional: row.is_provisional,
     isRecurring: isRecurringCustomer(row.order_count),

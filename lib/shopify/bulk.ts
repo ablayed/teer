@@ -33,7 +33,6 @@ export function buildBulkOrdersQuery(updatedSinceIso: string | null): string {
           firstName
           lastName
           phone
-          email
           numberOfOrders
           amountSpent { amount currencyCode }
           tags
@@ -268,7 +267,6 @@ function mapBulkCustomer(customer: Record<string, unknown>): ShopifyCustomerNode
     firstName: (customer.firstName as string | null) ?? null,
     lastName: (customer.lastName as string | null) ?? null,
     phone: (customer.phone as string | null) ?? null,
-    email: (customer.email as string | null) ?? null,
     numberOfOrders: (customer.numberOfOrders as string | null) ?? null,
     amountSpent:
       amountSpent && typeof amountSpent.amount === 'string'

@@ -27,7 +27,6 @@ function makeOrder(overrides: Partial<ShopifyOrderNode> = {}): ShopifyOrderNode 
       id: 'gid://shopify/Customer/987654321',
       displayName: 'Awa Diop',
       phone: '+221771234567',
-      email: 'awa@example.com',
     },
     shippingAddress: {
       address1: 'Rue 10',
@@ -81,7 +80,6 @@ describe('mapShopifyCustomer', () => {
       last_name: null,
       phone: '+221771234567',
       phone_e164: '+221771234567',
-      email: 'awa@example.com',
       accepts_marketing: null,
       tags: null,
       address: {
@@ -115,7 +113,6 @@ describe('mapShopifyCustomer', () => {
           firstName: 'Fatou',
           lastName: 'Sow',
           phone: '771112233',
-          email: 'fatou@example.com',
           numberOfOrders: '4',
           amountSpent: { amount: '125000.00', currencyCode: 'XOF' },
           tags: ['VIP', 'fidele'],
@@ -311,7 +308,6 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
       full_name: 'Awa Diop',
       first_name: null,
       last_name: null,
-      email: null,
       phone: '+221771234567',
       phone_e164: '+221771234567',
       address: null,
@@ -337,7 +333,6 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
       last_name: 'Diop',
       phone: '+221770000000',
       phone_e164: '+221770000000',
-      email: 'awa@example.com',
       accepts_marketing: true,
       tags: ['VIP'],
       address: { raw: 'Dakar' },
@@ -352,7 +347,6 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
     expect(patch.phone_e164).toBe('+221771234567');
     // trous remplis depuis l'entrant
     expect(patch.first_name).toBe('Awa');
-    expect(patch.email).toBe('awa@example.com');
     expect(patch.accepts_marketing).toBe(true);
     expect(patch.tags).toEqual(['VIP']);
     // compteurs Shopify = derniere valeur connue (entrant prioritaire)
@@ -376,7 +370,6 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
       full_name: 'Shopify Name',
       phone: '+221771234567',
       phone_e164: '+221771234567',
-      email: null,
     });
 
     expect(patch.full_name).toBe('Client Manuel');
