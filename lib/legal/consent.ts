@@ -12,6 +12,10 @@ type ConsentDocument = {
   version: string;
 };
 
+type MissingConsentDocument = ConsentDocument & {
+  body_url: string | null;
+};
+
 function createAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -65,6 +69,48 @@ export async function getSignupConsentDocuments() {
   }
 
   return { ok: true as const, documents: [cgu, privacy] };
+}
+
+export async function getMissingCurrentConsents(userId: string) {
+  const admin = createAdminClient();
+  const { data: currentDocuments, error: currentError } = await admin
+    .from('legal_documents')
+    .select('type, version, content_hash, body_url')
+    .eq('is_current', true)
+    .in('type', ['cgu', 'privacy']);
+
+  if (currentError) {
+    return { ok: false as const };
+  }
+
+  const { data: consents, error: consentError } = await admin
+    .from('user_consents')
+    .select('document_type, document_version, content_hash')
+    .eq('user_id', userId)
+    .in('document_type', ['cgu', 'privacy']);
+
+  if (consentError) {
+    return { ok: false as const };
+  }
+
+  const acceptedFingerprints = new Set(
+    (consents ?? []).map(
+      (consent) => `${consent.document_type}:${consent.document_version}:${consent.content_hash}`,
+    ),
+  );
+
+  const missingDocuments = (currentDocuments ?? []).filter(
+    (document): document is MissingConsentDocument => {
+      if (document.type !== 'cgu' && document.type !== 'privacy') {
+        return false;
+      }
+
+      const fingerprint = `${document.type}:${document.version}:${document.content_hash}`;
+      return !acceptedFingerprints.has(fingerprint);
+    },
+  );
+
+  return { ok: true as const, documents: missingDocuments };
 }
 
 export async function persistSignupConsents(userId: string, documents: ConsentDocument[]) {

@@ -199,6 +199,16 @@
       "hasSpecial": "Un caractère spécial (!@#$%^&* etc.)"
     }
   },
+  "legalReaccept": {
+    "eyebrow": "Action requise",
+    "title": "Validez les documents légaux pour continuer",
+    "body": "Les conditions d'utilisation ou la politique de confidentialité en vigueur doivent être acceptées avant d'accéder à votre espace.",
+    "consentPrefix": "J'accepte les",
+    "terms": "Conditions Générales d'Utilisation",
+    "joiner": "et la",
+    "privacy": "Politique de Confidentialité",
+    "submit": "Accepter et continuer"
+  },
   "invitation": {
     "accept": {
       "title": "Invitation",
