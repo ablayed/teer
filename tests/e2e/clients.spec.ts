@@ -85,7 +85,6 @@ async function seedRecurringEnrichedCustomer(
       last_name: 'Diop',
       phone: '+221771234567',
       phone_e164: '+221771234567',
-      email: `awa-${Date.now()}@example.com`,
       address: { raw: 'Cité Keur Gorgui, près de la mosquée', city: 'Dakar', region: 'Dakar' },
       tags: ['VIP'],
       accepts_marketing: true,
