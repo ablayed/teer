@@ -23,7 +23,6 @@ query Orders($cursor: String) {
           firstName
           lastName
           phone
-          email
           numberOfOrders
           amountSpent { amount currencyCode }
           tags
@@ -71,7 +70,6 @@ export type ShopifyCustomerNode = {
   id: string;
   displayName: string | null;
   phone: string | null;
-  email: string | null;
   // Champs d'enrichissement (Phase 7b). Forme GraphQL brute ; les adaptateurs bulk JSONL et
   // webhook REST synthétisent la MÊME forme. La normalisation (string→int, consentement→bool)
   // se fait dans mapShopifyCustomer.
@@ -149,7 +147,6 @@ export type ExistingCustomerForMerge = {
   full_name: string | null;
   first_name: string | null;
   last_name: string | null;
-  email: string | null;
   phone: string | null;
   phone_e164: string | null;
   address: Json | null;
@@ -314,7 +311,6 @@ export function mapShopifyCustomer(
     last_name: customer.lastName ?? null,
     phone: rawPhone,
     phone_e164: rawPhone ? normalizeSenegalPhone(rawPhone) : null,
-    email: customer.email,
     accepts_marketing: deriveAcceptsMarketing(customer.emailMarketingConsent),
     tags: customer.tags ?? null,
     address: mapFlexibleAddress(flexibleSource),
@@ -347,7 +343,6 @@ export function buildCustomerMergePatch(
     full_name: existing.full_name ?? incoming.full_name ?? null,
     first_name: existing.first_name ?? incoming.first_name ?? null,
     last_name: existing.last_name ?? incoming.last_name ?? null,
-    email: existing.email ?? incoming.email ?? null,
     phone: existing.phone ?? incoming.phone ?? null,
     phone_e164: existing.phone_e164 ?? incoming.phone_e164 ?? null,
     address: existing.address ?? incoming.address ?? null,
@@ -403,10 +398,10 @@ export function mapShopifyOrder(
 }
 
 const MERGE_SELECT =
-  'id, full_name, first_name, last_name, email, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_customer_gids, shopify_customer_id, shopify_orders_count, shopify_amount_spent_minor';
+  'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_customer_gids, shopify_customer_id, shopify_orders_count, shopify_amount_spent_minor';
 
 // Dédup robuste à travers boutiques ET canaux : on cherche d'abord par téléphone E.164
-// (identité principale), sinon par email, sinon par GID Shopify (tableau ou colonne legacy).
+// (identité principale), sinon par GID Shopify (tableau ou colonne legacy).
 // Un match → fusion non destructive (union des GID, remplissage des trous PII). Sinon insert.
 async function resolveShopifyCustomer(
   admin: SupabaseClient<Database>,
@@ -414,7 +409,6 @@ async function resolveShopifyCustomer(
   incoming: CustomerUpsert,
 ): Promise<{ ok: true; customerId: string } | { ok: false; error: string }> {
   const phoneE164 = incoming.phone_e164 ?? null;
-  const email = incoming.email ?? null;
   const gid = incoming.shopify_customer_id ?? null;
 
   let existing: ExistingCustomerForMerge | null = null;
@@ -433,22 +427,7 @@ async function resolveShopifyCustomer(
     existing = data;
   }
 
-  // 2. par email (clé secondaire), insensible à la casse.
-  if (!existing && email) {
-    const { data, error } = await admin
-      .from('customer')
-      .select(MERGE_SELECT)
-      .eq('merchant_account_id', merchantAccountId)
-      .ilike('email', email)
-      .order('created_at', { ascending: true })
-      .limit(1);
-    if (error) {
-      return { ok: false, error: error.message };
-    }
-    existing = data?.[0] ?? null;
-  }
-
-  // 3. par GID Shopify : tableau (multi-boutiques) puis colonne legacy.
+  // 2. par GID Shopify : tableau (multi-boutiques) puis colonne legacy.
   if (!existing && gid) {
     const { data, error } = await admin
       .from('customer')

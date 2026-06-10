@@ -32,10 +32,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 type CustomerSummary = Pick<Tables<'customer'>, 'full_name' | 'phone'>;
-type CustomerDetail = Pick<
-  Tables<'customer'>,
-  'email' | 'full_name' | 'phone' | 'shipping_address'
->;
+type CustomerDetail = Pick<Tables<'customer'>, 'full_name' | 'phone' | 'shipping_address'>;
 export type DeliveryAddress = Tables<'delivery_address'>;
 type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
 
@@ -427,14 +424,12 @@ async function getMerchantAccountIdForActor(
 }
 
 async function findOrCreateCustomerByPhone({
-  email,
   fullName,
   merchantAccountId,
   phone,
   shippingAddress,
   supabase,
 }: {
-  email?: string;
   fullName?: string;
   merchantAccountId: string;
   phone: string;
@@ -454,7 +449,7 @@ async function findOrCreateCustomerByPhone({
 
   const { data: matches, error: selectError } = await supabase
     .from('customer')
-    .select('id, full_name, email, shipping_address, created_at')
+    .select('id, full_name, shipping_address, created_at')
     .eq('merchant_account_id', merchantAccountId)
     .eq('phone', normalizedPhone)
     .order('created_at', { ascending: true })
@@ -469,7 +464,6 @@ async function findOrCreateCustomerByPhone({
   if (existingCustomer) {
     const customerPatch: TablesUpdate<'customer'> = {
       ...(existingCustomer.full_name ? {} : fullName ? { full_name: fullName } : {}),
-      ...(existingCustomer.email ? {} : email ? { email } : {}),
       ...(existingCustomer.shipping_address
         ? {}
         : shippingAddress
@@ -501,7 +495,6 @@ async function findOrCreateCustomerByPhone({
       merchant_account_id: merchantAccountId,
       full_name: fullName ?? null,
       phone: normalizedPhone,
-      email: email ?? null,
       shipping_address: shippingAddress,
     })
     .select('id')
@@ -617,7 +610,7 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
   const role = await getCurrentMemberRole(supabase);
   const { data, error } = await supabase
     .from('orders')
-    .select('*, customer:customer_id(full_name, phone, email, shipping_address)')
+    .select('*, customer:customer_id(full_name, phone, shipping_address)')
     .eq('id', id)
     .maybeSingle();
 

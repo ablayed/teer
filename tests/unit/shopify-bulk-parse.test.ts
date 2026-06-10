@@ -27,7 +27,7 @@ describe('parseBulkOrdersJsonl', () => {
         displayFinancialStatus: 'PAID',
         displayFulfillmentStatus: 'UNFULFILLED',
         currentTotalPriceSet: { shopMoney: { amount: '15000', currencyCode: 'XOF' } },
-        customer: { id: 'gid://shopify/Customer/9', displayName: 'Awa', phone: null, email: null },
+        customer: { id: 'gid://shopify/Customer/9', displayName: 'Awa', phone: null },
         shippingAddress: { address1: 'Rue 1', city: 'Dakar' },
       }),
       JSON.stringify({

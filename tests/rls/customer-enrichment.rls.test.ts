@@ -82,7 +82,6 @@ describe('customer enrichi — isolation tenant (RLS)', () => {
           last_name: 'Diop',
           phone: '+221771234567',
           phone_e164: '+221771234567',
-          email: `awa-${crypto.randomUUID()}@example.com`,
           address: { raw: 'Cité Keur Gorgui, Dakar', city: 'Dakar', region: 'Dakar' },
           tags: ['VIP'],
           accepts_marketing: true,

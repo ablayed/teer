@@ -1,5 +1,5 @@
 // Conformité GDPR Shopify (Phase 7a, PII réelle en Phase 7b) — handlers réels (gate de publication).
-// La PII client de Tëër vit dans `customer` (nom/prénoms/téléphone/phone_e164/email/adresse flexible/
+// La PII client de Tëër vit dans `customer` (nom/prénoms/téléphone/phone_e164/adresse flexible/
 // adresse de livraison/tags/consentement) et dans `orders.shipping_address`. On conserve ce qui est
 // légalement requis (montants/statuts comptables sur orders ; agrégats Shopify non identifiants).
 //
@@ -62,7 +62,7 @@ export async function compileCustomerData(
   const { data: customers } = await admin
     .from('customer')
     .select(
-      'id, full_name, first_name, last_name, phone, phone_e164, email, address, shipping_address, tags, accepts_marketing, shopify_orders_count, shopify_amount_spent_minor, first_seen_at, created_at',
+      'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_orders_count, shopify_amount_spent_minor, first_seen_at, created_at',
     )
     .in('id', ids);
 
@@ -75,7 +75,7 @@ export async function compileCustomerData(
   return { customers: customers ?? [], orders: orders ?? [] };
 }
 
-// Anonymise un client : on efface TOUTE la PII directe (nom/prénoms/téléphone/phone_e164/email/
+// Anonymise un client : on efface TOUTE la PII directe (nom/prénoms/téléphone/phone_e164/
 // adresse flexible/adresse de livraison/tags/consentement) en gardant la ligne et les identifiants
 // Shopify (shopify_customer_id/gids) + agrégats non identifiants pour le rattachement comptable.
 async function anonymizeCustomerRows(admin: AdminClient, customerIds: string[]): Promise<void> {
@@ -90,7 +90,6 @@ async function anonymizeCustomerRows(admin: AdminClient, customerIds: string[]):
       last_name: null,
       phone: null,
       phone_e164: null,
-      email: null,
       address: null,
       shipping_address: null,
       tags: null,

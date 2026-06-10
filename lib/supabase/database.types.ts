@@ -193,7 +193,6 @@ export type Database = {
           accepts_marketing: boolean | null;
           address: Json | null;
           created_at: string;
-          email: string | null;
           first_name: string | null;
           first_seen_at: string | null;
           full_name: string | null;
@@ -215,7 +214,6 @@ export type Database = {
           accepts_marketing?: boolean | null;
           address?: Json | null;
           created_at?: string;
-          email?: string | null;
           first_name?: string | null;
           first_seen_at?: string | null;
           full_name?: string | null;
@@ -237,7 +235,6 @@ export type Database = {
           accepts_marketing?: boolean | null;
           address?: Json | null;
           created_at?: string;
-          email?: string | null;
           first_name?: string | null;
           first_seen_at?: string | null;
           full_name?: string | null;
@@ -1773,7 +1770,6 @@ export type Database = {
           delivered_lifetime: number;
           delivered_weighted: number;
           delivery_score: number;
-          email: string;
           flag_cancels_often: boolean;
           flag_confirms_then_refuses: boolean;
           flag_hard_to_reach: boolean;
@@ -1833,7 +1829,6 @@ export type Database = {
           delivered_lifetime: number;
           delivered_weighted: number;
           delivery_score: number;
-          email: string;
           flag_cancels_often: boolean;
           flag_confirms_then_refuses: boolean;
           flag_hard_to_reach: boolean;
