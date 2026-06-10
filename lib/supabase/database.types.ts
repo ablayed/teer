@@ -1450,6 +1450,7 @@ export type Database = {
           scopes: string;
           shop_domain: string;
           shop_gid: string | null;
+          shopify_client_id: string | null;
           status: string;
           uninstalled_at: string | null;
           updated_at: string;
@@ -1467,6 +1468,7 @@ export type Database = {
           scopes: string;
           shop_domain: string;
           shop_gid?: string | null;
+          shopify_client_id?: string | null;
           status?: string;
           uninstalled_at?: string | null;
           updated_at?: string;
@@ -1484,6 +1486,7 @@ export type Database = {
           scopes?: string;
           shop_domain?: string;
           shop_gid?: string | null;
+          shopify_client_id?: string | null;
           status?: string;
           uninstalled_at?: string | null;
           updated_at?: string;

@@ -17,6 +17,10 @@ const serverEnvSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   SHOPIFY_API_KEY: z.string().optional(),
   SHOPIFY_API_SECRET: z.string().optional(),
+  // Multi-app : credentials de la 2e app Shopify (Teer Pilote, custom). Optionnels — si absents,
+  // seule Teer Dev est enregistrée. Voir lib/shopify/apps.ts.
+  SHOPIFY_PILOTE_API_KEY: z.string().optional(),
+  SHOPIFY_PILOTE_API_SECRET: z.string().optional(),
   SHOPIFY_TOKEN_ENCRYPTION_KEY: z.string().optional(),
 });
 
@@ -41,6 +45,8 @@ export const env = {
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY,
     SHOPIFY_API_SECRET: process.env.SHOPIFY_API_SECRET,
+    SHOPIFY_PILOTE_API_KEY: process.env.SHOPIFY_PILOTE_API_KEY,
+    SHOPIFY_PILOTE_API_SECRET: process.env.SHOPIFY_PILOTE_API_SECRET,
     SHOPIFY_TOKEN_ENCRYPTION_KEY: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
   }),
 };
