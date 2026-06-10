@@ -1,3 +1,4 @@
+import { getRegisteredShopifyApps, getShopifyAppForShop } from '@/lib/shopify/apps';
 import { compileCustomerData, redactCustomer, redactShop } from '@/lib/shopify/gdpr';
 import {
   type ShopifyAddress,
@@ -8,7 +9,7 @@ import {
 import { type ShopifyProductNode, persistShopifyProductWebhook } from '@/lib/shopify/products-sync';
 import { processFinishedBulkForShop } from '@/lib/shopify/reconcile';
 import { deriveRefundWebhook } from '@/lib/shopify/refunds';
-import { verifyWebhookHmac } from '@/lib/shopify/webhook-verify';
+import { verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
 import { after } from 'next/server';
@@ -321,7 +322,7 @@ async function getShopByDomain({
 }) {
   const { data, error } = await supabase
     .from('shop')
-    .select('id, merchant_account_id, shop_domain, status')
+    .select('id, merchant_account_id, shop_domain, status, shopify_client_id')
     .eq('shop_domain', shopDomain)
     .maybeSingle();
 
@@ -626,13 +627,6 @@ async function handleBulkFinishWebhook({
     return;
   }
 
-  const clientId = process.env.SHOPIFY_API_KEY;
-  const clientSecret = process.env.SHOPIFY_API_SECRET;
-  if (!clientId || !clientSecret) {
-    logWebhookError('[webhook] bulk finish missing Shopify credentials', { topic });
-    return;
-  }
-
   const { data: shop, error } = await supabase
     .from('shop')
     .select('*')
@@ -645,7 +639,14 @@ async function handleBulkFinishWebhook({
     return;
   }
 
-  const result = await processFinishedBulkForShop(supabase, shop, clientId, clientSecret);
+  // Multi-app : credentials de l'app ayant installé cette boutique (fallback app par défaut).
+  const app = getShopifyAppForShop(shop.shopify_client_id);
+  if (!app) {
+    logWebhookError('[webhook] bulk finish missing Shopify credentials', { topic });
+    return;
+  }
+
+  const result = await processFinishedBulkForShop(supabase, shop, app.clientId, app.clientSecret);
   logWebhookInfo('[webhook] bulk finish processed', { resolvedShopDomain, ok: result.ok });
 }
 
@@ -880,13 +881,27 @@ export async function POST(request: Request) {
   const webhookId = request.headers.get('x-shopify-webhook-id');
   const triggeredAt = request.headers.get('x-shopify-triggered-at');
 
+  const supabase = createSupabaseAdminClient();
+
+  // Multi-app : on route le secret HMAC vers l'app émettrice. La boutique mémorise shopify_client_id
+  // à l'install → on l'utilise (lookup par le header x-shopify-shop-domain, valeur non fiable mais
+  // sans risque : un mauvais domaine sélectionne le mauvais secret → l'HMAC échoue → 401).
+  // Boutique inconnue de la base (conformité, désinstallée, jamais installée) → on essaie TOUS les
+  // secrets enregistrés pour rester vérifié sur les DEUX apps.
+  const registeredSecrets = getRegisteredShopifyApps().map((app) => app.clientSecret);
+  const fallbackSecrets =
+    registeredSecrets.length > 0 ? registeredSecrets : [process.env.SHOPIFY_API_SECRET ?? ''];
+
+  const headerShop =
+    supabase && shopDomain ? await getShopByDomain({ shopDomain, supabase }) : null;
+  const headerApp = headerShop ? getShopifyAppForShop(headerShop.shopify_client_id) : null;
+  const hmacSecrets = headerApp ? [headerApp.clientSecret] : fallbackSecrets;
+
   // HMAC vérifié AVANT tout traitement.
-  if (!verifyWebhookHmac(rawBody, hmacHeader, process.env.SHOPIFY_API_SECRET ?? '')) {
+  if (!verifyWebhookHmacAnySecret(rawBody, hmacHeader, hmacSecrets)) {
     logWebhookError('[webhook] invalid hmac', { topic });
     return new Response(null, { status: 401 });
   }
-
-  const supabase = createSupabaseAdminClient();
 
   if (!supabase) {
     logWebhookError('[webhook] missing supabase service-role env', { topic });
@@ -907,9 +922,12 @@ export async function POST(request: Request) {
   }
 
   // Contexte boutique/tenant pour la ligne de dédup (résolution légère par domaine).
+  // On réutilise la boutique déjà chargée pour le routage HMAC quand le domaine concorde.
   const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
   const shop = resolvedShopDomain
-    ? await getShopByDomain({ shopDomain: resolvedShopDomain, supabase })
+    ? headerShop && headerShop.shop_domain === resolvedShopDomain
+      ? headerShop
+      : await getShopByDomain({ shopDomain: resolvedShopDomain, supabase })
     : null;
 
   // Idempotence : insert dédup par webhook_id. Rejeu → duplicate → 200 sans effet.

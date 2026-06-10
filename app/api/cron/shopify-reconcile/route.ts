@@ -1,6 +1,7 @@
 // Réconciliation nocturne Shopify (Phase 7a) : re-pull bulk par boutique active, rattrape les
 // webhooks ratés. Idempotent (upsert par (shop_id, shopify_order_id), garde hors-ordre).
 
+import { getShopifyAppForShop } from '@/lib/shopify/apps';
 import { reconcileShopOrders } from '@/lib/shopify/reconcile';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
@@ -23,10 +24,8 @@ export async function GET(request: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const clientId = process.env.SHOPIFY_API_KEY;
-  const clientSecret = process.env.SHOPIFY_API_SECRET;
 
-  if (!supabaseUrl || !serviceRoleKey || !clientId || !clientSecret) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json({ error: 'missing_env' }, { status: 500 });
   }
 
@@ -43,7 +42,13 @@ export async function GET(request: NextRequest) {
 
   const results: Array<{ shopId: string; ok: boolean; detail: string }> = [];
   for (const shop of (shops ?? []) as ShopRow[]) {
-    const result = await reconcileShopOrders(supabase, shop, clientId, clientSecret);
+    // Multi-app : credentials de l'app ayant installé cette boutique (fallback app par défaut).
+    const app = getShopifyAppForShop(shop.shopify_client_id);
+    if (!app) {
+      results.push({ shopId: shop.id, ok: false, detail: 'no_shopify_app' });
+      continue;
+    }
+    const result = await reconcileShopOrders(supabase, shop, app.clientId, app.clientSecret);
     results.push({
       shopId: shop.id,
       ok: result.ok,

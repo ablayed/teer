@@ -1,4 +1,5 @@
 import { env } from '@/lib/env';
+import { getShopifyAppForShop } from '@/lib/shopify/apps';
 import { shopifyGraphQL } from '@/lib/shopify/graphql';
 import {
   SHOPIFY_ORDERS_QUERY,
@@ -86,18 +87,15 @@ export async function syncShopOrders({
     return { ok: false, errorCode: 'no_shop' };
   }
 
-  if (!env.SHOPIFY_API_KEY || !env.SHOPIFY_API_SECRET) {
+  // Multi-app : credentials de l'app ayant installé cette boutique (fallback app par défaut).
+  const app = getShopifyAppForShop(shop.shopify_client_id);
+  if (!app) {
     logSyncError('[sync] missing Shopify credentials', new Error('missing_shopify_credentials'));
     return { ok: false, errorCode: 'token_error' };
   }
 
   // Token valide avec refresh proactif (offline expirant) ; needs_reauth → re-OAuth requis.
-  const tokenResult = await getValidShopAccessToken(
-    admin,
-    shop,
-    env.SHOPIFY_API_KEY,
-    env.SHOPIFY_API_SECRET,
-  );
+  const tokenResult = await getValidShopAccessToken(admin, shop, app.clientId, app.clientSecret);
 
   if (!tokenResult.ok) {
     logSyncError('[sync] token unavailable', new Error(tokenResult.reason));
