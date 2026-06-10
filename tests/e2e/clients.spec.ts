@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { grantCurrentConsents } from './helpers/consent';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) return {};
@@ -50,6 +51,7 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
     email_confirm: true,
   });
   if (error || !data.user) throw error ?? new Error('Utilisateur E2E non créé');
+  await grantCurrentConsents(admin, data.user.id);
   return data.user.id;
 }
 

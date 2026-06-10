@@ -24,6 +24,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { grantCurrentConsents } from './helpers/consent';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.test')) {
@@ -105,6 +106,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   }
 
   const userId = created.user.id;
+  await grantCurrentConsents(admin, userId);
 
   let merchantAccountId = '';
   for (let i = 0; i < 40; i++) {
