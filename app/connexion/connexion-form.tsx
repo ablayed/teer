@@ -24,6 +24,9 @@ const authErrorCodes = [
   'rate_limited',
   'email_not_confirmed',
   'weak_password',
+  'legal_consent_required',
+  'legal_documents_unavailable',
+  'consent_record_failed',
   'unknown',
 ] as const satisfies readonly AuthErrorCode[];
 
@@ -41,6 +44,7 @@ export function ConnexionForm() {
   const [clientError, setClientError] = useState<string | null>(null);
   const [verificationSent, setVerificationSent] = useState(false);
   const [password, setPassword] = useState('');
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const lastSubmitRef = useRef(0);
   const signUp = useAction(signUpAction);
   const signIn = useAction(signInAction);
@@ -72,6 +76,10 @@ export function ConnexionForm() {
                 message: tErrors('weak_password'),
               })
             : z.string().min(10, tErrors('weak_password')),
+        acceptedLegal:
+          mode === 'signup'
+            ? z.literal(true, { errorMap: () => ({ message: tErrors('legal_consent_required') }) })
+            : z.boolean().optional(),
         redirectTo: z.string().trim().max(500).optional(),
       }),
     [mode, tErrors],
@@ -113,7 +121,9 @@ export function ConnexionForm() {
     { key: 'hasSpecial', valid: passwordStrength.hasSpecial },
   ] as const;
   const submitDisabled =
-    signUp.isExecuting || signIn.isExecuting || (mode === 'signup' && !passwordStrength.allValid);
+    signUp.isExecuting ||
+    signIn.isExecuting ||
+    (mode === 'signup' && (!passwordStrength.allValid || !acceptedLegal));
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -129,6 +139,7 @@ export function ConnexionForm() {
     const parsed = schema.safeParse({
       email: formData.get('email'),
       password: formData.get('password'),
+      acceptedLegal: formData.get('acceptedLegal') === 'on',
       redirectTo,
     });
 
@@ -138,7 +149,12 @@ export function ConnexionForm() {
     }
 
     if (mode === 'signup') {
-      signUp.execute(parsed.data);
+      signUp.execute({
+        email: parsed.data.email,
+        password: parsed.data.password,
+        acceptedLegal: true,
+        redirectTo,
+      });
       return;
     }
 
@@ -212,6 +228,45 @@ export function ConnexionForm() {
                 );
               })}
             </ul>
+          ) : null}
+
+          {mode === 'signup' ? (
+            <div className="rounded-xl border border-border bg-canvas/80 p-4">
+              <label
+                className="flex items-start gap-3 text-sm leading-6 text-text"
+                htmlFor="acceptedLegal"
+              >
+                <input
+                  checked={acceptedLegal}
+                  className="mt-1 h-4 w-4 rounded border-border text-accent focus:ring-accent"
+                  id="acceptedLegal"
+                  name="acceptedLegal"
+                  onChange={(event) => setAcceptedLegal(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  {t('legal_consent_prefix')}{' '}
+                  <Link
+                    className="text-accent-deep underline underline-offset-2"
+                    href="/conditions"
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {t('legal_consent_terms')}
+                  </Link>{' '}
+                  {t('legal_consent_joiner')}{' '}
+                  <Link
+                    className="text-accent-deep underline underline-offset-2"
+                    href="/confidentialite"
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {t('legal_consent_privacy')}
+                  </Link>
+                  .
+                </span>
+              </label>
+            </div>
           ) : null}
 
           {clientError || actionError || validationError ? (

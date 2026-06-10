@@ -4,6 +4,11 @@ import { mapSupabaseAuthError } from '@/lib/actions/auth-errors';
 import { actionClient, authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { checkPasswordStrength } from '@/lib/format/password';
+import {
+  deleteUserForFailedSignup,
+  getSignupConsentDocuments,
+  persistSignupConsents,
+} from '@/lib/legal/consent';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs';
 import { getTranslations } from 'next-intl/server';
@@ -28,6 +33,9 @@ async function signUpInputSchema() {
     password: z.string().refine((password) => checkPasswordStrength(password).allValid, {
       message: t('weak_password'),
     }),
+    acceptedLegal: z.literal(true, {
+      errorMap: () => ({ message: t('legal_consent_required') }),
+    }),
     redirectTo: z.string().trim().max(500).optional(),
   });
 }
@@ -44,6 +52,11 @@ export const signUpAction = actionClient
   .metadata({ actionName: 'auth.sign_up', section: 'auth' })
   .inputSchema(signUpInputSchema)
   .action(async ({ parsedInput }) => {
+    const currentDocuments = await getSignupConsentDocuments();
+    if (!currentDocuments.ok) {
+      return { ok: false as const, errorCode: 'legal_documents_unavailable' as const };
+    }
+
     const supabase = await createSupabaseServerClient();
     const callbackUrl = new URL('/auth/callback', env.NEXT_PUBLIC_APP_URL);
     callbackUrl.searchParams.set('redirectTo', safeRedirectPath(parsedInput.redirectTo));
@@ -69,6 +82,17 @@ export const signUpAction = actionClient
 
     if (data.user?.identities && data.user.identities.length === 0) {
       return { ok: false as const, errorCode: 'email_already_registered' as const };
+    }
+
+    const userId = data.user?.id;
+    if (!userId) {
+      return { ok: false as const, errorCode: 'unknown' as const };
+    }
+
+    const consentResult = await persistSignupConsents(userId, currentDocuments.documents);
+    if (!consentResult.ok) {
+      await deleteUserForFailedSignup(userId);
+      return { ok: false as const, errorCode: 'consent_record_failed' as const };
     }
 
     return { ok: true as const, requiresEmailVerification: true };

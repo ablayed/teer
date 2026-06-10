@@ -4,6 +4,9 @@ export const AUTH_ERROR_CODES = {
   rate_limited: 'rate_limited',
   email_not_confirmed: 'email_not_confirmed',
   weak_password: 'weak_password',
+  legal_consent_required: 'legal_consent_required',
+  legal_documents_unavailable: 'legal_documents_unavailable',
+  consent_record_failed: 'consent_record_failed',
   unknown: 'unknown',
 } as const;
 
