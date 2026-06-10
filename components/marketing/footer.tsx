@@ -57,11 +57,22 @@ export async function MarketingFooter() {
       </div>
 
       <div className="border-border/60 border-t">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 text-[13px] text-muted">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-5 text-[13px] text-muted md:flex-row md:items-center md:justify-between">
           <span>{t('copyright')}</span>
-          <Link href="/confidentialite" className="transition-colors hover:text-text">
-            {t('privacy')}
-          </Link>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Link href="/conditions" className="transition-colors hover:text-text">
+              {t('terms')}
+            </Link>
+            <Link href="/confidentialite" className="transition-colors hover:text-text">
+              {t('privacy')}
+            </Link>
+            <Link href="/mentions-legales" className="transition-colors hover:text-text">
+              {t('legalNotice')}
+            </Link>
+            <Link href="/dpa" className="transition-colors hover:text-text">
+              {t('dpa')}
+            </Link>
+          </div>
         </div>
       </div>
     </footer>

@@ -694,6 +694,36 @@ export type Database = {
           },
         ];
       };
+      legal_documents: {
+        Row: {
+          body_url: string | null;
+          content_hash: string;
+          id: string;
+          is_current: boolean;
+          published_at: string;
+          type: string;
+          version: string;
+        };
+        Insert: {
+          body_url?: string | null;
+          content_hash: string;
+          id?: string;
+          is_current?: boolean;
+          published_at?: string;
+          type: string;
+          version: string;
+        };
+        Update: {
+          body_url?: string | null;
+          content_hash?: string;
+          id?: string;
+          is_current?: boolean;
+          published_at?: string;
+          type?: string;
+          version?: string;
+        };
+        Relationships: [];
+      };
       merchant_account: {
         Row: {
           country_code: string;
@@ -1596,6 +1626,42 @@ export type Database = {
             referencedColumns: ['id'];
           },
         ];
+      };
+      user_consents: {
+        Row: {
+          accepted_at: string;
+          content_hash: string;
+          document_type: string;
+          document_version: string;
+          id: string;
+          ip_address: unknown;
+          method: string;
+          user_agent: string | null;
+          user_id: string;
+        };
+        Insert: {
+          accepted_at?: string;
+          content_hash: string;
+          document_type: string;
+          document_version: string;
+          id?: string;
+          ip_address?: unknown;
+          method?: string;
+          user_agent?: string | null;
+          user_id: string;
+        };
+        Update: {
+          accepted_at?: string;
+          content_hash?: string;
+          document_type?: string;
+          document_version?: string;
+          id?: string;
+          ip_address?: unknown;
+          method?: string;
+          user_agent?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
       };
       webhook_event: {
         Row: {

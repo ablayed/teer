@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 export const dynamic = 'force-static';
 
 export async function generateMetadata(): Promise<Metadata> {
-  const document = await getLegalDocument('privacy');
+  const document = await getLegalDocument('dpa');
 
   return {
     title: `${document.title} | Tëër`,
@@ -15,6 +15,6 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function PrivacyPage() {
-  return <LegalPage type="privacy" />;
+export default function DpaPage() {
+  return <LegalPage type="dpa" />;
 }
