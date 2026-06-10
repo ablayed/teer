@@ -1,3 +1,4 @@
+import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { encryptToken } from '@/lib/shopify/crypto';
 import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib/shopify/oauth';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
@@ -61,8 +62,18 @@ export async function GET(request: NextRequest) {
       return redirectTo('/boutiques?error=shop_mismatch', request);
     }
 
-    const clientId = getRequiredEnv('SHOPIFY_API_KEY');
-    const clientSecret = getRequiredEnv('SHOPIFY_API_SECRET');
+    // Multi-app : l'app a été choisie à l'install et transportée dans le state (clientId).
+    // Un state legacy sans clientId retombe sur l'app par défaut (Teer Dev).
+    const app = payload.clientId
+      ? getShopifyAppByClientId(payload.clientId)
+      : getDefaultShopifyAppOrNull();
+
+    if (!app) {
+      return redirectTo('/boutiques?error=unknown_client_id', request);
+    }
+
+    const clientId = app.clientId;
+    const clientSecret = app.clientSecret;
 
     if (!verifyOAuthHmac(searchParams, clientSecret)) {
       return redirectTo('/boutiques?error=invalid_hmac', request);
@@ -86,6 +97,7 @@ export async function GET(request: NextRequest) {
         {
           merchant_account_id: payload.merchantAccountId,
           shop_domain: shop,
+          shopify_client_id: app.clientId,
           access_token_encrypted: encryptToken(tokenResponse.accessToken),
           refresh_token_encrypted: tokenResponse.refreshToken
             ? encryptToken(tokenResponse.refreshToken)

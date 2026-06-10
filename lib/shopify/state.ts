@@ -5,6 +5,10 @@ export type ShopifyOAuthStatePayload = {
   merchantAccountId: string;
   shopDomain: string;
   exp: number;
+  // Multi-app : client_id de l'app Shopify choisie à l'install, relu au callback pour sélectionner
+  // le bon secret (HMAC + échange de token). Optionnel pour rester rétrocompatible avec un state
+  // émis avant le déploiement multi-app (le callback retombe alors sur l'app par défaut).
+  clientId?: string;
 };
 
 function getShopifyApiSecret(): string {
@@ -33,7 +37,8 @@ function isStatePayload(value: unknown): value is ShopifyOAuthStatePayload {
     typeof record.merchantAccountId === 'string' &&
     typeof record.shopDomain === 'string' &&
     typeof record.exp === 'number' &&
-    Number.isFinite(record.exp)
+    Number.isFinite(record.exp) &&
+    (record.clientId === undefined || typeof record.clientId === 'string')
   );
 }
 

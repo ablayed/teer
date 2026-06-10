@@ -1,4 +1,5 @@
 import { getMerchantAccount } from '@/lib/actions/merchant';
+import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { buildAuthorizeUrl, validateShopDomain } from '@/lib/shopify/oauth';
 import { generateNonce, signState } from '@/lib/shopify/state';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -37,14 +38,24 @@ export async function GET(request: NextRequest) {
     return redirectTo('/boutiques?error=invalid_shop', request);
   }
 
-  const clientId = process.env.SHOPIFY_API_KEY;
+  // Multi-app : un client_id explicite (ex. install custom Teer Pilote) sélectionne l'app ;
+  // sinon on retombe sur l'app par défaut (Teer Dev, rétrocompat de l'install publique).
+  const requestedClientId = request.nextUrl.searchParams.get('client_id')?.trim() || null;
+  const app = requestedClientId
+    ? getShopifyAppByClientId(requestedClientId)
+    : getDefaultShopifyAppOrNull();
 
-  if (!clientId) {
-    Sentry.captureMessage('Missing SHOPIFY_API_KEY', {
+  if (requestedClientId && !app) {
+    // client_id fourni mais inconnu du registre → erreur propre.
+    return NextResponse.json({ error: 'unknown_client_id' }, { status: 400 });
+  }
+
+  if (!app) {
+    Sentry.captureMessage('No Shopify app configured', {
       level: 'error',
       tags: { route: 'shopify.install' },
     });
-    return NextResponse.json({ error: 'missing_shopify_api_key' }, { status: 500 });
+    return NextResponse.json({ error: 'missing_shopify_app' }, { status: 500 });
   }
 
   const requestUrl = new URL(request.url);
@@ -55,10 +66,11 @@ export async function GET(request: NextRequest) {
     merchantAccountId: merchantAccount.id,
     shopDomain: shop,
     exp: Date.now() + STATE_MAX_AGE_SECONDS * 1000,
+    clientId: app.clientId,
   });
   const authorizeUrl = buildAuthorizeUrl({
     shop,
-    clientId,
+    clientId: app.clientId,
     redirectUri,
     state: nonce,
   });
