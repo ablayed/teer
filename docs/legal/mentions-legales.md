@@ -8,17 +8,12 @@
 
 Le service **Tëër** est édité par :
 
-- **Nom** : Ablaye Dia
-- **Statut** : Entrepreneur individuel
-- **Adresse** : Sotrac Mermoz, Villa 64, Dakar, Sénégal
-- **Adresse électronique** : diaablaye09@gmail.com
-- **Téléphone** : +221 77 317 57 42
-- **WhatsApp** : +44 7554 781395
-- **Statut d'immatriculation** : Entrepreneur individuel (immatriculation en cours)
+- **Nom** : teer.inc
+- **Adresse** : Dakar, Sénégal
 
 ## Directeur de la publication
 
-Ablaye Dia.
+teer.inc.
 
 ## Hébergement
 
@@ -37,4 +32,4 @@ Le traitement des données à caractère personnel est décrit dans la [Politiqu
 
 ## Contact
 
-Pour toute question : diaablaye09@gmail.com.
+Pour toute question : teer.inc, Dakar, Sénégal.

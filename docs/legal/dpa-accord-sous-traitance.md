@@ -6,7 +6,7 @@
 ## Entre les parties
 
 - **Le Responsable de traitement** : le Marchand utilisateur du service Tëër (ci-après le « Responsable »).
-- **Le Sous-traitant** : Ablaye Dia, entrepreneur individuel, Sotrac Mermoz Villa 64, Dakar, Sénégal (ci-après « Tëër » ou le « Sous-traitant »).
+- **Le Sous-traitant** : teer.inc, Dakar, Sénégal (ci-après « Tëër » ou le « Sous-traitant »).
 
 Le présent Accord complète les Conditions Générales d'Utilisation et encadre le traitement, par Tëër, des données à caractère personnel des clients du Responsable.
 

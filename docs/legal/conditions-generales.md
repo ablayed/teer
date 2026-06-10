@@ -6,12 +6,9 @@
 ## 1. Mentions légales et identification de l'éditeur
 
 Le service Tëër est édité par :
-- **Ablaye Dia**, entrepreneur individuel
-- **Adresse** : Sotrac Mermoz, Villa 64, Dakar, Sénégal
-- **Courriel** : diaablaye09@gmail.com
-- **Téléphone** : +221 77 317 57 42
-- **Statut d'immatriculation** : Entrepreneur individuel (immatriculation en cours)
-- **Directeur de la publication** : Ablaye Dia
+- **Éditeur** : teer.inc
+- **Adresse** : Dakar, Sénégal
+- **Directeur de la publication** : teer.inc
 - **Hébergeurs** : Vercel Inc. (hébergement applicatif, région UE) et Supabase (base de données, UE)
 
 ## 2. Objet et définition du service
@@ -80,4 +77,4 @@ Les présentes CGU sont régies par le **droit sénégalais**. En cas de litige,
 
 ## 15. Contact
 
-**Ablaye Dia** — diaablaye09@gmail.com — Sotrac Mermoz Villa 64, Dakar, Sénégal.
+**teer.inc** — Dakar, Sénégal.

@@ -7,8 +7,10 @@ import Link from 'next/link';
 // renseignés dans messages/fr.json (on n'invente aucun numéro).
 export async function MarketingFooter() {
   const t = await getTranslations('marketing.footer');
+  const email = t('email').trim();
   const whatsapp = t('whatsappNumber').trim();
   const phone = t('phoneNumber').trim();
+  const hasContactInfo = email.length > 0 || whatsapp.length > 0 || phone.length > 0;
 
   return (
     <footer className="border-border border-t bg-sunken/40">
@@ -18,42 +20,46 @@ export async function MarketingFooter() {
           <p className="mt-3 text-[14px] text-muted leading-6">{t('tagline')}</p>
         </div>
 
-        <div className="text-[14px]">
-          <p className="mb-3 font-medium text-text">{t('contactTitle')}</p>
-          <ul className="flex flex-col gap-2.5 text-muted">
-            <li>
-              <a
-                href={`mailto:${t('email')}`}
-                className="inline-flex items-center gap-2 transition-colors hover:text-accent-deep"
-              >
-                <Mail className="h-4 w-4" aria-hidden="true" />
-                {t('email')}
-              </a>
-            </li>
-            {whatsapp.length > 0 && (
-              <li>
-                <a
-                  href={`https://wa.me/${whatsapp.replace(/[^0-9]/g, '')}`}
-                  className="inline-flex items-center gap-2 transition-colors hover:text-accent-deep"
-                >
-                  <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                  {t('whatsappLabel')}
-                </a>
-              </li>
-            )}
-            {phone.length > 0 && (
-              <li>
-                <a
-                  href={`tel:${phone.replace(/\s/g, '')}`}
-                  className="inline-flex items-center gap-2 transition-colors hover:text-accent-deep"
-                >
-                  <Phone className="h-4 w-4" aria-hidden="true" />
-                  {phone}
-                </a>
-              </li>
-            )}
-          </ul>
-        </div>
+        {hasContactInfo ? (
+          <div className="text-[14px]">
+            <p className="mb-3 font-medium text-text">{t('contactTitle')}</p>
+            <ul className="flex flex-col gap-2.5 text-muted">
+              {email.length > 0 && (
+                <li>
+                  <a
+                    href={`mailto:${email}`}
+                    className="inline-flex items-center gap-2 transition-colors hover:text-accent-deep"
+                  >
+                    <Mail className="h-4 w-4" aria-hidden="true" />
+                    {email}
+                  </a>
+                </li>
+              )}
+              {whatsapp.length > 0 && (
+                <li>
+                  <a
+                    href={`https://wa.me/${whatsapp.replace(/[^0-9]/g, '')}`}
+                    className="inline-flex items-center gap-2 transition-colors hover:text-accent-deep"
+                  >
+                    <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                    {t('whatsappLabel')}
+                  </a>
+                </li>
+              )}
+              {phone.length > 0 && (
+                <li>
+                  <a
+                    href={`tel:${phone.replace(/\s/g, '')}`}
+                    className="inline-flex items-center gap-2 transition-colors hover:text-accent-deep"
+                  >
+                    <Phone className="h-4 w-4" aria-hidden="true" />
+                    {phone}
+                  </a>
+                </li>
+              )}
+            </ul>
+          </div>
+        ) : null}
       </div>
 
       <div className="border-border/60 border-t">

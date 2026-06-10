@@ -7,17 +7,14 @@
 
 La présente Politique de Confidentialité décrit la manière dont **Tëër** collecte, utilise, conserve et protège les données à caractère personnel dans le cadre de la fourniture de son service de gestion des opérations de paiement à la livraison (cash-on-delivery) destiné aux commerçants utilisant Shopify.
 
-Tëër est édité par **Ablaye Dia**, entrepreneur individuel, dont les coordonnées figurent à l'article 2 (ci-après « Tëër », « nous » ou « l'Éditeur »).
+Tëër est édité par **teer.inc**, dont les coordonnées figurent à l'article 2 (ci-après « Tëër », « nous » ou « l'Éditeur »).
 
 Nous accordons une importance fondamentale à la protection de la vie privée et au respect de la législation applicable, notamment la **Loi n° 2008-12 du 25 janvier 2008 sur la protection des données à caractère personnel** au Sénégal (ci-après la « Loi 2008-12 »), sous le contrôle de la **Commission de Protection des Données Personnelles (CDP)**, ainsi que des standards internationaux de référence en matière de protection des données (Règlement Général sur la Protection des Données – RGPD).
 
 ## 2. Identité et coordonnées du responsable de traitement
 
-- **Éditeur** : Ablaye Dia, entrepreneur individuel
-- **Adresse** : Sotrac Mermoz, Villa 64, Dakar, Sénégal
-- **Adresse électronique de contact** : diaablaye09@gmail.com
-- **Téléphone** : +221 77 317 57 42 / WhatsApp : +44 7554 781395
-- **Statut d'immatriculation** : Entrepreneur individuel (immatriculation en cours)
+- **Éditeur** : teer.inc
+- **Adresse** : Dakar, Sénégal
 
 ## 3. Définitions
 
@@ -104,7 +101,7 @@ Conformément à la Loi 2008-12 (articles 58, 62, 68 et 69) et aux standards RGP
 - **Droit à la portabilité** et **droit à la limitation** (standards RGPD)
 
 **Comment exercer vos droits** :
-- Pour les **données de compte Marchand**, adressez votre demande à diaablaye09@gmail.com.
+- Pour les **données de compte Marchand**, adressez votre demande à teer.inc.
 - Pour les **données de Client final**, la demande doit être adressée au **Marchand** concerné (responsable de traitement). Tëër assiste le Marchand dans le traitement de ces demandes.
 
 Vous disposez également du droit d'introduire une réclamation auprès de la **Commission de Protection des Données Personnelles (CDP)** du Sénégal. Les personnes situées dans l'Union européenne peuvent saisir leur autorité de contrôle locale.
@@ -141,6 +138,6 @@ Toute modification substantielle sera communiquée et entraînera une nouvelle v
 ## 16. Contact
 
 Pour toute question relative à la présente Politique ou à vos données :
-**Ablaye Dia** — diaablaye09@gmail.com — Sotrac Mermoz Villa 64, Dakar, Sénégal.
+**teer.inc** — Dakar, Sénégal.
 
 **Autorité de contrôle** : Commission de Protection des Données Personnelles (CDP), Dakar, Sénégal.
