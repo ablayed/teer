@@ -12,7 +12,7 @@ const publicEnvSchema = z.object({
 const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   RESEND_API_KEY: z.string().min(1),
-  RESEND_FROM_EMAIL: z.string().min(1).default('Tëër <noreply@teer.app>'),
+  RESEND_FROM_EMAIL: z.string().min(1).default('Tëër <noreply@lokatrack.dev>'),
   CRON_SECRET: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   SHOPIFY_API_KEY: z.string().optional(),
