@@ -103,8 +103,16 @@ export function buildCspHeader({ regime, isDev, nonce }: BuildCspOptions): strin
     ['base-uri', "'self'"],
     ['form-action', "'self'"],
     ['object-src', "'none'"],
-    ['upgrade-insecure-requests', ''],
   ];
+
+  // `upgrade-insecure-requests` UNIQUEMENT en prod (https). En local/CI http, WebKit
+  // (iPhone) applique l'upgrade jusqu'à `http://localhost` → bascule en https
+  // inexistant → page blanche → tous les sélecteurs E2E expirent (Chromium, lui,
+  // exempte le loopback). En prod c'est redondant avec HSTS preload (same-origin déjà
+  // https) ; on le garde par défense en profondeur côté serveur https.
+  if (!isDev) {
+    directives.push(['upgrade-insecure-requests', '']);
+  }
 
   return directives.map(([name, value]) => (value ? `${name} ${value}` : name)).join('; ');
 }
