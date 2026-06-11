@@ -7,6 +7,7 @@ export const AUTH_ERROR_CODES = {
   legal_consent_required: 'legal_consent_required',
   legal_documents_unavailable: 'legal_documents_unavailable',
   consent_record_failed: 'consent_record_failed',
+  confirmation_email_failed: 'confirmation_email_failed',
   unknown: 'unknown',
 } as const;
 

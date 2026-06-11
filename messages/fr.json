@@ -183,6 +183,7 @@
       "legal_consent_required": "Vous devez accepter les conditions et la politique de confidentialité pour créer un compte.",
       "legal_documents_unavailable": "Les documents légaux ne sont pas disponibles pour le moment. Réessayez dans quelques instants.",
       "consent_record_failed": "L'inscription a échoué car l'enregistrement du consentement n'a pas pu être confirmé. Réessayez.",
+      "confirmation_email_failed": "L'email de confirmation n'a pas pu être envoyé. Réessayez.",
       "invalid_credentials": "E-mail ou mot de passe incorrect.",
       "email_already_registered": "Cette adresse e-mail est déjà inscrite. Connectez-vous ou utilisez une autre adresse.",
       "rate_limited": "Trop de tentatives. Patientez quelques minutes avant de réessayer.",

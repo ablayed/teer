@@ -27,6 +27,7 @@ const authErrorCodes = [
   'legal_consent_required',
   'legal_documents_unavailable',
   'consent_record_failed',
+  'confirmation_email_failed',
   'unknown',
 ] as const satisfies readonly AuthErrorCode[];
 

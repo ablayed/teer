@@ -2,6 +2,7 @@
 
 import { mapSupabaseAuthError } from '@/lib/actions/auth-errors';
 import { actionClient, authActionClient } from '@/lib/actions/safe-action';
+import { sendSignupConfirmationEmail } from '@/lib/email/signup-confirmation';
 import { env } from '@/lib/env';
 import { checkPasswordStrength } from '@/lib/format/password';
 import {
@@ -66,6 +67,12 @@ function isConfirmationEmailFailure(error: {
   );
 }
 
+function rewriteConfirmationRedirect(actionLink: string, redirectTo: string): string {
+  const url = new URL(actionLink);
+  url.searchParams.set('redirect_to', redirectTo);
+  return url.toString();
+}
+
 function formatSupabaseAuthError(supabaseError: unknown): {
   message: string | null;
   code: string | null;
@@ -119,17 +126,20 @@ export const signUpAction = actionClient
       const code = mapSupabaseAuthError(error);
       if (isConfirmationEmailFailure(error)) {
         const admin = createSupabaseAdminClient();
-        const { data: createdUser, error: createError } = await admin.auth.admin.createUser({
+        const { data: generatedLink, error: generateError } = await admin.auth.admin.generateLink({
+          type: 'signup',
           email: parsedInput.email,
           password: parsedInput.password,
-          email_confirm: true,
+          options: {
+            redirectTo: callbackUrl.toString(),
+          },
         });
 
-        if (createError || !createdUser.user?.id) {
-          const fallbackError = createError ?? error;
+        if (generateError || !generatedLink.user?.id || !generatedLink.properties?.action_link) {
+          const fallbackError = generateError ?? error;
           const fallbackCode = mapSupabaseAuthError(fallbackError);
           Sentry.captureException(fallbackError, {
-            tags: { action: 'auth.sign_up', fallback: 'admin_create_user' },
+            tags: { action: 'auth.sign_up', fallback: 'generate_signup_link' },
             extra: {
               fallbackReason: 'confirmation_email_failure',
               email: parsedInput.email,
@@ -139,32 +149,36 @@ export const signUpAction = actionClient
           return { ok: false as const, errorCode: fallbackCode };
         }
 
-        const consentResult = await persistSignupConsents(
-          createdUser.user.id,
-          currentDocuments.documents,
+        const confirmationUrl = rewriteConfirmationRedirect(
+          generatedLink.properties.action_link,
+          callbackUrl.toString(),
         );
-        if (!consentResult.ok) {
-          await deleteUserForFailedSignup(createdUser.user.id);
-          return { ok: false as const, errorCode: 'consent_record_failed' as const };
-        }
-
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data: mailData, error: mailError } = await sendSignupConfirmationEmail({
+          confirmationUrl,
           email: parsedInput.email,
-          password: parsedInput.password,
         });
 
-        if (signInError) {
-          Sentry.captureException(signInError, {
-            tags: { action: 'auth.sign_up', fallback: 'admin_create_user' },
+        if (mailError || !mailData?.id) {
+          await deleteUserForFailedSignup(generatedLink.user.id);
+          Sentry.captureException(new Error('Failed to send signup confirmation email'), {
+            tags: { action: 'auth.sign_up', fallback: 'generate_signup_link' },
             extra: {
-              fallbackReason: 'sign_in_after_admin_create_user_failed',
               email: parsedInput.email,
             },
           });
-          return { ok: false as const, errorCode: mapSupabaseAuthError(signInError) };
+          return { ok: false as const, errorCode: 'confirmation_email_failed' as const };
         }
 
-        redirect(safeRedirectPath(parsedInput.redirectTo));
+        const consentResult = await persistSignupConsents(
+          generatedLink.user.id,
+          currentDocuments.documents,
+        );
+        if (!consentResult.ok) {
+          await deleteUserForFailedSignup(generatedLink.user.id);
+          return { ok: false as const, errorCode: 'consent_record_failed' as const };
+        }
+
+        return { ok: true as const, requiresEmailVerification: true };
       }
 
       if (process.env.NODE_ENV !== 'production') {
