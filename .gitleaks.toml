@@ -1,0 +1,13 @@
+# Configuration GitLeaks (job `gitleaks` du workflow CI).
+# On étend la config par défaut de GitLeaks v8 et on allowliste les faux positifs
+# connus du dépôt — aucun secret réel n'est versionné (les vrais .env sont
+# .gitignored ; seul .env.example, à placeholders vides, est suivi).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Faux positifs fixtures / lockfile"
+paths = [
+  '''pnpm-lock\.yaml''',
+  '''\.env\.example''',
+]
