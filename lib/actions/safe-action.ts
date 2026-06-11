@@ -1,3 +1,4 @@
+import { reportAuthorizationFailure } from '@/lib/security/authz-audit';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole, teamRoles } from '@/lib/team/permissions';
@@ -39,7 +40,7 @@ export const authActionClient = actionClient.use(async ({ next }) => {
 });
 
 export function requireRole(...allowedRoles: TeamRole[]) {
-  return authActionClient.use(async ({ ctx, next }) => {
+  return authActionClient.use(async ({ ctx, next, metadata }) => {
     const supabase = ctx.supabase as unknown as SupabaseServerClient;
     const { data: member, error } = await supabase
       .from('merchant_member')
@@ -49,6 +50,15 @@ export function requireRole(...allowedRoles: TeamRole[]) {
       .maybeSingle();
 
     if (error || !member || !isTeamRole(member.role) || !allowedRoles.includes(member.role)) {
+      // OWASP A09 : trace l'échec de contrôle d'accès (tentative au-dessus du rôle).
+      reportAuthorizationFailure({
+        actionName: metadata?.actionName,
+        section: metadata?.section,
+        userId: ctx.user.id,
+        merchantAccountId: member?.merchant_account_id ?? undefined,
+        expectedRoles: allowedRoles,
+        actualRole: member?.role ?? null,
+      });
       throw new Error('FORBIDDEN');
     }
 
