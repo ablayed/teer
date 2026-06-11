@@ -56,7 +56,11 @@ export default defineConfig({
     { name: 'iphone-14', use: { ...devices['iPhone 14'] } },
   ],
   webServer: {
-    command: 'pnpm dev',
+    // En mode E2E_PROD_BUILD=1, on sert un VRAI build de prod (`next start`) pour
+    // reproduire les bugs PROD-ONLY (Router Cache client, cf. issue #3) que `next dev`
+    // ne montre pas. Le build doit avoir été produit AVANT (cf. workflow e2e-prod.yml).
+    // Sinon, dev classique.
+    command: process.env.E2E_PROD_BUILD === '1' ? 'pnpm start' : 'pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
