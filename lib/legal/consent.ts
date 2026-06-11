@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
+import * as Sentry from '@sentry/nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { headers } from 'next/headers';
 
@@ -134,6 +135,21 @@ export async function persistSignupConsents(userId: string, documents: ConsentDo
   );
 
   if (error) {
+    const consentError = new Error('Failed to insert signup consents');
+
+    Sentry.captureException(consentError, {
+      tags: { action: 'persist_signup_consents' },
+      extra: {
+        userId,
+        documentCount: documents.length,
+        supabaseError: {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
+      },
+    });
     return { ok: false as const };
   }
 
@@ -142,6 +158,7 @@ export async function persistSignupConsents(userId: string, documents: ConsentDo
 
 export async function deleteUserForFailedSignup(userId: string) {
   const admin = createAdminClient();
+  await admin.from('audit_log').delete().eq('actor_user_id', userId);
   const { error } = await admin.auth.admin.deleteUser(userId);
 
   return { ok: !error };
