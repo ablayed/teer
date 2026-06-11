@@ -48,7 +48,19 @@ describe('buildCspHeader — régime app (nonce strict)', () => {
     expect(csp).toContain("base-uri 'self'");
     expect(csp).toContain("form-action 'self'");
     expect(csp).toContain("object-src 'none'");
+  });
+
+  it('émet upgrade-insecure-requests en prod, JAMAIS en dev (WebKit upgrade http://localhost)', () => {
     expect(csp).toContain('upgrade-insecure-requests');
+    const dev = buildCspHeader({ regime: 'app', isDev: true, nonce: 'N' });
+    expect(dev).not.toContain('upgrade-insecure-requests');
+    // idem régime statique
+    expect(buildCspHeader({ regime: 'static', isDev: false })).toContain(
+      'upgrade-insecure-requests',
+    );
+    expect(buildCspHeader({ regime: 'static', isDev: true })).not.toContain(
+      'upgrade-insecure-requests',
+    );
   });
 
   it("n'expose pas 'unsafe-eval' en production", () => {

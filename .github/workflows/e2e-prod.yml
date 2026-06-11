@@ -64,7 +64,7 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
-      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: pnpm exec playwright install --with-deps chromium
       # Build de PROD : les NEXT_PUBLIC_* (Supabase local) sont inlinés ici. C'est ce
       # build que `next start` (webServer Playwright en mode E2E_PROD_BUILD=1) servira.
       - name: Build production
@@ -76,8 +76,13 @@ jobs:
           RESEND_API_KEY: test-resend-api-key
       # Sous-ensemble PROD-ONLY uniquement (specs gardées par E2E_PROD_BUILD=1) :
       # issue #3 (commande créée visible) + vérification de la pagination keyset.
+      # Cibles chromium + pixel-7 (moteur Chromium) UNIQUEMENT : le bug visé (Router
+      # Cache client) est indépendant du moteur, et le build de prod émet
+      # `upgrade-insecure-requests` que WebKit applique jusqu'à http://localhost (→ page
+      # blanche, faux échec). La couverture WebChromium/WebKit cross-navigateur reste
+      # assurée par le job test-e2e (dev, http sans UIR). Cf. tests/e2e en-têtes.
       - name: E2E prod-build (sous-ensemble gardé)
-        run: pnpm exec playwright test tests/e2e/orders-prod-cache.spec.ts tests/e2e/orders-pagination-verify.spec.ts
+        run: pnpm exec playwright test tests/e2e/orders-prod-cache.spec.ts tests/e2e/orders-pagination-verify.spec.ts --project=chromium --project=pixel-7
         env:
           E2E_PROD_BUILD: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
