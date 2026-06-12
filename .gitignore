@@ -15,3 +15,5 @@ pnpm-debug.log*
 supabase/.temp/*
 !supabase/.temp/project-ref
 supabase/.branches/_current_branch
+
+.vercel
