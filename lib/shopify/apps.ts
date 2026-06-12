@@ -1,9 +1,10 @@
 // Registre multi-app Shopify — singleton lié aux env vars (serveur uniquement).
 //
 // Le cœur pur (factory + types) vit dans lib/shopify/app-registry.ts (importable en test sans env).
-// Ici on construit le registre une fois au chargement depuis les credentials des deux apps :
+// Ici on construit le registre une fois au chargement depuis les credentials des apps connues :
 //   - Teer Dev   : SHOPIFY_API_KEY / SHOPIFY_API_SECRET (app publique, par défaut, rétrocompat) ;
 //   - Teer Pilote: SHOPIFY_PILOTE_API_KEY / SHOPIFY_PILOTE_API_SECRET (app custom).
+//   - Teer Marchand: SHOPIFY_MARCHAND_API_KEY / SHOPIFY_MARCHAND_API_SECRET (app custom pilote).
 // Les secrets ne sortent jamais d'ici (jamais en NEXT_PUBLIC_, jamais loggés).
 
 import { env } from '@/lib/env';
@@ -25,6 +26,11 @@ const REGISTRY = createShopifyAppRegistry([
     label: 'teer-pilote',
     clientId: env.SHOPIFY_PILOTE_API_KEY,
     clientSecret: env.SHOPIFY_PILOTE_API_SECRET,
+  },
+  {
+    label: 'teer-marchand',
+    clientId: env.SHOPIFY_MARCHAND_API_KEY,
+    clientSecret: env.SHOPIFY_MARCHAND_API_SECRET,
   },
 ]);
 

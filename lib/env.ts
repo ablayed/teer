@@ -21,6 +21,10 @@ const serverEnvSchema = z.object({
   // seule Teer Dev est enregistrée. Voir lib/shopify/apps.ts.
   SHOPIFY_PILOTE_API_KEY: z.string().optional(),
   SHOPIFY_PILOTE_API_SECRET: z.string().optional(),
+  // Multi-app : credentials de la 3e app Shopify (Teer Marchand, custom). Optionnels — si absents,
+  // l'app n'est pas enregistrée. Voir lib/shopify/apps.ts.
+  SHOPIFY_MARCHAND_API_KEY: z.string().optional(),
+  SHOPIFY_MARCHAND_API_SECRET: z.string().optional(),
   SHOPIFY_TOKEN_ENCRYPTION_KEY: z.string().optional(),
 });
 
@@ -47,6 +51,8 @@ export const env = {
     SHOPIFY_API_SECRET: process.env.SHOPIFY_API_SECRET,
     SHOPIFY_PILOTE_API_KEY: process.env.SHOPIFY_PILOTE_API_KEY,
     SHOPIFY_PILOTE_API_SECRET: process.env.SHOPIFY_PILOTE_API_SECRET,
+    SHOPIFY_MARCHAND_API_KEY: process.env.SHOPIFY_MARCHAND_API_KEY,
+    SHOPIFY_MARCHAND_API_SECRET: process.env.SHOPIFY_MARCHAND_API_SECRET,
     SHOPIFY_TOKEN_ENCRYPTION_KEY: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
   }),
 };

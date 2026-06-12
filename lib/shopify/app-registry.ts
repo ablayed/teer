@@ -1,8 +1,9 @@
 // Registre multi-app Shopify — cœur PUR et testable (n'importe AUCUN env).
 //
-// Tëër héberge DEUX apps Shopify sur un seul déploiement :
+// Tëër héberge plusieurs apps Shopify sur un seul déploiement :
 //   - Teer Dev   : app publique (credentials historiques SHOPIFY_API_KEY / SHOPIFY_API_SECRET) ;
-//   - Teer Pilote: app custom (SHOPIFY_PILOTE_API_KEY / SHOPIFY_PILOTE_API_SECRET).
+//   - Teer Pilote : app custom (SHOPIFY_PILOTE_API_KEY / SHOPIFY_PILOTE_API_SECRET).
+//   - Teer Marchand : app custom pilote (SHOPIFY_MARCHAND_API_KEY / SHOPIFY_MARCHAND_API_SECRET).
 // Le routage (install OAuth, vérif HMAC webhooks, credentials sortants) se fait sur le `client_id`.
 //
 // Le singleton lié aux env vars vit dans lib/shopify/apps.ts ; ce module reste importable en test
@@ -10,7 +11,7 @@
 
 import { SHOPIFY_REQUIRED_SCOPES } from '@/lib/shopify/oauth';
 
-export type ShopifyAppLabel = 'teer-dev' | 'teer-pilote';
+export type ShopifyAppLabel = 'teer-dev' | 'teer-pilote' | 'teer-marchand';
 
 export type ShopifyAppConfig = {
   clientId: string;
