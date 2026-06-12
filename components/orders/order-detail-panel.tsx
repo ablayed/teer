@@ -7,6 +7,7 @@ import type { DriverOption } from '@/components/orders/transition-dialog';
 import { Button } from '@/components/ui/button';
 import type { OrderDetail } from '@/lib/actions/orders';
 import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-machine';
+import { cancelReasonLabels, isCancelReason } from '@/lib/domain/order-transition-actions';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import type { Json } from '@/lib/supabase/database.types';
@@ -159,6 +160,10 @@ export function OrderDetailPanel({
     totalAmount: order.total_amount,
   });
   const isCancelled = order.order_state === 'cancelled';
+  // Lot B : raisons d'annulation multiples (libellés FR), fallback legacy.
+  const cancelReasonsDisplay = (order.cancel_reasons ?? [])
+    .map((reason) => (isCancelReason(reason) ? cancelReasonLabels[reason] : reason.trim()))
+    .filter((label) => label.length > 0);
   const contentClassName =
     mode === 'sheet'
       ? 'flex h-full min-h-0 w-full flex-col'
@@ -303,10 +308,20 @@ export function OrderDetailPanel({
 
         {isCancelled ? (
           <section className="space-y-2">
-            <h2 className="text-sm font-semibold uppercase text-muted">Raison d'annulation</h2>
-            {/* Lot B remplira les raisons multiples + leur libelle. Ici on lit le
-                cancel_reason existant, sinon un placeholder. */}
-            <p className="text-sm text-text">{order.cancel_reason?.trim() || '—'}</p>
+            <h2 className="text-sm font-semibold uppercase text-muted">
+              {cancelReasonsDisplay.length > 1 ? "Raisons d'annulation" : "Raison d'annulation"}
+            </h2>
+            {cancelReasonsDisplay.length > 0 ? (
+              <ul className="space-y-1">
+                {cancelReasonsDisplay.map((label) => (
+                  <li className="text-sm text-text" key={label}>
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-text">{order.cancel_reason?.trim() || '—'}</p>
+            )}
           </section>
         ) : null}
 

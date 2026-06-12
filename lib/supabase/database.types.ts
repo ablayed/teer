@@ -963,6 +963,7 @@ export type Database = {
           attempt_count: number | null;
           call_state: string | null;
           cancel_reason: string | null;
+          cancel_reasons: string[] | null;
           cash_collectable_minor: number | null;
           cash_collected_at: string | null;
           cash_state: string | null;
@@ -1001,6 +1002,7 @@ export type Database = {
           attempt_count?: number | null;
           call_state?: string | null;
           cancel_reason?: string | null;
+          cancel_reasons?: string[] | null;
           cash_collectable_minor?: number | null;
           cash_collected_at?: string | null;
           cash_state?: string | null;
@@ -1039,6 +1041,7 @@ export type Database = {
           attempt_count?: number | null;
           call_state?: string | null;
           cancel_reason?: string | null;
+          cancel_reasons?: string[] | null;
           cash_collectable_minor?: number | null;
           cash_collected_at?: string | null;
           cash_state?: string | null;
@@ -1979,7 +1982,10 @@ export type Database = {
               p_attempt_count?: number;
               p_call_state?: string;
               p_cancel_reason?: string;
+              p_cancel_reasons?: string[];
               p_cash_state?: string;
+              p_clear_cancel_reasons?: boolean;
+              p_clear_scheduled_for?: boolean;
               p_delivery_state?: string;
               p_next_contact_at?: string;
               p_note?: string;

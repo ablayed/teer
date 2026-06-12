@@ -77,6 +77,10 @@ type TransitionOrderArgs = {
   p_attempt_count?: number;
   p_note?: string;
   p_payment_channel?: string;
+  p_scheduled_for?: string;
+  p_cancel_reasons?: string[];
+  p_clear_scheduled_for?: boolean;
+  p_clear_cancel_reasons?: boolean;
 };
 
 function transitionRpc(client: SupabaseClient<Database>) {
@@ -608,6 +612,303 @@ describe('idempotence post_stock_movement', () => {
         .eq('product_id', productId)
         .single();
       expect(stockAfterSecond?.qty_on_hand).toBe(110); // inchangé
+    },
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// LOT B : cycle valider → déconfirmer → revalider
+//   reserve (T1) → release (T2) → reserve (T3), 3 idempotency_keys distincts
+//   (transition_id neuf à chaque appel), qty_reserved revient au bon niveau
+//   à chaque étape, AUCUNE déduplication parasite.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('Lot B : déconfirmer libère la réserve, le cycle ne déduplique pas', () => {
+  skipIfNoServiceRole(
+    'valider→déconfirmer→revalider : reserve/release/reserve, 3 clés distinctes, reserved 3→0→3',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lotb-cycle');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+
+      async function reserved() {
+        const { data } = await admin
+          .from('product_stock')
+          .select('qty_on_hand, qty_reserved')
+          .eq('product_id', productId)
+          .single();
+        return data;
+      }
+
+      // 1) valider → reserve (+3)
+      const r1 = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      expect(r1.error).toBeNull();
+      expect(r1.data).toBe('CONFIRMEE');
+      expect((await reserved())?.qty_reserved).toBe(3);
+
+      // 2) déconfirmer → release (−3), reverse exact ; revient à to_call/unassigned
+      const r2 = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'to_call',
+        p_clear_scheduled_for: true,
+      });
+      expect(r2.error).toBeNull();
+      expect(r2.data).toBe('A_APPELER');
+      const afterDeconfirm = await reserved();
+      expect(afterDeconfirm?.qty_reserved).toBe(0); // réserve libérée
+      expect(afterDeconfirm?.qty_on_hand).toBe(50); // jamais touché
+
+      // 3) revalider → reserve (+3) à nouveau (pas de dédup, transition_id neuf)
+      const r3 = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      expect(r3.error).toBeNull();
+      expect(r3.data).toBe('CONFIRMEE');
+      expect((await reserved())?.qty_reserved).toBe(3); // revient à 3
+
+      // Les 3 mouvements existent, dans l'ordre, avec 3 clés/transition_id distincts.
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('movement_type, qty, idempotency_key, transition_id')
+        .eq('order_id', orderId)
+        .order('created_at');
+
+      expect(movements?.map((m) => m.movement_type)).toEqual(['reserve', 'release', 'reserve']);
+      expect(movements?.map((m) => m.qty)).toEqual([3, -3, 3]);
+
+      const keys = new Set(movements?.map((m) => m.idempotency_key));
+      const transitionIds = new Set(movements?.map((m) => m.transition_id));
+      expect(keys.size).toBe(3); // aucune collision → aucune déduplication parasite
+      expect(transitionIds.size).toBe(3); // transition_id neuf à chaque appel
+    },
+  );
+
+  skipIfNoServiceRole(
+    'déconfirmer une commande PROGRAMMÉE vide scheduled_for, repasse unassigned et libère la réserve',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lotb-prog');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+
+      // valider → reserve (+3)
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      // programmer → scheduled_for posé, delivery scheduled
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+        p_cash_state: 'expected',
+        p_scheduled_for: '2099-05-01T12:00:00.000Z',
+      });
+
+      const programmed = await admin
+        .from('orders')
+        .select('scheduled_for, delivery_state')
+        .eq('id', orderId)
+        .single();
+      expect(programmed.data?.scheduled_for).not.toBeNull();
+      expect(programmed.data?.delivery_state).toBe('scheduled');
+
+      // déconfirmer → scheduled_for vidé (0055), delivery unassigned, release (−3)
+      const deconfirm = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'to_call',
+        p_cash_state: 'not_due',
+        p_delivery_state: 'unassigned',
+        p_clear_scheduled_for: true,
+      });
+      expect(deconfirm.error).toBeNull();
+      expect(deconfirm.data).toBe('A_APPELER');
+
+      const after = await admin
+        .from('orders')
+        .select('scheduled_for, delivery_state, call_state')
+        .eq('id', orderId)
+        .single();
+      expect(after.data?.scheduled_for).toBeNull(); // 0055 : clear respecté
+      expect(after.data?.delivery_state).toBe('unassigned');
+      expect(after.data?.call_state).toBe('to_call');
+
+      const { data: stock } = await admin
+        .from('product_stock')
+        .select('qty_reserved')
+        .eq('product_id', productId)
+        .single();
+      expect(stock?.qty_reserved).toBe(0); // réserve libérée
+    },
+  );
+
+  skipIfNoServiceRole(
+    'annuler (2 raisons) → désannuler : raisons stockées puis effacées, AUCUN mouvement au désannuler',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lotb-desann');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+
+      // valider → reserve (+3)
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+
+      // annuler avec 2 raisons → release (−3), cancel_reasons stocké,
+      // cancel_reason legacy = 1ᵉʳ élément.
+      const cancel = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'cancelled',
+        p_cash_state: 'not_due',
+        p_delivery_state: 'unassigned',
+        p_cancel_reasons: ['prix', 'concurrence'],
+      });
+      expect(cancel.error).toBeNull();
+      expect(cancel.data).toBe('ANNULEE');
+
+      const { data: cancelled } = await admin
+        .from('orders')
+        .select('order_state, cancel_reason, cancel_reasons')
+        .eq('id', orderId)
+        .single();
+      expect(cancelled?.order_state).toBe('cancelled');
+      expect(cancelled?.cancel_reasons).toEqual(['prix', 'concurrence']);
+      expect(cancelled?.cancel_reason).toBe('prix'); // legacy = 1ᵉʳ élément
+
+      const movementsBefore = await admin
+        .from('stock_movement')
+        .select('id, movement_type')
+        .eq('order_id', orderId);
+      expect(movementsBefore.data?.map((m) => m.movement_type).sort()).toEqual([
+        'release',
+        'reserve',
+      ]);
+
+      // désannuler → order ouvert, raisons effacées, AUCUN nouveau mouvement.
+      const desann = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'open',
+        p_call_state: 'to_call',
+        p_delivery_state: 'unassigned',
+        p_cash_state: 'not_due',
+        p_clear_cancel_reasons: true,
+        p_clear_scheduled_for: true,
+      });
+      expect(desann.error).toBeNull();
+      expect(desann.data).toBe('A_APPELER');
+
+      const { data: reopened } = await admin
+        .from('orders')
+        .select('order_state, call_state, delivery_state, cancel_reason, cancel_reasons')
+        .eq('id', orderId)
+        .single();
+      expect(reopened?.order_state).toBe('open');
+      expect(reopened?.call_state).toBe('to_call');
+      expect(reopened?.delivery_state).toBe('unassigned');
+      expect(reopened?.cancel_reason).toBeNull();
+      expect(reopened?.cancel_reasons).toBeNull();
+
+      // Toujours exactement 2 mouvements (reserve + release) : désannuler n'en pose aucun.
+      const movementsAfter = await admin
+        .from('stock_movement')
+        .select('id')
+        .eq('order_id', orderId);
+      expect(movementsAfter.data).toHaveLength(2);
+
+      // qty_reserved resté à 0 (release l'a vidé, désannuler ne re-réserve pas).
+      const { data: stock } = await admin
+        .from('product_stock')
+        .select('qty_on_hand, qty_reserved')
+        .eq('product_id', productId)
+        .single();
+      expect(stock?.qty_on_hand).toBe(50);
+      expect(stock?.qty_reserved).toBe(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'déconfirmer indisponible après dispatch : appelé manuellement, aucun release parasite',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lotb-dispatch');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+      // valider → programmer → assigner (dispatch : −3 on_hand, reserved vidé)
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+
+      const before = await admin
+        .from('product_stock')
+        .select('qty_on_hand, qty_reserved')
+        .eq('product_id', productId)
+        .single();
+
+      // Tenter « déconfirmer » alors que delivery_state = out_for_delivery :
+      // la garde delivery∈{unassigned,scheduled} de la branche release ne matche
+      // pas → AUCUN mouvement (le filtre TS interdit déjà l'action en amont).
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'to_call',
+        p_clear_scheduled_for: true,
+      });
+
+      const after = await admin
+        .from('product_stock')
+        .select('qty_on_hand, qty_reserved')
+        .eq('product_id', productId)
+        .single();
+
+      expect(after.data?.qty_on_hand).toBe(before.data?.qty_on_hand);
+      expect(after.data?.qty_reserved).toBe(before.data?.qty_reserved);
+
+      const { data: releases } = await admin
+        .from('stock_movement')
+        .select('id')
+        .eq('order_id', orderId)
+        .eq('movement_type', 'release');
+      expect(releases).toHaveLength(0);
     },
   );
 });

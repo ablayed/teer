@@ -1,6 +1,7 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
+import { transitionInputSchema } from '@/lib/actions/transition-input-schema';
 import {
   IllegalTransitionError,
   type OrderStatus,
@@ -13,9 +14,7 @@ import {
   buildTransitionDimensionPatch,
   canRolePerformAction,
   getAllowedTransitionActionsForDimensions,
-  paymentChannelsAtDelivery,
   resolveOrderDimensions,
-  transitionActions,
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
 import type { Database, Tables } from '@/lib/supabase/database.types';
@@ -26,7 +25,6 @@ import {
   createClient,
 } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import { z } from 'zod';
 
 type SupabaseServerClient = SupabaseClient<Database>;
 type OrderRow = Tables<'orders'>;
@@ -50,21 +48,6 @@ export type TransitionResult =
       errorCode: TransitionErrorCode;
       message: string;
     };
-
-const transitionInputSchema = z.object({
-  action: z.enum(transitionActions),
-  orderId: z.string().uuid(),
-  payload: z
-    .object({
-      note: z.string().trim().max(500).optional(),
-      assignedDriverId: z.string().uuid().optional(),
-      cancelReason: z.string().trim().max(500).optional(),
-      nextContactAt: z.string().datetime().optional(),
-      paymentChannelAtDelivery: z.enum(paymentChannelsAtDelivery).optional(),
-      scheduledFor: z.string().datetime().optional(),
-    })
-    .optional(),
-});
 
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -102,6 +85,9 @@ function transitionRpc(supabase: SupabaseServerClient) {
       p_payment_channel?: PaymentChannelAtDelivery;
       p_scheduled_for?: string;
       p_attempt_count?: number;
+      p_cancel_reasons?: string[];
+      p_clear_scheduled_for?: boolean;
+      p_clear_cancel_reasons?: boolean;
     },
   ) => Promise<PostgrestSingleResponse<string>>;
 }
@@ -127,6 +113,7 @@ async function writeTransitionAudit({
     | 'attempt_count'
     | 'call_state'
     | 'cancel_reason'
+    | 'cancel_reasons'
     | 'cash_state'
     | 'delivery_state'
     | 'next_contact_at'
@@ -140,6 +127,7 @@ async function writeTransitionAudit({
     | 'attempt_count'
     | 'call_state'
     | 'cancel_reason'
+    | 'cancel_reasons'
     | 'cash_state'
     | 'delivery_state'
     | 'next_contact_at'
@@ -190,6 +178,7 @@ export async function performTransitionForContext({
   payload?: {
     assignedDriverId?: string;
     cancelReason?: string;
+    cancelReasons?: string[];
     nextContactAt?: string;
     note?: string;
     paymentChannelAtDelivery?: PaymentChannelAtDelivery;
@@ -236,6 +225,7 @@ export async function performTransitionForContext({
   const transitionPatch = buildTransitionDimensionPatch(action, currentDimensions, {
     assignedDriverId: payload?.assignedDriverId,
     cancelReason: payload?.cancelReason,
+    cancelReasons: payload?.cancelReasons,
     nextContactAt: payload?.nextContactAt,
     paymentChannelAtDelivery: payload?.paymentChannelAtDelivery,
     scheduledFor: payload?.scheduledFor,
@@ -254,8 +244,11 @@ export async function performTransitionForContext({
         : {}),
       ...(transitionPatch.callState ? { p_call_state: transitionPatch.callState } : {}),
       ...(transitionPatch.cancelReason ? { p_cancel_reason: transitionPatch.cancelReason } : {}),
+      ...(transitionPatch.cancelReasons ? { p_cancel_reasons: transitionPatch.cancelReasons } : {}),
       ...(transitionPatch.cashState ? { p_cash_state: transitionPatch.cashState } : {}),
       ...(transitionPatch.deliveryState ? { p_delivery_state: transitionPatch.deliveryState } : {}),
+      ...(transitionPatch.clearScheduledFor ? { p_clear_scheduled_for: true } : {}),
+      ...(transitionPatch.clearCancelReasons ? { p_clear_cancel_reasons: true } : {}),
       ...(transitionPatch.nextContactAt
         ? { p_next_contact_at: transitionPatch.nextContactAt }
         : {}),
@@ -297,6 +290,7 @@ export async function performTransitionForContext({
       attempt_count: order.attempt_count,
       call_state: order.call_state,
       cancel_reason: order.cancel_reason,
+      cancel_reasons: order.cancel_reasons,
       cash_state: order.cash_state,
       delivery_state: order.delivery_state,
       next_contact_at: order.next_contact_at,
@@ -309,6 +303,7 @@ export async function performTransitionForContext({
       attempt_count: updatedOrder.attempt_count,
       call_state: updatedOrder.call_state,
       cancel_reason: updatedOrder.cancel_reason,
+      cancel_reasons: updatedOrder.cancel_reasons,
       cash_state: updatedOrder.cash_state,
       delivery_state: updatedOrder.delivery_state,
       next_contact_at: updatedOrder.next_contact_at,

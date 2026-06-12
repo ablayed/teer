@@ -328,6 +328,100 @@ async function createConfirmedOrderWithLine(
   return order.id as string;
 }
 
+async function createOrderWithMatchedLine({
+  admin,
+  customerName,
+  merchantAccountId,
+  productId,
+  productTitle,
+  qty,
+  status,
+}: {
+  admin: AdminClient;
+  customerName: string;
+  merchantAccountId: string;
+  productId: string;
+  productTitle: string;
+  qty: number;
+  status: Parameters<typeof legacyStatusToDimensions>[0];
+}) {
+  const orderId = await createOrderWithCustomer(admin, {
+    customerName,
+    merchantAccountId,
+    productName: productTitle,
+    status,
+    totalAmount: 15000,
+  });
+
+  const { error } = await admin.from('order_line').insert({
+    merchant_account_id: merchantAccountId,
+    order_id: orderId,
+    product_id: productId,
+    raw_title: productTitle,
+    qty,
+    match_status: 'matched',
+  });
+  if (error) throw error;
+
+  return orderId;
+}
+
+async function seedWarehouseStock({
+  actorUserId,
+  email,
+  merchantAccountId,
+  productId,
+  qty,
+  unitCost = 5000,
+}: {
+  actorUserId: string;
+  email: string;
+  merchantAccountId: string;
+  productId: string;
+  qty: number;
+  unitCost?: number;
+}) {
+  const ownerClient = await signInClient(email);
+  const { error } = await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'purchase_in',
+    p_qty: qty,
+    p_idempotency_key: `e2e-in:${productId}:${Date.now()}`,
+    p_created_by: actorUserId,
+    p_unit_cost: unitCost,
+  });
+  if (error) throw error;
+}
+
+async function reserveStockForOrder({
+  actorUserId,
+  email,
+  merchantAccountId,
+  orderId,
+  productId,
+  qty,
+}: {
+  actorUserId: string;
+  email: string;
+  merchantAccountId: string;
+  orderId: string;
+  productId: string;
+  qty: number;
+}) {
+  const ownerClient = await signInClient(email);
+  const { error } = await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'reserve',
+    p_qty: qty,
+    p_idempotency_key: `e2e-reserve:${orderId}:${Date.now()}`,
+    p_created_by: actorUserId,
+    p_order_id: orderId,
+  });
+  if (error) throw error;
+}
+
 async function waitForOrderStatus(
   admin: AdminClient,
   orderId: string,
@@ -580,6 +674,202 @@ test('un agent ne voit que les actions legales sur une commande a appeler', asyn
     await expect(menuItem(page, 'Marquer livree')).toHaveCount(0);
     await expect(menuItem(page, 'Annuler la commande')).toHaveCount(0);
     await expect(menuItem(page, 'Refuser')).toHaveCount(0);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot B - deconfirmer libere la reserve et disparait apres dispatch', async ({ page }) => {
+  const fixture = await createOwnerFixture('lotb-deconfirm-ui');
+  const productTitle = 'Produit Deconfirmer E2E';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  await seedWarehouseStock({
+    actorUserId: fixture.userIds[0],
+    email: fixture.email,
+    merchantAccountId: fixture.merchantAccountId,
+    productId,
+    qty: 20,
+  });
+  const orderId = await createOrderWithMatchedLine({
+    admin: fixture.admin,
+    customerName: 'Client Deconfirmer',
+    merchantAccountId: fixture.merchantAccountId,
+    productId,
+    productTitle,
+    qty: 3,
+    status: 'CONFIRMEE',
+  });
+  await reserveStockForOrder({
+    actorUserId: fixture.userIds[0],
+    email: fixture.email,
+    merchantAccountId: fixture.merchantAccountId,
+    orderId,
+    productId,
+    qty: 3,
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    const reservedAfterConfirm = await fixture.admin
+      .from('product_stock')
+      .select('qty_on_hand, qty_reserved')
+      .eq('product_id', productId)
+      .single();
+    expect(reservedAfterConfirm.data?.qty_on_hand).toBe(20);
+    expect(reservedAfterConfirm.data?.qty_reserved).toBe(3);
+
+    await runDetailMenuAction(page, 'Déconfirmer');
+    await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
+
+    const { data: deconfirmed } = await fixture.admin
+      .from('orders')
+      .select('call_state, delivery_state, scheduled_for')
+      .eq('id', orderId)
+      .single();
+    expect(deconfirmed?.call_state).toBe('to_call');
+    expect(deconfirmed?.delivery_state).toBe('unassigned');
+    expect(deconfirmed?.scheduled_for).toBeNull();
+
+    const reservedAfterDeconfirm = await fixture.admin
+      .from('product_stock')
+      .select('qty_on_hand, qty_reserved')
+      .eq('product_id', productId)
+      .single();
+    expect(reservedAfterDeconfirm.data?.qty_on_hand).toBe(20);
+    expect(reservedAfterDeconfirm.data?.qty_reserved).toBe(0);
+
+    const { data: firstMovements } = await fixture.admin
+      .from('stock_movement')
+      .select('movement_type, qty')
+      .eq('order_id', orderId)
+      .order('created_at');
+    expect(firstMovements?.map((movement) => movement.movement_type)).toEqual([
+      'reserve',
+      'release',
+    ]);
+    expect(firstMovements?.map((movement) => movement.qty)).toEqual([3, -3]);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test("Lot B - deconfirmer n'est pas propose apres dispatch", async ({ page }) => {
+  const fixture = await createOwnerFixture('lotb-no-deconfirm-dispatch');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    customerName: 'Client Dispatch Lot B',
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'EN_LIVRAISON',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await openActionsMenu(page);
+    await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
+    await expect(menuItem(page, 'Livrer')).toHaveCount(0);
+    await expect(menuItem(page, 'Marquer livree')).toBeVisible();
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot B - annuler avec raisons puis desannuler efface sans mouvement stock', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('lotb-desannuler-ui');
+  const productTitle = 'Produit Desannuler E2E';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  await seedWarehouseStock({
+    actorUserId: fixture.userIds[0],
+    email: fixture.email,
+    merchantAccountId: fixture.merchantAccountId,
+    productId,
+    qty: 20,
+  });
+  const orderId = await createOrderWithMatchedLine({
+    admin: fixture.admin,
+    customerName: 'Client Desannuler',
+    merchantAccountId: fixture.merchantAccountId,
+    productId,
+    productTitle,
+    qty: 2,
+    status: 'A_APPELER',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await runDetailMenuAction(page, 'Confirmer');
+    await waitForOrderStatus(fixture.admin, orderId, 'CONFIRMEE');
+
+    await page.reload();
+    await runDetailMenuAction(page, 'Annuler la commande');
+    await expect(page.getByRole('button', { name: "Confirmer l'annulation" })).toBeDisabled();
+    await page.getByLabel('Prix trop élevé').check();
+    await page.getByLabel('Trouvé moins cher ailleurs').check();
+    await page.getByRole('button', { name: "Confirmer l'annulation" }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'ANNULEE');
+
+    await page.reload();
+    await expect(page.getByText('Prix trop élevé')).toBeVisible();
+    await expect(page.getByText('Trouvé moins cher ailleurs')).toBeVisible();
+
+    const { data: cancelled } = await fixture.admin
+      .from('orders')
+      .select('order_state, cancel_reason, cancel_reasons')
+      .eq('id', orderId)
+      .single();
+    expect(cancelled?.order_state).toBe('cancelled');
+    expect(cancelled?.cancel_reason).toBe('prix');
+    expect(cancelled?.cancel_reasons).toEqual(['prix', 'concurrence']);
+
+    const { data: movementsBefore } = await fixture.admin
+      .from('stock_movement')
+      .select('movement_type, qty')
+      .eq('order_id', orderId)
+      .order('created_at');
+    expect(movementsBefore?.map((movement) => movement.movement_type)).toEqual([
+      'reserve',
+      'release',
+    ]);
+    expect(movementsBefore?.map((movement) => movement.qty)).toEqual([2, -2]);
+
+    await runDetailMenuAction(page, 'Désannuler');
+    await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
+
+    const { data: reopened } = await fixture.admin
+      .from('orders')
+      .select('order_state, call_state, delivery_state, cancel_reason, cancel_reasons')
+      .eq('id', orderId)
+      .single();
+    expect(reopened?.order_state).toBe('open');
+    expect(reopened?.call_state).toBe('to_call');
+    expect(reopened?.delivery_state).toBe('unassigned');
+    expect(reopened?.cancel_reason).toBeNull();
+    expect(reopened?.cancel_reasons).toBeNull();
+
+    const { data: movementsAfter } = await fixture.admin
+      .from('stock_movement')
+      .select('id')
+      .eq('order_id', orderId);
+    expect(movementsAfter).toHaveLength(2);
+
+    const { data: stock } = await fixture.admin
+      .from('product_stock')
+      .select('qty_on_hand, qty_reserved')
+      .eq('product_id', productId)
+      .single();
+    expect(stock?.qty_on_hand).toBe(20);
+    expect(stock?.qty_reserved).toBe(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

@@ -30,17 +30,19 @@ type OrderActionsMenuProps = {
 
 // Actions de transition qui ouvrent un dialog (saisie) avant de s'executer.
 function isPayloadDialogAction(action: TransitionAction): action is PayloadDialogAction {
-  return action === 'assigner' || action === 'programmer';
+  return action === 'assigner' || action === 'programmer' || action === 'annuler';
 }
 
 // Libelles unifies (memes que l'ancien detail) — l'ordre d'affichage du menu.
 const transitionMenuOrder: TransitionAction[] = [
   'confirmer',
+  'deconfirmer',
   'programmer',
   'assigner',
   'livrer',
   'refuser',
   'annuler',
+  'desannuler',
 ];
 
 const transitionLabels: Record<TransitionAction, string> = {
@@ -51,6 +53,8 @@ const transitionLabels: Record<TransitionAction, string> = {
   livrer: 'Marquer livree',
   refuser: 'Refuser',
   annuler: 'Annuler la commande',
+  deconfirmer: 'Déconfirmer',
+  desannuler: 'Désannuler',
 };
 
 const destructiveActions = new Set<TransitionAction>(['annuler', 'refuser']);

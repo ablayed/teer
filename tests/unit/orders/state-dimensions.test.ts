@@ -72,7 +72,7 @@ describe('order state dimensions', () => {
     ).toEqual(['journaliser_appel', 'confirmer']);
     expect(
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('PROGRAMMEE'), 'agent'),
-    ).toEqual(['assigner']);
+    ).toEqual(['assigner', 'deconfirmer']);
     expect(
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('EN_LIVRAISON'), 'owner'),
     ).toEqual(['livrer', 'annuler', 'refuser']);

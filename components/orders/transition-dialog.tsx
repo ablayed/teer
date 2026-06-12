@@ -3,14 +3,24 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  type CancelReason,
+  cancelReasonLabels,
+  cancelReasonValues,
+} from '@/lib/domain/order-transition-actions';
 import { useEffect, useId, useState } from 'react';
 
 export type DriverOption = { id: string; fullName: string };
 
-// Only these two actions need an extra input before the transition runs.
-export type PayloadDialogAction = 'assigner' | 'programmer';
+// Actions qui nécessitent une saisie avant que la transition ne s'exécute.
+export type PayloadDialogAction = 'assigner' | 'programmer' | 'annuler';
 
-export type TransitionPayload = { assignedDriverId?: string; scheduledFor?: string };
+export type TransitionPayload = {
+  assignedDriverId?: string;
+  scheduledFor?: string;
+  cancelReasons?: CancelReason[];
+  note?: string;
+};
 
 type TransitionDialogProps = {
   action: PayloadDialogAction;
@@ -41,6 +51,12 @@ function dateInputToIso(value: string): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+const dialogTitles: Record<PayloadDialogAction, string> = {
+  assigner: 'Assigner à un livreur',
+  programmer: 'Programmer la livraison',
+  annuler: 'Annuler la commande',
+};
+
 export function TransitionDialog({
   action,
   drivers,
@@ -51,6 +67,8 @@ export function TransitionDialog({
   const fieldId = useId();
   const [driverId, setDriverId] = useState('');
   const [date, setDate] = useState(todayInputValue);
+  const [reasons, setReasons] = useState<Set<CancelReason>>(new Set());
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -64,17 +82,45 @@ export function TransitionDialog({
   }, [onCancel]);
 
   const isAssign = action === 'assigner';
-  const title = isAssign ? 'Assigner à un livreur' : 'Programmer la livraison';
+  const isCancel = action === 'annuler';
+  const title = dialogTitles[action];
   const hasNoDrivers = isAssign && drivers.length === 0;
-  const canConfirm = isAssign ? Boolean(driverId) : Boolean(dateInputToIso(date));
+
+  function toggleReason(reason: CancelReason) {
+    setReasons((current) => {
+      const next = new Set(current);
+      if (next.has(reason)) {
+        next.delete(reason);
+      } else {
+        next.add(reason);
+      }
+      return next;
+    });
+  }
+
+  const canConfirm = isAssign
+    ? Boolean(driverId)
+    : isCancel
+      ? reasons.size > 0
+      : Boolean(dateInputToIso(date));
 
   function handleConfirm() {
     if (isAssign) {
       if (!driverId) {
         return;
       }
-
       onConfirm({ assignedDriverId: driverId });
+      return;
+    }
+
+    if (isCancel) {
+      if (reasons.size === 0) {
+        return;
+      }
+      onConfirm({
+        cancelReasons: [...reasons],
+        ...(reasons.has('autres') && note.trim() ? { note: note.trim() } : {}),
+      });
       return;
     }
 
@@ -82,7 +128,6 @@ export function TransitionDialog({
     if (!scheduledFor) {
       return;
     }
-
     onConfirm({ scheduledFor });
   }
 
@@ -119,6 +164,44 @@ export function TransitionDialog({
               </select>
             </div>
           )
+        ) : isCancel ? (
+          <div className="space-y-3">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-text">Raison(s) de l'annulation</legend>
+              {cancelReasonValues.map((reason) => (
+                <label
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border px-3 text-sm text-text hover:bg-canvas"
+                  key={reason}
+                >
+                  <input
+                    checked={reasons.has(reason)}
+                    className="size-4"
+                    onChange={() => toggleReason(reason)}
+                    type="checkbox"
+                  />
+                  {cancelReasonLabels[reason]}
+                </label>
+              ))}
+            </fieldset>
+
+            {reasons.has('autres') ? (
+              <div className="space-y-2">
+                <Label htmlFor={`${fieldId}-note`}>Précision (optionnel)</Label>
+                <Input
+                  id={`${fieldId}-note`}
+                  maxLength={500}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Détail de la raison…"
+                  type="text"
+                  value={note}
+                />
+              </div>
+            ) : null}
+
+            {reasons.size === 0 ? (
+              <p className="text-sm text-muted">Sélectionnez au moins une raison.</p>
+            ) : null}
+          </div>
         ) : (
           <div className="space-y-2">
             <Label htmlFor={fieldId}>Date de livraison</Label>
@@ -140,9 +223,9 @@ export function TransitionDialog({
             onClick={handleConfirm}
             size="sm"
             type="button"
-            variant="primary"
+            variant={isCancel ? 'destructive' : 'primary'}
           >
-            Valider
+            {isCancel ? "Confirmer l'annulation" : 'Valider'}
           </Button>
         </div>
       </dialog>

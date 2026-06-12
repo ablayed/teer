@@ -62,6 +62,8 @@ const actionLabels: Record<TransitionAction, string> = {
   livrer: 'Marquer livree',
   annuler: 'Annuler',
   refuser: 'Refuser',
+  deconfirmer: 'Déconfirmer',
+  desannuler: 'Désannuler',
 };
 
 const DesktopKanbanBoard = dynamic(

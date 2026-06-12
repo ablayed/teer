@@ -9,9 +9,35 @@ export const transitionActions = [
   'livrer',
   'annuler',
   'refuser',
+  'deconfirmer',
+  'desannuler',
 ] as const;
 
 export type TransitionAction = (typeof transitionActions)[number];
+
+// Lot B : liste fixe (allow-list) des raisons d'annulation. Validée côté serveur
+// en Zod ; PAS de CHECK en base (la liste peut évoluer). « autres » → note libre.
+export const cancelReasonValues = [
+  'indisponibilite',
+  'prix',
+  'concurrence',
+  'erreur',
+  'autres',
+] as const;
+
+export type CancelReason = (typeof cancelReasonValues)[number];
+
+export const cancelReasonLabels: Record<CancelReason, string> = {
+  indisponibilite: 'Indisponibilité',
+  prix: 'Prix trop élevé',
+  concurrence: 'Trouvé moins cher ailleurs',
+  erreur: 'Commande par erreur',
+  autres: 'Autres',
+};
+
+export function isCancelReason(value: string): value is CancelReason {
+  return cancelReasonValues.includes(value as CancelReason);
+}
 
 export const paymentChannelsAtDelivery = [
   'ESPECES',
@@ -70,6 +96,7 @@ export type OrderDimensionsSource = {
 export type TransitionSupportPayload = {
   assignedDriverId?: string;
   cancelReason?: string;
+  cancelReasons?: string[];
   nextContactAt?: string;
   paymentChannelAtDelivery?: PaymentChannelAtDelivery;
   scheduledFor?: string;
@@ -80,7 +107,11 @@ export type TransitionDimensionPatch = {
   attemptCount?: number;
   callState?: CallStateDimension;
   cancelReason?: string;
+  cancelReasons?: string[];
   cashState?: CashStateDimension;
+  // Lot B : effacements explicites (le RPC ne peut sinon que coalesce, jamais NULL).
+  clearCancelReasons?: boolean;
+  clearScheduledFor?: boolean;
   deliveryState?: DeliveryStateDimension;
   nextContactAt?: string;
   orderState?: OrderStateDimension;
@@ -137,6 +168,21 @@ export const transitionCatalog: readonly TransitionCatalogItem[] = [
     label: 'Refuser',
     roles: ['owner', 'manager'],
     target: 'REFUSEE',
+  },
+  // Lot B — actions reverse. target A_APPELER : volontairement exclues de
+  // getTransitionActionForTarget (sinon « A_APPELER » deviendrait actionnable
+  // par les chemins inline status). Légalité gérée par dimensions, pas par target.
+  {
+    action: 'deconfirmer',
+    label: 'Déconfirmer',
+    roles: ['owner', 'manager', 'agent'],
+    target: 'A_APPELER',
+  },
+  {
+    action: 'desannuler',
+    label: 'Désannuler',
+    roles: ['owner', 'manager'],
+    target: 'A_APPELER',
   },
 ];
 
@@ -350,6 +396,19 @@ export function getAllowedTransitionActionsForDimensions(
   role: TeamRole,
 ): TransitionAction[] {
   if (dimensions.orderState !== 'open') {
+    // Lot B : désannuler est la SEULE action légale sur une commande annulée,
+    // ET uniquement pré-dispatch (delivery unassigned/scheduled). Une livraison
+    // échouée (REFUSEE : order_state=cancelled MAIS delivery_state=failed, stock
+    // chez le livreur) n'est PAS rouvrable ici — ni les retours terminaux. Géré
+    // avant le filtrage « open » du catalogue.
+    if (
+      dimensions.orderState === 'cancelled' &&
+      (dimensions.deliveryState === 'unassigned' || dimensions.deliveryState === 'scheduled')
+    ) {
+      return transitionCatalog
+        .filter((item) => item.action === 'desannuler' && item.roles.includes(role))
+        .map((item) => item.action);
+    }
     return [];
   }
 
@@ -357,6 +416,14 @@ export function getAllowedTransitionActionsForDimensions(
     .filter((item) => item.roles.includes(role))
     .filter((item) => {
       switch (item.action) {
+        case 'desannuler':
+          // Jamais légale sur une commande ouverte (gérée ci-dessus).
+          return false;
+        case 'deconfirmer':
+          return (
+            dimensions.callState === 'validated' &&
+            (dimensions.deliveryState === 'unassigned' || dimensions.deliveryState === 'scheduled')
+          );
         case 'journaliser_appel':
           return (
             dimensions.deliveryState === 'unassigned' &&
@@ -429,6 +496,7 @@ export function buildTransitionDimensionPatch(
         deliveryState: 'unassigned',
         orderState: 'cancelled',
         cancelReason: payload.cancelReason ?? 'cancelled',
+        ...(payload.cancelReasons ? { cancelReasons: payload.cancelReasons } : {}),
       };
     case 'refuser':
       return {
@@ -437,6 +505,28 @@ export function buildTransitionDimensionPatch(
         deliveryState: 'failed',
         orderState: 'cancelled',
         cancelReason: payload.cancelReason ?? 'refused',
+      };
+    // Lot B — déconfirmer : reverse strict de confirmer/programmer. call→to_call,
+    // delivery scheduled→unassigned, scheduled_for effacé, réserve libérée (release
+    // dérivé en SQL). cash remis à not_due (annule l'expected d'une programmation).
+    case 'deconfirmer':
+      return {
+        callState: 'to_call',
+        cashState: 'not_due',
+        deliveryState: 'unassigned',
+        clearScheduledFor: true,
+      };
+    // Lot B — désannuler : ré-ouvre une commande annulée au tout début du tunnel.
+    // AUCUN mouvement stock (la réserve a déjà été libérée à l'annulation ; la garde
+    // SQL order_state='open' empêche tout release ici).
+    case 'desannuler':
+      return {
+        callState: 'to_call',
+        cashState: 'not_due',
+        clearCancelReasons: true,
+        clearScheduledFor: true,
+        deliveryState: 'unassigned',
+        orderState: 'open',
       };
   }
 }
@@ -461,7 +551,14 @@ export function getTransitionActionForTarget(
   role: TeamRole,
 ): TransitionAction | null {
   return (
-    transitionCatalog.find((item) => item.target === target && item.roles.includes(role))?.action ??
-    null
+    transitionCatalog.find(
+      (item) =>
+        item.target === target &&
+        item.roles.includes(role) &&
+        // Lot B : les actions reverse ne sont jamais sélectionnées par target
+        // (sinon « A_APPELER » deviendrait actionnable via les chemins inline).
+        item.action !== 'deconfirmer' &&
+        item.action !== 'desannuler',
+    )?.action ?? null
   );
 }
