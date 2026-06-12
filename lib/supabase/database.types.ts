@@ -1193,6 +1193,7 @@ export type Database = {
           allocation_method: string;
           created_at: string;
           customs_total: number;
+          estimated_lead_time_days: number | null;
           eta_override: string | null;
           freight_total: number;
           id: string;
@@ -1208,11 +1209,13 @@ export type Database = {
           supplier_prep_days: number;
           transit_total: number;
           transport_days: number;
+          transport_total: number | null;
         };
         Insert: {
           allocation_method?: string;
           created_at?: string;
           customs_total?: number;
+          estimated_lead_time_days?: number | null;
           eta_override?: string | null;
           freight_total?: number;
           id?: string;
@@ -1228,11 +1231,13 @@ export type Database = {
           supplier_prep_days?: number;
           transit_total?: number;
           transport_days?: number;
+          transport_total?: number | null;
         };
         Update: {
           allocation_method?: string;
           created_at?: string;
           customs_total?: number;
+          estimated_lead_time_days?: number | null;
           eta_override?: string | null;
           freight_total?: number;
           id?: string;
@@ -1248,6 +1253,7 @@ export type Database = {
           supplier_prep_days?: number;
           transit_total?: number;
           transport_days?: number;
+          transport_total?: number | null;
         };
         Relationships: [
           {
@@ -1270,8 +1276,9 @@ export type Database = {
           merchant_account_id: string;
           product_id: string;
           purchase_lot_id: string;
+          purchase_price_total: number | null;
           qty: number;
-          unit_purchase_price: number;
+          unit_purchase_price: number | null;
         };
         Insert: {
           allocated_fees?: number | null;
@@ -1283,8 +1290,9 @@ export type Database = {
           merchant_account_id: string;
           product_id: string;
           purchase_lot_id: string;
+          purchase_price_total?: number | null;
           qty: number;
-          unit_purchase_price: number;
+          unit_purchase_price?: number | null;
         };
         Update: {
           allocated_fees?: number | null;
@@ -1296,8 +1304,9 @@ export type Database = {
           merchant_account_id?: string;
           product_id?: string;
           purchase_lot_id?: string;
+          purchase_price_total?: number | null;
           qty?: number;
-          unit_purchase_price?: number;
+          unit_purchase_price?: number | null;
         };
         Relationships: [
           {

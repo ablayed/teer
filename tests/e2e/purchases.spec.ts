@@ -143,16 +143,15 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     await page.locator('#f-supplier').fill('Guangzhou Imports');
     await page.locator('#f-ordered-at').fill('2026-06-01');
 
-    // Remplir les frais.
-    await page.locator('#f-fee-freightTotal').fill('15000');
-    await page.locator('#f-fee-customsTotal').fill('5000');
+    // Transport unique (Lot C : un seul frais).
+    await page.locator('#f-transport').fill('20000');
 
     // Sélectionner le produit dans la première ligne.
     await page.locator('select').last().selectOption({ label: 'Sac cuir E2E (SAC-E2E)' });
 
-    // Quantité et prix unitaire.
+    // Quantité et prix d'achat global de la ligne (Lot C : prix global, pas unitaire).
     await page.getByPlaceholder('Qté').fill('10');
-    await page.getByPlaceholder('Prix/u').fill('8000');
+    await page.getByPlaceholder('Prix total').fill('80000');
 
     // Créer le lot.
     await page.getByRole('button', { name: 'Créer le lot' }).click();
@@ -168,9 +167,9 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     // Vérifier que le statut est passé à "Reçu" (badge exact, pas "Reçu le …").
     await expect(page.getByText('Reçu', { exact: true })).toBeVisible({ timeout: 10_000 });
 
-    // Vérifier en base : qty_on_hand = 10, unit_cost = (8000×10 + 20000) / 10 = 10000.
-    // lineValue = 10 × 8000 = 80_000
-    // totalFees = 15000 + 5000 = 20_000
+    // Vérifier en base : qty_on_hand = 10, unit_cost = (80000 + 20000) / 10 = 10000.
+    // lineValue = prix global = 80_000
+    // transportTotal = 20_000
     // landedTotalValue = 80_000 + 20_000 = 100_000
     // landedUnitCost = floor(100_000 / 10) = 10_000
     let stock = await getProductStock(fixture.admin, productId);
@@ -184,8 +183,8 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
 
     // Détail coût atterri — ouvrir le panel et vérifier le récapitulatif.
     await page.getByText('Détail du coût atterri').click();
-    await expect(page.getByText(/Σ frais alloués/)).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText(/Total frais ✓/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Σ transport alloué/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Total transport ✓/)).toBeVisible({ timeout: 5_000 });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
   }

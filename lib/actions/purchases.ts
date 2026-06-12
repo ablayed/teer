@@ -32,29 +32,20 @@ function receivePurchaseLotRpc(client: { rpc: SupabaseClient<Database>['rpc'] })
   ) => Promise<{ data: null; error: { message: string } | null }>;
 }
 
+// Lot C : modèle simplifié — un seul frais « Transport », un seul « délai estimé »,
+// et un prix d'achat global par ligne (plus de prix unitaire saisi).
 const lotBaseSchema = z.object({
   supplierName: z.string().trim().min(1).max(200),
   reference: z.string().trim().max(100).nullable().optional(),
   orderedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  shippingMode: z.enum(['fast', 'normal']).default('normal'),
-  supplierPrepDays: z.number().int().min(0).default(0),
-  transportDays: z.number().int().min(0).default(0),
-  localBufferDays: z.number().int().min(0).default(0),
-  etaOverride: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
-  freightTotal: z.number().int().min(0).default(0),
-  customsTotal: z.number().int().min(0).default(0),
-  transitTotal: z.number().int().min(0).default(0),
-  localTransportTotal: z.number().int().min(0).default(0),
+  estimatedLeadTimeDays: z.number().int().min(0).max(3650).default(0),
+  transportTotal: z.number().int().min(0).default(0),
 });
 
 const lineSchema = z.object({
   productId: z.string().uuid(),
   qty: z.number().int().min(0),
-  unitPurchasePrice: z.number().int().min(0),
+  purchasePriceTotal: z.number().int().min(0),
 });
 
 // ── CREATE LOT ──────────────────────────────────────────────────────────────
@@ -77,15 +68,8 @@ export const createPurchaseLotAction = requireRole('owner')
         supplier_name: parsedInput.supplierName,
         reference: parsedInput.reference ?? null,
         ordered_at: parsedInput.orderedAt,
-        shipping_mode: parsedInput.shippingMode,
-        supplier_prep_days: parsedInput.supplierPrepDays,
-        transport_days: parsedInput.transportDays,
-        local_buffer_days: parsedInput.localBufferDays,
-        eta_override: parsedInput.etaOverride ?? null,
-        freight_total: parsedInput.freightTotal,
-        customs_total: parsedInput.customsTotal,
-        transit_total: parsedInput.transitTotal,
-        local_transport_total: parsedInput.localTransportTotal,
+        estimated_lead_time_days: parsedInput.estimatedLeadTimeDays,
+        transport_total: parsedInput.transportTotal,
       })
       .select('id')
       .single();
@@ -99,7 +83,7 @@ export const createPurchaseLotAction = requireRole('owner')
         purchase_lot_id: lot.id,
         product_id: l.productId,
         qty: l.qty,
-        unit_purchase_price: l.unitPurchasePrice,
+        purchase_price_total: l.purchasePriceTotal,
       })),
     );
 
@@ -124,15 +108,8 @@ export const updatePurchaseLotAction = requireRole('owner')
         supplier_name: parsedInput.supplierName,
         reference: parsedInput.reference ?? null,
         ordered_at: parsedInput.orderedAt,
-        shipping_mode: parsedInput.shippingMode,
-        supplier_prep_days: parsedInput.supplierPrepDays,
-        transport_days: parsedInput.transportDays,
-        local_buffer_days: parsedInput.localBufferDays,
-        eta_override: parsedInput.etaOverride ?? null,
-        freight_total: parsedInput.freightTotal,
-        customs_total: parsedInput.customsTotal,
-        transit_total: parsedInput.transitTotal,
-        local_transport_total: parsedInput.localTransportTotal,
+        estimated_lead_time_days: parsedInput.estimatedLeadTimeDays,
+        transport_total: parsedInput.transportTotal,
       })
       .eq('id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId)
@@ -167,7 +144,7 @@ export const addPurchaseLotLineAction = requireRole('owner')
       purchase_lot_id: parsedInput.lotId,
       product_id: parsedInput.productId,
       qty: parsedInput.qty,
-      unit_purchase_price: parsedInput.unitPurchasePrice,
+      purchase_price_total: parsedInput.purchasePriceTotal,
     });
 
     if (error) return { ok: false as const, message: error.message };
@@ -236,7 +213,7 @@ export const receiveLotAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
-    // Charger le lot + ses lignes avec les titres produit.
+    // Charger le lot + ses lignes.
     const { data: lot, error: lotErr } = await admin
       .from('purchase_lot')
       .select('*')
@@ -249,7 +226,7 @@ export const receiveLotAction = requireRole('owner')
 
     const { data: lines, error: lineErr } = await admin
       .from('purchase_lot_line')
-      .select('id, product_id, qty, unit_purchase_price')
+      .select('id, product_id, qty, purchase_price_total')
       .eq('purchase_lot_id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId);
 
@@ -257,18 +234,13 @@ export const receiveLotAction = requireRole('owner')
       return { ok: false as const, message: 'Aucune ligne sur ce lot.' };
     }
 
-    // Calculer la répartition des frais (plus grand reste, valeurs en FCFA).
+    // Répartition du transport (plus grand reste, valeurs en FCFA).
     const allocated = allocateFees(
-      lines.map((l) => ({ qty: l.qty, unitPurchasePrice: l.unit_purchase_price })),
-      {
-        freightTotal: lot.freight_total,
-        customsTotal: lot.customs_total,
-        transitTotal: lot.transit_total,
-        localTransportTotal: lot.local_transport_total,
-      },
+      lines.map((l) => ({ qty: l.qty, purchasePriceTotal: l.purchase_price_total ?? 0 })),
+      lot.transport_total ?? 0,
     );
 
-    // Construire le JSON pour le RPC.
+    // Construire le JSON pour le RPC (valeurs atterries figées par ligne).
     const linesJson = lines.map((l, i) => ({
       line_id: l.id,
       line_value: allocated[i].lineValue,
@@ -290,7 +262,6 @@ export const receiveLotAction = requireRole('owner')
     if (rpcErr) return { ok: false as const, message: rpcErr.message };
 
     revalidatePath('/produits');
-    revalidatePath('/produits');
     return { ok: true as const };
   });
 
@@ -302,7 +273,7 @@ export type PurchaseLotLineData = {
   productTitle: string;
   productSku: string | null;
   qty: number;
-  unitPurchasePrice: number;
+  purchasePriceTotal: number;
   lineValue: number | null;
   allocatedFees: number | null;
   landedTotalValue: number | null;
@@ -321,17 +292,9 @@ export type PurchaseLotData = {
   reference: string | null;
   orderedAt: string;
   status: 'ordered' | 'in_transit' | 'received';
-  shippingMode: string;
-  supplierPrepDays: number;
-  transportDays: number;
-  localBufferDays: number;
-  etaOverride: string | null;
+  estimatedLeadTimeDays: number;
   eta: string;
-  freightTotal: number;
-  customsTotal: number;
-  transitTotal: number;
-  localTransportTotal: number;
-  totalFees: number;
+  transportTotal: number;
   receivedAt: string | null;
   lines: PurchaseLotLineData[];
 };
@@ -390,30 +353,23 @@ export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
 
   const result: PurchaseLotData[] = lots.map((lot) => {
     const lotLines = linesByLot.get(lot.id) ?? [];
-    const fees = {
-      freightTotal: lot.freight_total,
-      customsTotal: lot.customs_total,
-      transitTotal: lot.transit_total,
-      localTransportTotal: lot.local_transport_total,
-    };
-    const totalFees =
-      fees.freightTotal + fees.customsTotal + fees.transitTotal + fees.localTransportTotal;
+    const transportTotal = lot.transport_total ?? 0;
 
     const previewAlloc =
       lot.status !== 'received' && lotLines.length > 0
         ? allocateFees(
-            lotLines.map((l) => ({ qty: l.qty, unitPurchasePrice: l.unit_purchase_price })),
-            fees,
+            lotLines.map((l) => ({
+              qty: l.qty,
+              purchasePriceTotal: l.purchase_price_total ?? 0,
+            })),
+            transportTotal,
           )
         : null;
 
     const eta = formatEtaDate(
       computeEta({
         ordered_at: lot.ordered_at,
-        supplier_prep_days: lot.supplier_prep_days,
-        transport_days: lot.transport_days,
-        local_buffer_days: lot.local_buffer_days,
-        eta_override: lot.eta_override,
+        estimated_lead_time_days: lot.estimated_lead_time_days ?? 0,
       }),
     );
 
@@ -425,7 +381,7 @@ export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
         productTitle: prod?.title ?? l.product_id,
         productSku: prod?.sku ?? null,
         qty: l.qty,
-        unitPurchasePrice: l.unit_purchase_price,
+        purchasePriceTotal: l.purchase_price_total ?? 0,
         lineValue: l.line_value,
         allocatedFees: l.allocated_fees,
         landedTotalValue: l.landed_total_value,
@@ -440,17 +396,9 @@ export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
       reference: lot.reference,
       orderedAt: lot.ordered_at,
       status: lot.status as 'ordered' | 'in_transit' | 'received',
-      shippingMode: lot.shipping_mode,
-      supplierPrepDays: lot.supplier_prep_days,
-      transportDays: lot.transport_days,
-      localBufferDays: lot.local_buffer_days,
-      etaOverride: lot.eta_override,
+      estimatedLeadTimeDays: lot.estimated_lead_time_days ?? 0,
       eta,
-      freightTotal: lot.freight_total,
-      customsTotal: lot.customs_total,
-      transitTotal: lot.transit_total,
-      localTransportTotal: lot.local_transport_total,
-      totalFees,
+      transportTotal,
       receivedAt: lot.received_at,
       lines,
     };

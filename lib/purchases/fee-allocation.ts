@@ -1,16 +1,21 @@
-// Répartition des frais partagés d'un lot fournisseur par la méthode
+// Répartition du frais de transport partagé d'un lot fournisseur par la méthode
 // du plus grand reste (Largest Remainder Method), au prorata de la valeur
-// d'achat. Arithmétique entière (bigint) : la somme des frais alloués est
-// toujours égale au total exact — aucun franc perdu ou créé.
+// d'achat de chaque ligne. Arithmétique entière (bigint) : la somme des frais
+// alloués est toujours égale au total exact — aucun franc perdu ou créé.
+//
+// Lot C : le modèle de frais est simplifié à UN seul « Transport » (les anciens
+// freight/customs/transit/local_transport ont été fusionnés). Le prix d'achat
+// d'une ligne se saisit en GLOBAL (montant total de la ligne), pas en unitaire :
+// la valeur de ligne = purchasePriceTotal directement.
 
 export type FeeAllocationLine = {
   qty: number;
-  unitPurchasePrice: number; // en FCFA (minor units, entier)
+  purchasePriceTotal: number; // prix d'achat global de la ligne (FCFA, entier)
 };
 
 export type AllocatedLine = {
-  lineValue: number; // qty × unitPurchasePrice
-  allocatedFees: number; // frais partagés alloués à cette ligne
+  lineValue: number; // = purchasePriceTotal (valeur d'achat de la ligne)
+  allocatedFees: number; // transport partagé alloué à cette ligne
   landedTotalValue: number; // lineValue + allocatedFees (valeur atterrie exacte)
   landedUnitCost: number; // floor(landedTotalValue / qty), 0 si qty = 0
 };
@@ -55,49 +60,30 @@ function distributeByLargestRemainder(
   return result;
 }
 
-export function allocateFees(
-  lines: FeeAllocationLine[],
-  fees: {
-    freightTotal: number;
-    customsTotal: number;
-    transitTotal: number;
-    localTransportTotal: number;
-  },
-): AllocatedLine[] {
+export function allocateFees(lines: FeeAllocationLine[], transportTotal: number): AllocatedLine[] {
   if (lines.length === 0) return [];
 
-  const feeList = [
-    BigInt(fees.freightTotal),
-    BigInt(fees.customsTotal),
-    BigInt(fees.transitTotal),
-    BigInt(fees.localTransportTotal),
-  ];
-
-  // vᵢ = qtyᵢ × unitPurchasePriceᵢ
-  const lineValuesBig = lines.map((l) => BigInt(l.qty) * BigInt(l.unitPurchasePrice));
+  // vᵢ = valeur d'achat globale de la ligne i
+  const lineValuesBig = lines.map((l) => BigInt(l.purchasePriceTotal));
   const totalValueBig = lineValuesBig.reduce((a, b) => a + b, 0n);
 
-  const perLineAllocated: bigint[] = new Array(lines.length).fill(0n);
-
-  for (const fee of feeList) {
-    if (fee === 0n) continue;
-    const dist = distributeByLargestRemainder(fee, lineValuesBig, totalValueBig);
-    for (let i = 0; i < lines.length; i++) {
-      perLineAllocated[i] += dist[i];
-    }
-  }
+  const allocated = distributeByLargestRemainder(
+    BigInt(transportTotal),
+    lineValuesBig,
+    totalValueBig,
+  );
 
   return lines.map((line, i) => {
     const lineValue = Number(lineValuesBig[i]);
-    const allocatedFees = Number(perLineAllocated[i]);
+    const allocatedFees = Number(allocated[i]);
     const landedTotalValue = lineValue + allocatedFees;
     const landedUnitCost = line.qty > 0 ? Math.floor(landedTotalValue / line.qty) : 0;
     return { lineValue, allocatedFees, landedTotalValue, landedUnitCost };
   });
 }
 
-// Somme totale des frais d'un ensemble de lignes allouées — sert à la
-// ligne de réconciliation affichée dans l'UI ("Σ alloués = Σ frais").
+// Somme totale du transport alloué — sert à la ligne de réconciliation affichée
+// dans l'UI ("Σ transport alloué = total transport").
 export function totalAllocatedFees(allocated: AllocatedLine[]): number {
   return allocated.reduce((sum, l) => sum + l.allocatedFees, 0);
 }

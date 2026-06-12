@@ -43,7 +43,10 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Cost detail (per-line breakdown + reconciliation) ─────────────────────────
 
-function CostDetail({ lines, totalFees }: { lines: PurchaseLotLineData[]; totalFees: number }) {
+function CostDetail({
+  lines,
+  transportTotal,
+}: { lines: PurchaseLotLineData[]; transportTotal: number }) {
   const [open, setOpen] = useState(false);
 
   const displayLines = lines.map((l) => {
@@ -75,7 +78,7 @@ function CostDetail({ lines, totalFees }: { lines: PurchaseLotLineData[]; totalF
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between text-sm font-medium"
+        className="flex min-h-11 w-full items-center justify-between text-sm font-medium"
       >
         <span>Détail du coût atterri</span>
         <span className="text-muted-foreground">{open ? '▲' : '▼'}</span>
@@ -91,13 +94,11 @@ function CostDetail({ lines, totalFees }: { lines: PurchaseLotLineData[]; totalF
                 </p>
                 <div className="ml-2 mt-1 space-y-0.5 text-xs text-muted-foreground font-mono tabular-nums">
                   <div className="flex justify-between">
-                    <span>
-                      Achat ({l.qty} × {formatMoney(l.unitPurchasePrice)})
-                    </span>
+                    <span>Achat ({l.qty} pcs)</span>
                     <span>{formatMoney(l.d.lv)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Frais alloués</span>
+                    <span>Transport</span>
                     <span>+ {formatMoney(l.d.af)}</span>
                   </div>
                   <div className="flex justify-between border-t border-border pt-0.5 font-semibold text-foreground">
@@ -114,18 +115,18 @@ function CostDetail({ lines, totalFees }: { lines: PurchaseLotLineData[]; totalF
           )}
           <div className="border-t border-border pt-2 text-xs">
             <p className="text-muted-foreground italic">
-              Les frais partagés sont répartis au prorata de la valeur d'achat.
+              Le transport est réparti au prorata de la valeur d'achat.
             </p>
             <p
               className={cn(
                 'mt-1 font-medium font-mono tabular-nums',
-                sumAllocated === totalFees ? 'text-success' : 'text-danger',
+                sumAllocated === transportTotal ? 'text-success' : 'text-danger',
               )}
             >
-              Vérification : Σ frais alloués = {formatMoney(sumAllocated)}{' '}
-              {sumAllocated === totalFees
-                ? '= Total frais ✓'
-                : `≠ Total frais ${formatMoney(totalFees)} ✗`}
+              Vérification : Σ transport alloué = {formatMoney(sumAllocated)}{' '}
+              {sumAllocated === transportTotal
+                ? '= Total transport ✓'
+                : `≠ Total transport ${formatMoney(transportTotal)} ✗`}
             </p>
           </div>
         </div>
@@ -145,7 +146,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
 
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showAddLine, setShowAddLine] = useState(false);
-  const [newLine, setNewLine] = useState({ productId: '', qty: '', unitPurchasePrice: '' });
+  const [newLine, setNewLine] = useState({ productId: '', qty: '', purchasePriceTotal: '' });
 
   const isExecuting =
     transit.isExecuting || receive.isExecuting || addLine.isExecuting || removeLine.isExecuting;
@@ -168,7 +169,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
 
   async function handleAddLine() {
     const qty = Number.parseInt(newLine.qty, 10);
-    const price = Number.parseInt(newLine.unitPurchasePrice, 10);
+    const price = Number.parseInt(newLine.purchasePriceTotal, 10);
     if (!newLine.productId) {
       setFeedback({ msg: 'Sélectionnez un produit.', kind: 'error' });
       return;
@@ -185,10 +186,10 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
       lotId: lot.id,
       productId: newLine.productId,
       qty,
-      unitPurchasePrice: price,
+      purchasePriceTotal: price,
     });
     if (res?.data?.ok) {
-      setNewLine({ productId: '', qty: '', unitPurchasePrice: '' });
+      setNewLine({ productId: '', qty: '', purchasePriceTotal: '' });
       setShowAddLine(false);
       router.refresh();
     } else setFeedback({ msg: res?.data?.message ?? 'Erreur.', kind: 'error' });
@@ -217,13 +218,17 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
         <span>
           ETA : <span className="font-medium text-foreground">{lot.eta}</span>
         </span>
-        {lot.receivedAt && <span>Reçu le {lot.receivedAt}</span>}
         <span>
-          Frais :{' '}
+          Délai estimé :{' '}
+          <span className="font-medium text-foreground">{lot.estimatedLeadTimeDays} j ouvrés</span>
+        </span>
+        <span>
+          Transport :{' '}
           <span className="font-mono tabular-nums font-medium text-foreground">
-            {formatMoney(lot.totalFees)}
+            {formatMoney(lot.transportTotal)}
           </span>
         </span>
+        {lot.receivedAt && <span>Reçu le {lot.receivedAt}</span>}
       </div>
 
       {lot.lines.length > 0 && (
@@ -233,7 +238,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Produit</th>
                 <th className="px-3 py-2 text-right font-medium">Qté</th>
-                <th className="px-3 py-2 text-right font-medium">Prix achat/u</th>
+                <th className="px-3 py-2 text-right font-medium">Prix d'achat</th>
                 <th className="px-3 py-2 text-right font-medium">Coût/u atterri</th>
                 {canEdit && <th className="w-8" />}
               </tr>
@@ -251,7 +256,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{l.qty}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {formatMoney(l.unitPurchasePrice)}
+                      {formatMoney(l.purchasePriceTotal)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">
                       {luc != null ? (
@@ -296,7 +301,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
               <select
                 value={newLine.productId}
                 onChange={(e) => setNewLine((p) => ({ ...p, productId: e.target.value }))}
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
               >
                 <option value="">Sélectionner un produit…</option>
                 {products.map((p) => (
@@ -310,18 +315,20 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
                 <input
                   type="number"
                   min={0}
-                  placeholder="Quantité"
+                  placeholder="Qté"
                   value={newLine.qty}
                   onChange={(e) => setNewLine((p) => ({ ...p, qty: e.target.value }))}
-                  className="w-1/2 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  className="min-h-11 w-1/3 rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 />
                 <input
                   type="number"
                   min={0}
-                  placeholder="Prix achat/u (F CFA)"
-                  value={newLine.unitPurchasePrice}
-                  onChange={(e) => setNewLine((p) => ({ ...p, unitPurchasePrice: e.target.value }))}
-                  className="w-1/2 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  placeholder="Prix d'achat total (F CFA)"
+                  value={newLine.purchasePriceTotal}
+                  onChange={(e) =>
+                    setNewLine((p) => ({ ...p, purchasePriceTotal: e.target.value }))
+                  }
+                  className="min-h-11 w-2/3 rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 />
               </div>
               <div className="flex gap-2">
@@ -329,14 +336,14 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
                   type="button"
                   onClick={handleAddLine}
                   disabled={isExecuting}
-                  className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50"
+                  className="min-h-11 rounded-md bg-brand px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50"
                 >
                   Ajouter
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddLine(false)}
-                  className="rounded-md border border-border px-4 py-2 text-sm"
+                  className="min-h-11 rounded-md border border-border px-4 py-2 text-sm"
                 >
                   Annuler
                 </button>
@@ -354,7 +361,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
         </div>
       )}
 
-      <CostDetail lines={lot.lines} totalFees={lot.totalFees} />
+      <CostDetail lines={lot.lines} transportTotal={lot.transportTotal} />
 
       {canEdit && (
         <div className="flex flex-wrap gap-2 pt-1">
@@ -388,14 +395,14 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
 
 // ── Create lot form ───────────────────────────────────────────────────────────
 
-type NewLine = { key: string; productId: string; qty: string; unitPurchasePrice: string };
+type NewLine = { key: string; productId: string; qty: string; purchasePriceTotal: string };
 
 function mkLine(): NewLine {
   return {
     key: Math.random().toString(36).slice(2),
     productId: '',
     qty: '',
-    unitPurchasePrice: '',
+    purchasePriceTotal: '',
   };
 }
 
@@ -411,15 +418,8 @@ function CreateLotForm({
     supplierName: '',
     reference: '',
     orderedAt: new Date().toISOString().slice(0, 10),
-    shippingMode: 'normal' as 'fast' | 'normal',
-    supplierPrepDays: '0',
-    transportDays: '7',
-    localBufferDays: '0',
-    etaOverride: '',
-    freightTotal: '0',
-    customsTotal: '0',
-    transitTotal: '0',
-    localTransportTotal: '0',
+    estimatedLeadTimeDays: '7',
+    transportTotal: '0',
   });
   const [lines, setLines] = useState<NewLine[]>([mkLine()]);
 
@@ -439,7 +439,7 @@ function CreateLotForm({
     const parsedLines = lines.map((l) => ({
       productId: l.productId,
       qty: Number.parseInt(l.qty, 10) || 0,
-      unitPurchasePrice: Number.parseInt(l.unitPurchasePrice, 10) || 0,
+      purchasePriceTotal: Number.parseInt(l.purchasePriceTotal, 10) || 0,
     }));
     if (parsedLines.some((l) => !l.productId)) {
       setFeedback({ msg: 'Sélectionnez un produit pour chaque ligne.', kind: 'error' });
@@ -450,15 +450,8 @@ function CreateLotForm({
       supplierName: form.supplierName.trim(),
       reference: form.reference.trim() || null,
       orderedAt: form.orderedAt,
-      shippingMode: form.shippingMode,
-      supplierPrepDays: Number.parseInt(form.supplierPrepDays, 10) || 0,
-      transportDays: Number.parseInt(form.transportDays, 10) || 0,
-      localBufferDays: Number.parseInt(form.localBufferDays, 10) || 0,
-      etaOverride: form.etaOverride || null,
-      freightTotal: Number.parseInt(form.freightTotal, 10) || 0,
-      customsTotal: Number.parseInt(form.customsTotal, 10) || 0,
-      transitTotal: Number.parseInt(form.transitTotal, 10) || 0,
-      localTransportTotal: Number.parseInt(form.localTransportTotal, 10) || 0,
+      estimatedLeadTimeDays: Number.parseInt(form.estimatedLeadTimeDays, 10) || 0,
+      transportTotal: Number.parseInt(form.transportTotal, 10) || 0,
       lines: parsedLines,
     });
 
@@ -469,148 +462,97 @@ function CreateLotForm({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4 shadow-1 space-y-4">
-      <h3 className="font-semibold">Nouveau lot d'achat</h3>
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-1 space-y-5">
+      <h3 className="text-base font-semibold">Nouveau lot d'achat</h3>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <label htmlFor="f-supplier" className="block text-xs font-medium mb-1">
-            Fournisseur *
-          </label>
-          <input
-            id="f-supplier"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.supplierName}
-            onChange={(e) => setF('supplierName', e.target.value)}
-            placeholder="Nom du fournisseur"
-          />
+      <section className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Fournisseur
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="f-supplier" className="mb-1 block text-xs font-medium">
+              Fournisseur *
+            </label>
+            <input
+              id="f-supplier"
+              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              value={form.supplierName}
+              onChange={(e) => setF('supplierName', e.target.value)}
+              placeholder="Nom du fournisseur"
+            />
+          </div>
+          <div>
+            <label htmlFor="f-ref" className="mb-1 block text-xs font-medium">
+              Référence
+            </label>
+            <input
+              id="f-ref"
+              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              value={form.reference}
+              onChange={(e) => setF('reference', e.target.value)}
+              placeholder="Facture, numéro…"
+            />
+          </div>
+          <div>
+            <label htmlFor="f-ordered-at" className="mb-1 block text-xs font-medium">
+              Date de commande *
+            </label>
+            <input
+              id="f-ordered-at"
+              type="date"
+              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              value={form.orderedAt}
+              onChange={(e) => setF('orderedAt', e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="f-lead-time" className="mb-1 block text-xs font-medium">
+              Délai estimé (j ouvrés)
+            </label>
+            <input
+              id="f-lead-time"
+              type="number"
+              min={0}
+              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              value={form.estimatedLeadTimeDays}
+              onChange={(e) => setF('estimatedLeadTimeDays', e.target.value)}
+            />
+          </div>
         </div>
-        <div>
-          <label htmlFor="f-ref" className="block text-xs font-medium mb-1">
-            Référence
-          </label>
-          <input
-            id="f-ref"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.reference}
-            onChange={(e) => setF('reference', e.target.value)}
-            placeholder="Facture, numéro…"
-          />
-        </div>
-        <div>
-          <label htmlFor="f-ordered-at" className="block text-xs font-medium mb-1">
-            Date de commande *
-          </label>
-          <input
-            id="f-ordered-at"
-            type="date"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.orderedAt}
-            onChange={(e) => setF('orderedAt', e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="f-shipping" className="block text-xs font-medium mb-1">
-            Mode d'expédition
-          </label>
-          <select
-            id="f-shipping"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.shippingMode}
-            onChange={(e) => setF('shippingMode', e.target.value as 'fast' | 'normal')}
-          >
-            <option value="normal">Standard</option>
-            <option value="fast">Express</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="f-prep" className="block text-xs font-medium mb-1">
-            Prép. fournisseur (j)
-          </label>
-          <input
-            id="f-prep"
-            type="number"
-            min={0}
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.supplierPrepDays}
-            onChange={(e) => setF('supplierPrepDays', e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="f-transport" className="block text-xs font-medium mb-1">
-            Transport (j)
+      </section>
+
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Transport
+        </p>
+        <div className="sm:max-w-xs">
+          <label htmlFor="f-transport" className="mb-1 block text-xs text-muted-foreground">
+            Frais de transport (F CFA)
           </label>
           <input
             id="f-transport"
             type="number"
             min={0}
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.transportDays}
-            onChange={(e) => setF('transportDays', e.target.value)}
+            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono tabular-nums"
+            value={form.transportTotal}
+            onChange={(e) => setF('transportTotal', e.target.value)}
           />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Réparti au prorata de la valeur d'achat de chaque ligne.
+          </p>
         </div>
-        <div>
-          <label htmlFor="f-local" className="block text-xs font-medium mb-1">
-            Transport local (j)
-          </label>
-          <input
-            id="f-local"
-            type="number"
-            min={0}
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.localBufferDays}
-            onChange={(e) => setF('localBufferDays', e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="f-eta" className="block text-xs font-medium mb-1">
-            Override ETA
-          </label>
-          <input
-            id="f-eta"
-            type="date"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            value={form.etaOverride}
-            onChange={(e) => setF('etaOverride', e.target.value)}
-          />
-        </div>
-      </div>
+      </section>
 
-      <div>
-        <p className="text-xs font-medium mb-2">Frais partagés (F CFA)</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {(
-            [
-              ['freightTotal', 'Fret'],
-              ['customsTotal', 'Douane'],
-              ['transitTotal', 'Transit'],
-              ['localTransportTotal', 'Transport local'],
-            ] as const
-          ).map(([key, lbl]) => (
-            <div key={key}>
-              <label htmlFor={`f-fee-${key}`} className="block text-xs text-muted-foreground mb-1">
-                {lbl}
-              </label>
-              <input
-                id={`f-fee-${key}`}
-                type="number"
-                min={0}
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-                value={form[key]}
-                onChange={(e) => setF(key, e.target.value)}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <p className="text-xs font-medium mb-2">Produits</p>
+      <section className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Produits
+        </p>
         <div className="space-y-2">
           {lines.map((l) => (
-            <div key={l.key} className="flex gap-2 items-center">
+            <div key={l.key} className="flex items-center gap-2">
               <select
-                className="flex-1 rounded-md border border-border bg-surface px-2 py-2 text-sm"
+                className="min-h-11 flex-1 rounded-md border border-border bg-surface px-2 py-2 text-sm"
                 value={l.productId}
                 onChange={(e) => setLine(l.key, 'productId', e.target.value)}
               >
@@ -626,23 +568,24 @@ function CreateLotForm({
                 type="number"
                 min={0}
                 placeholder="Qté"
-                className="w-20 rounded-md border border-border bg-surface px-2 py-2 text-sm"
+                className="min-h-11 w-20 rounded-md border border-border bg-surface px-2 py-2 text-sm"
                 value={l.qty}
                 onChange={(e) => setLine(l.key, 'qty', e.target.value)}
               />
               <input
                 type="number"
                 min={0}
-                placeholder="Prix/u"
-                className="w-28 rounded-md border border-border bg-surface px-2 py-2 text-sm"
-                value={l.unitPurchasePrice}
-                onChange={(e) => setLine(l.key, 'unitPurchasePrice', e.target.value)}
+                placeholder="Prix total"
+                className="min-h-11 w-32 rounded-md border border-border bg-surface px-2 py-2 text-sm"
+                value={l.purchasePriceTotal}
+                onChange={(e) => setLine(l.key, 'purchasePriceTotal', e.target.value)}
               />
               {lines.length > 1 && (
                 <button
                   type="button"
                   onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
                   className="text-danger text-lg leading-none"
+                  aria-label="Retirer la ligne"
                 >
                   ×
                 </button>
@@ -657,7 +600,7 @@ function CreateLotForm({
             + Ajouter un produit
           </button>
         </div>
-      </div>
+      </section>
 
       {feedback && <Alert {...feedback} />}
 

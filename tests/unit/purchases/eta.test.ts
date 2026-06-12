@@ -56,60 +56,30 @@ describe('addBusinessDays', () => {
 // ── computeEta ────────────────────────────────────────────────────────────────
 
 describe('computeEta', () => {
-  it("l'override gagne sur le calcul, quelle que soit la somme des jours", () => {
-    const eta = computeEta({
-      ordered_at: '2026-06-01',
-      supplier_prep_days: 5,
-      transport_days: 10,
-      local_buffer_days: 2,
-      eta_override: '2026-06-15',
-    });
-    expect(isoOf(eta)).toBe('2026-06-15');
-  });
-
-  it('sans override, 0 jours → ETA = ordered_at', () => {
-    const eta = computeEta({
-      ordered_at: '2026-06-05',
-      supplier_prep_days: 0,
-      transport_days: 0,
-      local_buffer_days: 0,
-      eta_override: null,
-    });
+  it('délai 0 → ETA = ordered_at', () => {
+    const eta = computeEta({ ordered_at: '2026-06-05', estimated_lead_time_days: 0 });
     expect(isoOf(eta)).toBe('2026-06-05');
   });
 
-  it('sans override, totalDays = prep + transport + local', () => {
-    // prep=2 + transport=2 + local=1 = 5 jours ouvrés depuis lundi 1 → lundi 8
-    const eta = computeEta({
-      ordered_at: '2026-06-01',
-      supplier_prep_days: 2,
-      transport_days: 2,
-      local_buffer_days: 1,
-      eta_override: null,
-    });
+  it('ETA = ordered_at + délai estimé en jours ouvrés', () => {
+    // 5 jours ouvrés depuis lundi 1 → lundi 8
+    const eta = computeEta({ ordered_at: '2026-06-01', estimated_lead_time_days: 5 });
     expect(isoOf(eta)).toBe('2026-06-08');
   });
 
-  it('sans override, commande un vendredi : ETA saute le week-end', () => {
+  it('commande un vendredi : ETA saute le week-end', () => {
     // Ven 5, 1 jour ouvré → Lun 8
-    const eta = computeEta({
-      ordered_at: '2026-06-05',
-      supplier_prep_days: 0,
-      transport_days: 1,
-      local_buffer_days: 0,
-      eta_override: null,
-    });
+    const eta = computeEta({ ordered_at: '2026-06-05', estimated_lead_time_days: 1 });
     expect(isoOf(eta)).toBe('2026-06-08');
   });
 
-  it('eta_override null et non fourni : calcule depuis ordered_at', () => {
-    const eta = computeEta({
-      ordered_at: '2026-06-01',
-      supplier_prep_days: 1,
-      transport_days: 0,
-      local_buffer_days: 0,
-      eta_override: null,
-    });
-    expect(isoOf(eta)).toBe('2026-06-02'); // Lun→Mar
+  it('délai 1 depuis lundi → mardi', () => {
+    const eta = computeEta({ ordered_at: '2026-06-01', estimated_lead_time_days: 1 });
+    expect(isoOf(eta)).toBe('2026-06-02');
+  });
+
+  it('délai négatif est traité comme 0 (robustesse)', () => {
+    const eta = computeEta({ ordered_at: '2026-06-05', estimated_lead_time_days: -3 });
+    expect(isoOf(eta)).toBe('2026-06-05');
   });
 });

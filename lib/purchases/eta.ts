@@ -1,13 +1,15 @@
 // Calcul de l'ETA d'un lot fournisseur en jours ouvrés (lundi–vendredi).
-// Les jours fériés sénégalais (variables/lunaires) sont couverts par
-// l'override manuel eta_override — aucune liste de fériés hardcodée.
+// Les jours fériés sénégalais (variables/lunaires) ne sont pas modélisés : le
+// marchand ajuste le « délai estimé » à la hausse si une période fériée tombe
+// dans le transit.
+//
+// Lot C : l'ETA est désormais pilotée par UN seul champ « délai estimé »
+// (estimated_lead_time_days), en remplacement des trois composantes
+// (prep + transport + buffer) et de l'override.
 
 export type PurchaseLotForEta = {
   ordered_at: string; // YYYY-MM-DD
-  supplier_prep_days: number;
-  transport_days: number;
-  local_buffer_days: number;
-  eta_override: string | null; // YYYY-MM-DD, gagne sur tout calcul
+  estimated_lead_time_days: number; // jours ouvrés à partir de ordered_at
 };
 
 // Parse une date ISO sans conversion de fuseau horaire (évite l'effet
@@ -33,12 +35,8 @@ export function addBusinessDays(startDate: Date, days: number): Date {
 }
 
 export function computeEta(lot: PurchaseLotForEta): Date {
-  if (lot.eta_override) {
-    return parseDateLocal(lot.eta_override);
-  }
   const start = parseDateLocal(lot.ordered_at);
-  const totalDays = lot.supplier_prep_days + lot.transport_days + lot.local_buffer_days;
-  return addBusinessDays(start, totalDays);
+  return addBusinessDays(start, Math.max(0, lot.estimated_lead_time_days));
 }
 
 // Formate une Date en YYYY-MM-DD (affichage, pas de conversion TZ).
