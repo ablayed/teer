@@ -26,6 +26,12 @@ const serverEnvSchema = z.object({
   SHOPIFY_MARCHAND_API_KEY: z.string().optional(),
   SHOPIFY_MARCHAND_API_SECRET: z.string().optional(),
   SHOPIFY_TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  // Rate-limiting auth par IP (Upstash Redis). Serveur uniquement (jamais NEXT_PUBLIC_).
+  // Optionnelles : posées sur Vercel (Prod+Preview) → limiter actif en prod ; absentes
+  // en CI/local → le limiter fait fail-open (cf. lib/security/auth-rate-limit.ts), pour
+  // ne pas bloquer le build/les tests ni verrouiller les marchands (philosophie fail-open).
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
 });
 
 const rawPublicEnv = {
@@ -54,5 +60,7 @@ export const env = {
     SHOPIFY_MARCHAND_API_KEY: process.env.SHOPIFY_MARCHAND_API_KEY,
     SHOPIFY_MARCHAND_API_SECRET: process.env.SHOPIFY_MARCHAND_API_SECRET,
     SHOPIFY_TOKEN_ENCRYPTION_KEY: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
+    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   }),
 };

@@ -10,11 +10,13 @@ import {
   getSignupConsentDocuments,
   persistSignupConsents,
 } from '@/lib/legal/consent';
+import { checkAuthRateLimit, getClientIp } from '@/lib/security/auth-rate-limit';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
@@ -105,6 +107,12 @@ export const signUpAction = actionClient
   .metadata({ actionName: 'auth.sign_up', section: 'auth' })
   .inputSchema(signUpInputSchema)
   .action(async ({ parsedInput }) => {
+    // Rate-limit par IP AVANT tout accès DB / création de compte (anti-abus signup).
+    const rate = await checkAuthRateLimit('signup', getClientIp(await headers()));
+    if (!rate.ok) {
+      return { ok: false as const, errorCode: 'rate_limited' as const };
+    }
+
     const currentDocuments = await getSignupConsentDocuments();
     if (!currentDocuments.ok) {
       return { ok: false as const, errorCode: 'legal_documents_unavailable' as const };
@@ -226,6 +234,13 @@ export const signInAction = actionClient
   .metadata({ actionName: 'auth.sign_in', section: 'auth' })
   .inputSchema(authInputSchema)
   .action(async ({ parsedInput }) => {
+    // Rate-limit par IP AVANT toute vérification d'identifiants (anti brute-force).
+    // Message générique de throttling — ne révèle jamais l'existence de l'email.
+    const rate = await checkAuthRateLimit('login', getClientIp(await headers()));
+    if (!rate.ok) {
+      return { ok: false as const, errorCode: 'rate_limited' as const };
+    }
+
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithPassword({
       email: parsedInput.email,
