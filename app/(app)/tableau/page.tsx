@@ -78,33 +78,24 @@ async function ExceptionsSection() {
       ],
     },
     {
-      title: 'Livraison du jour',
+      title: 'Livraison',
       rows: [
         {
-          count: orders.filter((order) => matchesOrderSavedView(order, 'a-livrer-aujourdhui'))
-            .length,
-          href: buildOrderViewHref('a-livrer-aujourdhui'),
-          label: "A livrer aujourd'hui",
+          count: orders.filter((order) => matchesOrderSavedView(order, 'en-livraison')).length,
+          href: buildOrderViewHref('en-livraison'),
+          label: 'En cours de livraison',
         },
       ],
     },
+    // Note : la carte « Tresorerie / Cash a remettre » est retiree de l'Apercu Commandes.
+    // Le cash se gere desormais dans Finances / Livreurs (hors perimetre Commandes).
     {
-      title: 'Tresorerie',
+      title: 'Annulations & retours',
       rows: [
         {
-          count: orders.filter((order) => matchesOrderSavedView(order, 'cash-a-remettre')).length,
-          href: buildOrderViewHref('cash-a-remettre'),
-          label: 'Cash a remettre',
-        },
-      ],
-    },
-    {
-      title: 'Retours',
-      rows: [
-        {
-          count: orders.filter((order) => matchesOrderSavedView(order, 'retours')).length,
-          href: buildOrderViewHref('retours'),
-          label: 'Retours',
+          count: orders.filter((order) => matchesOrderSavedView(order, 'annulees-retours')).length,
+          href: buildOrderViewHref('annulees-retours'),
+          label: 'Annulées / Retours',
         },
       ],
     },
@@ -228,8 +219,7 @@ function ExceptionsSkeleton() {
   const cards = [
     { key: 'urgences', rows: 2 },
     { key: 'livraison', rows: 1 },
-    { key: 'tresorerie', rows: 1 },
-    { key: 'retours', rows: 1 },
+    { key: 'annulations', rows: 1 },
   ];
 
   return (

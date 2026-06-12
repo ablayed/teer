@@ -367,8 +367,27 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.waitForLoadState('networkidle');
 }
 
-function actionButton(page: Page, name: string) {
-  return page.getByRole('button', { name, exact: true });
+// Les actions de commande vivent desormais dans un dropdown unique « Actions »
+// (liste + detail). Les entrees sont des role="menuitem".
+function menuItem(page: Page, name: string) {
+  return page.getByRole('menuitem', { name, exact: true });
+}
+
+async function openActionsMenu(page: Page) {
+  await page.getByRole('button', { name: 'Actions' }).first().click();
+}
+
+// Detail (page mode) : ouvre le dropdown puis clique l'entree d'action.
+async function runDetailMenuAction(page: Page, name: string) {
+  await openActionsMenu(page);
+  await menuItem(page, name).click();
+}
+
+// Liste : ouvre le dropdown de la carte ciblee puis clique l'entree d'action.
+async function runRowMenuAction(page: Page, rowText: string, name: string) {
+  const row = page.locator('article').filter({ hasText: rowText });
+  await row.getByRole('button', { name: 'Actions' }).click();
+  await menuItem(page, name).click();
 }
 
 function savedViewButton(page: Page, label: string) {
@@ -385,26 +404,28 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    await actionButton(page, 'Confirmer').click();
+    await runDetailMenuAction(page, 'Confirmer');
     await waitForOrderStatus(fixture.admin, orderId, 'CONFIRMEE');
     await expect(page.getByText('Confirmée').first()).toBeVisible({ timeout: 15_000 });
 
     // Programmer ouvre un dialog (date du jour par défaut) avant la transition.
-    await actionButton(page, 'Programmer la livraison').click();
+    await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
     await page.reload();
-    await expect(actionButton(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
+    await openActionsMenu(page);
+    await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
 
     // Assigner ouvre un dialog imposant le choix d'un livreur actif.
-    await actionButton(page, 'Assigner').click();
+    await menuItem(page, 'Assigner').click();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
     await page.reload();
-    await expect(actionButton(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
+    await openActionsMenu(page);
+    await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 
-    await actionButton(page, 'Marquer livree').click();
+    await menuItem(page, 'Marquer livree').click();
     await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
     await expect(page.getByText('Livrée').first()).toBeVisible({ timeout: 15_000 });
 
@@ -465,12 +486,12 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    await actionButton(page, 'Programmer la livraison').click();
+    await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
     await page.reload();
 
-    await actionButton(page, 'Assigner').click();
+    await runDetailMenuAction(page, 'Assigner');
     // Sans livreur choisi, le bouton Valider reste désactivé.
     await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeDisabled();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
@@ -500,9 +521,7 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
   }
 });
 
-test('programmer avec la date du jour fait apparaitre la commande dans A livrer aujourdhui', async ({
-  page,
-}) => {
+test('programmer fait passer la commande dans la vue En cours de livraison', async ({ page }) => {
   const fixture = await createOwnerFixture('schedule-today');
   await createOrderWithCustomer(fixture.admin, {
     merchantAccountId: fixture.merchantAccountId,
@@ -522,12 +541,11 @@ test('programmer avec la date du jour fait apparaitre la commande dans A livrer 
     await signIn(page, fixture.email, '/commandes?vue=confirmee');
     await expect(page.getByText('Client Programme')).toBeVisible({ timeout: 15_000 });
 
-    // Programmer (inline) ouvre le dialog date — défaut aujourd'hui.
-    await actionButton(page, 'Programmer').click();
+    // Programmer (dropdown de la carte) ouvre le dialog date — défaut aujourd'hui.
+    await runRowMenuAction(page, 'Client Programme', 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
-    // scheduled_for renseigné (le filtre de la vue compare scheduled_for::date a today).
     const { data: order } = await fixture.admin
       .from('orders')
       .select('delivery_state, scheduled_for')
@@ -536,9 +554,9 @@ test('programmer avec la date du jour fait apparaitre la commande dans A livrer 
     expect(order?.delivery_state).toBe('scheduled');
     expect(order?.scheduled_for).not.toBeNull();
 
-    // La commande tombe bien dans la vue "À livrer aujourd'hui".
-    await page.goto('/commandes?vue=a-livrer-aujourdhui');
-    await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-livrer-aujourdhui(&.*)?$/);
+    // delivery_state=scheduled → la commande tombe dans « En cours de livraison ».
+    await page.goto('/commandes?vue=en-livraison');
+    await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=en-livraison(&.*)?$/);
     await expect(page.getByText('Client Programme')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
@@ -553,13 +571,15 @@ test('un agent ne voit que les actions legales sur une commande a appeler', asyn
   try {
     await signIn(page, agent.email, `/commandes/${orderId}`);
 
-    await expect(actionButton(page, 'Confirmer')).toBeVisible();
-    await expect(actionButton(page, 'Journaliser une tentative')).toBeVisible();
-    await expect(actionButton(page, 'Programmer la livraison')).toHaveCount(0);
-    await expect(actionButton(page, 'Assigner')).toHaveCount(0);
-    await expect(actionButton(page, 'Marquer livree')).toHaveCount(0);
-    await expect(actionButton(page, 'Annuler la commande')).toHaveCount(0);
-    await expect(actionButton(page, 'Refuser')).toHaveCount(0);
+    await openActionsMenu(page);
+    // Un agent sur A_APPELER : seules Confirmer + journalisation d'appel sont légales.
+    await expect(menuItem(page, 'Confirmer')).toBeVisible();
+    await expect(menuItem(page, 'Journaliser un appel')).toBeVisible();
+    await expect(menuItem(page, 'Programmer la livraison')).toHaveCount(0);
+    await expect(menuItem(page, 'Assigner')).toHaveCount(0);
+    await expect(menuItem(page, 'Marquer livree')).toHaveCount(0);
+    await expect(menuItem(page, 'Annuler la commande')).toHaveCount(0);
+    await expect(menuItem(page, 'Refuser')).toHaveCount(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -572,11 +592,11 @@ test('confirmer puis programmer ne casse pas le rendu et survit au refresh', asy
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    await actionButton(page, 'Confirmer').click();
+    await runDetailMenuAction(page, 'Confirmer');
     await expect(page.locator('body')).not.toBeEmpty();
     await expect(page.getByText('Confirmée').first()).toBeVisible({ timeout: 15_000 });
 
-    await actionButton(page, 'Programmer la livraison').click();
+    await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await expect(page.locator('body')).not.toBeEmpty();
     await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
@@ -711,12 +731,13 @@ test('la transition inline confirmee deplace la commande vers la bonne vue et su
     await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-appeler(&.*)?$/);
     await expect(page.getByText('Client Inline')).toBeVisible({ timeout: 15_000 });
 
-    await actionButton(page, 'Confirmer').click();
+    await runRowMenuAction(page, 'Client Inline', 'Confirmer');
     await expect(page.locator('article').filter({ hasText: 'Client Inline' })).toHaveCount(0, {
       timeout: 15_000,
     });
 
-    await savedViewButton(page, 'Confirmée').click();
+    // La vue « Programmer » garde l'id `confirmee` (deep-links préservés).
+    await savedViewButton(page, 'Programmer').click();
     await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=confirmee(&.*)?$/);
     await expect(page.getByText('Client Inline')).toBeVisible({ timeout: 15_000 });
 
@@ -752,21 +773,21 @@ test('la recherche retrouve une commande par nom puis par telephone', async ({ p
   }
 });
 
-test('le tableau deep-link vers la vue Cash a remettre', async ({ page }) => {
+test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) => {
   const fixture = await createOwnerFixture('dashboard-deeplink');
   await createOrderWithCustomer(fixture.admin, {
     merchantAccountId: fixture.merchantAccountId,
-    status: 'LIVREE',
-    customerName: 'Cash Dashboard',
+    status: 'EN_LIVRAISON',
+    customerName: 'Livraison Dashboard',
     phone: '+221781223344',
   });
 
   try {
     await signIn(page, fixture.email, '/tableau');
 
-    await page.getByRole('link', { name: 'Cash a remettre' }).click();
-    await page.waitForURL('**/commandes?vue=cash-a-remettre');
-    await expect(page.getByText('Cash Dashboard')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('link', { name: 'En cours de livraison' }).click();
+    await page.waitForURL('**/commandes?vue=en-livraison');
+    await expect(page.getByText('Livraison Dashboard')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

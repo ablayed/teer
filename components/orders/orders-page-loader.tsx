@@ -2,7 +2,7 @@
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
-import { OrderInlineActions } from '@/components/orders/order-inline-actions';
+import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import {
   type OrderListCursor,
@@ -14,7 +14,11 @@ import { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Json } from '@/lib/supabase/database.types';
-import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
+import {
+  buildWhatsAppConfirmationUrl,
+  buildWhatsAppDispatchUrl,
+  firstName,
+} from '@/lib/whatsapp/link';
 import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
 
@@ -151,12 +155,23 @@ export function OrdersPageLoader({
               <p className="text-lg font-semibold">
                 {formatMoney(order.total_amount, order.currency)}
               </p>
-              <OrderInlineActions
+              <OrderActionsMenu
                 allowedActions={order.allowedActions}
+                deliveryState={order.delivery_state}
+                dispatchWhatsAppUrl={buildWhatsAppDispatchUrl({
+                  address: formatOrderAddress(order.shipping_address),
+                  currency: order.currency,
+                  customerFirstName: order.customer?.full_name ?? null,
+                  itemsSummary: order.items_summary,
+                  orderNumber: order.order_number,
+                  phone: order.customer?.phone ?? null,
+                  shopName: merchantName,
+                  totalAmount: order.total_amount,
+                })}
                 drivers={drivers}
                 orderId={order.id}
                 phone={order.customer?.phone ?? null}
-                whatsappMissingPhoneLabel={whatsappMissingPhoneLabel}
+                whatsappLabels={{ confirm: 'WhatsApp', missingPhone: whatsappMissingPhoneLabel }}
                 whatsappUrl={buildWhatsAppConfirmationUrl({
                   address: formatOrderAddress(order.shipping_address),
                   currency: order.currency,

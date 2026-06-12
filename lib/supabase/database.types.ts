@@ -1894,13 +1894,12 @@ export type Database = {
         Args: { p_merchant_id: string; p_search?: string };
         Returns: {
           a_appeler: number;
-          a_livrer_aujourdhui: number;
-          annulees: number;
-          cash_a_remettre: number;
+          annulees_retours: number;
           confirmee: number;
-          retours: number;
+          en_livraison: number;
           tentee_a_rappeler: number;
           toutes: number;
+          valide: number;
         }[];
       };
       post_stock_movement: {

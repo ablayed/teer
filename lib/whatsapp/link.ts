@@ -122,3 +122,27 @@ export function buildWhatsAppConfirmationUrl(order: WhatsAppOrderInput): string 
     buildWhatsAppConfirmationMessage(order),
   )}`;
 }
+
+// Message d'expedition : les donnees de la commande a transmettre au livreur
+// (client, telephone, adresse/repere, articles, total a encaisser, n° commande).
+export function buildWhatsAppDispatchMessage(order: WhatsAppOrderInput): string {
+  const lines = itemLines(order.itemsSummary);
+
+  return [
+    `Commande n°${order.orderNumber ?? ''}`,
+    `Client : ${order.customerFirstName ?? 'client'}`,
+    order.phone ? `Tél : ${order.phone}` : null,
+    `Adresse : ${order.address?.trim() || 'adresse à confirmer'}`,
+    'Articles :',
+    lines.length > 0 ? lines.join('\n') : '- Articles de la commande',
+    `Total à encaisser : ${formatMoneyForWhatsApp(order.totalAmount, order.currency)}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n');
+}
+
+// Lien wa.me SANS numero : le marchand choisit le destinataire (livreur) dans
+// WhatsApp. Toujours disponible des qu'on a une commande a transmettre.
+export function buildWhatsAppDispatchUrl(order: WhatsAppOrderInput): string {
+  return `https://wa.me/?text=${encodeURIComponent(buildWhatsAppDispatchMessage(order))}`;
+}

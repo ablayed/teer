@@ -254,10 +254,9 @@ function emptyOrdersViewCounts(): OrdersViewCounts {
     'a-appeler': 0,
     'tentee-a-rappeler': 0,
     confirmee: 0,
-    'a-livrer-aujourdhui': 0,
-    'cash-a-remettre': 0,
-    annulees: 0,
-    retours: 0,
+    'en-livraison': 0,
+    valide: 0,
+    'annulees-retours': 0,
   };
 }
 
@@ -271,10 +270,9 @@ function mapOrdersViewCounts(row: OrdersViewCountsRow | null | undefined): Order
     'a-appeler': row.a_appeler,
     'tentee-a-rappeler': row.tentee_a_rappeler,
     confirmee: row.confirmee,
-    'a-livrer-aujourdhui': row.a_livrer_aujourdhui,
-    'cash-a-remettre': row.cash_a_remettre,
-    annulees: row.annulees,
-    retours: row.retours,
+    'en-livraison': row.en_livraison,
+    valide: row.valide,
+    'annulees-retours': row.annulees_retours,
   };
 }
 

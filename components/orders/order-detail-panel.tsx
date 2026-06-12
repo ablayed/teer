@@ -1,39 +1,24 @@
 'use client';
 
-import { CallLogForm } from '@/components/orders/call-log-form';
+import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
-import {
-  type DriverOption,
-  type PayloadDialogAction,
-  TransitionDialog,
-  type TransitionPayload,
-} from '@/components/orders/transition-dialog';
-import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
+import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
+import type { DriverOption } from '@/components/orders/transition-dialog';
 import { Button } from '@/components/ui/button';
-import type { OrderDetail, OrderTimelineEvent } from '@/lib/actions/orders';
-import { performTransition } from '@/lib/actions/transitions';
+import type { OrderDetail } from '@/lib/actions/orders';
 import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-machine';
-import type { TransitionAction } from '@/lib/domain/order-transition-actions';
-import { formatDateTime } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
-import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
 import {
-  ArrowLeft,
-  CheckCircle2,
-  Clock3,
-  MapPin,
-  Phone,
-  ShoppingBag,
-  Truck,
-  X,
-} from 'lucide-react';
-import { useAction } from 'next-safe-action/hooks';
+  buildWhatsAppConfirmationUrl,
+  buildWhatsAppDispatchUrl,
+  firstName,
+} from '@/lib/whatsapp/link';
+import { ArrowLeft, MapPin, Pencil, ShoppingBag, X } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 
 type OrderDetailPanelProps = {
   drivers: DriverOption[];
@@ -41,17 +26,11 @@ type OrderDetailPanelProps = {
   onClose?: () => void;
   order: OrderDetail;
   shopName: string;
-  timeline: OrderTimelineEvent[];
   whatsappLabels: {
     confirm: string;
     missingPhone: string;
   };
 };
-
-// Actions that need an extra input collected via a dialog before running.
-function isPayloadDialogAction(action: TransitionAction): action is PayloadDialogAction {
-  return action === 'assigner' || action === 'programmer';
-}
 
 type ShippingAddress = {
   address1: string | null;
@@ -67,35 +46,6 @@ type ItemSummary = {
   quantity: number;
   title: string;
 };
-
-type TransitionButtonConfig = {
-  label: string;
-  action: TransitionAction;
-  tone: 'primary' | 'secondary' | 'accent' | 'destructive';
-};
-
-const transitionButtonConfigs: Record<TransitionAction, TransitionButtonConfig> = {
-  journaliser_appel: {
-    action: 'journaliser_appel',
-    label: 'Journaliser une tentative',
-    tone: 'secondary',
-  },
-  confirmer: { action: 'confirmer', label: 'Confirmer', tone: 'primary' },
-  programmer: { action: 'programmer', label: 'Programmer la livraison', tone: 'primary' },
-  assigner: { action: 'assigner', label: 'Assigner', tone: 'primary' },
-  livrer: { action: 'livrer', label: 'Marquer livree', tone: 'accent' },
-  annuler: { action: 'annuler', label: 'Annuler la commande', tone: 'destructive' },
-  refuser: { action: 'refuser', label: 'Refuser', tone: 'secondary' },
-};
-
-const primaryActionOrder: TransitionAction[] = [
-  'journaliser_appel',
-  'confirmer',
-  'programmer',
-  'assigner',
-  'livrer',
-  'refuser',
-];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -167,190 +117,17 @@ function toOrderStatus(value: string): OrderStatus {
   return Object.hasOwn(orderStatusLabels, value) ? (value as OrderStatus) : 'A_APPELER';
 }
 
-function shortActorId(actorUserId: string): string {
-  return actorUserId.slice(0, 8);
-}
-
-function Timeline({
-  currentStatus,
-  events,
-}: { currentStatus: OrderStatus; events: OrderTimelineEvent[] }) {
-  if (events.length === 0) {
-    return <p className="text-sm text-muted">Aucun historique.</p>;
-  }
-
-  return (
-    <ol className="relative space-y-4 border-l border-border pl-4">
-      {events.map((event) => {
-        const isCurrentTransition = event.type === 'transition' && event.toStatus === currentStatus;
-
-        return (
-          <li className="relative" key={`${event.type}-${event.id}`}>
-            <span
-              className={cn(
-                '-left-[21px] absolute mt-1 flex size-3 rounded-full border-2 border-surface',
-                isCurrentTransition ? 'bg-accent' : 'bg-muted',
-              )}
-            />
-            <div className="space-y-1">
-              <p className="text-sm font-semibold">
-                {event.type === 'transition'
-                  ? `${event.fromStatus ? orderStatusLabels[event.fromStatus] : 'Initial'} -> ${
-                      orderStatusLabels[event.toStatus]
-                    }`
-                  : `Appel - ${event.outcome.replace(/_/g, ' ')}`}
-              </p>
-              <p className="text-xs text-muted">
-                {formatDateTime(event.createdAt)} · {shortActorId(event.actorUserId)}
-              </p>
-              {event.note ? <p className="text-sm text-muted">{event.note}</p> : null}
-              {event.type === 'call' && event.nextActionAt ? (
-                <p className="text-xs font-medium text-text">
-                  Rappel: {formatDateTime(event.nextActionAt)}
-                </p>
-              ) : null}
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function ActionBar({
-  allowedActions,
-  drivers,
-  onAllowedActionsChange,
-  onStatusChange,
-  orderId,
-}: {
-  allowedActions: TransitionAction[];
-  drivers: DriverOption[];
-  onAllowedActionsChange: (actions: TransitionAction[]) => void;
-  onStatusChange: (status: OrderStatus) => void;
-  orderId: string;
-}) {
-  const router = useRouter();
-  const transitionStatus = useAction(performTransition);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
-  const visibleTransitions = primaryActionOrder
-    .filter((action) => allowedActions.includes(action))
-    .map((action) => transitionButtonConfigs[action]);
-  const canCancel = allowedActions.includes('annuler');
-
-  function executeTransition(action: TransitionAction) {
-    setFeedback(null);
-
-    if (isPayloadDialogAction(action)) {
-      setPendingAction(action);
-      return;
-    }
-
-    transitionStatus.execute({ orderId, action });
-  }
-
-  function handleDialogConfirm(payload: TransitionPayload) {
-    if (!pendingAction) {
-      return;
-    }
-
-    transitionStatus.execute({ orderId, action: pendingAction, payload });
-    setPendingAction(null);
-  }
-
-  useEffect(() => {
-    const result = transitionStatus.result.data;
-
-    if (!result) {
-      return;
-    }
-
-    if (result.ok) {
-      onStatusChange(toOrderStatus(result.order.cod_status));
-      onAllowedActionsChange(result.allowedActions);
-      setFeedback('Statut COD mis a jour.');
-      router.refresh();
-      return;
-    }
-
-    setFeedback('message' in result ? result.message : 'La mise a jour du statut a echoue.');
-  }, [onAllowedActionsChange, onStatusChange, router, transitionStatus.result.data]);
-
-  if (allowedActions.length === 0) {
-    return (
-      <div className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm font-medium text-muted">
-        Aucune action disponible
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {visibleTransitions.map((transition) => (
-          <Button
-            className={cn(
-              transition.tone === 'secondary' && 'border border-border bg-surface text-text',
-              transition.tone === 'accent' && 'bg-[#EE8243] text-[#111] hover:bg-[#f09a66]',
-            )}
-            disabled={transitionStatus.isExecuting}
-            key={transition.action}
-            onClick={() => executeTransition(transition.action)}
-            size="sm"
-            variant={transition.tone === 'primary' ? 'primary' : 'ghost'}
-          >
-            {transition.label}
-          </Button>
-        ))}
-      </div>
-      {canCancel ? (
-        <div className="border-t border-border pt-3">
-          <Button
-            className="w-full border border-danger/30 bg-red-50 text-danger hover:bg-red-100 sm:w-auto"
-            disabled={transitionStatus.isExecuting}
-            onClick={() => executeTransition('annuler')}
-            size="sm"
-            variant="ghost"
-          >
-            {transitionButtonConfigs.annuler.label}
-          </Button>
-        </div>
-      ) : null}
-      {feedback ? (
-        <output className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted shadow-1">
-          {feedback}
-        </output>
-      ) : null}
-      {pendingAction ? (
-        <TransitionDialog
-          action={pendingAction}
-          drivers={drivers}
-          isSubmitting={transitionStatus.isExecuting}
-          onCancel={() => setPendingAction(null)}
-          onConfirm={handleDialogConfirm}
-        />
-      ) : null}
-    </div>
-  );
-}
-
 export function OrderDetailPanel({
   drivers,
   mode,
   onClose,
   order,
   shopName,
-  timeline,
   whatsappLabels,
 }: OrderDetailPanelProps) {
-  const [visibleTimeline, setVisibleTimeline] = useState(timeline);
-  const [optimisticStatus, setOptimisticStatus] = useState<OrderStatus>(() =>
-    toOrderStatus(order.cod_status),
-  );
-  const [allowedActions, setAllowedActions] = useState<TransitionAction[]>(order.allowedActions);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
   const emptyValue = 'Non renseigne';
-  const currentStatus = optimisticStatus;
+  const currentStatus = toOrderStatus(order.cod_status);
   const shippingAddress = parseShippingAddress(order.shipping_address);
   const structuredAddress = order.delivery_address ?? order.customer_delivery_address;
   const items = parseItemsSummary(order.items_summary);
@@ -359,8 +136,10 @@ export function OrderDetailPanel({
     .filter(Boolean)
     .join(', ');
   const formattedDeliveryAddress = formatAddress(shippingAddress, emptyValue);
+  const addressForWhatsApp =
+    formattedDeliveryAddress === emptyValue ? null : formattedDeliveryAddress;
   const whatsappUrl = buildWhatsAppConfirmationUrl({
-    address: formattedDeliveryAddress === emptyValue ? null : formattedDeliveryAddress,
+    address: addressForWhatsApp,
     currency: order.currency,
     customerFirstName: firstName(order.customer?.full_name),
     itemsSummary: order.items_summary,
@@ -369,31 +148,34 @@ export function OrderDetailPanel({
     shopName,
     totalAmount: order.total_amount,
   });
+  const dispatchWhatsAppUrl = buildWhatsAppDispatchUrl({
+    address: addressForWhatsApp,
+    currency: order.currency,
+    customerFirstName: order.customer?.full_name ?? null,
+    itemsSummary: order.items_summary,
+    orderNumber: order.order_number,
+    phone,
+    shopName,
+    totalAmount: order.total_amount,
+  });
+  const isCancelled = order.order_state === 'cancelled';
   const contentClassName =
     mode === 'sheet'
       ? 'flex h-full min-h-0 w-full flex-col'
       : 'mx-auto max-w-5xl space-y-6 px-4 py-6';
-  const actionBar = (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
-      <ActionBar
-        allowedActions={allowedActions}
-        drivers={drivers}
-        onAllowedActionsChange={setAllowedActions}
-        onStatusChange={setOptimisticStatus}
-        orderId={order.id}
-      />
-    </section>
+
+  const actionsMenu = (
+    <OrderActionsMenu
+      allowedActions={order.allowedActions}
+      deliveryState={order.delivery_state}
+      dispatchWhatsAppUrl={dispatchWhatsAppUrl}
+      drivers={drivers}
+      orderId={order.id}
+      phone={phone}
+      whatsappLabels={whatsappLabels}
+      whatsappUrl={whatsappUrl}
+    />
   );
-
-  useEffect(() => {
-    setVisibleTimeline(timeline);
-  }, [timeline]);
-
-  useEffect(() => {
-    setOptimisticStatus(toOrderStatus(order.cod_status));
-    setAllowedActions(order.allowedActions);
-  }, [order.allowedActions, order.cod_status]);
 
   return (
     <div className={contentClassName}>
@@ -438,49 +220,39 @@ export function OrderDetailPanel({
           mode === 'sheet' && 'min-h-0 flex-1 overflow-y-auto overscroll-contain pb-8',
         )}
       >
-        <section className="space-y-3">
+        <section className="space-y-2">
           <h2 className="text-sm font-semibold uppercase text-muted">Client</h2>
-          <div className="space-y-2">
-            <p className="text-lg font-semibold">{order.customer?.full_name ?? emptyValue}</p>
-            <p className="text-sm text-muted">{phone ? formatPhoneSN(phone) : emptyValue}</p>
-            {phone ? (
-              <div className="flex flex-wrap gap-2">
-                <a
-                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
-                  href={`tel:${phone.replace(/\s/g, '')}`}
-                >
-                  <Phone aria-hidden="true" className="size-4" />
-                  Appeler
-                </a>
-                <WhatsAppConfirmButton
-                  disabledLabel={whatsappLabels.missingPhone}
-                  label={whatsappLabels.confirm}
-                  url={whatsappUrl}
-                />
-              </div>
-            ) : (
-              <WhatsAppConfirmButton
-                disabledLabel={whatsappLabels.missingPhone}
-                label={whatsappLabels.confirm}
-                url={null}
-              />
-            )}
-          </div>
+          <p className="text-lg font-semibold">{order.customer?.full_name ?? emptyValue}</p>
+          <p className="text-sm text-muted">{phone ? formatPhoneSN(phone) : emptyValue}</p>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase text-muted">Livraison</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase text-muted">Adresse de livraison</h2>
+            <Button
+              className="min-h-10"
+              onClick={() => setIsEditingAddress((value) => !value)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <Pencil aria-hidden="true" className="mr-1 size-4" />
+              {isEditingAddress ? 'Fermer' : "Modifier l'adresse"}
+            </Button>
+          </div>
           <p className="flex gap-2 text-sm italic leading-6 text-muted">
             <MapPin aria-hidden="true" className="mt-1 size-4 shrink-0 text-accent" />
             {formattedDeliveryAddress}
           </p>
-          <DeliveryAddressForm
-            fallbackPhone={phone}
-            fallbackQuartier={fallbackQuartier || null}
-            fallbackVille={shippingAddress?.city}
-            initialAddress={structuredAddress}
-            orderId={order.id}
-          />
+          {isEditingAddress ? (
+            <DeliveryAddressForm
+              fallbackPhone={phone}
+              fallbackQuartier={fallbackQuartier || null}
+              fallbackVille={shippingAddress?.city}
+              initialAddress={structuredAddress}
+              orderId={order.id}
+            />
+          ) : null}
         </section>
 
         <section className="space-y-3">
@@ -522,44 +294,32 @@ export function OrderDetailPanel({
             </p>
           </div>
           <div className="rounded-lg border border-border p-4">
-            <p className="text-sm text-muted">Shopify</p>
-            <div className="mt-2 space-y-1 text-sm">
-              <p className="flex items-center gap-2">
-                <CheckCircle2 aria-hidden="true" className="size-4 text-muted" />
-                {order.financial_status ?? emptyValue}
-              </p>
-              <p className="flex items-center gap-2">
-                <Truck aria-hidden="true" className="size-4 text-muted" />
-                {order.fulfillment_status ?? emptyValue}
-              </p>
+            <p className="text-sm text-muted">Statut COD</p>
+            <div className="mt-2">
+              <CodStatusBadge status={currentStatus} />
             </div>
           </div>
         </section>
 
-        <section className="space-y-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase text-muted">
-            <Clock3 aria-hidden="true" className="size-4" />
-            Timeline
-          </h2>
-          <Timeline currentStatus={currentStatus} events={visibleTimeline} />
-        </section>
+        {isCancelled ? (
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold uppercase text-muted">Raison d'annulation</h2>
+            {/* Lot B remplira les raisons multiples + leur libelle. Ici on lit le
+                cancel_reason existant, sinon un placeholder. */}
+            <p className="text-sm text-text">{order.cancel_reason?.trim() || '—'}</p>
+          </section>
+        ) : null}
 
-        {mode === 'page' ? actionBar : null}
-
-        <CallLogForm
-          onOptimisticCall={(event) =>
-            setVisibleTimeline((currentTimeline) => [event, ...currentTimeline])
-          }
-          onRemoveOptimisticCall={(eventId) =>
-            setVisibleTimeline((currentTimeline) =>
-              currentTimeline.filter((event) => event.id !== eventId),
-            )
-          }
-          orderId={order.id}
-        />
+        {mode === 'page' ? (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase text-muted">Actions</h2>
+            {actionsMenu}
+          </section>
+        ) : null}
       </div>
+
       {mode === 'sheet' ? (
-        <footer className="shrink-0 border-t border-border bg-surface p-5">{actionBar}</footer>
+        <footer className="shrink-0 border-t border-border bg-surface p-5">{actionsMenu}</footer>
       ) : null}
     </div>
   );

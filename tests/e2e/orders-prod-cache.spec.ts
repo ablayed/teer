@@ -161,8 +161,8 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     await expect(page.getByText('Client Seed')).toBeVisible();
 
     // On part vers une vue filtrée : l'entrée « /commandes » nu reste en cache, périmée.
-    await page.getByRole('button', { name: /^À livrer aujourd'hui \(/ }).click();
-    await page.waitForURL(/vue=a-livrer-aujourdhui/);
+    await page.getByRole('button', { name: /^En cours de livraison \(/ }).click();
+    await page.waitForURL(/vue=en-livraison/);
 
     // Création manuelle DEPUIS la vue filtrée (déclencheur exact de l'issue #3).
     await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();

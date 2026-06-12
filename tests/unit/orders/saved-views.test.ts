@@ -24,7 +24,7 @@ type OrderFixture = {
     | 'unassigned';
   items_summary: Array<{ title: string }> | null;
   next_contact_at: string | null;
-  order_state: 'cancelled' | 'open' | 'returned';
+  order_state: 'cancelled' | 'completed' | 'open' | 'returned';
   scheduled_for: string | null;
 };
 
@@ -48,7 +48,6 @@ function orderFixture(overrides: Partial<OrderFixture> = {}): OrderFixture {
 }
 
 describe('order saved views', () => {
-  const today = new Date('2026-06-03T10:00:00.000Z');
   const cases: Array<{
     order: OrderFixture;
     view: OrderSavedViewId;
@@ -71,43 +70,46 @@ describe('order saved views', () => {
       view: 'confirmee',
     },
     {
+      // En cours de livraison : delivery ∈ {scheduled, assigned, out_for_delivery}, sans date.
       order: orderFixture({
         call_state: 'validated',
         cash_state: 'expected',
-        delivery_state: 'scheduled',
-        scheduled_for: '2026-06-03T18:00:00.000Z',
+        delivery_state: 'assigned',
       }),
-      view: 'a-livrer-aujourdhui',
+      view: 'en-livraison',
     },
     {
+      // Validé : order_state = completed.
       order: orderFixture({
         call_state: 'validated',
         cash_state: 'collected',
         delivery_state: 'delivered',
-        order_state: 'open',
+        order_state: 'completed',
       }),
-      view: 'cash-a-remettre',
+      view: 'valide',
     },
     {
+      // Annulées / Retours regroupe cancelled…
       order: orderFixture({
         call_state: 'validated',
         order_state: 'cancelled',
       }),
-      view: 'annulees',
+      view: 'annulees-retours',
     },
     {
+      // …et returned dans une seule vue d'affichage.
       order: orderFixture({
         delivery_state: 'failed',
         order_state: 'returned',
       }),
-      view: 'retours',
+      view: 'annulees-retours',
     },
   ];
 
   it('applique les vues sauvegardees attendues', () => {
     for (const testCase of cases) {
-      expect(matchesOrderSavedView(testCase.order, 'toutes', today)).toBe(true);
-      expect(matchesOrderSavedView(testCase.order, testCase.view, today)).toBe(true);
+      expect(matchesOrderSavedView(testCase.order, 'toutes')).toBe(true);
+      expect(matchesOrderSavedView(testCase.order, testCase.view)).toBe(true);
     }
   });
 

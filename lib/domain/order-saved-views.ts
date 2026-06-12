@@ -5,10 +5,9 @@ export const orderSavedViewIds = [
   'a-appeler',
   'tentee-a-rappeler',
   'confirmee',
-  'a-livrer-aujourdhui',
-  'cash-a-remettre',
-  'annulees',
-  'retours',
+  'en-livraison',
+  'valide',
+  'annulees-retours',
 ] as const;
 
 export type OrderSavedViewId = (typeof orderSavedViewIds)[number];
@@ -20,25 +19,23 @@ export type OrderSavedViewDefinition = {
 
 export const orderSavedViews: OrderSavedViewDefinition[] = [
   { id: 'toutes', label: 'Toutes' },
-  { id: 'a-appeler', label: '\u00c0 appeler' },
-  { id: 'tentee-a-rappeler', label: 'Tent\u00e9e / \u00c0 rappeler' },
-  { id: 'confirmee', label: 'Confirm\u00e9e' },
-  { id: 'a-livrer-aujourdhui', label: "\u00c0 livrer aujourd'hui" },
-  { id: 'cash-a-remettre', label: 'Cash \u00e0 remettre' },
-  { id: 'annulees', label: 'Annul\u00e9es' },
-  { id: 'retours', label: 'Retours' },
+  { id: 'a-appeler', label: 'À appeler' },
+  { id: 'tentee-a-rappeler', label: 'Tentée / À rappeler' },
+  // L'id `confirmee` est CONSERVE (deep-links existants) ; seul le label change.
+  { id: 'confirmee', label: 'Programmer' },
+  { id: 'en-livraison', label: 'En cours de livraison' },
+  { id: 'valide', label: 'Validé' },
+  { id: 'annulees-retours', label: 'Annulées / Retours' },
 ] as const;
 
 type OrderListViewShape = Pick<
   OrderListItem,
   | 'call_state'
-  | 'cash_state'
   | 'created_at'
   | 'created_at_shopify'
   | 'delivery_state'
   | 'next_contact_at'
   | 'order_state'
-  | 'scheduled_for'
 >;
 
 function startOfLocalDay(date = new Date()) {
@@ -55,7 +52,7 @@ export function isSameLocalDate(value: string | null, date = new Date()) {
   return candidate.getTime() === target.getTime();
 }
 
-function queueDate(order: OrderListViewShape) {
+function queueDate(order: Pick<OrderListViewShape, 'created_at' | 'created_at_shopify'>) {
   return order.created_at_shopify ?? order.created_at;
 }
 
@@ -65,11 +62,7 @@ export function parseOrderSavedViewId(value: string | undefined): OrderSavedView
     : 'toutes';
 }
 
-export function matchesOrderSavedView(
-  order: OrderListViewShape,
-  viewId: OrderSavedViewId,
-  today = new Date(),
-) {
+export function matchesOrderSavedView(order: OrderListViewShape, viewId: OrderSavedViewId) {
   switch (viewId) {
     case 'toutes':
       return true;
@@ -83,19 +76,18 @@ export function matchesOrderSavedView(
         order.call_state === 'validated' &&
         (order.delivery_state === 'unassigned' || order.delivery_state === 'scheduled')
       );
-    case 'a-livrer-aujourdhui':
+    case 'en-livraison':
       return (
-        (order.delivery_state === 'scheduled' ||
-          order.delivery_state === 'assigned' ||
-          order.delivery_state === 'out_for_delivery') &&
-        isSameLocalDate(order.scheduled_for, today)
+        order.delivery_state === 'scheduled' ||
+        order.delivery_state === 'assigned' ||
+        order.delivery_state === 'out_for_delivery'
       );
-    case 'cash-a-remettre':
-      return order.cash_state === 'collected';
-    case 'annulees':
-      return order.order_state === 'cancelled';
-    case 'retours':
-      return order.order_state === 'returned';
+    case 'valide':
+      return order.order_state === 'completed';
+    case 'annulees-retours':
+      // Regroupement d'AFFICHAGE uniquement : `cancelled` et `returned` restent
+      // deux order_state distincts en base (les analytics de pertes en dependent).
+      return order.order_state === 'cancelled' || order.order_state === 'returned';
   }
 }
 

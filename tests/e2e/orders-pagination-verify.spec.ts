@@ -271,15 +271,18 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   try {
     await signIn(page, email, '/commandes');
 
-    // 1) Les 8 chips affichent les bons compteurs.
+    // 1) Les 7 chips affichent les bons compteurs.
     await expect(page.getByRole('button', { name: /^Toutes \(43\)$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^À appeler \(30\)$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Tentée \/ À rappeler \(2\)$/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Confirmée \(3\)$/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^À livrer aujourd'hui \(2\)$/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Cash à remettre \(2\)$/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Annulées \(2\)$/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Retours \(2\)$/ })).toBeVisible();
+    // « Programmer » garde l'id confirmee (open ∧ validated ∧ delivery ∈ {unassigned,scheduled}).
+    await expect(page.getByRole('button', { name: /^Programmer \(3\)$/ })).toBeVisible();
+    // delivery ∈ {scheduled,assigned,out_for_delivery} → les 2 commandes assignées.
+    await expect(page.getByRole('button', { name: /^En cours de livraison \(2\)$/ })).toBeVisible();
+    // order_state=completed → les 2 commandes livrées/encaissées.
+    await expect(page.getByRole('button', { name: /^Validé \(2\)$/ })).toBeVisible();
+    // order_state ∈ {cancelled,returned} → 2 annulées + 2 retours.
+    await expect(page.getByRole('button', { name: /^Annulées \/ Retours \(4\)$/ })).toBeVisible();
 
     // 2) Page 1 = 25 cartes, ordre DESC (la plus récente VERIF-000 en tête).
     await expect(page.locator('article')).toHaveCount(25);

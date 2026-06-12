@@ -2,7 +2,7 @@
 
 import { OrderDetailPanel } from '@/components/orders/order-detail-panel';
 import type { DriverOption } from '@/components/orders/transition-dialog';
-import type { OrderDetail, OrderTimelineEvent } from '@/lib/actions/orders';
+import type { OrderDetail } from '@/lib/actions/orders';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { type MouseEvent, useCallback, useEffect } from 'react';
@@ -11,7 +11,6 @@ type OrderSideSheetProps = {
   drivers: DriverOption[];
   order: OrderDetail;
   shopName: string;
-  timeline: OrderTimelineEvent[];
   whatsappLabels: {
     confirm: string;
     missingPhone: string;
@@ -23,13 +22,7 @@ const sheetTransition = {
   ease: [0.22, 1, 0.36, 1],
 } as const;
 
-export function OrderSideSheet({
-  drivers,
-  order,
-  shopName,
-  timeline,
-  whatsappLabels,
-}: OrderSideSheetProps) {
+export function OrderSideSheet({ drivers, order, shopName, whatsappLabels }: OrderSideSheetProps) {
   const router = useRouter();
 
   const close = useCallback(() => {
@@ -80,7 +73,6 @@ export function OrderSideSheet({
             onClose={close}
             order={order}
             shopName={shopName}
-            timeline={timeline}
             whatsappLabels={whatsappLabels}
           />
         </motion.dialog>
