@@ -39,21 +39,30 @@ const limiters = redis
 
 export type AuthRateLimitName = 'login' | 'signup';
 
-let warnedMissingInProd = false;
+// Garde-fou de démarrage : appelé une fois au boot (instrumentation.ts register()).
+// Si on tourne en PROD Vercel (VERCEL_ENV === 'production') sans les env Upstash, on
+// crie dans Sentry — sinon le fail-open laisserait /login sans aucune protection EN
+// SILENCE. On garde les env optionnelles (dev/preview/CI libres) ; seule la vraie prod
+// alerte. `VERCEL_ENV` est une variable système Vercel (jamais en NEXT_PUBLIC_).
+export function reportAuthRateLimitConfigAtBoot(): void {
+  if (process.env.VERCEL_ENV !== 'production') {
+    return;
+  }
+  if (url && token) {
+    return; // correctement configuré
+  }
+  Sentry.captureMessage(
+    'Auth rate-limit NON configuré en PROD (UPSTASH_REDIS_REST_* absents) → /login en fail-open',
+    { level: 'warning', tags: { component: 'auth-rate-limit', phase: 'boot' } },
+  );
+}
 
 export async function checkAuthRateLimit(
   name: AuthRateLimitName,
   key: string,
 ): Promise<{ ok: boolean }> {
   if (!limiters) {
-    // Non configuré → fail-open. En prod uniquement, on signale une fois (mauvaise config).
-    if (process.env.NODE_ENV === 'production' && !warnedMissingInProd) {
-      warnedMissingInProd = true;
-      Sentry.captureMessage('Auth rate-limit non configuré (UPSTASH_REDIS_REST_* absents)', {
-        level: 'warning',
-        tags: { component: 'auth-rate-limit' },
-      });
-    }
+    // Non configuré → fail-open (l'alerte prod est émise au boot, cf. ci-dessus).
     return { ok: true };
   }
 
