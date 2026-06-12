@@ -6,6 +6,7 @@ import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
 import { TopProducts } from '@/components/dashboard/TopProducts';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
+import { Card } from '@/components/ui/card';
 import {
   getCodBreakdown,
   getDashboardKpi,
@@ -22,6 +23,7 @@ import {
 } from '@/lib/domain/order-saved-views';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getTranslations } from 'next-intl/server';
+import { Suspense, cache } from 'react';
 
 function firstToken(value: string | null | undefined): string {
   return value?.trim().split(/\s+/)[0] ?? '';
@@ -33,39 +35,26 @@ function displayNameFromMetadata(metadata: Record<string, unknown>): string {
   return typeof name === 'string' ? firstToken(name) : '';
 }
 
-export default async function TableauPage() {
-  const [
-    t,
-    kpiResult,
-    revenueResult,
-    topProductsResult,
-    shopPerformanceResult,
-    codBreakdownResult,
-    recentActivityResult,
-    orders,
-  ] = await Promise.all([
-    getTranslations('tableau'),
-    getDashboardKpi(),
-    getRevenue30d(),
-    getTopProducts(),
-    getShopPerformance(),
-    getCodBreakdown(),
-    getRecentActivity(),
-    getOrders(),
-  ]);
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const firstName =
-    displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
+// Dedup le fetch KPI partage entre le sous-titre, la bande KPI et les blocs
+// qui s'en servent pour la devise (revenue / top produits / boutiques).
+const loadDashboardKpi = cache(getDashboardKpi);
+
+async function CallQueueSubtitle() {
+  const [t, kpiResult] = await Promise.all([getTranslations('tableau'), loadDashboardKpi()]);
+  const callQueueCount = kpiResult.ok ? kpiResult.data.a_appeler_count : 0;
+
+  return <p className="text-muted">{t('subtitle', { count: callQueueCount })}</p>;
+}
+
+async function KpiStrip() {
+  const kpiResult = await loadDashboardKpi();
   const kpi = kpiResult.ok ? kpiResult.data : null;
-  const revenue = revenueResult.ok ? revenueResult.data : null;
-  const topProducts = topProductsResult.ok ? topProductsResult.data : [];
-  const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
-  const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
-  const recentActivity = recentActivityResult.ok ? recentActivityResult.data : [];
-  const callQueueCount = kpi?.a_appeler_count ?? 0;
+
+  return <DashboardKpiRefresh initialKpi={kpi} initialUpdatedAt={new Date().toISOString()} />;
+}
+
+async function ExceptionsSection() {
+  const orders = await getOrders();
   const callbackTodayCount = orders.filter(
     (order) =>
       order.order_state === 'open' &&
@@ -121,6 +110,203 @@ export default async function TableauPage() {
     },
   ];
 
+  return <OrderExceptionsGrid cards={exceptionCards} title="Exceptions a traiter" />;
+}
+
+async function RevenueSection() {
+  const [t, revenueResult, kpiResult] = await Promise.all([
+    getTranslations('tableau'),
+    getRevenue30d(),
+    loadDashboardKpi(),
+  ]);
+  const revenue = revenueResult.ok ? revenueResult.data : null;
+  const kpi = kpiResult.ok ? kpiResult.data : null;
+
+  return (
+    <RevenueChart
+      currency={revenue?.currency ?? kpi?.currency ?? null}
+      data={revenue?.points ?? []}
+      emptyLabel={t('revenue.empty')}
+      title={t('revenue.title')}
+    />
+  );
+}
+
+async function TopProductsSection() {
+  const [t, topProductsResult, kpiResult] = await Promise.all([
+    getTranslations('tableau'),
+    getTopProducts(),
+    loadDashboardKpi(),
+  ]);
+  const topProducts = topProductsResult.ok ? topProductsResult.data : [];
+  const kpi = kpiResult.ok ? kpiResult.data : null;
+
+  return (
+    <TopProducts
+      currency={kpi?.currency ?? null}
+      emptyLabel={t('blocks.topProducts.empty')}
+      items={topProducts}
+      title={t('blocks.topProducts.title')}
+      unitsLabel={t('blocks.topProducts.units')}
+    />
+  );
+}
+
+async function ShopPerformanceSection() {
+  const [t, shopPerformanceResult, kpiResult] = await Promise.all([
+    getTranslations('tableau'),
+    getShopPerformance(),
+    loadDashboardKpi(),
+  ]);
+  const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
+  const kpi = kpiResult.ok ? kpiResult.data : null;
+
+  return (
+    <ShopPerformance
+      connectedLabel={t('blocks.shopPerformance.connected')}
+      currency={kpi?.currency ?? null}
+      emptyLabel={t('blocks.shopPerformance.empty')}
+      items={shopPerformance}
+      ordersLabel={t('blocks.shopPerformance.orders')}
+      title={t('blocks.shopPerformance.title')}
+      warningLabel={t('blocks.shopPerformance.warning')}
+    />
+  );
+}
+
+async function CodBreakdownSection() {
+  const [t, codBreakdownResult] = await Promise.all([
+    getTranslations('tableau'),
+    getCodBreakdown(),
+  ]);
+  const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
+
+  return (
+    <CODStatusBreakdown
+      emptyLabel={t('blocks.codBreakdown.empty')}
+      items={codBreakdown}
+      title={t('blocks.codBreakdown.title')}
+    />
+  );
+}
+
+async function RecentActivitySection() {
+  const [t, recentActivityResult] = await Promise.all([
+    getTranslations('tableau'),
+    getRecentActivity(),
+  ]);
+  const recentActivity = recentActivityResult.ok ? recentActivityResult.data : [];
+
+  return (
+    <RecentActivity
+      emptyLabel={t('blocks.recentActivity.empty')}
+      initialLabel={t('blocks.recentActivity.initial')}
+      items={recentActivity}
+      orderFallbackLabel={t('blocks.recentActivity.orderFallback')}
+      title={t('blocks.recentActivity.title')}
+    />
+  );
+}
+
+function KpiStripSkeleton() {
+  return (
+    <section className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="dashboard-shimmer min-h-[164px] rounded-md sm:col-span-2 xl:col-span-1" />
+        {['k2', 'k3', 'k4', 'k5'].map((key) => (
+          <div className="dashboard-shimmer min-h-[164px] rounded-md" key={key} />
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <div className="dashboard-shimmer h-4 w-32 rounded-sm" />
+      </div>
+    </section>
+  );
+}
+
+function ExceptionsSkeleton() {
+  const cards = [
+    { key: 'urgences', rows: 2 },
+    { key: 'livraison', rows: 1 },
+    { key: 'tresorerie', rows: 1 },
+    { key: 'retours', rows: 1 },
+  ];
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="dashboard-shimmer h-7 w-44 rounded-sm" />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-4">
+        {cards.map((card) => (
+          <article
+            className="rounded-lg border border-border bg-surface p-4 shadow-1"
+            key={card.key}
+          >
+            <div className="dashboard-shimmer h-4 w-24 rounded-sm" />
+            <div className="mt-4 space-y-3">
+              {Array.from({ length: card.rows }, (_, index) => (
+                <div className="dashboard-shimmer h-11 rounded-lg" key={`${card.key}-${index}`} />
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RevenueSkeleton() {
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4 shadow-1 md:p-6">
+      <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
+      <div className="dashboard-shimmer h-[260px] rounded-md" />
+    </section>
+  );
+}
+
+const skeletonRowKeys = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'] as const;
+
+function CardListSkeleton({ rows }: { rows: number }) {
+  return (
+    <Card className="rounded-lg" padding="lg">
+      <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
+      <div className="space-y-3">
+        {skeletonRowKeys.slice(0, rows).map((key) => (
+          <div className="dashboard-shimmer h-10 rounded-md" key={key} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function CodBreakdownSkeleton() {
+  return (
+    <Card className="rounded-lg" padding="lg">
+      <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
+      <div className="space-y-5">
+        <div className="dashboard-shimmer h-3 rounded-full" />
+        <div className="grid grid-cols-2 gap-2">
+          {skeletonRowKeys.map((key) => (
+            <div className="dashboard-shimmer h-4 rounded-sm" key={key} />
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export default async function TableauPage() {
+  const [t, supabase] = await Promise.all([
+    getTranslations('tableau'),
+    createSupabaseServerClient(),
+  ]);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const firstName =
+    displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
+
   return (
     <main id="main">
       <DashboardMotion>
@@ -128,52 +314,39 @@ export default async function TableauPage() {
           <h1 className="font-display text-4xl md:text-5xl">
             {t('greeting', { name: firstName })}
           </h1>
-          <p className="text-muted">{t('subtitle', { count: callQueueCount })}</p>
+          <Suspense fallback={<div className="dashboard-shimmer h-5 w-80 rounded-sm" />}>
+            <CallQueueSubtitle />
+          </Suspense>
         </header>
 
-        <DashboardKpiRefresh initialKpi={kpi} initialUpdatedAt={new Date().toISOString()} />
+        <Suspense fallback={<KpiStripSkeleton />}>
+          <KpiStrip />
+        </Suspense>
 
-        <OrderExceptionsGrid cards={exceptionCards} title="Exceptions a traiter" />
+        <Suspense fallback={<ExceptionsSkeleton />}>
+          <ExceptionsSection />
+        </Suspense>
 
-        <RevenueChart
-          currency={revenue?.currency ?? kpi?.currency ?? null}
-          data={revenue?.points ?? []}
-          emptyLabel={t('revenue.empty')}
-          title={t('revenue.title')}
-        />
+        <Suspense fallback={<RevenueSkeleton />}>
+          <RevenueSection />
+        </Suspense>
 
         <section className="grid gap-4 xl:grid-cols-3">
-          <TopProducts
-            currency={kpi?.currency ?? null}
-            emptyLabel={t('blocks.topProducts.empty')}
-            items={topProducts}
-            title={t('blocks.topProducts.title')}
-            unitsLabel={t('blocks.topProducts.units')}
-          />
-          <ShopPerformance
-            connectedLabel={t('blocks.shopPerformance.connected')}
-            currency={kpi?.currency ?? null}
-            emptyLabel={t('blocks.shopPerformance.empty')}
-            items={shopPerformance}
-            ordersLabel={t('blocks.shopPerformance.orders')}
-            title={t('blocks.shopPerformance.title')}
-            warningLabel={t('blocks.shopPerformance.warning')}
-          />
-          <CODStatusBreakdown
-            emptyLabel={t('blocks.codBreakdown.empty')}
-            items={codBreakdown}
-            title={t('blocks.codBreakdown.title')}
-          />
+          <Suspense fallback={<CardListSkeleton rows={5} />}>
+            <TopProductsSection />
+          </Suspense>
+          <Suspense fallback={<CardListSkeleton rows={5} />}>
+            <ShopPerformanceSection />
+          </Suspense>
+          <Suspense fallback={<CodBreakdownSkeleton />}>
+            <CodBreakdownSection />
+          </Suspense>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
-          <RecentActivity
-            emptyLabel={t('blocks.recentActivity.empty')}
-            initialLabel={t('blocks.recentActivity.initial')}
-            items={recentActivity}
-            orderFallbackLabel={t('blocks.recentActivity.orderFallback')}
-            title={t('blocks.recentActivity.title')}
-          />
+          <Suspense fallback={<CardListSkeleton rows={6} />}>
+            <RecentActivitySection />
+          </Suspense>
         </section>
       </DashboardMotion>
     </main>
