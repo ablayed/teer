@@ -1,7 +1,7 @@
 import { AnalyticsProvider } from '@/components/analytics-provider';
 import { AppShell } from '@/components/app-shell/app-shell';
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
-import { getMerchantAccount } from '@/lib/actions/merchant';
+import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { NextIntlClientProvider } from 'next-intl';
@@ -19,31 +19,31 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/connexion');
   }
 
-  const missingConsents = await getMissingCurrentConsents(user.id);
+  // Everything below depends only on user.id and is mutually independent → one
+  // parallel batch instead of a sequential cascade. Guards are still evaluated
+  // in the original priority order (consent before onboarding); the merchant
+  // account read (which depends on the member's merchant_account_id) follows.
+  const [missingConsents, member, messages] = await Promise.all([
+    getMissingCurrentConsents(user.id),
+    getMerchantMemberForUser(user.id),
+    getMessages(),
+  ]);
+
   if (!missingConsents.ok || missingConsents.documents.length > 0) {
     redirect('/reacceptation');
   }
 
-  const merchantAccount = await getMerchantAccount();
+  const merchantAccount = member ? await getMerchantAccountById(member.merchant_account_id) : null;
 
   if (!merchantAccount?.onboarded_at) {
     redirect('/onboarding');
   }
 
-  const { data: member } = await supabase
-    .from('merchant_member')
-    .select('role')
-    .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle();
-  const currentMember = member as { role: string } | null;
-  const messages = await getMessages();
-
   return (
     <NextIntlClientProvider messages={messages}>
       <AnalyticsProvider />
       <ServiceWorkerRegister />
-      <AppShell currentRole={currentMember?.role ?? null}>{children}</AppShell>
+      <AppShell currentRole={member?.role ?? null}>{children}</AppShell>
     </NextIntlClientProvider>
   );
 }

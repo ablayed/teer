@@ -74,22 +74,27 @@ export async function getSignupConsentDocuments() {
 
 export async function getMissingCurrentConsents(userId: string) {
   const admin = createAdminClient();
-  const { data: currentDocuments, error: currentError } = await admin
-    .from('legal_documents')
-    .select('type, version, content_hash, body_url')
-    .eq('is_current', true)
-    .in('type', ['cgu', 'privacy']);
+  // The current documents and the user's consents are independent reads → run
+  // them in parallel instead of two sequential round-trips.
+  const [currentResult, consentResult] = await Promise.all([
+    admin
+      .from('legal_documents')
+      .select('type, version, content_hash, body_url')
+      .eq('is_current', true)
+      .in('type', ['cgu', 'privacy']),
+    admin
+      .from('user_consents')
+      .select('document_type, document_version, content_hash')
+      .eq('user_id', userId)
+      .in('document_type', ['cgu', 'privacy']),
+  ]);
 
+  const { data: currentDocuments, error: currentError } = currentResult;
   if (currentError) {
     return { ok: false as const };
   }
 
-  const { data: consents, error: consentError } = await admin
-    .from('user_consents')
-    .select('document_type, document_version, content_hash')
-    .eq('user_id', userId)
-    .in('document_type', ['cgu', 'privacy']);
-
+  const { data: consents, error: consentError } = consentResult;
   if (consentError) {
     return { ok: false as const };
   }

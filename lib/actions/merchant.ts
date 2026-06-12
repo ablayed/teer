@@ -39,35 +39,52 @@ function normalizeWhatsapp(raw: string | undefined): string | null {
   return `+${toWhatsAppLink(raw).replace('https://wa.me/', '')}`;
 }
 
-async function getMerchantAccountForUser(userId: string): Promise<MerchantAccount | null> {
+type MerchantMember = { merchant_account_id: string; role: string };
+
+// Single `merchant_member` read returning both the tenant id and the role.
+// Used by the (app) layout to avoid a second `merchant_member` round-trip just
+// for the role. Admin client + `eq(user_id)` scopes to the authenticated user's
+// own row, so the result is identical to the previous RLS-scoped read.
+export async function getMerchantMemberForUser(userId: string): Promise<MerchantMember | null> {
   const admin = createSupabaseAdminClient();
-  const { data: member, error: memberError } = await admin
+  const { data: member, error } = await admin
     .from('merchant_member')
-    .select('merchant_account_id')
+    .select('merchant_account_id, role')
     .eq('user_id', userId)
     .limit(1)
     .maybeSingle();
 
-  if (memberError) {
-    throw memberError;
+  if (error) {
+    throw error;
   }
+
+  return (member as MerchantMember | null) ?? null;
+}
+
+export async function getMerchantAccountById(accountId: string): Promise<MerchantAccount | null> {
+  const admin = createSupabaseAdminClient();
+  const { data: account, error } = await admin
+    .from('merchant_account')
+    .select('*')
+    .eq('id', accountId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return account;
+}
+
+async function getMerchantAccountForUser(userId: string): Promise<MerchantAccount | null> {
+  const member = await getMerchantMemberForUser(userId);
 
   if (!member) {
     return null;
   }
 
-  const { data: account, error: accountError } = await admin
-    .from('merchant_account')
-    .select('*')
-    .eq('id', member.merchant_account_id)
-    .is('deleted_at', null)
-    .maybeSingle();
-
-  if (accountError) {
-    throw accountError;
-  }
-
-  return account;
+  return getMerchantAccountById(member.merchant_account_id);
 }
 
 export async function getMerchantAccount(): Promise<MerchantAccount | null> {
