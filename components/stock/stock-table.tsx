@@ -295,6 +295,7 @@ function ThresholdForm({
 export function StockTable({ rows, canSeeCost }: Props) {
   const [activeForm, setActiveForm] = useState<ActiveForm>(null);
   const [thresholdEdit, setThresholdEdit] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
 
   if (rows.length === 0) {
     return (
@@ -309,6 +310,11 @@ export function StockTable({ rows, canSeeCost }: Props) {
 
   function closeForm() {
     setActiveForm(null);
+  }
+
+  function openForm(type: 'purchase' | 'adjustment' | 'return', productId: string) {
+    setActiveForm({ type, productId });
+    setMenuOpen(null);
   }
 
   return (
@@ -333,9 +339,9 @@ export function StockTable({ rows, canSeeCost }: Props) {
           <thead>
             <tr className="border-b border-border bg-surface text-left">
               <th className="px-4 py-3 font-medium">Produit</th>
-              <th className="px-4 py-3 font-medium text-right">Disponible</th>
-              <th className="px-4 py-3 font-medium text-right">Réservé</th>
               <th className="px-4 py-3 font-medium text-right">En stock</th>
+              <th className="px-4 py-3 font-medium text-right">Commande</th>
+              <th className="px-4 py-3 font-medium text-right">Disponible</th>
               <th className="px-4 py-3 font-medium text-right">Seuil alerte</th>
               {canSeeCost && <th className="px-4 py-3 font-medium text-right">Valeur</th>}
               <th className="px-4 py-3 font-medium">Actions</th>
@@ -361,13 +367,13 @@ export function StockTable({ rows, canSeeCost }: Props) {
                       {row.isLowStock && <LowStockBadge />}
                     </div>
                   </td>
+                  <td className="px-4 py-3 text-right font-mono">{row.qtyOnHand}</td>
+                  <td className="px-4 py-3 text-right font-mono text-muted">{row.qtyReserved}</td>
                   <td className="px-4 py-3 text-right font-mono">
                     <span className={cn(row.isLowStock && 'text-danger font-semibold')}>
                       {row.qtyAvailable}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-muted">{row.qtyReserved}</td>
-                  <td className="px-4 py-3 text-right font-mono">{row.qtyOnHand}</td>
                   <td className="px-4 py-3 text-right">
                     {isEditingThreshold ? (
                       <ThresholdForm
@@ -392,34 +398,44 @@ export function StockTable({ rows, canSeeCost }: Props) {
                   )}
                   <td className="px-4 py-3">
                     <div className="space-y-2">
-                      {!form && (
-                        <div className="flex flex-wrap gap-2">
+                      {!form && menuOpen !== row.productId && (
+                        <button
+                          className="min-h-9 rounded-md border border-border bg-canvas px-3 py-1 text-xs font-medium hover:bg-surface"
+                          onClick={() => setMenuOpen(row.productId)}
+                          type="button"
+                        >
+                          Modifier le stock
+                        </button>
+                      )}
+                      {!form && menuOpen === row.productId && (
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             className="rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-medium hover:bg-surface"
-                            onClick={() =>
-                              setActiveForm({ type: 'purchase', productId: row.productId })
-                            }
+                            onClick={() => openForm('purchase', row.productId)}
                             type="button"
                           >
                             + Entrée stock
                           </button>
                           <button
                             className="rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-medium hover:bg-surface"
-                            onClick={() =>
-                              setActiveForm({ type: 'adjustment', productId: row.productId })
-                            }
+                            onClick={() => openForm('adjustment', row.productId)}
                             type="button"
                           >
                             Ajustement
                           </button>
                           <button
                             className="rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-medium hover:bg-surface"
-                            onClick={() =>
-                              setActiveForm({ type: 'return', productId: row.productId })
-                            }
+                            onClick={() => openForm('return', row.productId)}
                             type="button"
                           >
                             Retour livreur
+                          </button>
+                          <button
+                            className="text-xs text-muted underline"
+                            onClick={() => setMenuOpen(null)}
+                            type="button"
+                          >
+                            Annuler
                           </button>
                         </div>
                       )}
