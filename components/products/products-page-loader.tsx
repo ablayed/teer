@@ -9,6 +9,7 @@ import type { TeamRole } from '@/lib/team/permissions';
 import { useEffect, useState, useTransition } from 'react';
 
 type Props = {
+  view: 'catalogue' | 'stock';
   initialItems: ProductsPageItem[];
   initialHasMore: boolean;
   initialNextOffset: number;
@@ -33,6 +34,7 @@ function toStockRow(item: ProductsPageItem): StockPageRow {
 }
 
 export function ProductsPageLoader({
+  view,
   initialItems,
   initialHasMore,
   initialNextOffset,
@@ -67,21 +69,21 @@ export function ProductsPageLoader({
     });
   }
 
-  const stockRows = items.map(toStockRow);
-
   return (
-    <div className="space-y-10">
-      <ProductSearchBar initialQuery={searchQuery} />
+    <div className="space-y-8">
+      <ProductSearchBar initialQuery={searchQuery} tab={view === 'stock' ? 'stock' : undefined} />
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Catalogue</h2>
-        <ProductsCatalog currentRole={currentRole} products={items} />
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Stock</h2>
-        <StockTable canSeeCost={canSeeCost} rows={stockRows} />
-      </section>
+      {view === 'catalogue' ? (
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold">Catalogue</h2>
+          <ProductsCatalog currentRole={currentRole} products={items} />
+        </section>
+      ) : (
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold">Stock</h2>
+          <StockTable canSeeCost={canSeeCost} rows={items.map(toStockRow)} />
+        </section>
+      )}
 
       {hasMore && (
         <div className="flex justify-center">

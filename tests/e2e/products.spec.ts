@@ -193,8 +193,8 @@ test('onglet Achats : visible pour owner, menu tab navigation présent', async (
     await achatLink.click();
     await page.waitForURL('**/produits?tab=achats', { timeout: 10_000 });
     await page.waitForLoadState('networkidle');
-    // Should show the purchase lots view (empty state or list)
-    await expect(page.getByRole('link', { name: 'Catalogue & Stock' })).toBeVisible({
+    // La barre d'onglets reste présente (retour Catalogue possible).
+    await expect(page.getByRole('link', { name: 'Catalogue', exact: true })).toBeVisible({
       timeout: 10_000,
     });
   } finally {

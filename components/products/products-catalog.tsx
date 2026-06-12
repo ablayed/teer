@@ -5,6 +5,7 @@ import {
   createProductAction,
   updateProductUnitCostAction,
 } from '@/lib/actions/products';
+import { setLowStockThresholdAction } from '@/lib/actions/stock';
 import { Store, Tag } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -26,26 +27,15 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
   const router = useRouter();
   const canManage = currentRole === 'owner' || currentRole === 'manager';
   const createProduct = useAction(createProductAction);
+  const setThreshold = useAction(setLowStockThresholdAction);
   const updateUnitCost = useAction(updateProductUnitCostAction);
+  const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState('');
   const [sku, setSku] = useState('');
   const [unitCost, setUnitCost] = useState('0');
+  const [threshold, setThresholdValue] = useState('10');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [unitCostDrafts, setUnitCostDrafts] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const result = createProduct.result.data;
-    if (!result) return;
-    if (result.ok) {
-      setFeedback('Produit créé.');
-      setTitle('');
-      setSku('');
-      setUnitCost('0');
-      router.refresh();
-      return;
-    }
-    setFeedback('La création du produit a échoué.');
-  }, [createProduct.result.data, router]);
 
   useEffect(() => {
     const result = updateUnitCost.result.data;
@@ -58,14 +48,37 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
     setFeedback('La mise à jour du coût a échoué.');
   }, [router, updateUnitCost.result.data]);
 
-  function onCreateProduct() {
+  async function onCreateProduct() {
     const parsedUnitCost = Number.parseInt(unitCost, 10);
+    const parsedThreshold = Number.parseInt(threshold, 10);
     setFeedback(null);
-    createProduct.execute({
+
+    const res = await createProduct.executeAsync({
       sku,
       title,
       unitCost: Number.isFinite(parsedUnitCost) ? parsedUnitCost : Number.NaN,
     });
+
+    if (!res?.data?.ok) {
+      setFeedback('La création du produit a échoué.');
+      return;
+    }
+
+    // Seuil d'alerte optionnel : posé en aval (product_stock) si non défaut.
+    if (Number.isFinite(parsedThreshold) && parsedThreshold !== 10) {
+      await setThreshold.executeAsync({
+        productId: res.data.product.id,
+        threshold: parsedThreshold,
+      });
+    }
+
+    setFeedback('Produit créé.');
+    setTitle('');
+    setSku('');
+    setUnitCost('0');
+    setThresholdValue('10');
+    setShowCreate(false);
+    router.refresh();
   }
 
   function onSaveUnitCost(product: ProductCatalogItem) {
@@ -81,53 +94,86 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
   return (
     <div className="space-y-6">
       {canManage ? (
-        <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
-          <p className="mb-3 text-sm text-muted">Les coûts restent invisibles pour les agents.</p>
-          <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(140px,180px)_auto]">
-            <label className="space-y-2">
-              <span className="text-sm font-medium">Titre</span>
-              <input
-                className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Ex : Sac cuir noir"
-                type="text"
-                value={title}
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium">SKU</span>
-              <input
-                className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
-                onChange={(event) => setSku(event.target.value)}
-                placeholder="Ex : SAC-NOIR"
-                type="text"
-                value={sku}
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium">Coût unitaire</span>
-              <input
-                className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
-                min="0"
-                onChange={(event) => setUnitCost(event.target.value)}
-                placeholder="0"
-                step="1"
-                type="number"
-                value={unitCost}
-              />
-            </label>
-            <div className="flex items-end">
-              <button
-                className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
-                disabled={createProduct.isExecuting}
-                onClick={onCreateProduct}
-                type="button"
-              >
-                {createProduct.isExecuting ? 'Création…' : 'Créer le produit'}
-              </button>
+        <section className="space-y-3">
+          {!showCreate ? (
+            <button
+              className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+              onClick={() => setShowCreate(true)}
+              type="button"
+            >
+              Nouveau produit
+            </button>
+          ) : (
+            <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
+              <p className="mb-3 text-sm text-muted">
+                Produit créé dans Tëër (sans Shopify). Les coûts restent invisibles pour les agents.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(120px,160px)_minmax(120px,160px)]">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Nom *</span>
+                  <input
+                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Ex : Sac cuir noir"
+                    type="text"
+                    value={title}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">SKU</span>
+                  <input
+                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                    onChange={(event) => setSku(event.target.value)}
+                    placeholder="Ex : SAC-NOIR"
+                    type="text"
+                    value={sku}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Coût unitaire initial</span>
+                  <input
+                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
+                    min="0"
+                    onChange={(event) => setUnitCost(event.target.value)}
+                    placeholder="0"
+                    step="1"
+                    type="number"
+                    value={unitCost}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Seuil d'alerte</span>
+                  <input
+                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
+                    min="0"
+                    onChange={(event) => setThresholdValue(event.target.value)}
+                    placeholder="10"
+                    step="1"
+                    type="number"
+                    value={threshold}
+                  />
+                </label>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+                  disabled={createProduct.isExecuting || setThreshold.isExecuting}
+                  onClick={onCreateProduct}
+                  type="button"
+                >
+                  {createProduct.isExecuting ? 'Création…' : 'Créer le produit'}
+                </button>
+                <button
+                  className="min-h-11 rounded-lg border border-border px-4 text-sm font-medium text-text hover:bg-canvas"
+                  onClick={() => setShowCreate(false)}
+                  type="button"
+                >
+                  Annuler
+                </button>
+              </div>
             </div>
-          </div>
-          {feedback ? <p className="mt-4 text-sm text-muted">{feedback}</p> : null}
+          )}
+          {feedback ? <p className="text-sm text-muted">{feedback}</p> : null}
         </section>
       ) : null}
 
@@ -175,7 +221,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                       <label className="space-y-2">
                         <span className="text-sm font-medium">Coût unitaire</span>
                         <input
-                          className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                          className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
                           min="0"
                           onChange={(event) =>
                             setUnitCostDrafts((current) => ({
