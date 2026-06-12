@@ -27,6 +27,9 @@ describe('server transition actions', () => {
       'annuler',
       'refuser',
     ]);
+    expect(getAllowedTransitionActions('LIVREE', 'owner')).toEqual(['mark_returned']);
+    expect(getAllowedTransitionActions('LIVREE', 'manager')).toEqual(['mark_returned']);
+    expect(getAllowedTransitionActions('LIVREE', 'agent')).toEqual([]);
     expect(getAllowedTransitionActions('CONFIRMEE', 'manager')).toEqual([
       'programmer',
       'annuler',
@@ -39,6 +42,7 @@ describe('server transition actions', () => {
     expect(getTransitionActionForTarget('CONFIRMEE', 'agent')).toBe('confirmer');
     expect(getTransitionActionForTarget('LIVREE', 'agent')).toBeNull();
     expect(getTransitionActionForTarget('LIVREE', 'manager')).toBe('livrer');
+    expect(getTransitionActionForTarget('REFUSEE', 'owner')).toBe('refuser');
     expect(getTransitionActionForTarget('ANNULEE', 'owner')).toBe('annuler');
     // Lot B : les actions reverse ne sont jamais résolues par target (sinon
     // « A_APPELER » deviendrait actionnable via les chemins inline status).
@@ -70,7 +74,7 @@ describe('server transition actions', () => {
         transitionInputSchema.safeParse({
           action: 'annuler',
           orderId,
-          payload: { cancelReasons: ['prix', 'concurrence'] },
+          payload: { cancelReasons: ['prix', 'concurrence', 'refus'] },
         }).success,
       ).toBe(true);
 

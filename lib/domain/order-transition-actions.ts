@@ -7,6 +7,7 @@ export const transitionActions = [
   'programmer',
   'assigner',
   'livrer',
+  'mark_returned',
   'annuler',
   'refuser',
   'deconfirmer',
@@ -22,6 +23,7 @@ export const cancelReasonValues = [
   'prix',
   'concurrence',
   'erreur',
+  'refus',
   'autres',
 ] as const;
 
@@ -32,6 +34,7 @@ export const cancelReasonLabels: Record<CancelReason, string> = {
   prix: 'Prix trop élevé',
   concurrence: 'Trouvé moins cher ailleurs',
   erreur: 'Commande par erreur',
+  refus: 'Refus',
   autres: 'Autres',
 };
 
@@ -156,6 +159,12 @@ export const transitionCatalog: readonly TransitionCatalogItem[] = [
     label: 'Marquer livree',
     roles: ['owner', 'manager'],
     target: 'LIVREE',
+  },
+  {
+    action: 'mark_returned',
+    label: 'Marquer retournée',
+    roles: ['owner', 'manager'],
+    target: 'REFUSEE',
   },
   {
     action: 'annuler',
@@ -396,6 +405,12 @@ export function getAllowedTransitionActionsForDimensions(
   role: TeamRole,
 ): TransitionAction[] {
   if (dimensions.orderState !== 'open') {
+    if (dimensions.orderState === 'completed' && dimensions.deliveryState === 'delivered') {
+      return transitionCatalog
+        .filter((item) => item.action === 'mark_returned' && item.roles.includes(role))
+        .map((item) => item.action);
+    }
+
     // Lot B : désannuler est la SEULE action légale sur une commande annulée,
     // ET uniquement pré-dispatch (delivery unassigned/scheduled). Une livraison
     // échouée (REFUSEE : order_state=cancelled MAIS delivery_state=failed, stock
@@ -418,6 +433,9 @@ export function getAllowedTransitionActionsForDimensions(
       switch (item.action) {
         case 'desannuler':
           // Jamais légale sur une commande ouverte (gérée ci-dessus).
+          return false;
+        case 'mark_returned':
+          // Jamais légale sur une commande ouverte : cas spécial completed/delivered ci-dessus.
           return false;
         case 'deconfirmer':
           return (
@@ -490,6 +508,12 @@ export function buildTransitionDimensionPatch(
         orderState: 'completed',
         paymentChannelAtDelivery: payload.paymentChannelAtDelivery ?? 'ESPECES',
       };
+    case 'mark_returned':
+      return {
+        cashState: 'not_due',
+        deliveryState: 'returned',
+        orderState: 'returned',
+      };
     case 'annuler':
       return {
         cashState: 'not_due',
@@ -558,7 +582,8 @@ export function getTransitionActionForTarget(
         // Lot B : les actions reverse ne sont jamais sélectionnées par target
         // (sinon « A_APPELER » deviendrait actionnable via les chemins inline).
         item.action !== 'deconfirmer' &&
-        item.action !== 'desannuler',
+        item.action !== 'desannuler' &&
+        item.action !== 'mark_returned',
     )?.action ?? null
   );
 }

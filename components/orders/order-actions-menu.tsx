@@ -40,6 +40,7 @@ const transitionMenuOrder: TransitionAction[] = [
   'programmer',
   'assigner',
   'livrer',
+  'mark_returned',
   'refuser',
   'annuler',
   'desannuler',
@@ -51,13 +52,14 @@ const transitionLabels: Record<TransitionAction, string> = {
   programmer: 'Programmer la livraison',
   assigner: 'Assigner',
   livrer: 'Marquer livree',
+  mark_returned: 'Marquer retournée',
   refuser: 'Refuser',
   annuler: 'Annuler la commande',
   deconfirmer: 'Déconfirmer',
   desannuler: 'Désannuler',
 };
 
-const destructiveActions = new Set<TransitionAction>(['annuler', 'refuser']);
+const destructiveActions = new Set<TransitionAction>(['annuler', 'mark_returned', 'refuser']);
 
 export function OrderActionsMenu({
   allowedActions,

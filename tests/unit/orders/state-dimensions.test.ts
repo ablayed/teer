@@ -77,4 +77,19 @@ describe('order state dimensions', () => {
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('EN_LIVRAISON'), 'owner'),
     ).toEqual(['livrer', 'annuler', 'refuser']);
   });
+
+  it('returns a delivered order with cash reset to not_due', () => {
+    const delivered = legacyStatusToDimensions('LIVREE');
+    const returned = applyPatch(
+      delivered,
+      buildTransitionDimensionPatch('mark_returned', delivered),
+    );
+
+    expect(returned.orderState).toBe('returned');
+    expect(returned.deliveryState).toBe('returned');
+    expect(returned.cashState).toBe('not_due');
+    expect(returned.codStatus).toBe('REFUSEE');
+    expect(getAllowedTransitionActionsForDimensions(delivered, 'owner')).toEqual(['mark_returned']);
+    expect(getAllowedTransitionActionsForDimensions(returned, 'owner')).toEqual([]);
+  });
 });

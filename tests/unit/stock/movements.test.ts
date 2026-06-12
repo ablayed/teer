@@ -14,6 +14,8 @@ describe('getMovementTypeForAction', () => {
     ['assigner', 'scheduled', 'dispatch'],
     ['livrer', 'assigned', 'sold'],
     ['livrer', 'out_for_delivery', 'sold'],
+    ['mark_returned', 'delivered', 'courier_return'],
+    ['mark_returned', 'assigned', null],
     // annuler before dispatch → release reservation
     ['annuler', 'unassigned', 'release'],
     ['annuler', 'scheduled', 'release'],

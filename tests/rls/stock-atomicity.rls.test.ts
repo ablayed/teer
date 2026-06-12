@@ -6,6 +6,7 @@
  * Un succès commite les deux sans aucun écart.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -78,6 +79,7 @@ type TransitionOrderArgs = {
   p_note?: string;
   p_payment_channel?: string;
   p_scheduled_for?: string;
+  p_assigned_driver_id?: string;
   p_cancel_reasons?: string[];
   p_clear_scheduled_for?: boolean;
   p_clear_cancel_reasons?: boolean;
@@ -101,6 +103,20 @@ async function createProduct(admin: AdminClient, merchantAccountId: string) {
     .select('id')
     .single();
   if (!data) throw new Error('product insert failed');
+  return data.id;
+}
+
+async function createDriver(admin: AdminClient, merchantAccountId: string) {
+  const { data } = await admin
+    .from('driver')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      full_name: `Livreur-${Date.now()}`,
+      phone: '+221770000000',
+    })
+    .select('id')
+    .single();
+  if (!data) throw new Error('driver insert failed');
   return data.id;
 }
 
@@ -916,6 +932,147 @@ describe('Lot B : déconfirmer libère la réserve, le cycle ne déduplique pas'
 // ──────────────────────────────────────────────────────────────────────────
 // RÉCONCILIATION : zéro écart après un parcours complet
 // ──────────────────────────────────────────────────────────────────────────
+
+describe('Lot D - mark_returned apres livraison', () => {
+  skipIfNoServiceRole(
+    'retour apres remise cash : courier_return restaure le stock et une reprise negative neutralise la remise',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lotd-return');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+        p_cash_state: 'expected',
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+        p_assigned_driver_id: driverId,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'delivered',
+        p_order_state: 'completed',
+        p_cash_state: 'collected',
+        p_payment_channel: 'ESPECES',
+      });
+
+      const { data: settlement } = await admin
+        .from('cash_settlement')
+        .insert({
+          merchant_account_id: merchantAccountId,
+          driver_id: driverId,
+          amount_received_minor: 10000,
+          method: 'ESPECES',
+          note: 'Remise test retour',
+          created_by: userId,
+          client_request_id: randomUUID(),
+        })
+        .select('id')
+        .single();
+      if (!settlement) {
+        throw new Error('cash settlement insert failed');
+      }
+
+      await admin.from('settlement_allocation').insert({
+        merchant_account_id: merchantAccountId,
+        settlement_id: settlement.id,
+        order_id: orderId,
+        allocated_minor: 10000,
+      });
+
+      const returned = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'returned',
+        p_delivery_state: 'returned',
+        p_cash_state: 'not_due',
+      });
+      expect(returned.error).toBeNull();
+      expect(returned.data).toBe('REFUSEE');
+
+      const { data: order } = await admin
+        .from('orders')
+        .select('order_state, delivery_state, cash_state, returned_at')
+        .eq('id', orderId)
+        .single();
+      expect(order?.order_state).toBe('returned');
+      expect(order?.delivery_state).toBe('returned');
+      expect(order?.cash_state).toBe('not_due');
+      expect(order?.returned_at).not.toBeNull();
+
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('movement_type, qty, driver_id')
+        .eq('order_id', orderId)
+        .order('created_at');
+      expect(movements?.map((movement) => movement.movement_type)).toEqual([
+        'reserve',
+        'dispatch',
+        'sold',
+        'courier_return',
+      ]);
+      expect(
+        movements?.find((movement) => movement.movement_type === 'courier_return'),
+      ).toMatchObject({
+        driver_id: driverId,
+        qty: 3,
+      });
+
+      const { data: stock } = await admin
+        .from('product_stock')
+        .select('qty_on_hand, qty_reserved')
+        .eq('product_id', productId)
+        .single();
+      expect(stock?.qty_on_hand).toBe(50);
+      expect(stock?.qty_reserved).toBe(0);
+
+      const { data: allocations } = await admin
+        .from('settlement_allocation')
+        .select('allocated_minor')
+        .eq('order_id', orderId)
+        .order('allocated_minor');
+      expect(allocations?.map((allocation) => allocation.allocated_minor)).toEqual([-10000, 10000]);
+
+      const { data: settlements } = await admin
+        .from('cash_settlement')
+        .select('amount_received_minor')
+        .eq('merchant_account_id', merchantAccountId)
+        .order('amount_received_minor');
+      expect(settlements?.map((row) => row.amount_received_minor)).toEqual([-10000, 10000]);
+
+      const secondReturn = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'returned',
+        p_delivery_state: 'returned',
+        p_cash_state: 'not_due',
+      });
+      expect(secondReturn.error?.message).toContain('illegal_return_transition');
+
+      const { data: reversalAllocations } = await admin
+        .from('settlement_allocation')
+        .select('id')
+        .eq('order_id', orderId)
+        .lt('allocated_minor', 0);
+      expect(reversalAllocations).toHaveLength(1);
+    },
+  );
+});
 
 describe('réconciliation zéro écart après valider→dispatch→livrer', () => {
   skipIfNoServiceRole(

@@ -25,6 +25,8 @@ export function getMovementTypeForAction(
       return 'dispatch';
     case 'livrer':
       return 'sold';
+    case 'mark_returned':
+      return currentDeliveryState === 'delivered' ? 'courier_return' : null;
     case 'annuler':
     case 'refuser':
       return currentDeliveryState === 'unassigned' || currentDeliveryState === 'scheduled'
