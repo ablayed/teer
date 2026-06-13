@@ -182,6 +182,12 @@ async function createOrderWithCustomer(
   const dimensions = legacyStatusToDimensions(
     status as Parameters<typeof legacyStatusToDimensions>[0],
   );
+  // Contrainte 0057 : un statut dispatché (assigned/out_for_delivery) exige un livreur.
+  const needsDriver =
+    dimensions.deliveryState === 'assigned' || dimensions.deliveryState === 'out_for_delivery';
+  const assignedDriverId = needsDriver
+    ? await createDriver(admin, merchantAccountId, 'Livreur Seed')
+    : dimensions.assignedDriverId;
   const { data: customer, error: customerError } = await admin
     .from('customer')
     .insert({
@@ -218,7 +224,7 @@ async function createOrderWithCustomer(
       next_contact_at: dimensions.nextContactAt,
       scheduled_for: dimensions.scheduledFor,
       cancel_reason: dimensions.cancelReason,
-      assigned_driver_id: dimensions.assignedDriverId,
+      assigned_driver_id: assignedDriverId,
       items_summary: [{ title: productName, quantity: 1, price: totalAmount }],
       shipping_address: {
         address1: 'Almadies',

@@ -936,6 +936,7 @@ export const logCallAction = requireRole('owner', 'manager', 'agent')
       | 'audit_failed'
       | 'illegal_transition'
       | 'invalid_current_status'
+      | 'missing_driver_for_dispatch'
       | 'order_not_found'
       | 'update_failed'
       | null = null;

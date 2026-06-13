@@ -229,7 +229,7 @@
     "subtitle": "{count, plural, =0 {Tout est \u00e0 jour.} one {# commande en attente d'appel.} other {# commandes en attente d'appel.}}",
     "kpi": {
       "a_appeler": "\u00c0 appeler",
-      "ca_collecte": "CA collect\u00e9",
+      "ca_collecte": "CA collect\u00e9 (7 j)",
       "ca_attente": "CA à livrer",
       "taux_confirmation": "Taux confirmation",
       "taux_livraison": "Taux livraison",
@@ -914,6 +914,7 @@
       "order_not_found": "Commande introuvable.",
       "update_failed": "La mise à jour du statut a échoué. Réessayez.",
       "audit_failed": "Le statut a été modifié, mais le journal d’audit n’a pas pu être écrit.",
+      "missing_driver_for_dispatch": "Assignez un livreur avant de passer la commande en livraison.",
       "generic": "Une erreur est survenue. Réessayez."
     },
     "address": {

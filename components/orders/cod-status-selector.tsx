@@ -13,13 +13,19 @@ type CodStatusSelectorProps = {
   orderId: string;
 };
 
-type UpdateErrorCode = 'merchant_not_found' | 'order_not_found' | 'update_failed' | 'audit_failed';
+type UpdateErrorCode =
+  | 'merchant_not_found'
+  | 'order_not_found'
+  | 'update_failed'
+  | 'audit_failed'
+  | 'missing_driver_for_dispatch';
 
 const updateErrorCodes = [
   'merchant_not_found',
   'order_not_found',
   'update_failed',
   'audit_failed',
+  'missing_driver_for_dispatch',
 ] as const satisfies readonly UpdateErrorCode[];
 
 function isUpdateErrorCode(errorCode: string): errorCode is UpdateErrorCode {

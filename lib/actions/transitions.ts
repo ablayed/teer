@@ -34,6 +34,7 @@ export type TransitionErrorCode =
   | 'forbidden'
   | 'invalid_current_status'
   | 'illegal_transition'
+  | 'missing_driver_for_dispatch'
   | 'order_not_found'
   | 'update_failed';
 
@@ -231,6 +232,25 @@ export async function performTransitionForContext({
     scheduledFor: payload?.scheduledFor,
   });
   const paymentChannelAtDelivery = transitionPatch.paymentChannelAtDelivery;
+
+  // Invariante dispatch ⇒ livreur (bug #6) : refuser AVANT toute mutation de passer
+  // delivery_state à assigned/out_for_delivery sans livreur effectif (ni dans le payload,
+  // ni déjà sur la commande). Ferme centralement les chemins inline qui appellent
+  // `assigner` sans driver (cod-status-selector, transitionOrderStatusAction, Kanban
+  // mobile). Défense en profondeur : la contrainte CHECK orders_dispatch_requires_driver
+  // (migration 0057) est le filet base ; cette garde donne le bon message utilisateur.
+  const effectiveDriverId = transitionPatch.assignedDriverId ?? currentDimensions.assignedDriverId;
+  if (
+    (transitionPatch.deliveryState === 'assigned' ||
+      transitionPatch.deliveryState === 'out_for_delivery') &&
+    !effectiveDriverId
+  ) {
+    return transitionError(
+      'missing_driver_for_dispatch',
+      'Assignez un livreur avant de passer la commande en livraison.',
+    );
+  }
+
   const { data: nextStatus, error: transitionErrorResult } = await transitionRpc(supabase)(
     'transition_order',
     {
