@@ -74,6 +74,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
 }
 
 type OrderSeed = {
+  assigned_driver_id?: string | null;
   call_state: string;
   cash_state: string;
   customer_id: string;
@@ -158,6 +159,21 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   const todayIso = today.toISOString();
   const base = Date.parse('2026-06-09T12:00:00.000Z');
 
+  // Contrainte 0057 : les commandes assigned/out_for_delivery exigent un livreur.
+  const { data: seedDriver, error: seedDriverError } = await admin
+    .from('driver')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      full_name: 'Livreur Verif',
+      phone: '+221770000002',
+    })
+    .select('id')
+    .single();
+  if (seedDriverError || !seedDriver) {
+    throw seedDriverError ?? new Error('Livreur seed non créé');
+  }
+  const seedDriverId = seedDriver.id as string;
+
   const seeds: OrderSeed[] = [];
   const push = (s: Omit<OrderSeed, 'index' | 'customer_id' | 'items_summary'>) => {
     const index = seeds.length;
@@ -214,6 +230,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
       delivery_state: 'assigned',
       cash_state: 'not_due',
       scheduled_for: todayIso,
+      assigned_driver_id: seedDriverId,
     });
   }
   // 2 × cash à remettre (completed/delivered/collected)
@@ -259,6 +276,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     delivery_state: s.delivery_state,
     cash_state: s.cash_state,
     scheduled_for: s.scheduled_for,
+    assigned_driver_id: s.assigned_driver_id ?? null,
     created_at_shopify: new Date(base - s.index * 60_000).toISOString(),
   }));
 

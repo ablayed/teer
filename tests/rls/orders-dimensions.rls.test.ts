@@ -157,6 +157,13 @@ async function createOrder(
   status: (typeof orderStatuses)[number],
 ) {
   const dimensions = legacyStatusToDimensions(status);
+  // Contrainte 0057 : un statut dispatché (assigned/out_for_delivery) exige un livreur.
+  // legacyStatusToDimensions renvoie un driver null pour EN_LIVRAISON → on en crée un.
+  const needsDriver =
+    dimensions.deliveryState === 'assigned' || dimensions.deliveryState === 'out_for_delivery';
+  const assignedDriverId = needsDriver
+    ? await createDriver(admin, merchantAccountId)
+    : dimensions.assignedDriverId;
   const { data, error } = await admin
     .from('orders')
     .insert({
@@ -173,7 +180,7 @@ async function createOrder(
       next_contact_at: dimensions.nextContactAt,
       scheduled_for: dimensions.scheduledFor,
       cancel_reason: dimensions.cancelReason,
-      assigned_driver_id: dimensions.assignedDriverId,
+      assigned_driver_id: assignedDriverId,
       created_at_shopify: new Date().toISOString(),
     })
     .select('id')
@@ -181,6 +188,24 @@ async function createOrder(
 
   if (error || !data) {
     throw error ?? new Error('Commande de test non creee');
+  }
+
+  return data.id;
+}
+
+async function createDriver(admin: AdminClient, merchantAccountId: string) {
+  const { data, error } = await admin
+    .from('driver')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      full_name: `Livreur-${Date.now()}`,
+      phone: `+22177${Math.floor(1_000_000 + Math.random() * 8_999_999)}`,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Livreur de test non cree');
   }
 
   return data.id;
@@ -242,6 +267,7 @@ describe('orders dimensions RLS', () => {
       const fixture = await createOwnerFixture('agent-check');
       const agent = await addMember(fixture.admin, fixture.merchantAccountId, 'agent');
       const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      const driverId = await createDriver(fixture.admin, fixture.merchantAccountId);
       const agentClient = await signIn(agent.email);
 
       const programmed = await transitionOrderRpc(agentClient)('transition_order', {
@@ -260,6 +286,7 @@ describe('orders dimensions RLS', () => {
         p_call_state: 'validated',
         p_cash_state: 'expected',
         p_delivery_state: 'assigned',
+        p_assigned_driver_id: driverId,
         p_order_id: orderId,
       });
 
@@ -291,6 +318,44 @@ describe('orders dimensions RLS', () => {
         delivery_state: 'assigned',
         cash_state: 'expected',
       });
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey)(
+    'interdit delivery_state assigned/out_for_delivery sans livreur (contrainte 0057)',
+    async () => {
+      const fixture = await createOwnerFixture('dispatch-driver');
+      // CONFIRMEE → delivery_state=unassigned, assigned_driver_id=null.
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+
+      // Service-role contourne RLS mais PAS le CHECK : dispatch sans livreur rejete.
+      const orphanAssigned = await fixture.admin
+        .from('orders')
+        .update({ delivery_state: 'assigned' })
+        .eq('id', orderId);
+      expect(orphanAssigned.error).not.toBeNull();
+
+      const orphanOfd = await fixture.admin
+        .from('orders')
+        .update({ delivery_state: 'out_for_delivery' })
+        .eq('id', orderId);
+      expect(orphanOfd.error).not.toBeNull();
+
+      // La commande est restee unassigned (aucune ecriture orpheline).
+      const { data: untouched } = await fixture.admin
+        .from('orders')
+        .select('delivery_state, assigned_driver_id')
+        .eq('id', orderId)
+        .single();
+      expect(untouched).toMatchObject({ delivery_state: 'unassigned', assigned_driver_id: null });
+
+      // Avec un livreur effectif → dispatch autorise.
+      const driverId = await createDriver(fixture.admin, fixture.merchantAccountId);
+      const dispatched = await fixture.admin
+        .from('orders')
+        .update({ delivery_state: 'assigned', assigned_driver_id: driverId })
+        .eq('id', orderId);
+      expect(dispatched.error).toBeNull();
     },
   );
 

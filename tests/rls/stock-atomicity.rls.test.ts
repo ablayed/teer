@@ -143,6 +143,10 @@ async function createOrderWithLine(
   _actorId: string,
   productId: string | null, // null = unresolved line
 ) {
+  // Livreur attaché dès la création (delivery_state=unassigned → autorisé par la
+  // contrainte 0057). Les dispatches RPC ultérieurs l'héritent via coalesce, donc
+  // delivery_state=assigned/out_for_delivery ne viole jamais orders_dispatch_requires_driver.
+  const driverId = await createDriver(admin, merchantAccountId);
   const { data: order } = await admin
     .from('orders')
     .insert({
@@ -154,6 +158,7 @@ async function createOrderWithLine(
       call_state: 'to_call',
       delivery_state: 'unassigned',
       cash_state: 'not_due',
+      assigned_driver_id: driverId,
     })
     .select('id')
     .single();
@@ -449,7 +454,10 @@ describe('multi-lignes : 2 produits → 2 mouvements dans la même transaction',
       await seedProductStock(admin, prodA, merchantAccountId, 20);
       await seedProductStock(admin, prodB, merchantAccountId, 30);
 
-      // Créer une commande avec 2 order_line résolues
+      // Créer une commande avec 2 order_line résolues. Livreur attaché dès la
+      // création (unassigned → autorisé) → hérité au dispatch via coalesce
+      // (contrainte 0057 orders_dispatch_requires_driver).
+      const driverId = await createDriver(admin, merchantAccountId);
       const { data: order } = await admin
         .from('orders')
         .insert({
@@ -461,6 +469,7 @@ describe('multi-lignes : 2 produits → 2 mouvements dans la même transaction',
           call_state: 'to_call',
           delivery_state: 'unassigned',
           cash_state: 'not_due',
+          assigned_driver_id: driverId,
         })
         .select('id')
         .single();
