@@ -834,14 +834,18 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     await signIn(page, fixture.email, `/commandes/${orderId}`);
     await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
 
-    // Liste : même montant, pas d'arrondi parasite.
-    await page.goto('/commandes?q=Client%20XOF%20Scale');
+    // Liste (vue par défaut « Toutes », SANS recherche) : même montant, pas
+    // d'arrondi parasite. On évite volontairement `?q=` : le champ de recherche
+    // déclenche un router.replace() débounced (normalisation de la requête) qui,
+    // sur WebKit lent, interromprait la navigation suivante. La vue par défaut
+    // (q vide) prend le early-return du debounce → aucune soft-nav.
+    await page.goto('/commandes');
     await expect(page.getByText('Client XOF Scale')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
 
-    // Réconciliation cash (Livreurs) : encaissé = 50 000.
+    // Réconciliation cash (Livreurs) : encaissé = 50 000. Dernière page visitée
+    // (la remise déclenche un router.refresh() ; rien ne navigue après).
     await page.goto(`/livreurs?driver=${driverId}&period=30j`);
-    await page.waitForLoadState('networkidle');
     await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
 
     // Remise du solde : remis = encaissé, à l'unité près.
