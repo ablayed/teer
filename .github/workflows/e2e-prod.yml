@@ -74,15 +74,16 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
-      # Sous-ensemble PROD-ONLY uniquement (specs gardées par E2E_PROD_BUILD=1) :
-      # issue #3 (commande créée visible) + vérification de la pagination keyset.
-      # Cibles chromium + pixel-7 (moteur Chromium) UNIQUEMENT : le bug visé (Router
-      # Cache client) est indépendant du moteur, et le build de prod émet
-      # `upgrade-insecure-requests` que WebKit applique jusqu'à http://localhost (→ page
-      # blanche, faux échec). La couverture WebChromium/WebKit cross-navigateur reste
-      # assurée par le job test-e2e (dev, http sans UIR). Cf. tests/e2e en-têtes.
+      # Specs PROD-ONLY : issue #3 (commande créée visible) + pagination keyset +
+      # LOT PERF #4 (nav-perf : feedback tap / pending / squelette loading.tsx — le
+      # prefetch et le Router Cache `staleTimes` ne s'exercent qu'en build de prod).
+      # Cibles chromium + pixel-7 (moteur Chromium) UNIQUEMENT : les comportements visés
+      # sont indépendants du moteur, et le build de prod émet `upgrade-insecure-requests`
+      # que WebKit applique jusqu'à http://localhost (→ page blanche, faux échec). La
+      # couverture WebKit cross-navigateur reste assurée par le job test-e2e (dev, http
+      # sans UIR), qui exécute aussi nav-perf sur iphone-14. Cf. tests/e2e en-têtes.
       - name: E2E prod-build (sous-ensemble gardé)
-        run: pnpm exec playwright test tests/e2e/orders-prod-cache.spec.ts tests/e2e/orders-pagination-verify.spec.ts --project=chromium --project=pixel-7
+        run: pnpm exec playwright test tests/e2e/orders-prod-cache.spec.ts tests/e2e/orders-pagination-verify.spec.ts tests/e2e/nav-perf.spec.ts --project=chromium --project=pixel-7
         env:
           E2E_PROD_BUILD: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
