@@ -44,6 +44,7 @@ const supabaseUrl =
 const serviceRoleKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? localEnv.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
+const isProdBuildRun = process.env.E2E_PROD_BUILD === '1';
 const password = 'Mot-de-passe-e2e-2026!';
 
 test.setTimeout(60_000);
@@ -128,15 +129,25 @@ test('A+B — feedback tap (touch-action) et indicateur pending câblés sur la 
   }
 });
 
-test('C — la navigation vers une route dynamique affiche le squelette loading.tsx', async ({
-  page,
-}) => {
+// C — le squelette loading.tsx s'affiche pendant une navigation lente (dev).
+// DEV-ONLY À DESSEIN : en build de prod, les liens de nav sont entièrement préchargés
+// (prefetch={true}) → la cible est servie depuis le Router Cache, la navigation est
+// instantanée et le squelette est volontairement court-circuité (c'est LE bénéfice — cf.
+// symptôme #3 « revenir sur une page est instantané »). Le fallback n'est donc observable
+// qu'en `next dev`, où le prefetch ne pré-remplit pas le cache : on y ralentit la
+// résolution de /produits pour garantir l'affichage du squelette. Le câblage des
+// loading.tsx en prod reste prouvé indirectement (la nav aboutit) + par A/B.
+test('C — la navigation lente affiche le squelette loading.tsx (dev)', async ({ page }) => {
+  test.skip(
+    isProdBuildRun,
+    'En build de prod, /produits est préchargé → navigation instantanée sans fallback (voulu).',
+  );
+
   const fixture = await createOwnerFixture('skeleton');
   try {
     await signIn(page, fixture.email, '/commandes');
 
-    // Ralentit la résolution de /produits pour garantir l'affichage du fallback
-    // loading.tsx (sinon la navigation peut être trop rapide pour l'observer).
+    // Ralentit la résolution de /produits pour garantir l'affichage du fallback loading.tsx.
     await page.route('**/produits**', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1200));
       await route.continue();
