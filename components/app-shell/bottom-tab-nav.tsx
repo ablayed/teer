@@ -1,5 +1,6 @@
 'use client';
 
+import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
 import { cn } from '@/lib/utils';
 import {
   ChartColumnIncreasing,
@@ -80,12 +81,14 @@ export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
             aria-current={active ? 'page' : undefined}
             aria-label={t(item.labelKey)}
             className={cn(
-              'flex min-h-12 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition',
+              'relative flex min-h-12 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition',
               active ? 'text-accent' : 'text-muted hover:text-text',
             )}
             href={item.href}
             key={item.href}
+            prefetch
           >
+            <NavLinkPending className="absolute top-1 right-1.5" />
             <Icon aria-hidden="true" className="size-[22px]" />
             <span>{t(item.labelKey)}</span>
           </Link>

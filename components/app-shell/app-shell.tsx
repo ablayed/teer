@@ -13,7 +13,7 @@ export async function AppShell({
   const t = await getTranslations('common');
 
   return (
-    <div className="min-h-dvh bg-canvas text-text">
+    <div className="app-shell min-h-dvh bg-canvas text-text">
       <a
         className="sr-only left-4 top-4 z-50 rounded-md bg-surface px-4 py-2 font-medium text-text shadow-2 focus:not-sr-only focus:fixed"
         href="#main"

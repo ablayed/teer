@@ -135,6 +135,48 @@ body {
   }
 }
 
+/* === Feedback tap instantané (LOT PERF #4) ===
+   `touch-action: manipulation` supprime le délai de tap ~300ms et le double-tap-zoom
+   (iOS/Android) sur TOUT élément tappable du site — la vraie cause du « tap mort » qui
+   pousse l'utilisateur à re-taper en 4G. Posé globalement (sans risque). */
+button,
+a,
+summary,
+label,
+[role="button"],
+[role="tab"],
+input[type="submit"],
+input[type="button"] {
+  touch-action: manipulation;
+}
+
+/* Retour visuel immédiat au toucher, confiné à l'app (la landing/legal n'est pas touchée).
+   Le surlignage gris natif est remplacé par un signal propre : opacité sur les liens
+   (pas de décalage de mise en page), micro-scale sur les boutons (compositor-only).
+   L'utilisateur VOIT que son tap est reçu avant même que la page change. */
+.app-shell a,
+.app-shell button,
+.app-shell summary,
+.app-shell [role="button"],
+.app-shell [role="tab"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell a {
+    transition: opacity var(--dur-xs) var(--ease-standard);
+  }
+  .app-shell a:active {
+    opacity: 0.6;
+  }
+  .app-shell button:not(:disabled):active,
+  .app-shell [role="button"]:not([aria-disabled="true"]):active,
+  .app-shell [role="tab"]:active {
+    transform: scale(0.96);
+    transition: transform var(--dur-xs) var(--ease-standard);
+  }
+}
+
 /* Reveal au scroll — CSS pur (piloté par IntersectionObserver côté composant),
    sans lib d'animation. Le texte reste dans le DOM (lisible par les crawlers).
    Sous reduced-motion : tout est visible, sans transition. */

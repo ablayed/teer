@@ -10,6 +10,13 @@ const nextConfig = {
   },
   reactStrictMode: true,
   serverExternalPackages: ['@react-pdf/renderer'],
+  // NOTE (LOT PERF #4) : on a volontairement REJETÉ `experimental.staleTimes`.
+  // Ce réglage est GLOBAL (toutes les routes dynamiques), donc `dynamic: 30` ferait
+  // servir, en cross-client, une liste /commandes ou des « Exceptions à traiter »
+  // périmées jusqu'à 30s — inacceptable pour un cockpit COD où la fraîcheur cash/ops
+  // prime. Le « tap mort / re-clic » de #4 est réglé par le feedback tap, l'indicateur
+  // pending et les squelettes loading.tsx — aucun ne sacrifie la fraîcheur. Le prefetch
+  // est conservé : il charge du FRAIS (jamais du périmé). Défaut `dynamic: 0` conservé.
   // En-têtes de sécurité communs aux DEUX régimes, posés globalement (y compris sur
   // /api et les assets). Le Content-Security-Policy, lui, est par-requête/par-régime
   // et géré dans `middleware.ts` (nonce pour l'app, statique pour les pages publiques).
