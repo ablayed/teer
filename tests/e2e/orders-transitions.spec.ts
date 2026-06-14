@@ -1069,6 +1069,50 @@ test('la recherche retrouve une commande par nom puis par telephone', async ({ p
   }
 });
 
+test('#2 le menu Actions de la carte la plus basse reste atteignable en portrait', async ({
+  page,
+}, testInfo) => {
+  const fixture = await createOwnerFixture('actions-reachable');
+  // Plusieurs commandes pour que la liste defile : la derniere carte se retrouve
+  // en bas de l'ecran, juste au-dessus de la barre de nav fixe (cas du bug #2).
+  for (let i = 0; i < 8; i += 1) {
+    await createOrderWithCustomer(fixture.admin, {
+      merchantAccountId: fixture.merchantAccountId,
+      status: 'A_APPELER',
+      customerName: `Client Bas ${i}`,
+      phone: `+22177100${String(i).padStart(4, '0')}`,
+    });
+  }
+
+  try {
+    await signIn(page, fixture.email, '/commandes');
+    await expect(page.getByText('Client Bas 0')).toBeVisible({ timeout: 15_000 });
+
+    // Defile en bas pour placer la derniere carte au ras de la barre de nav.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+    const lastCard = page.locator('article').last();
+    await lastCard.getByRole('button', { name: 'Actions' }).click();
+
+    // La derniere entree du menu doit etre cliquable (non masquee par la nav fixe) :
+    // un trial click verifie l'actionnabilite (visible + recoit les evenements)
+    // sans declencher la transition, et echoue si la barre de nav l'intercepte.
+    const items = page.getByRole('menuitem');
+    const lastItem = items.last();
+    await expect(lastItem).toBeVisible({ timeout: 5_000 });
+    await lastItem.click({ trial: true });
+
+    // Et son bord inferieur reste dans le viewport (jamais sous le bas de l'ecran).
+    const box = await lastItem.boundingBox();
+    expect(box).not.toBeNull();
+    const viewport = page.viewportSize() ??
+      testInfo.project.use.viewport ?? { width: 0, height: 0 };
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(viewport.height + 1);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) => {
   const fixture = await createOwnerFixture('dashboard-deeplink');
   await createOrderWithCustomer(fixture.admin, {

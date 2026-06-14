@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { ChevronDown, Phone } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 type OrderActionsMenuProps = {
   allowedActions: TransitionAction[];
@@ -75,6 +75,8 @@ export function OrderActionsMenu({
   const transition = useAction(performTransition);
   const containerRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<'down' | 'up'>('down');
+  const [maxHeight, setMaxHeight] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
   const [callDialogOpen, setCallDialogOpen] = useState(false);
@@ -109,6 +111,42 @@ export function OrderActionsMenu({
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  // Place le menu pour qu'il reste atteignable en portrait : il bascule vers le
+  // haut quand l'espace sous la carte (jusqu'a la barre de nav fixe du bas) est
+  // insuffisant, et plafonne sa hauteur avec un scroll interne (ceinture +
+  // bretelles). Le conteneur `relative` enveloppe le seul bouton (le menu est
+  // `absolute`, hors flux) → son rect = celui du declencheur.
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function reposition() {
+      const trigger = containerRef.current;
+      if (!trigger) {
+        return;
+      }
+      const rect = trigger.getBoundingClientRect();
+      const gap = 8;
+      // Reserve la hauteur de la barre de nav fixe (mobile uniquement, ~64px
+      // + safe-area) pour ne jamais glisser le menu dessous.
+      const bottomInset = window.innerWidth < 768 ? 96 : 8;
+      const spaceBelow = window.innerHeight - bottomInset - rect.bottom - gap;
+      const spaceAbove = rect.top - gap;
+      const next: 'down' | 'up' = spaceBelow < 240 && spaceAbove > spaceBelow ? 'up' : 'down';
+      setPlacement(next);
+      setMaxHeight(Math.max(160, Math.floor(next === 'up' ? spaceAbove : spaceBelow)));
+    }
+
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
     };
   }, [open]);
 
@@ -192,8 +230,12 @@ export function OrderActionsMenu({
 
             {open ? (
               <div
-                className="absolute right-0 z-40 mt-2 w-60 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-2"
+                className={cn(
+                  'absolute right-0 z-50 w-60 overflow-y-auto overscroll-contain rounded-lg border border-border bg-surface py-1 shadow-2',
+                  placement === 'up' ? 'bottom-full mb-2' : 'top-full mt-2',
+                )}
                 role="menu"
+                style={maxHeight ? { maxHeight } : undefined}
               >
                 {transitionEntries.map((action) => (
                   <button

@@ -318,7 +318,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
                   placeholder="Qté"
                   value={newLine.qty}
                   onChange={(e) => setNewLine((p) => ({ ...p, qty: e.target.value }))}
-                  className="min-h-11 w-1/3 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  className="min-h-11 w-1/3 min-w-0 rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 />
                 <input
                   type="number"
@@ -328,7 +328,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
                   onChange={(e) =>
                     setNewLine((p) => ({ ...p, purchasePriceTotal: e.target.value }))
                   }
-                  className="min-h-11 w-2/3 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  className="min-h-11 w-2/3 min-w-0 rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 />
               </div>
               <div className="flex gap-2">
@@ -550,9 +550,9 @@ function CreateLotForm({
         </p>
         <div className="space-y-2">
           {lines.map((l) => (
-            <div key={l.key} className="flex items-center gap-2">
+            <div key={l.key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <select
-                className="min-h-11 flex-1 rounded-md border border-border bg-surface px-2 py-2 text-sm"
+                className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:flex-1"
                 value={l.productId}
                 onChange={(e) => setLine(l.key, 'productId', e.target.value)}
               >
@@ -564,32 +564,34 @@ function CreateLotForm({
                   </option>
                 ))}
               </select>
-              <input
-                type="number"
-                min={0}
-                placeholder="Qté"
-                className="min-h-11 w-20 rounded-md border border-border bg-surface px-2 py-2 text-sm"
-                value={l.qty}
-                onChange={(e) => setLine(l.key, 'qty', e.target.value)}
-              />
-              <input
-                type="number"
-                min={0}
-                placeholder="Prix total"
-                className="min-h-11 w-32 rounded-md border border-border bg-surface px-2 py-2 text-sm"
-                value={l.purchasePriceTotal}
-                onChange={(e) => setLine(l.key, 'purchasePriceTotal', e.target.value)}
-              />
-              {lines.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
-                  className="text-danger text-lg leading-none"
-                  aria-label="Retirer la ligne"
-                >
-                  ×
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Qté"
+                  className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:w-20"
+                  value={l.qty}
+                  onChange={(e) => setLine(l.key, 'qty', e.target.value)}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Prix total"
+                  className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:w-32"
+                  value={l.purchasePriceTotal}
+                  onChange={(e) => setLine(l.key, 'purchasePriceTotal', e.target.value)}
+                />
+                {lines.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
+                    className="shrink-0 text-danger text-lg leading-none"
+                    aria-label="Retirer la ligne"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           <button
