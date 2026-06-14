@@ -130,17 +130,16 @@ test('A+B — feedback tap (touch-action) et indicateur pending câblés sur la 
 });
 
 // C — le squelette loading.tsx s'affiche pendant une navigation lente (dev).
-// DEV-ONLY À DESSEIN : en build de prod, les liens de nav sont entièrement préchargés
-// (prefetch={true}) → la cible est servie depuis le Router Cache, la navigation est
-// instantanée et le squelette est volontairement court-circuité (c'est LE bénéfice — cf.
-// symptôme #3 « revenir sur une page est instantané »). Le fallback n'est donc observable
-// qu'en `next dev`, où le prefetch ne pré-remplit pas le cache : on y ralentit la
-// résolution de /produits pour garantir l'affichage du squelette. Le câblage des
-// loading.tsx en prod reste prouvé indirectement (la nav aboutit) + par A/B.
+// DEV-ONLY À DESSEIN : en build de prod, /produits est préchargé (prefetch) et les
+// données locales répondent instantanément → le fallback ne fait que clignoter, son
+// observation n'est pas déterministe. En `next dev`, le client affiche la frontière
+// loading.tsx pendant la requête RSC en vol, qu'on ralentit volontairement pour
+// garantir l'affichage du squelette. Le câblage des loading.tsx en prod reste prouvé
+// indirectement (la navigation aboutit) + par A/B sur le vrai build.
 test('C — la navigation lente affiche le squelette loading.tsx (dev)', async ({ page }) => {
   test.skip(
     isProdBuildRun,
-    'En build de prod, /produits est préchargé → navigation instantanée sans fallback (voulu).',
+    'En build de prod, /produits est préchargé + données rapides → fallback non déterministe.',
   );
 
   const fixture = await createOwnerFixture('skeleton');

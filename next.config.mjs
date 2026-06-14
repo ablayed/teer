@@ -10,17 +10,13 @@ const nextConfig = {
   },
   reactStrictMode: true,
   serverExternalPackages: ['@react-pdf/renderer'],
-  // Router Cache (LOT PERF #4) : par défaut `dynamic = 0` → chaque navigation (y compris
-  // retour arrière) re-fetch la page depuis fra1, ce qui est très perceptible en 4G Dakar.
-  // On garde un cache court côté client : 30s sur les pages dynamiques, 180s sur le préfetch
-  // statique. Les mutations appellent toujours `revalidatePath`, qui invalide ce cache pour
-  // le chemin concerné → la fraîcheur passive reste bornée à 30s (acceptable pour la liste).
-  experimental: {
-    staleTimes: {
-      dynamic: 30,
-      static: 180,
-    },
-  },
+  // NOTE (LOT PERF #4) : on a volontairement REJETÉ `experimental.staleTimes`.
+  // Ce réglage est GLOBAL (toutes les routes dynamiques), donc `dynamic: 30` ferait
+  // servir, en cross-client, une liste /commandes ou des « Exceptions à traiter »
+  // périmées jusqu'à 30s — inacceptable pour un cockpit COD où la fraîcheur cash/ops
+  // prime. Le « tap mort / re-clic » de #4 est réglé par le feedback tap, l'indicateur
+  // pending et les squelettes loading.tsx — aucun ne sacrifie la fraîcheur. Le prefetch
+  // est conservé : il charge du FRAIS (jamais du périmé). Défaut `dynamic: 0` conservé.
   // En-têtes de sécurité communs aux DEUX régimes, posés globalement (y compris sur
   // /api et les assets). Le Content-Security-Policy, lui, est par-requête/par-régime
   // et géré dans `middleware.ts` (nonce pour l'app, statique pour les pages publiques).
