@@ -1,5 +1,6 @@
 'use client';
 
+import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Wordmark } from '@/components/wordmark';
 import { cn } from '@/lib/utils';
@@ -93,12 +94,14 @@ export function Sidebar({ currentRole }: { currentRole?: string | null }) {
                     active ? 'bg-canvas text-text' : 'text-muted hover:bg-canvas hover:text-text',
                   )}
                   href={item.href}
+                  prefetch
                 >
                   {active ? (
                     <span className="absolute left-0 h-7 w-[3px] rounded-r bg-accent" />
                   ) : null}
                   <Icon aria-hidden="true" className="size-5 shrink-0" />
                   <span>{t(item.labelKey)}</span>
+                  <NavLinkPending className="ml-auto" />
                 </Link>
               </li>
             );

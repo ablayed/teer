@@ -124,7 +124,7 @@ export function OrdersPageLoader({
           key={order.id}
         >
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <Link className="min-w-0 flex-1 space-y-3" href={`/commandes/${order.id}`}>
+            <Link className="min-w-0 flex-1 space-y-3" href={`/commandes/${order.id}`} prefetch>
               <div className="flex flex-wrap items-center gap-3">
                 <p className="font-mono text-sm font-semibold text-muted">
                   {order.order_number ?? emptyValueLabel}
