@@ -190,6 +190,40 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
   }
 });
 
+test('#9 le formulaire « Nouveau lot » ne déborde pas en portrait', async ({ page }) => {
+  const fixture = await createOwnerFixture('lot-responsive');
+  await createProduct(fixture.admin, fixture.merchantAccountId);
+
+  try {
+    await signIn(page, fixture.email, '/produits');
+    await openPurchasesTab(page);
+
+    await page.getByRole('button', { name: 'Nouveau lot' }).click();
+    await expect(page.getByText("Nouveau lot d'achat")).toBeVisible({ timeout: 5_000 });
+
+    // Aucun débordement horizontal (les champs s'empilent en portrait).
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+
+    // Les trois champs de la ligne produit restent dans le viewport.
+    const viewportWidth = overflow.clientWidth;
+    const qty = page.getByPlaceholder('Qté');
+    const price = page.getByPlaceholder('Prix total');
+    const select = page.locator('select').last();
+    for (const field of [select, qty, price]) {
+      await expect(field).toBeVisible();
+      const box = await field.boundingBox();
+      expect(box).not.toBeNull();
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1);
+    }
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
 test('section Achats masquée pour un agent', async ({ page }) => {
   const fixture = await createOwnerFixture('achats-agent');
 
