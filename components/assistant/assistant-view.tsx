@@ -227,7 +227,7 @@ function ChatPanel({
         <button
           type="button"
           onClick={onNewConversation}
-          className="flex h-9 shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-3 text-sm text-text"
+          className="flex min-h-11 shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-3 text-sm text-text md:min-h-9"
         >
           <Plus aria-hidden="true" className="size-4" />
           Nouvelle
@@ -238,7 +238,7 @@ function ChatPanel({
             key={conversation.id}
             onClick={() => onSelectConversation(conversation.id)}
             className={cn(
-              'h-9 max-w-[180px] shrink-0 truncate rounded-md border px-3 text-sm transition',
+              'min-h-11 max-w-[180px] shrink-0 truncate rounded-md border px-3 text-sm transition md:min-h-9',
               activeId === conversation.id
                 ? 'border-accent bg-accent/10 text-text'
                 : 'border-border bg-surface text-muted hover:text-text',
@@ -262,7 +262,7 @@ function ChatPanel({
                   type="button"
                   key={suggestion}
                   onClick={() => onSubmit(suggestion)}
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-left text-sm text-text hover:bg-surface/70"
+                  className="min-h-11 rounded-md border border-border bg-surface px-3 py-2 text-left text-sm text-text hover:bg-surface/70"
                 >
                   {suggestion}
                 </button>

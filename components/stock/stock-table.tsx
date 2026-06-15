@@ -80,7 +80,7 @@ function PurchaseForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Qté reçue</span>
         <input
-          className="min-h-9 w-24 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           min="1"
           onChange={(e) => setQty(e.target.value)}
           placeholder="10"
@@ -91,7 +91,7 @@ function PurchaseForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Coût unit. (FCFA)</span>
         <input
-          className="min-h-9 w-32 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-11 w-32 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           min="0"
           onChange={(e) => setCost(e.target.value)}
           placeholder="0"
@@ -100,14 +100,18 @@ function PurchaseForm({
         />
       </label>
       <button
-        className="min-h-9 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+        className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
       >
         {action.isExecuting ? 'En cours…' : 'Valider'}
       </button>
-      <button className="text-xs text-muted underline" onClick={onDone} type="button">
+      <button
+        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        onClick={onDone}
+        type="button"
+      >
         Annuler
       </button>
       {feedback && <InlineFeedback kind={feedback.kind} message={feedback.msg} />}
@@ -151,7 +155,7 @@ function AdjustmentForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Δ qté (+/−)</span>
         <input
-          className="min-h-9 w-24 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           onChange={(e) => setQty(e.target.value)}
           placeholder="-3"
           type="number"
@@ -161,7 +165,7 @@ function AdjustmentForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Raison (obligatoire)</span>
         <input
-          className="min-h-9 w-48 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-11 w-48 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           onChange={(e) => setReason(e.target.value)}
           placeholder="Casse, vol, inventaire…"
           type="text"
@@ -169,14 +173,18 @@ function AdjustmentForm({
         />
       </label>
       <button
-        className="min-h-9 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+        className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
       >
         {action.isExecuting ? 'En cours…' : 'Valider'}
       </button>
-      <button className="text-xs text-muted underline" onClick={onDone} type="button">
+      <button
+        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        onClick={onDone}
+        type="button"
+      >
         Annuler
       </button>
       {feedback && <InlineFeedback kind={feedback.kind} message={feedback.msg} />}
@@ -215,7 +223,7 @@ function CourierReturnForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Qté retournée</span>
         <input
-          className="min-h-9 w-24 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           min="1"
           onChange={(e) => setQty(e.target.value)}
           placeholder="1"
@@ -224,14 +232,18 @@ function CourierReturnForm({
         />
       </label>
       <button
-        className="min-h-9 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+        className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
       >
         {action.isExecuting ? 'En cours…' : 'Valider'}
       </button>
-      <button className="text-xs text-muted underline" onClick={onDone} type="button">
+      <button
+        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        onClick={onDone}
+        type="button"
+      >
         Annuler
       </button>
       {feedback && <InlineFeedback kind={feedback.kind} message={feedback.msg} />}
@@ -270,21 +282,25 @@ function ThresholdForm({
   return (
     <div className="flex items-center gap-2">
       <input
-        className="min-h-8 w-20 rounded-md border border-border bg-canvas px-2 text-sm"
+        className="min-h-11 w-20 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
         min="0"
         onChange={(e) => setValue(e.target.value)}
         type="number"
         value={value}
       />
       <button
-        className="text-xs font-medium text-accent underline disabled:opacity-60"
+        className="min-h-11 rounded-md px-3 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
       >
         OK
       </button>
-      <button className="text-xs text-muted underline" onClick={onDone} type="button">
+      <button
+        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        onClick={onDone}
+        type="button"
+      >
         ✕
       </button>
       {feedback && <InlineFeedback kind={feedback.kind} message={feedback.msg} />}
@@ -340,7 +356,7 @@ export function StockTable({ rows, canSeeCost }: Props) {
             <tr className="border-b border-border bg-surface text-left">
               <th className="px-4 py-3 font-medium">Produit</th>
               <th className="px-4 py-3 font-medium text-right">En stock</th>
-              <th className="px-4 py-3 font-medium text-right">Commande</th>
+              <th className="px-4 py-3 font-medium text-right">Commandé</th>
               <th className="px-4 py-3 font-medium text-right">Disponible</th>
               <th className="px-4 py-3 font-medium text-right">Seuil alerte</th>
               {canSeeCost && <th className="px-4 py-3 font-medium text-right">Valeur</th>}
@@ -400,7 +416,7 @@ export function StockTable({ rows, canSeeCost }: Props) {
                     <div className="space-y-2">
                       {!form && menuOpen !== row.productId && (
                         <button
-                          className="min-h-9 rounded-md border border-border bg-canvas px-3 py-1 text-xs font-medium hover:bg-surface"
+                          className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                           onClick={() => setMenuOpen(row.productId)}
                           type="button"
                         >
@@ -410,28 +426,28 @@ export function StockTable({ rows, canSeeCost }: Props) {
                       {!form && menuOpen === row.productId && (
                         <div className="flex flex-wrap items-center gap-2">
                           <button
-                            className="rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-medium hover:bg-surface"
+                            className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                             onClick={() => openForm('purchase', row.productId)}
                             type="button"
                           >
                             + Entrée stock
                           </button>
                           <button
-                            className="rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-medium hover:bg-surface"
+                            className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                             onClick={() => openForm('adjustment', row.productId)}
                             type="button"
                           >
                             Ajustement
                           </button>
                           <button
-                            className="rounded-md border border-border bg-canvas px-2.5 py-1 text-xs font-medium hover:bg-surface"
+                            className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                             onClick={() => openForm('return', row.productId)}
                             type="button"
                           >
                             Retour livreur
                           </button>
                           <button
-                            className="text-xs text-muted underline"
+                            className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9 md:text-xs"
                             onClick={() => setMenuOpen(null)}
                             type="button"
                           >
