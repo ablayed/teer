@@ -7,6 +7,7 @@ import {
   paymentChannelsAtDelivery,
   settlementMethods,
 } from '@/lib/finance/cash';
+import { buildDriverSettlements } from '@/lib/finance/driver-settlements';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
@@ -186,6 +187,17 @@ export const recordSettlementAction = requireRole('owner', 'manager')
     }
 
     return { ok: true as const, ...payload };
+  });
+
+// Relecture FRAÎCHE de la consolidation versements/écarts par livreur, pour que le
+// panneau Finances mette à jour son état après une remise/abandon SANS router.refresh()
+// (dont le re-render RSC à travers le composant client était racey en build prod).
+// Même builder que la page RSC → aucun drift.
+export const getDriverSettlementsAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'finance.get_driver_settlements', section: 'finance' })
+  .action(async ({ ctx }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    return buildDriverSettlements(supabase, ctx.member.merchantAccountId);
   });
 
 export const writeOffShortfallAction = requireRole('owner')

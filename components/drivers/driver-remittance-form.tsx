@@ -4,11 +4,15 @@ import { recordSettlementAction } from '@/lib/actions/finance';
 import { settlementMethods } from '@/lib/finance/cash';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 type Props = {
   driverId: string;
+  // Appelé après une remise réussie : le parent relit la conso cash FRAÎCHE côté
+  // serveur et met à jour son état. On NE fait PAS de router.refresh() ici — son
+  // re-render RSC à travers le composant client était racey (~27% de ratés en
+  // build prod → chiffre cash périmé). Cf. lecture explicite dans DriverCashPanel.
+  onSettled?: () => void;
 };
 
 const methodLabels: Record<(typeof settlementMethods)[number], string> = {
@@ -20,8 +24,7 @@ const methodLabels: Record<(typeof settlementMethods)[number], string> = {
 
 // Remise globale par défaut : le versement couvre plusieurs commandes, réparti
 // automatiquement (FIFO côté RPC) en l'absence d'allocations explicites.
-export function DriverRemittanceForm({ driverId }: Props) {
-  const router = useRouter();
+export function DriverRemittanceForm({ driverId, onSettled }: Props) {
   const action = useAction(recordSettlementAction);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<(typeof settlementMethods)[number]>('ESPECES');
@@ -42,7 +45,7 @@ export function DriverRemittanceForm({ driverId }: Props) {
     if (res?.data?.ok) {
       setFeedback({ msg: 'Versement enregistré.', kind: 'success' });
       setAmount('');
-      router.refresh();
+      onSettled?.();
     } else {
       setFeedback({ msg: "Erreur lors de l'enregistrement du versement.", kind: 'error' });
     }

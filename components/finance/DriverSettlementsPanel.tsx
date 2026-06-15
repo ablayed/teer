@@ -1,6 +1,10 @@
 'use client';
 
-import { recordSettlementAction, writeOffShortfallAction } from '@/lib/actions/finance';
+import {
+  getDriverSettlementsAction,
+  recordSettlementAction,
+  writeOffShortfallAction,
+} from '@/lib/actions/finance';
 import type { SettlementMethod } from '@/lib/finance/cash';
 import { formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
@@ -8,8 +12,7 @@ import { cn } from '@/lib/utils';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
-import { useRouter } from 'next/navigation';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 export type FinanceDriverOrder = {
   deliveredAt: string;
@@ -66,13 +69,25 @@ function agingTone(driver: FinanceDriverOutstanding): 'danger' | 'muted' | 'succ
 
 export function DriverSettlementsPanel({
   currentRole,
-  drivers,
-  shortfalls,
+  drivers: initialDrivers,
+  shortfalls: initialShortfalls,
 }: DriverSettlementsPanelProps) {
   const t = useTranslations('finance');
-  const router = useRouter();
   const recordSettlement = useAction(recordSettlementAction);
   const writeOffShortfall = useAction(writeOffShortfallAction);
+  // État relu côté serveur après remise/abandon (getDriverSettlementsAction, même
+  // builder que la page RSC). PAS de router.refresh() : son re-render RSC à travers
+  // ce composant client était racey en build prod → chiffre cash périmé. Le client
+  // stocke le recalcul serveur, il n'arbitre jamais l'écart lui-même (aucun drift).
+  const [drivers, setDrivers] = useState(initialDrivers);
+  const [shortfalls, setShortfalls] = useState(initialShortfalls);
+  const refresh = useCallback(async () => {
+    const res = await getDriverSettlementsAction();
+    if (res?.data) {
+      setDrivers(res.data.drivers);
+      setShortfalls(res.data.shortfalls);
+    }
+  }, []);
   const [selectedDriverId, setSelectedDriverId] = useState(drivers[0]?.driverId ?? null);
   const [sheetDriverId, setSheetDriverId] = useState<string | null>(null);
   const [clientRequestId, setClientRequestId] = useState('');
@@ -99,20 +114,20 @@ export function DriverSettlementsPanel({
     if (recordSettlement.result.data?.ok) {
       setNotice(t('settlements.success'));
       closeSheet();
-      router.refresh();
+      refresh();
     } else if (recordSettlement.result.data?.ok === false) {
       setNotice(t('settlements.error'));
     }
-  }, [recordSettlement.result.data, router, t]);
+  }, [recordSettlement.result.data, refresh, t]);
 
   useEffect(() => {
     if (writeOffShortfall.result.data?.ok) {
       setNotice(t('settlements.writeOffSuccess'));
-      router.refresh();
+      refresh();
     } else if (writeOffShortfall.result.data?.ok === false) {
       setNotice(t('settlements.error'));
     }
-  }, [router, t, writeOffShortfall.result.data]);
+  }, [refresh, t, writeOffShortfall.result.data]);
 
   const selectedDriver = useMemo(
     () => drivers.find((driver) => driver.driverId === selectedDriverId) ?? drivers[0] ?? null,

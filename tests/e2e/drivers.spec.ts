@@ -359,6 +359,12 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({ timeout: 15_000 });
 
+    // La carte « Remis » RENDUE reflète le versement (lecture serveur fraîche après
+    // la remise) — on assure l'affichage, pas seulement le toast / la base.
+    await expect(
+      page.getByText('Remis', { exact: true }).locator('xpath=following-sibling::p[1]'),
+    ).toContainText(/12\s*000\s*F\s*CFA/, { timeout: 15_000 });
+
     // Le versement est bien enregistré en base
     const { data: settlements } = await fixture.admin
       .from('cash_settlement')
@@ -385,23 +391,29 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
   const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Bilal Ecart');
   await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 100000);
 
-  const remit = async (amount: string) => {
-    const input = page.getByPlaceholder('0');
-    await input.fill(amount);
+  // Attend l'EFFET RENDU de CETTE remise — la carte « Remis » au cumul attendu —
+  // et NON le toast « Versement enregistré. » (état local persistant d'une remise
+  // à l'autre → faux positif au 2e versement). Sérialise les deux remises et prouve
+  // que l'affichage cash reflète la lecture serveur fraîche.
+  const remit = async (amount: string, expectedRemittedMinor: number) => {
+    await page.getByPlaceholder('0').fill(amount);
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
-    await expect(page.getByText('Versement enregistré.')).toBeVisible({ timeout: 15_000 });
+    const grouped = String(expectedRemittedMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
+    await expect(
+      page.getByText('Remis', { exact: true }).locator('xpath=following-sibling::p[1]'),
+    ).toContainText(new RegExp(`${grouped}\\s*F\\s*CFA`), { timeout: 15_000 });
   };
 
   try {
     await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
     await expect(page.getByRole('heading', { name: 'Bilal Ecart' })).toBeVisible();
 
-    // Remise partielle 50 000 / 100 000 collectés → bandeau d'écart affiché.
-    await remit('50000');
+    // Remise partielle 50 000 / 100 000 collectés → remis = 50 000, bandeau d'écart affiché.
+    await remit('50000', 50000);
     await expect(page.getByText('Écart non résolu')).toBeVisible({ timeout: 15_000 });
 
     // Remise du solde 50 000 → remis = collecté = 100 000 → l'écart disparaît.
-    await remit('50000');
+    await remit('50000', 100000);
     await expect(page.getByText('Écart non résolu')).toHaveCount(0, { timeout: 15_000 });
 
     // Le total remis couvre bien le collecté.
