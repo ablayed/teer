@@ -36,6 +36,7 @@ const anonKey =
   localEnv.SUPABASE_ANON_KEY ??
   '';
 const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
+const isProdBuildRun = process.env.E2E_PROD_BUILD === '1';
 const password = 'Mot-de-passe-e2e-2026!';
 
 test.setTimeout(60_000);
@@ -158,7 +159,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
+  await expect(page.locator('main#main')).toBeVisible({ timeout: 15_000 });
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E livreurs');
@@ -419,6 +420,49 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
       .eq('merchant_account_id', fixture.merchantAccountId)
       .eq('driver_id', driverId);
     expect((shortfalls ?? []).some((s) => s.resolution === 'ROLLED_FORWARD')).toBe(true);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('feedback pending sur changement de livreur (build prod)', async ({ page }) => {
+  test.setTimeout(120_000);
+  test.skip(
+    !isProdBuildRun,
+    'Vérification PROD-ONLY : nécessite next build && next start + E2E_PROD_BUILD=1.',
+  );
+
+  const fixture = await createOwnerFixture('pending-driver');
+  const driverAId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa A');
+  const driverBId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa B');
+  await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverAId, 25000);
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverAId}&period=30j`);
+
+    await expect(page.getByRole('heading', { name: 'Moussa A' })).toBeVisible();
+
+    await page.route('**/livreurs**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('driver') !== driverBId) {
+        await route.continue();
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await route.continue();
+    });
+
+    const driverButton = page.getByRole('button', { name: /^Moussa B/ });
+    await driverButton.click();
+
+    await expect(driverButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('driver-detail-panel')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('heading', { name: 'Moussa A' })).toBeVisible();
+
+    await page.waitForURL(new RegExp(`driver=${driverBId}.*period=30j`));
+    await expect(page.getByRole('heading', { name: 'Moussa B' })).toBeVisible();
+    await expect(page.getByTestId('driver-detail-panel')).not.toHaveAttribute('aria-busy', 'true');
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

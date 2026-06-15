@@ -9,7 +9,7 @@ import {
 } from '@/components/orders/transition-dialog';
 import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { Button } from '@/components/ui/button';
-import { performTransition } from '@/lib/actions/transitions';
+import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
 import type { TransitionAction } from '@/lib/domain/order-transition-actions';
 import { cn } from '@/lib/utils';
 import { ChevronDown, Phone } from 'lucide-react';
@@ -22,6 +22,7 @@ type OrderActionsMenuProps = {
   deliveryState: string | null;
   dispatchWhatsAppUrl: string | null;
   drivers: DriverOption[];
+  onTransitionSuccess?: (result: Extract<TransitionResult, { ok: true }>) => void;
   orderId: string;
   phone: string | null;
   whatsappLabels: { confirm: string; missingPhone: string };
@@ -66,6 +67,7 @@ export function OrderActionsMenu({
   deliveryState,
   dispatchWhatsAppUrl,
   drivers,
+  onTransitionSuccess,
   orderId,
   phone,
   whatsappLabels,
@@ -80,6 +82,7 @@ export function OrderActionsMenu({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
   const [callDialogOpen, setCallDialogOpen] = useState(false);
+  const onTransitionSuccessRef = useRef(onTransitionSuccess);
 
   const transitionEntries = transitionMenuOrder.filter((action) => allowedActions.includes(action));
   const canLogCall = allowedActions.includes('journaliser_appel');
@@ -88,6 +91,10 @@ export function OrderActionsMenu({
     (deliveryState === 'assigned' || deliveryState === 'out_for_delivery');
   const hasMenu = transitionEntries.length > 0 || canLogCall || canDispatch;
   const canCall = phone !== null;
+
+  useEffect(() => {
+    onTransitionSuccessRef.current = onTransitionSuccess;
+  }, [onTransitionSuccess]);
 
   useEffect(() => {
     if (!open) {
@@ -159,7 +166,11 @@ export function OrderActionsMenu({
 
     if (result.ok) {
       setFeedback('Commande mise à jour.');
-      router.refresh();
+      if (onTransitionSuccessRef.current) {
+        onTransitionSuccessRef.current(result);
+      } else {
+        router.refresh();
+      }
       return;
     }
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { PendingSpinner } from '@/components/app-shell/pending-spinner';
 import { cn } from '@/lib/utils';
 import { useLinkStatus } from 'next/link';
 import { useEffect, useState } from 'react';
@@ -28,10 +29,9 @@ export function NavLinkPending({ className }: { className?: string }) {
   }, [pending]);
 
   return (
-    <span
-      aria-hidden="true"
+    <PendingSpinner
       className={cn(
-        'pointer-events-none inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent transition-opacity duration-150',
+        'transition-opacity duration-150',
         shown ? 'opacity-70' : 'opacity-0',
         className,
       )}
