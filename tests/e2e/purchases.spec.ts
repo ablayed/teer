@@ -190,6 +190,56 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
   }
 });
 
+test('nouveau lot : créer un produit maison à la volée', async ({ page }) => {
+  const fixture = await createOwnerFixture('achats-produit-vol');
+  const productTitle = `Produit volée ${Date.now()}`;
+  const productSku = `VOL-${Date.now()}`;
+
+  try {
+    await signIn(page, fixture.email, '/produits');
+    await openPurchasesTab(page);
+
+    await page.getByRole('button', { name: 'Nouveau lot' }).click();
+    await expect(page.getByText("Nouveau lot d'achat")).toBeVisible({ timeout: 5_000 });
+
+    await page.locator('select').last().selectOption({ label: '+ Créer un produit' });
+    await page.getByPlaceholder('Ex : Sac cuir noir').fill(productTitle);
+    await page.getByPlaceholder('Ex : SAC-NOIR').fill(productSku);
+    await page.getByRole('button', { name: 'Créer', exact: true }).click();
+
+    await expect(page.getByText('Produit créé et sélectionné.')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await page.locator('#f-supplier').fill('Fournisseur produit volée');
+    await page.locator('#f-ordered-at').fill('2026-06-01');
+    await page.getByPlaceholder('Qté').fill('3');
+    await page.getByPlaceholder('Prix total').fill('15000');
+    await page.getByRole('button', { name: 'Créer le lot' }).click();
+
+    await expect(page.getByText('Fournisseur produit volée')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(productTitle)).toBeVisible({ timeout: 10_000 });
+
+    const { data: product } = await fixture.admin
+      .from('product')
+      .select('id, title, sku')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('title', productTitle)
+      .single();
+    expect(product?.sku).toBe(productSku);
+
+    const { data: line } = await fixture.admin
+      .from('purchase_lot_line')
+      .select('product_id, qty, purchase_price_total')
+      .eq('product_id', product?.id ?? '')
+      .single();
+    expect(line?.qty).toBe(3);
+    expect(line?.purchase_price_total).toBe(15000);
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
 test('#9 le formulaire « Nouveau lot » ne déborde pas en portrait', async ({ page }) => {
   const fixture = await createOwnerFixture('lot-responsive');
   await createProduct(fixture.admin, fixture.merchantAccountId);
