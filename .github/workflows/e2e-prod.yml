@@ -65,6 +65,17 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Bake test env into production build
+        run: |
+          {
+            echo "SUPABASE_URL=${SUPABASE_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
+            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
+            echo "RESEND_API_KEY=test-resend-api-key"
+          } > .env.production
+          cp .env.production .env.test
       # Build de PROD : les NEXT_PUBLIC_* (Supabase local) sont inlinés ici. C'est ce
       # build que `next start` (webServer Playwright en mode E2E_PROD_BUILD=1) servira.
       - name: Build production
@@ -83,7 +94,7 @@ jobs:
       # couverture WebKit cross-navigateur reste assurée par le job test-e2e (dev, http
       # sans UIR), qui exécute aussi nav-perf sur iphone-14. Cf. tests/e2e en-têtes.
       - name: E2E prod-build (sous-ensemble gardé)
-        run: pnpm exec playwright test tests/e2e/orders-prod-cache.spec.ts tests/e2e/orders-pagination-verify.spec.ts tests/e2e/nav-perf.spec.ts --project=chromium --project=pixel-7
+        run: pnpm exec playwright test tests/e2e/orders-prod-cache.spec.ts tests/e2e/orders-pagination-verify.spec.ts tests/e2e/drivers.spec.ts:440 tests/e2e/nav-perf.spec.ts --project=chromium --project=pixel-7
         env:
           E2E_PROD_BUILD: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
