@@ -232,7 +232,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         {summaryCard(
           t('summary.rtoBase'),
           count(analytics.summary.rtoDenominator),
-          `${count(analytics.summary.deliveredCount)} livrees / ${count(analytics.summary.rtoCount)} echecs`,
+          `${count(analytics.summary.deliveredCount)} livrées / ${count(analytics.summary.rtoCount)} échecs`,
         )}
       </section>
 

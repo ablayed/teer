@@ -1,6 +1,6 @@
 'use client';
 
-import type { ProductCatalogItem } from '@/lib/actions/products';
+import { type ProductCatalogItem, createProductAction } from '@/lib/actions/products';
 import {
   type PurchaseLotData,
   type PurchaseLotLineData,
@@ -105,7 +105,7 @@ function CostDetail({
                     <span>Total atterri</span>
                     <span>{formatMoney(l.d.ltv)}</span>
                   </div>
-                  <div className="flex justify-between text-brand-foreground">
+                  <div className="flex justify-between text-accent-deep">
                     <span>Coût unitaire</span>
                     <span>{formatMoney(l.d.luc)} / u</span>
                   </div>
@@ -279,7 +279,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
                           type="button"
                           onClick={() => handleRemoveLine(l.id)}
                           disabled={isExecuting}
-                          className="p-1 text-danger hover:text-danger/70 disabled:opacity-40"
+                          className="grid size-11 place-items-center rounded-md text-danger hover:bg-danger-subtle hover:text-danger disabled:opacity-40"
                           aria-label="Supprimer la ligne"
                         >
                           ×
@@ -336,7 +336,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
                   type="button"
                   onClick={handleAddLine}
                   disabled={isExecuting}
-                  className="min-h-11 rounded-md bg-brand px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50"
+                  className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover disabled:opacity-50"
                 >
                   Ajouter
                 </button>
@@ -353,7 +353,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
             <button
               type="button"
               onClick={() => setShowAddLine(true)}
-              className="text-xs text-brand underline-offset-2 hover:underline"
+              className="inline-flex min-h-11 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-text hover:bg-canvas"
             >
               + Ajouter un produit
             </button>
@@ -380,7 +380,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
               type="button"
               onClick={handleReceive}
               disabled={isExecuting}
-              className="min-h-[44px] rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-[#111] disabled:opacity-50"
+              className="min-h-[44px] rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
             >
               {receive.isExecuting ? 'Réception…' : 'Marquer reçu'}
             </button>
@@ -396,6 +396,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
 // ── Create lot form ───────────────────────────────────────────────────────────
 
 type NewLine = { key: string; productId: string; qty: string; purchasePriceTotal: string };
+const CREATE_PRODUCT_VALUE = '__create_product__';
 
 function mkLine(): NewLine {
   return {
@@ -412,7 +413,11 @@ function CreateLotForm({
 }: { products: ProductCatalogItem[]; onDone: () => void }) {
   const router = useRouter();
   const createLot = useAction(createPurchaseLotAction);
+  const createProduct = useAction(createProductAction);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [productOptions, setProductOptions] = useState(products);
+  const [createProductLineKey, setCreateProductLineKey] = useState<string | null>(null);
+  const [productDraft, setProductDraft] = useState({ sku: '', title: '' });
 
   const [form, setForm] = useState({
     supplierName: '',
@@ -429,6 +434,49 @@ function CreateLotForm({
 
   function setLine(lineKey: string, field: keyof Omit<NewLine, 'key'>, value: string) {
     setLines((prev) => prev.map((l) => (l.key === lineKey ? { ...l, [field]: value } : l)));
+  }
+
+  function selectProduct(lineKey: string, value: string) {
+    if (value === CREATE_PRODUCT_VALUE) {
+      setCreateProductLineKey(lineKey);
+      return;
+    }
+
+    setLine(lineKey, 'productId', value);
+  }
+
+  async function handleCreateProduct() {
+    if (!createProductLineKey) return;
+
+    const res = await createProduct.executeAsync({
+      sku: productDraft.sku,
+      title: productDraft.title,
+      unitCost: 0,
+    });
+
+    if (!res?.data?.ok) {
+      setFeedback({ msg: 'La création du produit a échoué.', kind: 'error' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const product: ProductCatalogItem = {
+      created_at: now,
+      id: res.data.product.id,
+      is_active: true,
+      shopify_product_id: null,
+      shopify_variant_id: null,
+      sku: res.data.product.sku,
+      title: res.data.product.title,
+      unit_cost: 0,
+      updated_at: now,
+    };
+
+    setProductOptions((current) => [product, ...current]);
+    setLine(createProductLineKey, 'productId', product.id);
+    setProductDraft({ sku: '', title: '' });
+    setCreateProductLineKey(null);
+    setFeedback({ msg: 'Produit créé et sélectionné.', kind: 'success' });
   }
 
   async function submit() {
@@ -554,10 +602,11 @@ function CreateLotForm({
               <select
                 className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:flex-1"
                 value={l.productId}
-                onChange={(e) => setLine(l.key, 'productId', e.target.value)}
+                onChange={(e) => selectProduct(l.key, e.target.value)}
               >
                 <option value="">Produit…</option>
-                {products.map((p) => (
+                <option value={CREATE_PRODUCT_VALUE}>+ Créer un produit</option>
+                {productOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.title}
                     {p.sku ? ` (${p.sku})` : ''}
@@ -585,7 +634,7 @@ function CreateLotForm({
                   <button
                     type="button"
                     onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
-                    className="shrink-0 text-danger text-lg leading-none"
+                    className="grid size-11 shrink-0 place-items-center rounded-md text-danger text-lg leading-none hover:bg-danger-subtle"
                     aria-label="Retirer la ligne"
                   >
                     ×
@@ -597,11 +646,50 @@ function CreateLotForm({
           <button
             type="button"
             onClick={() => setLines((p) => [...p, mkLine()])}
-            className="text-xs text-brand underline-offset-2 hover:underline"
+            className="inline-flex min-h-11 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-text hover:bg-canvas"
           >
             + Ajouter un produit
           </button>
         </div>
+        {createProductLineKey ? (
+          <div className="mt-3 grid gap-3 rounded-lg border border-border bg-canvas p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto_auto] sm:items-end">
+            <label className="space-y-1">
+              <span className="text-xs font-medium">Nom du produit *</span>
+              <input
+                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                onChange={(e) => setProductDraft((draft) => ({ ...draft, title: e.target.value }))}
+                placeholder="Ex : Sac cuir noir"
+                type="text"
+                value={productDraft.title}
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium">SKU</span>
+              <input
+                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                onChange={(e) => setProductDraft((draft) => ({ ...draft, sku: e.target.value }))}
+                placeholder="Ex : SAC-NOIR"
+                type="text"
+                value={productDraft.sku}
+              />
+            </label>
+            <button
+              className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+              disabled={createProduct.isExecuting}
+              onClick={handleCreateProduct}
+              type="button"
+            >
+              {createProduct.isExecuting ? 'Création…' : 'Créer'}
+            </button>
+            <button
+              className="min-h-11 rounded-md border border-border px-4 py-2 text-sm"
+              onClick={() => setCreateProductLineKey(null)}
+              type="button"
+            >
+              Annuler
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {feedback && <Alert {...feedback} />}
@@ -611,7 +699,7 @@ function CreateLotForm({
           type="button"
           onClick={submit}
           disabled={createLot.isExecuting}
-          className="min-h-[44px] rounded-lg bg-brand px-6 py-2 text-sm font-semibold text-[#111] disabled:opacity-50"
+          className="min-h-[44px] rounded-lg bg-accent px-6 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
         >
           {createLot.isExecuting ? 'Création…' : 'Créer le lot'}
         </button>
@@ -645,7 +733,7 @@ export function PurchaseLotsView({
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="min-h-[44px] rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-[#111]"
+            className="min-h-[44px] rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink shadow-1 hover:bg-accent-hover"
           >
             Nouveau lot
           </button>

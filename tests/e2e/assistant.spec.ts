@@ -125,9 +125,22 @@ test('owner : onglet Assistant, FAQ marge + résultat net et suggestion marge', 
     await expect(page.getByRole('heading', { name: messages.assistant.title })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(
-      page.getByRole('link', { name: messages.nav.assistant, exact: true }).first(),
-    ).toBeVisible();
+
+    // Densité #1 : l'Assistant est regroupé dans le menu « Plus » de la bottom-nav sur
+    // mobile (barre latérale sur desktop). On ouvre « Plus » s'il est présent, puis on
+    // prouve que le lien Assistant reste atteignable ET fonctionnel (clic → navigation).
+    const plusButton = page.getByRole('button', { name: 'Plus' });
+    if (await plusButton.isVisible().catch(() => false)) {
+      await plusButton.click();
+    }
+    const assistantLink = page
+      .getByRole('link', { name: messages.nav.assistant, exact: true })
+      .first();
+    await expect(assistantLink).toBeVisible();
+    await assistantLink.click();
+    await expect(page.getByRole('heading', { name: messages.assistant.title })).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Onglet chat (par défaut) : suggestion finance réservée à l'owner.
     await expect(page.getByText(SUGGESTION_MARGE)).toBeVisible();

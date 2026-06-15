@@ -30,11 +30,11 @@ function errorMessage(errorCode: string | undefined): string {
     case 'audit_failed':
       return "L'appel est enregistre, mais l'audit a echoue.";
     case 'call_log_failed':
-      return "L'appel n'a pas pu etre enregistre.";
+      return "L'appel n'a pas pu être enregistré.";
     case 'order_not_found':
       return 'Commande introuvable.';
     default:
-      return 'Une erreur est survenue. Reessayez.';
+      return 'Une erreur est survenue. Réessayez.';
   }
 }
 
@@ -156,7 +156,7 @@ export function CallLogForm({
         <div className="grid grid-cols-2 gap-2">
           {callOutcomes.map((callOutcome) => (
             <label
-              className={`inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border px-3 text-center text-sm font-medium ${
+              className={`inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg border px-3 text-center text-sm font-medium ${
                 outcome === callOutcome
                   ? 'border-accent bg-accent text-[#111]'
                   : 'border-border bg-surface text-text hover:bg-canvas'

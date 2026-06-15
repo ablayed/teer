@@ -386,7 +386,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
                         className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
                       />
                       <input
-                        className="min-h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm"
+                        className="min-h-11 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm md:min-h-10"
                         onChange={(e) => updateLine(line.id, { productSearch: e.target.value })}
                         placeholder="Rechercher titre ou SKU"
                         type="search"
@@ -396,7 +396,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
                     <select
                       aria-invalid={!!lineErr?.productId}
                       className={cn(
-                        'min-h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm',
+                        'min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
                         lineErr?.productId && 'border-danger',
                       )}
                       onChange={(e) => updateLine(line.id, { productId: e.target.value })}
@@ -420,7 +420,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
                       <input
                         aria-invalid={!!lineErr?.quantity}
                         className={cn(
-                          'min-h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm',
+                          'min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
                           lineErr?.quantity && 'border-danger',
                         )}
                         min="1"
@@ -437,7 +437,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
                       <input
                         aria-invalid={!!lineErr?.unitPrice}
                         className={cn(
-                          'min-h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm',
+                          'min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
                           lineErr?.unitPrice && 'border-danger',
                         )}
                         min="0"
@@ -457,7 +457,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
             {fieldErrors.lines && <FieldError message={fieldErrors.lines} />}
 
             <button
-              className="min-h-10 rounded-lg border border-border bg-canvas px-4 text-sm font-medium hover:bg-surface"
+              className="min-h-11 rounded-lg border border-border bg-canvas px-4 text-sm font-medium hover:bg-surface md:min-h-10"
               onClick={addLine}
               type="button"
             >
@@ -468,7 +468,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
           {/* Inline product creation */}
           <div>
             <button
-              className="min-h-10 text-sm font-medium text-text underline underline-offset-4"
+              className="min-h-11 rounded-lg px-3 text-sm font-medium text-text underline underline-offset-4 md:min-h-10"
               onClick={() => setShowCreateProduct((v) => !v)}
               type="button"
             >

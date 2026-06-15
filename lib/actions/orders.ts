@@ -819,7 +819,7 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       return {
         ok: false as const,
         errorCode: 'update_failed' as const,
-        message: "La commande manuelle n'a pas pu etre creee.",
+        message: "La commande manuelle n'a pas pu être créée.",
       };
     }
 

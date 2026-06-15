@@ -199,7 +199,7 @@ export async function performTransitionForContext({
     .maybeSingle();
 
   if (orderError) {
-    return transitionError('update_failed', "La commande n'a pas pu etre chargee.");
+    return transitionError('update_failed', "La commande n'a pas pu être chargée.");
   }
 
   if (!order) {
@@ -282,7 +282,7 @@ export async function performTransitionForContext({
   if (transitionErrorResult || !isOrderStatus(nextStatus)) {
     return transitionError(
       'update_failed',
-      "La transition n'a pas pu etre appliquee. Verifiez vos droits puis reessayez.",
+      "La transition n'a pas pu être appliquée. Vérifiez vos droits puis réessayez.",
     );
   }
 
@@ -293,7 +293,7 @@ export async function performTransitionForContext({
     .maybeSingle();
 
   if (updatedOrderError || !updatedOrder) {
-    return transitionError('update_failed', "La commande mise a jour n'a pas pu etre rechargee.");
+    return transitionError('update_failed', "La commande mise à jour n'a pas pu être rechargée.");
   }
 
   if (!isOrderStatus(updatedOrder.cod_status)) {

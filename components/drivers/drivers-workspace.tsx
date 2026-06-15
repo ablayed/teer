@@ -214,7 +214,7 @@ export function DriversWorkspace({
 
                     return (
                       <button
-                        className={`grid min-h-9 place-items-center rounded-md px-3 text-sm font-medium ${
+                        className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium md:min-h-9 ${
                           active ? 'bg-accent text-[#111]' : 'text-muted hover:text-text'
                         }`}
                         aria-pressed={active}

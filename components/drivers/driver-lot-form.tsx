@@ -69,7 +69,7 @@ export function DriverLotForm({ driverId, products }: Props) {
       <div className="flex rounded-lg border border-border bg-surface p-1">
         <button
           className={cn(
-            'min-h-9 flex-1 rounded-md px-3 text-sm font-medium',
+            'min-h-11 flex-1 rounded-md px-3 text-sm font-medium md:min-h-9',
             mode === 'allocate' ? 'bg-accent text-[#111]' : 'text-muted hover:text-text',
           )}
           onClick={() => setMode('allocate')}
@@ -79,7 +79,7 @@ export function DriverLotForm({ driverId, products }: Props) {
         </button>
         <button
           className={cn(
-            'min-h-9 flex-1 rounded-md px-3 text-sm font-medium',
+            'min-h-11 flex-1 rounded-md px-3 text-sm font-medium md:min-h-9',
             mode === 'return' ? 'bg-accent text-[#111]' : 'text-muted hover:text-text',
           )}
           onClick={() => setMode('return')}

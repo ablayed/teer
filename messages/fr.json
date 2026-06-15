@@ -765,10 +765,10 @@
   },
   "analytics": {
     "title": "Analyses pertes COD",
-    "subtitle": "Reperez ou le cash se perd : annulations avant expedition, refus a la livraison et retours apres livraison.",
-    "restricted": "Acces reserve au proprietaire et aux managers.",
-    "empty": "Aucune donnee exploitable sur cette periode.",
-    "error": "Les analytics n'ont pas pu etre chargees. Reessayez.",
+    "subtitle": "Repérez où le cash se perd : annulations avant expédition, refus à la livraison et retours après livraison.",
+    "restricted": "Accès réservé au propriétaire et aux managers.",
+    "empty": "Aucune donnée exploitable sur cette période.",
+    "error": "Les analyses n'ont pas pu être chargées. Réessayez.",
     "periods": {
       "today": "Aujourd'hui",
       "7j": "7 j",
@@ -778,12 +778,12 @@
       "to": "Au"
     },
     "summary": {
-      "totalOrders": "Commandes analysees",
+      "totalOrders": "Commandes analysées",
       "cancellationRate": "Taux d'annulation",
       "rtoRate": "Taux de refus / RTO",
       "returnRate": "Taux de retour",
-      "rtoBase": "Base RTO : livrees + echecs",
-      "returnBase": "Base retour : livrees + retours"
+      "rtoBase": "Base RTO : livrées + échecs",
+      "returnBase": "Base retour : livrées + retours"
     },
     "scorecard": {
       "title": "Scorecard par canal",
@@ -796,7 +796,7 @@
     },
     "trends": {
       "title": "Tendance refus / RTO",
-      "empty": "Aucun evenement RTO ou livraison sur la periode."
+      "empty": "Aucun événement RTO ou livraison sur la période."
     },
     "products": {
       "title": "Refus par produit",
@@ -819,7 +819,7 @@
     "drivers": {
       "title": "Performance livreur",
       "driver": "Livreur",
-      "outcomeOrders": "Courses analysees",
+      "outcomeOrders": "Courses analysées",
       "rtoOrders": "Refus",
       "returnOrders": "Retours",
       "rtoRate": "Taux RTO"
@@ -830,14 +830,14 @@
       "count": "Volume"
     },
     "refusers": {
-      "title": "Refuseurs repetes",
+      "title": "Refuseurs répétés",
       "customer": "Client",
       "orders": "Commandes",
       "refused": "Refus",
       "tier": "Niveau",
       "action": "Action",
-      "empty": "Aucun refuseur repete sur cette periode.",
-      "deposit": "Exiger un acompte ou une preconfirmation."
+      "empty": "Aucun refuseur répété sur cette période.",
+      "deposit": "Exiger un acompte ou une préconfirmation."
     },
     "labels": {
       "unknownSource": "inconnu",
