@@ -1,8 +1,8 @@
 'use client';
 
 import { PendingSpinner } from '@/components/app-shell/pending-spinner';
+import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
 import { DriverLotForm } from '@/components/drivers/driver-lot-form';
-import { DriverRemittanceForm } from '@/components/drivers/driver-remittance-form';
 import type { DriverCashData, DriverPerformanceData, DriverStockData } from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
@@ -232,40 +232,9 @@ export function DriversWorkspace({
                   })}
                 </div>
               </div>
-              {!detail.cash.ok ? (
-                <p className="text-sm text-danger">{detail.cash.message}</p>
-              ) : (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {statCard(
-                      'Dû / attendu',
-                      formatMoney(detail.cash.consolidation.expectedMinor, 'XOF'),
-                    )}
-                    {statCard(
-                      'Collecté',
-                      formatMoney(detail.cash.consolidation.collectedMinor, 'XOF'),
-                    )}
-                    {statCard('Remis', formatMoney(detail.cash.consolidation.remittedMinor, 'XOF'))}
-                    {statCard(
-                      'Cash chez le livreur',
-                      formatMoney(detail.cash.consolidation.cashOnHandMinor, 'XOF'),
-                      true,
-                    )}
-                  </div>
-                  {detail.cash.consolidation.discrepancyMinor > 0 && (
-                    <p className="text-sm font-medium text-danger">
-                      Écart non résolu :{' '}
-                      {formatMoney(detail.cash.consolidation.discrepancyMinor, 'XOF')}
-                    </p>
-                  )}
-                  <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
-                    <p className="mb-3 text-sm font-medium">
-                      Enregistrer un versement (remise globale)
-                    </p>
-                    <DriverRemittanceForm driverId={selected.id} />
-                  </div>
-                </>
-              )}
+              {/* key={selected.id} : on remonte le panneau au changement de livreur
+                  pour réinitialiser son état cash depuis la donnée serveur fraîche. */}
+              <DriverCashPanel driverId={selected.id} initialCash={detail.cash} key={selected.id} />
             </section>
 
             <section className="space-y-3">

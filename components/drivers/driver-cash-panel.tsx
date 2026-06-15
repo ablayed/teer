@@ -1,0 +1,68 @@
+'use client';
+
+import { DriverRemittanceForm } from '@/components/drivers/driver-remittance-form';
+import { type DriverCashData, getDriverCashConsolidation } from '@/lib/actions/drivers';
+import { formatMoney } from '@/lib/format/fcfa';
+import { useState, useTransition } from 'react';
+
+function statCard(label: string, value: string, accent?: boolean) {
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
+      <p className="text-[13px] font-medium text-muted">{label}</p>
+      <p
+        className={`mt-2 font-mono text-2xl font-semibold tabular-nums ${accent ? 'text-accent' : ''}`}
+      >
+        {value}
+      </p>
+    </section>
+  );
+}
+
+type Props = {
+  driverId: string;
+  initialCash: DriverCashData;
+};
+
+// Panneau cash d'un livreur. Après une remise, on relit la conso FRAÎCHE côté
+// serveur (getDriverCashConsolidation → deriveDriverCashConsolidation, la MÊME
+// fonction/source que le RSC) et on stocke le résultat dans un état client. Le
+// client n'arbitre JAMAIS l'écart lui-même (aucun recalcul parallèle → aucun
+// drift, cf. piège matchesOrderSavedView). On NE dépend PAS de router.refresh()
+// dont le re-render RSC à travers ce composant client était racey (~27% de ratés
+// en build prod → chiffre cash périmé jusqu'au rechargement).
+export function DriverCashPanel({ driverId, initialCash }: Props) {
+  const [cash, setCash] = useState(initialCash);
+  const [, startTransition] = useTransition();
+
+  const refreshCash = () => {
+    startTransition(async () => {
+      setCash(await getDriverCashConsolidation(driverId));
+    });
+  };
+
+  if (!cash.ok) {
+    return <p className="text-sm text-danger">{cash.message}</p>;
+  }
+
+  const c = cash.consolidation;
+
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {statCard('Dû / attendu', formatMoney(c.expectedMinor, 'XOF'))}
+        {statCard('Collecté', formatMoney(c.collectedMinor, 'XOF'))}
+        {statCard('Remis', formatMoney(c.remittedMinor, 'XOF'))}
+        {statCard('Cash chez le livreur', formatMoney(c.cashOnHandMinor, 'XOF'), true)}
+      </div>
+      {c.discrepancyMinor > 0 && (
+        <p className="text-sm font-medium text-danger">
+          Écart non résolu : {formatMoney(c.discrepancyMinor, 'XOF')}
+        </p>
+      )}
+      <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
+        <p className="mb-3 text-sm font-medium">Enregistrer un versement (remise globale)</p>
+        <DriverRemittanceForm driverId={driverId} onSettled={refreshCash} />
+      </div>
+    </>
+  );
+}
