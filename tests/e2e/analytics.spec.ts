@@ -430,11 +430,20 @@ test('analytics visibles pour un manager', async ({ page }) => {
     await seedAnalyticsFixture(fixture.admin, fixture.merchantAccountId);
     await signIn(page, manager.email, '/commandes');
 
-    await expect(
-      page.getByRole('link', { name: messages.nav.analyses, exact: true }).first(),
-    ).toBeVisible();
+    // Densité #1 : sur mobile les écrans secondaires (dont Analyses) sont regroupés dans le
+    // menu « Plus » de la bottom-nav ; sur desktop le lien est dans la barre latérale. On
+    // ouvre « Plus » s'il est présent, puis on prouve que le lien Analyses est atteignable
+    // ET fonctionnel (clic → navigation), pas seulement présent dans le DOM.
+    const plusButton = page.getByRole('button', { name: 'Plus' });
+    if (await plusButton.isVisible().catch(() => false)) {
+      await plusButton.click();
+    }
+    const analysesLink = page
+      .getByRole('link', { name: messages.nav.analyses, exact: true })
+      .first();
+    await expect(analysesLink).toBeVisible();
+    await analysesLink.click();
 
-    await page.goto('/analyses');
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { name: messages.analytics.title })).toBeVisible({
       timeout: 15_000,

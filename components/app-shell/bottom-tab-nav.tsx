@@ -44,10 +44,10 @@ const primaryItems: BottomTabItem[] = [
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
   { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
-  { href: '/assistant', icon: Sparkles, labelKey: 'assistant' },
 ];
 
 const overflowItems: BottomTabItem[] = [
+  { href: '/assistant', icon: Sparkles, labelKey: 'assistant' },
   {
     href: '/analyses',
     icon: ChartColumnIncreasing,
@@ -55,7 +55,6 @@ const overflowItems: BottomTabItem[] = [
     ownerManagerOnly: true,
   },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
-  { href: '/assistant', icon: Sparkles, labelKey: 'assistant' },
   { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
