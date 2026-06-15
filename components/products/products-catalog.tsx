@@ -97,7 +97,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
         <section className="space-y-3">
           {!showCreate ? (
             <button
-              className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+              className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink shadow-1 hover:bg-accent-hover"
               onClick={() => setShowCreate(true)}
               type="button"
             >
