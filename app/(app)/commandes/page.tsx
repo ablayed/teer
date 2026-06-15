@@ -1,7 +1,6 @@
 import { NewOrderForm } from '@/components/orders/new-order-form';
-import { OrdersPageLoader } from '@/components/orders/orders-page-loader';
 import { OrdersSearchInput } from '@/components/orders/orders-search-input';
-import { OrdersViewChips } from '@/components/orders/orders-view-chips';
+import { OrdersWorkspace } from '@/components/orders/orders-workspace';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantAccount } from '@/lib/actions/merchant';
@@ -84,6 +83,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const showNoOrdersWithShop = totalOrders === 0 && shopConnection;
   const showSearchEmpty = totalOrders > 0 && searchedTotal === 0 && search.length > 0;
   const showFilteredEmpty = searchedTotal > 0 && visibleCount === 0;
+  const showWorkspace = totalOrders > 0;
 
   return (
     <main className="space-y-6" id="main">
@@ -111,8 +111,24 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         </div>
       ) : null}
 
-      <OrdersViewChips activeView={activeView} views={viewCounts} />
       <OrdersSearchInput initialValue={search} />
+
+      {showWorkspace ? (
+        <OrdersWorkspace
+          activeView={activeView}
+          drivers={drivers}
+          emptyValueLabel={t('table.emptyValue')}
+          initialHasMore={pageData.hasMore}
+          initialNextCursor={pageData.nextCursor}
+          initialOrders={pageData.orders}
+          initialReliabilityTiers={pageData.reliabilityTiers}
+          merchantName={merchant?.name ?? 'Tëër'}
+          reliabilityLabels={reliabilityLabels}
+          searchQuery={search}
+          views={viewCounts}
+          whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}
+        />
+      ) : null}
 
       {showNoShop || showNoOrdersWithShop || showSearchEmpty || showFilteredEmpty ? (
         <section className="rounded-lg border border-border bg-surface p-6 shadow-1">
@@ -151,22 +167,6 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             </div>
           </div>
         </section>
-      ) : null}
-
-      {pageData.orders.length > 0 ? (
-        <OrdersPageLoader
-          activeView={activeView}
-          drivers={drivers}
-          emptyValueLabel={t('table.emptyValue')}
-          initialHasMore={pageData.hasMore}
-          initialNextCursor={pageData.nextCursor}
-          initialOrders={pageData.orders}
-          initialReliabilityTiers={pageData.reliabilityTiers}
-          merchantName={merchant?.name ?? 'Tëër'}
-          reliabilityLabels={reliabilityLabels}
-          searchQuery={search}
-          whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}
-        />
       ) : null}
     </main>
   );

@@ -17,6 +17,10 @@ export type OrderSavedViewDefinition = {
   label: string;
 };
 
+export type OrderSavedViewCount = OrderSavedViewDefinition & {
+  count: number;
+};
+
 export const orderSavedViews: OrderSavedViewDefinition[] = [
   { id: 'toutes', label: 'Toutes' },
   { id: 'a-appeler', label: 'À appeler' },
@@ -89,6 +93,20 @@ export function matchesOrderSavedView(order: OrderListViewShape, viewId: OrderSa
       // deux order_state distincts en base (les analytics de pertes en dependent).
       return order.order_state === 'cancelled' || order.order_state === 'returned';
   }
+}
+
+export function applyOrderSavedViewCountTransition<T extends OrderSavedViewCount>(
+  views: T[],
+  previousOrder: OrderListViewShape,
+  nextOrder: OrderListViewShape,
+): T[] {
+  return views.map((view) => {
+    const previousMatched = matchesOrderSavedView(previousOrder, view.id);
+    const nextMatched = matchesOrderSavedView(nextOrder, view.id);
+    const delta = Number(nextMatched) - Number(previousMatched);
+
+    return delta === 0 ? view : { ...view, count: Math.max(0, view.count + delta) };
+  });
 }
 
 export function compareOrdersForSavedView(

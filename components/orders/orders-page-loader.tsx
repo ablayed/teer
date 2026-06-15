@@ -9,11 +9,14 @@ import {
   type OrderListItem,
   loadMoreOrdersAction,
 } from '@/lib/actions/orders';
+import type { TransitionResult } from '@/lib/actions/transitions';
+import { matchesOrderSavedView } from '@/lib/domain/order-saved-views';
 import type { OrderSavedViewId } from '@/lib/domain/order-saved-views';
 import { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Json } from '@/lib/supabase/database.types';
+import { cn } from '@/lib/utils';
 import {
   buildWhatsAppConfirmationUrl,
   buildWhatsAppDispatchUrl,
@@ -23,6 +26,7 @@ import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
 
 type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
+type TransitionSuccess = Extract<TransitionResult, { ok: true }>;
 
 type Props = {
   activeView: OrderSavedViewId;
@@ -32,9 +36,14 @@ type Props = {
   initialNextCursor: OrderListCursor | null;
   initialOrders: OrderListItem[];
   initialReliabilityTiers: Record<string, ReliabilityTier>;
+  isTransitionPending: boolean;
   merchantName: string;
   reliabilityLabels: Record<ReliabilityTier, string>;
   searchQuery: string;
+  onTransitionApplied?: (event: {
+    nextOrder: OrderListItem;
+    previousOrder: OrderListItem;
+  }) => void;
   whatsappMissingPhoneLabel: string;
 };
 
@@ -71,16 +80,18 @@ export function OrdersPageLoader({
   initialNextCursor,
   initialOrders,
   initialReliabilityTiers,
+  isTransitionPending,
   merchantName,
   reliabilityLabels,
   searchQuery,
+  onTransitionApplied,
   whatsappMissingPhoneLabel,
 }: Props) {
   const [orders, setOrders] = useState(initialOrders);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [reliabilityTiers, setReliabilityTiers] = useState(initialReliabilityTiers);
-  const [isPending, startTransition] = useTransition();
+  const [isLoadingMore, startTransition] = useTransition();
 
   useEffect(() => {
     setOrders(initialOrders);
@@ -116,8 +127,64 @@ export function OrdersPageLoader({
     });
   }
 
+  function handleTransitionSuccess(result: TransitionSuccess) {
+    const previousOrder = orders.find((order) => order.id === result.order.id);
+
+    if (!previousOrder) {
+      return;
+    }
+
+    const nextOrder: OrderListItem = {
+      ...previousOrder,
+      call_state: result.order.call_state,
+      cash_state: result.order.cash_state,
+      cod_status: result.order.cod_status,
+      created_at: result.order.created_at,
+      created_at_shopify: result.order.created_at_shopify,
+      currency: result.order.currency,
+      delivery_state: result.order.delivery_state,
+      items_summary: result.order.items_summary,
+      next_action_at: result.order.next_action_at,
+      next_contact_at: result.order.next_contact_at,
+      order_number: result.order.order_number,
+      order_state: result.order.order_state,
+      scheduled_for: result.order.scheduled_for,
+      shipping_address: result.order.shipping_address,
+      sort_at: result.order.sort_at,
+      source: result.order.source,
+      total_amount: result.order.total_amount,
+      allowedActions: result.allowedActions,
+    };
+
+    onTransitionApplied?.({ nextOrder, previousOrder });
+
+    setOrders((previous) =>
+      previous.flatMap((order) => {
+        if (order.id !== result.order.id) {
+          return [order];
+        }
+
+        return matchesOrderSavedView(nextOrder, activeView) ? [nextOrder] : [];
+      }),
+    );
+  }
+
   return (
-    <section className="space-y-3">
+    <section
+      aria-busy={isTransitionPending ? true : undefined}
+      className={cn(
+        'relative space-y-3 transition-opacity motion-reduce:transition-none',
+        isTransitionPending ? 'pointer-events-none opacity-60' : 'opacity-100',
+      )}
+      data-testid="orders-results"
+    >
+      {isTransitionPending ? (
+        <div
+          aria-hidden="true"
+          className="dashboard-shimmer pointer-events-none absolute inset-0 z-10 rounded-lg opacity-60"
+        />
+      ) : null}
+
       {orders.map((order) => (
         <article
           className="rounded-lg border border-border bg-surface p-4 shadow-1 transition-colors hover:bg-canvas/50"
@@ -169,6 +236,7 @@ export function OrdersPageLoader({
                   totalAmount: order.total_amount,
                 })}
                 drivers={drivers}
+                onTransitionSuccess={handleTransitionSuccess}
                 orderId={order.id}
                 phone={order.customer?.phone ?? null}
                 whatsappLabels={{ confirm: 'WhatsApp', missingPhone: whatsappMissingPhoneLabel }}
@@ -192,11 +260,11 @@ export function OrdersPageLoader({
         <div className="flex justify-center pt-2">
           <button
             className="rounded-lg border border-border bg-surface px-6 py-3 text-sm font-medium text-text hover:bg-canvas disabled:opacity-60"
-            disabled={isPending}
+            disabled={isLoadingMore || isTransitionPending}
             onClick={handleLoadMore}
             type="button"
           >
-            {isPending ? 'Chargement...' : 'Voir plus'}
+            {isLoadingMore ? 'Chargement...' : 'Voir plus'}
           </button>
         </div>
       ) : null}

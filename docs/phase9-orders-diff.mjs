@@ -653,18 +653,6 @@ async function main() {
     }
 
     const legacyOrders = await fetchLegacyOrders(anon);
-    const authDebug = psql(
-      withAuthSql(
-        createdUserId,
-        `
-select auth.uid()::text || '|' || coalesce(public.current_member_role('${merchantAccountId}'::uuid), 'NULL');
-        `,
-      ),
-    )
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .at(-1);
     const queries = [
       { label: 'empty', value: '' },
       { label: 'name_fragment', value: 'ndi' },
@@ -741,35 +729,6 @@ limit 25;
     `);
     writeFileSync(explainToutesPath, `${explainToutes}\n`, 'utf8');
     writeFileSync(explainCallbackPath, `${explainCallback}\n`, 'utf8');
-
-    const compact = raw.map((entry) => ({
-      counts: entry.counts,
-      label: entry.label,
-      query: entry.query,
-      views: Object.fromEntries(
-        Object.entries(entry.views).map(([view, data]) => [
-          view,
-          {
-            firstMismatchIndex: data.firstMismatchIndex,
-            lengths: data.lengths,
-          },
-        ]),
-      ),
-    }));
-
-    console.log(
-      JSON.stringify(
-        {
-          authDebug,
-          explainCallbackPath,
-          explainToutesPath,
-          outputPath,
-          results: compact,
-        },
-        null,
-        2,
-      ),
-    );
   } finally {
     if (createdUserId) {
       await admin.auth.admin.deleteUser(createdUserId);
@@ -777,7 +736,6 @@ limit 25;
   }
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch(() => {
   process.exitCode = 1;
 });

@@ -83,7 +83,6 @@ describe('merchant_member INSERT RLS (anti-escalation)', () => {
         .from('merchant_member')
         .insert({ merchant_account_id: accountA, user_id: userB.id, role: 'owner' });
 
-      console.log('cross-tenant error:', JSON.stringify(error));
       expect(isRlsDenial(error)).toBe(true);
     },
   );

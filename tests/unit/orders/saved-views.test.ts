@@ -1,13 +1,15 @@
 import {
   type OrderSavedViewId,
+  applyOrderSavedViewCountTransition,
   compareOrdersForSavedView,
   matchesOrderSavedView,
+  orderSavedViews,
 } from '@/lib/domain/order-saved-views';
 import { filterOrdersBySearch, orderItemsSearchText } from '@/lib/orders/search';
 import { describe, expect, it } from 'vitest';
 
 type OrderFixture = {
-  call_state: 'callback' | 'to_call' | 'validated';
+  call_state: 'callback' | 'to_call' | 'unreachable' | 'validated';
   cash_state: 'collected' | 'expected' | 'not_due';
   created_at: string;
   created_at_shopify: string | null;
@@ -20,6 +22,7 @@ type OrderFixture = {
     | 'delivered'
     | 'failed'
     | 'out_for_delivery'
+    | 'returned'
     | 'scheduled'
     | 'unassigned';
   items_summary: Array<{ title: string }> | null;
@@ -111,6 +114,84 @@ describe('order saved views', () => {
       expect(matchesOrderSavedView(testCase.order, 'toutes')).toBe(true);
       expect(matchesOrderSavedView(testCase.order, testCase.view)).toBe(true);
     }
+  });
+
+  it('reste aligne avec les predicats SQL des RPC saved-views 0052', () => {
+    const orderStates = ['cancelled', 'completed', 'open', 'returned'] as const;
+    const callStates = ['callback', 'to_call', 'unreachable', 'validated'] as const;
+    const deliveryStates = [
+      'assigned',
+      'delivered',
+      'failed',
+      'out_for_delivery',
+      'returned',
+      'scheduled',
+      'unassigned',
+    ] as const;
+
+    function rpcPredicate(order: OrderFixture, viewId: OrderSavedViewId) {
+      switch (viewId) {
+        case 'toutes':
+          return true;
+        case 'a-appeler':
+          return order.order_state === 'open' && order.call_state === 'to_call';
+        case 'tentee-a-rappeler':
+          return order.order_state === 'open' && order.call_state === 'callback';
+        case 'confirmee':
+          return (
+            order.order_state === 'open' &&
+            order.call_state === 'validated' &&
+            (order.delivery_state === 'unassigned' || order.delivery_state === 'scheduled')
+          );
+        case 'en-livraison':
+          return (
+            order.delivery_state === 'scheduled' ||
+            order.delivery_state === 'assigned' ||
+            order.delivery_state === 'out_for_delivery'
+          );
+        case 'valide':
+          return order.order_state === 'completed';
+        case 'annulees-retours':
+          return order.order_state === 'cancelled' || order.order_state === 'returned';
+      }
+    }
+
+    for (const order_state of orderStates) {
+      for (const call_state of callStates) {
+        for (const delivery_state of deliveryStates) {
+          const order = orderFixture({ call_state, delivery_state, order_state });
+
+          for (const view of orderSavedViews) {
+            expect(matchesOrderSavedView(order, view.id), view.id).toBe(
+              rpcPredicate(order, view.id),
+            );
+          }
+        }
+      }
+    }
+  });
+
+  it('met a jour les compteurs quand une commande change de vue localement', () => {
+    const previousOrder = orderFixture({
+      call_state: 'to_call',
+      delivery_state: 'unassigned',
+      order_state: 'open',
+    });
+    const nextOrder = orderFixture({
+      call_state: 'validated',
+      delivery_state: 'unassigned',
+      order_state: 'open',
+    });
+    const views = orderSavedViews.map((view) => ({
+      ...view,
+      count: view.id === 'a-appeler' || view.id === 'toutes' ? 1 : 0,
+    }));
+
+    const nextViews = applyOrderSavedViewCountTransition(views, previousOrder, nextOrder);
+
+    expect(nextViews.find((view) => view.id === 'toutes')?.count).toBe(1);
+    expect(nextViews.find((view) => view.id === 'a-appeler')?.count).toBe(0);
+    expect(nextViews.find((view) => view.id === 'confirmee')?.count).toBe(1);
   });
 
   it('trie les rappels par next_contact_at croissant', () => {
