@@ -46,9 +46,13 @@ export async function GET(request: NextRequest) {
   const state = searchParams.get('state');
   const shop = searchParams.get('shop');
 
+  // Hissés hors du try pour enrichir le captureException du catch (diagnostic OAuth ; jamais le secret).
+  let payload: ReturnType<typeof verifyState> = null;
+  let app: ReturnType<typeof getShopifyAppByClientId> = null;
+
   try {
     const stateCookie = request.cookies.get(OAUTH_STATE_COOKIE)?.value;
-    const payload = stateCookie ? verifyState(stateCookie) : null;
+    payload = stateCookie ? verifyState(stateCookie) : null;
 
     if (!payload) {
       return redirectTo('/boutiques?error=invalid_state', request);
@@ -64,7 +68,7 @@ export async function GET(request: NextRequest) {
 
     // Multi-app : l'app a été choisie à l'install et transportée dans le state (clientId).
     // Un state legacy sans clientId retombe sur l'app par défaut (Teer Dev).
-    const app = payload.clientId
+    app = payload.clientId
       ? getShopifyAppByClientId(payload.clientId)
       : getDefaultShopifyAppOrNull();
 
@@ -158,6 +162,11 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     Sentry.captureException(error, {
       tags: { route: 'shopify.callback' },
+      extra: {
+        shop,
+        resolvedClientId: payload?.clientId ?? null,
+        appLabel: app?.label ?? null,
+      },
     });
     return redirectTo('/boutiques?error=connection_failed', request);
   }
