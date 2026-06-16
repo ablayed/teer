@@ -50,11 +50,9 @@ export function DriverCashPanel({ driverId, initialCash }: Props) {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {statCard(t('due'), formatMoney(c.expectedMinor, 'XOF'))}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {statCard(t('collectedTotal'), formatMoney(c.collectedMinor, 'XOF'))}
         {statCard(t('deliveryFees'), formatMoney(c.deliveryFeesMinor, 'XOF'))}
-        {statCard(t('remitted'), formatMoney(c.remittedMinor, 'XOF'))}
         {statCard(t('cashOnHand'), formatMoney(c.cashOnHandMinor, 'XOF'), true)}
       </div>
       {c.discrepancyMinor > 0 && (
