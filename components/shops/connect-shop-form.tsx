@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 
 function normalizeShopDomain(raw: string): string {
@@ -24,7 +23,6 @@ function isValidShopDomain(shop: string): boolean {
 
 export function ConnectShopForm() {
   const t = useTranslations('shops');
-  const router = useRouter();
   const [shop, setShop] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +37,9 @@ export function ConnectShopForm() {
       return;
     }
 
-    router.push(`/api/shopify/install?shop=${encodeURIComponent(normalizedShop)}`);
+    // Navigation pleine page (PAS router.push) : /api/shopify/install redirige vers Shopify
+    // (cross-origin). router.push en ferait un fetch RSC bloqué par CORS — cf. SW + Router Cache.
+    window.location.assign(`/api/shopify/install?shop=${encodeURIComponent(normalizedShop)}`);
   }
 
   return (
