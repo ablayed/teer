@@ -11,7 +11,7 @@
 
 import { SHOPIFY_REQUIRED_SCOPES } from '@/lib/shopify/oauth';
 
-export type ShopifyAppLabel = 'teer-dev' | 'teer-pilote' | 'teer-marchand';
+export type ShopifyAppLabel = 'teer-dev' | 'teer-pilote' | 'teer-marchand' | 'teer-koba';
 
 export type ShopifyAppConfig = {
   clientId: string;

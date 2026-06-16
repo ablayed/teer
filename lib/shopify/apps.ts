@@ -5,6 +5,8 @@
 //   - Teer Dev   : SHOPIFY_API_KEY / SHOPIFY_API_SECRET (app publique, par défaut, rétrocompat) ;
 //   - Teer Pilote: SHOPIFY_PILOTE_API_KEY / SHOPIFY_PILOTE_API_SECRET (app custom).
 //   - Teer Marchand: SHOPIFY_MARCHAND_API_KEY / SHOPIFY_MARCHAND_API_SECRET (app custom pilote).
+//   - Teer Koba   : SHOPIFY_KOBA_API_KEY / SHOPIFY_KOBA_API_SECRET (app custom créée dans l'org
+//     du marchand, pour un store hors de l'org Tëër — testing).
 // Les secrets ne sortent jamais d'ici (jamais en NEXT_PUBLIC_, jamais loggés).
 
 import { env } from '@/lib/env';
@@ -31,6 +33,11 @@ const REGISTRY = createShopifyAppRegistry([
     label: 'teer-marchand',
     clientId: env.SHOPIFY_MARCHAND_API_KEY,
     clientSecret: env.SHOPIFY_MARCHAND_API_SECRET,
+  },
+  {
+    label: 'teer-koba',
+    clientId: env.SHOPIFY_KOBA_API_KEY,
+    clientSecret: env.SHOPIFY_KOBA_API_SECRET,
   },
 ]);
 
