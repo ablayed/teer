@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'teer-sw-v2';
+const CACHE_VERSION = 'teer-sw-v3';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const CURRENT_CACHES = [SHELL_CACHE, STATIC_CACHE];
@@ -35,6 +35,14 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') {
+    return;
+  }
+
+  // Ne JAMAIS intercepter les routes /api/** : elles redirigent cross-origin (OAuth Shopify) et
+  // posent des cookies (etat OAuth). L'interception + navigation preload casse la redirection
+  // (CORS) et le Set-Cookie -> on laisse le navigateur les gerer nativement.
+  const url = new URL(event.request.url);
+  if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) {
     return;
   }
 
