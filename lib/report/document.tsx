@@ -327,6 +327,14 @@ function PnlSection({
           label={labels.pnl.ca}
           value={profit.caMinor}
         />
+        {profit.deliveryFeesMinor > 0 ? (
+          <PnlLine
+            currency={currency}
+            formatMoney={formatMoney}
+            label={labels.pnl.deliveryFees}
+            value={-profit.deliveryFeesMinor}
+          />
+        ) : null}
         {profit.returnContraRevenueMinor > 0 ? (
           <PnlLine
             currency={currency}

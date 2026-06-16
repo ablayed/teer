@@ -2,6 +2,7 @@ import {
   type FeeSettings,
   computeCA,
   computeCOGS,
+  computeDeliveryFees,
   computeExpensesByCategory,
   computeFinanceReport,
   computeMobileMoneyFees,
@@ -28,8 +29,16 @@ describe('computeCA', () => {
   });
 });
 
+describe('computeDeliveryFees', () => {
+  it('somme les frais de livraison des commandes', () => {
+    expect(computeDeliveryFees([{ deliveryFeeMinor: 1_000 }, { deliveryFeeMinor: 500 }, {}])).toBe(
+      1_500,
+    );
+  });
+});
+
 describe('computeReturnContraRevenue', () => {
-  it('somme les montants des retours', () => {
+  it('somme les montants des retours nets de frais de livraison', () => {
     expect(computeReturnContraRevenue([{ totalAmount: 15_000 }, { totalAmount: 5_000 }])).toBe(
       20_000,
     );
@@ -147,6 +156,7 @@ describe('computeFinanceReport — cas intégré', () => {
     });
 
     expect(report.caMinor).toBe(30_000);
+    expect(report.deliveryFeesMinor).toBe(0);
     expect(report.returnContraRevenueMinor).toBe(0);
     expect(report.netCAMinor).toBe(30_000);
     // COGS = 2×5000 + 1×5000 = 15 000
@@ -161,6 +171,37 @@ describe('computeFinanceReport — cas intégré', () => {
     expect(report.expensesMinor).toBe(2_000);
     // net = 15 000 - 2 000 - 150 = 12 850
     expect(report.netProfitMinor).toBe(12_850);
+  });
+
+  it('déduit les frais de livraison du CA net et les neutralise dans les retours', () => {
+    const report = computeFinanceReport({
+      collectedOrders: [
+        {
+          id: 'o1',
+          totalAmount: 20_000,
+          deliveryFeeMinor: 1_500,
+          paymentChannelAtDelivery: 'ESPECES',
+        },
+      ],
+      soldMovementsForCollected: [{ orderId: 'o1', productId: 'p1', qty: 1, unitCost: 5_000 }],
+      returnedOrders: [
+        {
+          id: 'o1',
+          totalAmount: 20_000,
+          deliveryFeeMinor: 1_500,
+        },
+      ],
+      courierReturns: [{ orderId: 'o1', productId: 'p1', qty: 1 }],
+      soldMovementsForReturned: [{ orderId: 'o1', productId: 'p1', qty: 1, unitCost: 5_000 }],
+      expenses: [],
+      settings,
+      productInfo: productInfoMap,
+    });
+
+    expect(report.caMinor).toBe(20_000);
+    expect(report.deliveryFeesMinor).toBe(1_500);
+    expect(report.returnContraRevenueMinor).toBe(18_500);
+    expect(report.netCAMinor).toBe(0);
   });
 
   it('retour restocké — CA réduit, COGS annulé au coût figé', () => {

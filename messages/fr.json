@@ -711,6 +711,7 @@
     "profit": {
       "title": "Compte de résultat simplifié",
       "ca": "CA encaissé",
+      "deliveryFees": "Frais de livraison",
       "returns": "Retours (contra-revenue)",
       "netCa": "CA net",
       "cogs": "Coût des ventes (COGS)",

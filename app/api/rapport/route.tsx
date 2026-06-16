@@ -97,6 +97,7 @@ export async function GET(request: Request) {
       cogs: finance('profit.netCogs'),
       expenses: finance('profit.expenses'),
       expensesTitle: finance('profit.pdfExpensesTitle'),
+      deliveryFees: finance('profit.deliveryFees'),
       grossMargin: finance('profit.grossMargin'),
       marginEstimated: finance('profit.marginEstimated'),
       marginReal: finance('profit.marginReal'),

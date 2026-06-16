@@ -3,12 +3,14 @@
 
 export type CollectedOrder = {
   id: string;
+  deliveryFeeMinor?: number;
   totalAmount: number;
   paymentChannelAtDelivery: string | null;
 };
 
 export type ReturnedOrder = {
   id: string;
+  deliveryFeeMinor?: number;
   totalAmount: number;
 };
 
@@ -56,6 +58,7 @@ export type ProductBreakdown = {
 
 export type FinanceReport = {
   caMinor: number;
+  deliveryFeesMinor: number;
   returnContraRevenueMinor: number;
   netCAMinor: number;
   cogsMinor: number;
@@ -125,8 +128,14 @@ export function computeCA(orders: Pick<CollectedOrder, 'totalAmount'>[]): number
   return orders.reduce((sum, o) => sum + o.totalAmount, 0);
 }
 
-export function computeReturnContraRevenue(returns: Pick<ReturnedOrder, 'totalAmount'>[]): number {
-  return returns.reduce((sum, o) => sum + o.totalAmount, 0);
+export function computeDeliveryFees(orders: Pick<CollectedOrder, 'deliveryFeeMinor'>[]): number {
+  return orders.reduce((sum, o) => sum + (o.deliveryFeeMinor ?? 0), 0);
+}
+
+export function computeReturnContraRevenue(
+  returns: Pick<ReturnedOrder, 'totalAmount' | 'deliveryFeeMinor'>[],
+): number {
+  return returns.reduce((sum, o) => sum + o.totalAmount - (o.deliveryFeeMinor ?? 0), 0);
 }
 
 export function computeCOGS(soldMovements: SoldMovement[]): number {
@@ -226,8 +235,9 @@ export function computeFinanceReport({
   productInfo: Map<string, { title: string; currentUnitCostMinor: number }>;
 }): FinanceReport {
   const caMinor = computeCA(collectedOrders);
+  const deliveryFeesMinor = computeDeliveryFees(collectedOrders);
   const returnContraRevenueMinor = computeReturnContraRevenue(returnedOrders);
-  const netCAMinor = caMinor - returnContraRevenueMinor;
+  const netCAMinor = caMinor - deliveryFeesMinor - returnContraRevenueMinor;
 
   // Résout le coût de chaque ligne : coût figé prioritaire, sinon fallback CUMP courant (estimé),
   // sinon `unknown` (coût totalement inconnu) → exclu du COGS.
@@ -275,6 +285,7 @@ export function computeFinanceReport({
 
   return {
     caMinor,
+    deliveryFeesMinor,
     returnContraRevenueMinor,
     netCAMinor,
     cogsMinor,

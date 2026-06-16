@@ -36,7 +36,7 @@ type RawExpenseRow = {
   category_id: string;
 };
 
-type RawReturnRow = {
+type RawCourierReturnRow = {
   order_id: string | null;
   product_id: string;
   qty: number;
@@ -62,7 +62,7 @@ async function fetchCourierReturns(
   admin: FinanceAdminClient,
   merchantId: string,
   orderIds: string[],
-): Promise<RawReturnRow[]> {
+): Promise<RawCourierReturnRow[]> {
   if (orderIds.length === 0) return [];
   const { data, error } = await admin
     .from('stock_movement')
@@ -71,7 +71,7 @@ async function fetchCourierReturns(
     .eq('movement_type', 'courier_return')
     .in('order_id', orderIds);
   if (error) throw new Error('return_fetch_error');
-  return (data ?? []) as RawReturnRow[];
+  return (data ?? []) as RawCourierReturnRow[];
 }
 
 // Calcule le compte de résultat (P&L) returns-aware sur la période [fromIso, toIso].
@@ -86,7 +86,7 @@ export async function fetchFinanceReport(
   // 1. Commandes encaissées dans la période
   const { data: collectedRaw, error: e1 } = await admin
     .from('orders')
-    .select('id, total_amount, payment_channel_at_delivery')
+    .select('id, total_amount, delivery_fee_minor, payment_channel_at_delivery')
     .eq('merchant_account_id', merchantId)
     .gte('cash_collected_at', fromIso)
     .lte('cash_collected_at', toIso);
@@ -95,7 +95,7 @@ export async function fetchFinanceReport(
   // 2. Retours dans la période (cash_collected_at non null = contra-revenue réel)
   const { data: returnedRaw, error: e2 } = await admin
     .from('orders')
-    .select('id, total_amount')
+    .select('id, total_amount, delivery_fee_minor')
     .eq('merchant_account_id', merchantId)
     .gte('returned_at', fromIso)
     .lte('returned_at', toIso)
@@ -174,6 +174,7 @@ export async function fetchFinanceReport(
   return computeFinanceReport({
     collectedOrders: (collectedRaw ?? []).map((o) => ({
       id: o.id,
+      deliveryFeeMinor: o.delivery_fee_minor,
       totalAmount: o.total_amount,
       paymentChannelAtDelivery: o.payment_channel_at_delivery,
     })),
@@ -188,9 +189,13 @@ export async function fetchFinanceReport(
         qty: m.qty,
         unitCost: m.unit_cost,
       })),
-    returnedOrders: (returnedRaw ?? []).map((o) => ({ id: o.id, totalAmount: o.total_amount })),
+    returnedOrders: (returnedRaw ?? []).map((o) => ({
+      id: o.id,
+      deliveryFeeMinor: o.delivery_fee_minor,
+      totalAmount: o.total_amount,
+    })),
     courierReturns: courierReturnRows
-      .filter((m): m is RawReturnRow & { order_id: string } => m.order_id !== null)
+      .filter((m): m is RawCourierReturnRow & { order_id: string } => m.order_id !== null)
       .map((m) => ({ orderId: m.order_id, productId: m.product_id, qty: m.qty })),
     soldMovementsForReturned: soldForReturned
       .filter(

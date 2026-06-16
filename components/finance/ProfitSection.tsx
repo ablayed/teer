@@ -63,6 +63,7 @@ export function ProfitSection({ report, from, to }: Props) {
     const rows: string[][] = [
       ['Type', 'Libellé', 'Compte SYSCOHADA', 'Montant (FCFA)'],
       ['Produit', t('netCa'), '706', String(report.netCAMinor)],
+      ['Réduction', t('deliveryFees'), '706', String(-report.deliveryFeesMinor)],
       ['Charge', t('netCogs'), '6031', String(report.netCogsMinor)],
       ['Charge', t('mobileMoney'), '627', String(report.mobileMoneyFeesMinor)],
       ...report.expensesByCategory.map((cat) => [
@@ -123,6 +124,14 @@ export function ProfitSection({ report, from, to }: Props) {
 
       <div className="divide-y divide-border">
         <ProfitRow label={t('ca')} value={report.caMinor} />
+        {report.deliveryFeesMinor > 0 && (
+          <ProfitRow
+            indent
+            label={t('deliveryFees')}
+            value={-report.deliveryFeesMinor}
+            variant="muted"
+          />
+        )}
         {report.returnContraRevenueMinor > 0 && (
           <ProfitRow
             indent

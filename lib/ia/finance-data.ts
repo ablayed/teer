@@ -17,7 +17,7 @@ export async function fetchFinanceReportRls(
   // 1. Commandes encaissées dans la période.
   const { data: collectedRaw, error: e1 } = await supabase
     .from('orders')
-    .select('id, total_amount, payment_channel_at_delivery')
+    .select('id, total_amount, delivery_fee_minor, payment_channel_at_delivery')
     .eq('merchant_account_id', merchantId)
     .gte('cash_collected_at', fromIso)
     .lte('cash_collected_at', toIso);
@@ -28,7 +28,7 @@ export async function fetchFinanceReportRls(
   // 2. Retours encaissés dans la période (contra-revenue réel).
   const { data: returnedRaw, error: e2 } = await supabase
     .from('orders')
-    .select('id, total_amount')
+    .select('id, total_amount, delivery_fee_minor')
     .eq('merchant_account_id', merchantId)
     .gte('returned_at', fromIso)
     .lte('returned_at', toIso)
@@ -134,6 +134,7 @@ export async function fetchFinanceReportRls(
   return computeFinanceReport({
     collectedOrders: collected.map((o) => ({
       id: o.id,
+      deliveryFeeMinor: o.delivery_fee_minor,
       totalAmount: o.total_amount,
       paymentChannelAtDelivery: o.payment_channel_at_delivery,
     })),
@@ -145,7 +146,11 @@ export async function fetchFinanceReportRls(
         qty: m.qty,
         unitCost: m.unit_cost as number,
       })),
-    returnedOrders: returned.map((o) => ({ id: o.id, totalAmount: o.total_amount })),
+    returnedOrders: returned.map((o) => ({
+      id: o.id,
+      deliveryFeeMinor: o.delivery_fee_minor,
+      totalAmount: o.total_amount,
+    })),
     courierReturns: courierReturns.map((m) => ({
       orderId: m.order_id as string,
       productId: m.product_id,
