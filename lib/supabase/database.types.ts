@@ -1868,6 +1868,7 @@ export type Database = {
           p_view?: string;
         };
         Returns: {
+          assigned_driver_id: string;
           call_state: string;
           cash_state: string;
           cod_status: string;
