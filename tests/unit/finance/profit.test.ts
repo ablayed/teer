@@ -204,6 +204,32 @@ describe('computeFinanceReport — cas intégré', () => {
     expect(report.netCAMinor).toBe(0);
   });
 
+  it('ne déduit les frais de livraison qu’une seule fois dans le résultat net', () => {
+    const report = computeFinanceReport({
+      collectedOrders: [
+        {
+          id: 'o1',
+          totalAmount: 20_000,
+          deliveryFeeMinor: 1_500,
+          paymentChannelAtDelivery: 'ESPECES',
+        },
+      ],
+      soldMovementsForCollected: [{ orderId: 'o1', productId: 'p1', qty: 1, unitCost: 5_000 }],
+      returnedOrders: [],
+      courierReturns: [],
+      soldMovementsForReturned: [],
+      expenses: [{ categoryCode: 'ADS', categoryLabel: 'Publicité', amountMinor: 2_000 }],
+      settings,
+      productInfo: productInfoMap,
+    });
+
+    expect(report.caMinor).toBe(20_000);
+    expect(report.deliveryFeesMinor).toBe(1_500);
+    expect(report.netCAMinor).toBe(18_500);
+    expect(report.grossMarginMinor).toBe(13_500);
+    expect(report.netProfitMinor).toBe(11_500);
+  });
+
   it('retour restocké — CA réduit, COGS annulé au coût figé', () => {
     // Commande encaissée en M-1, retournée en M (différentes périodes)
     const report = computeFinanceReport({
