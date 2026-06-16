@@ -25,6 +25,11 @@ const serverEnvSchema = z.object({
   // l'app n'est pas enregistrée. Voir lib/shopify/apps.ts.
   SHOPIFY_MARCHAND_API_KEY: z.string().optional(),
   SHOPIFY_MARCHAND_API_SECRET: z.string().optional(),
+  // Multi-app : credentials de la 4e app Shopify (Teer Koba, custom — app créée dans l'org du
+  // marchand pour un store hors de l'org Tëër). Optionnels — si absents, l'app n'est pas
+  // enregistrée. Voir lib/shopify/apps.ts.
+  SHOPIFY_KOBA_API_KEY: z.string().optional(),
+  SHOPIFY_KOBA_API_SECRET: z.string().optional(),
   SHOPIFY_TOKEN_ENCRYPTION_KEY: z.string().optional(),
   // Rate-limiting auth par IP (Upstash Redis). Serveur uniquement (jamais NEXT_PUBLIC_).
   // Optionnelles : posées sur Vercel (Prod+Preview) → limiter actif en prod ; absentes
@@ -59,6 +64,8 @@ export const env = {
     SHOPIFY_PILOTE_API_SECRET: process.env.SHOPIFY_PILOTE_API_SECRET,
     SHOPIFY_MARCHAND_API_KEY: process.env.SHOPIFY_MARCHAND_API_KEY,
     SHOPIFY_MARCHAND_API_SECRET: process.env.SHOPIFY_MARCHAND_API_SECRET,
+    SHOPIFY_KOBA_API_KEY: process.env.SHOPIFY_KOBA_API_KEY,
+    SHOPIFY_KOBA_API_SECRET: process.env.SHOPIFY_KOBA_API_SECRET,
     SHOPIFY_TOKEN_ENCRYPTION_KEY: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
