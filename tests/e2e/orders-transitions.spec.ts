@@ -494,6 +494,22 @@ function savedViewButton(page: Page, label: string) {
   return page.getByRole('button', { name: new RegExp(`^${label} \\(`) });
 }
 
+function formatDateInput(date: Date): string {
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function formatTimeInput(hours: number, minutes: number): string {
+  return `${`${hours}`.padStart(2, '0')}:${`${minutes}`.padStart(2, '0')}`;
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E commandes');
 
 test('chemin nominal confirmer programmer assigner livrer en especes', async ({ page }) => {
@@ -616,6 +632,171 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
     const dispatch = (movements ?? []).find((m) => m.movement_type === 'dispatch');
     expect(dispatch?.qty).toBe(-2);
     expect(dispatch?.driver_id).toBe(driverId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('phase11 - programmer puis assigner ouvre le panneau editable et le repli reste reouvrable', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('phase11-editable');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Editable');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Editable',
+    phone: '+221771223344',
+  });
+  const programDate = formatDateInput(addDays(new Date(), 1));
+  const programTime = formatTimeInput(14, 30);
+  const revisedDate = formatDateInput(addDays(new Date(), 1));
+  const revisedTime = formatTimeInput(16, 45);
+
+  try {
+    await signIn(page, fixture.email, '/commandes?vue=a-appeler');
+    await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
+
+    await runRowMenuAction(page, 'Client Editable', 'Programmer la livraison');
+    await page.getByLabel('Date de livraison', { exact: true }).fill(programDate);
+    await page.getByLabel('Heure de livraison', { exact: true }).fill(programTime);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+
+    const { data: programmedOrder, error: programmedError } = await fixture.admin
+      .from('orders')
+      .select('delivery_state, scheduled_for')
+      .eq('id', orderId)
+      .single();
+    expect(programmedError).toBeNull();
+    expect(programmedOrder?.delivery_state).toBe('scheduled');
+    expect(programmedOrder?.scheduled_for).not.toBeNull();
+
+    await page.goto('/commandes?vue=en-livraison');
+    await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
+
+    await openActionsMenu(page);
+    await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
+    await expect(menuItem(page, 'Marquer livree')).toHaveCount(0);
+    await menuItem(page, 'Assigner').click();
+    await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeDisabled();
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+
+    await page.goto(`/commandes/${orderId}`);
+    await expect(page.getByLabel('Total', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel('Frais de livraison', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByLabel('Date de livraison', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByLabel('Heure de livraison', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const totalInput = page.getByLabel('Total', { exact: true });
+    await totalInput.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('25000');
+
+    const deliveryFeeInput = page.getByLabel('Frais de livraison', { exact: true });
+    await deliveryFeeInput.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('1500');
+    await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
+    await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
+    await page.getByRole('button', { name: 'Confirmer', exact: true }).click();
+
+    await expect(page.getByRole('button', { name: 'Modifier', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByLabel('Total', { exact: true })).toHaveCount(0);
+
+    const { data: updatedOrder, error: updatedError } = await fixture.admin
+      .from('orders')
+      .select('total_amount, delivery_fee_minor, scheduled_for')
+      .eq('id', orderId)
+      .single();
+    expect(updatedError).toBeNull();
+    expect(updatedOrder?.total_amount).toBe(25000);
+    expect(updatedOrder?.delivery_fee_minor).toBe(1500);
+    expect(updatedOrder?.scheduled_for).not.toBeNull();
+
+    await page.reload();
+    await expect(page.getByLabel('Total', { exact: true })).toHaveValue('25000');
+    await expect(page.getByLabel('Frais de livraison', { exact: true })).toHaveValue('1500');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('phase11 - la reassignation suit la vue en livraison et l agent n a pas les controles', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('phase11-reassign');
+  const driverAId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur A Phase11',
+  );
+  const driverBId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur B Phase11',
+  );
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Reassign',
+    phone: '+221771334455',
+  });
+  const agent = await addMember(fixture, 'agent');
+
+  try {
+    await signIn(page, fixture.email, '/commandes?vue=a-appeler');
+    await runRowMenuAction(page, 'Client Reassign', 'Programmer la livraison');
+    await page
+      .getByLabel('Date de livraison', { exact: true })
+      .fill(formatDateInput(addDays(new Date(), 1)));
+    await page.getByLabel('Heure de livraison', { exact: true }).fill(formatTimeInput(10, 15));
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+
+    await page.goto('/commandes?vue=en-livraison');
+    await openActionsMenu(page);
+    await menuItem(page, 'Assigner').click();
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverAId);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+
+    await page.goto('/commandes?vue=en-livraison');
+    const row = page.locator('article').filter({ hasText: 'Client Reassign' });
+    await expect(row.getByText('Affecté à', { exact: false })).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByText('Livreur A Phase11')).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByRole('button', { name: 'Changer le livreur' })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await row.getByRole('button', { name: 'Changer le livreur' }).click();
+    await page.getByLabel('Nouveau livreur', { exact: true }).selectOption(driverBId);
+    await page.getByRole('button', { name: 'Réassigner', exact: true }).click();
+    await expect(row.getByText('Livreur B Phase11')).toBeVisible({ timeout: 15_000 });
+
+    const { data: reassigned, error: reassignedError } = await fixture.admin
+      .from('orders')
+      .select('assigned_driver_id, delivery_state')
+      .eq('id', orderId)
+      .single();
+    expect(reassignedError).toBeNull();
+    expect(reassigned?.delivery_state).toBe('assigned');
+    expect(reassigned?.assigned_driver_id).toBe(driverBId);
+
+    await signIn(page, agent.email, `/commandes/${orderId}`);
+    await expect(page.getByRole('button', { name: 'Modifier', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Changer le livreur' })).toHaveCount(0);
+    await expect(page.getByLabel('Frais de livraison', { exact: true })).toHaveCount(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
