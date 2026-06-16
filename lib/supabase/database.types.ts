@@ -972,6 +972,7 @@ export type Database = {
           created_at_shopify: string | null;
           currency: string;
           customer_id: string | null;
+          delivery_fee_minor: number;
           delivery_state: string | null;
           financial_status: string | null;
           fulfillment_status: string | null;
@@ -1011,6 +1012,7 @@ export type Database = {
           created_at_shopify?: string | null;
           currency?: string;
           customer_id?: string | null;
+          delivery_fee_minor?: number;
           delivery_state?: string | null;
           financial_status?: string | null;
           fulfillment_status?: string | null;
@@ -1050,6 +1052,7 @@ export type Database = {
           created_at_shopify?: string | null;
           currency?: string;
           customer_id?: string | null;
+          delivery_fee_minor?: number;
           delivery_state?: string | null;
           financial_status?: string | null;
           fulfillment_status?: string | null;
@@ -1930,6 +1933,15 @@ export type Database = {
           p_unit_cost?: number;
         };
         Returns: string;
+      };
+      reassign_order_driver: {
+        Args: {
+          p_actor: string;
+          p_new_driver: string;
+          p_note?: string;
+          p_order_id: string;
+        };
+        Returns: undefined;
       };
       rebuild_product_stock: { Args: never; Returns: number };
       receive_purchase_lot: {
