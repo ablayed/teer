@@ -4,6 +4,7 @@ import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import { OrderAmountsEditor } from '@/components/orders/order-amounts-editor';
+import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { Button } from '@/components/ui/button';
 import type { OrderDetail } from '@/lib/actions/orders';
@@ -320,6 +321,15 @@ export function OrderDetailPanel({
             <CodStatusBadge status={currentStatus} />
           </div>
         </section>
+
+        {canEditAmounts ? (
+          <OrderDriverReassign
+            currentDriverId={order.assigned_driver_id}
+            deliveryState={order.delivery_state}
+            drivers={drivers}
+            orderId={order.id}
+          />
+        ) : null}
 
         {isCancelled ? (
           <section className="space-y-2">

@@ -384,7 +384,7 @@ async function writeOrderAuditLog({
   orderId,
   payload,
 }: {
-  action: 'call.logged' | 'order.transition' | 'order.amounts_updated';
+  action: 'call.logged' | 'order.transition' | 'order.amounts_updated' | 'order.driver_reassigned';
   actorUserId: string;
   merchantAccountId: string;
   orderId: string;
@@ -1121,4 +1121,108 @@ export const updateOrderAmountsAction = requireRole('owner', 'manager')
     revalidatePath('/livreurs');
 
     return { ok: true as const, orderId: order.id };
+  });
+
+// Phase 11 — réassignation du livreur. Délègue au RPC SECURITY INVOKER
+// reassign_order_driver (0058) : swap atomique de assigned_driver_id + compensation
+// stock (courier_return X / dispatch Y, qty_reserved INCHANGÉ) si le dispatch est
+// déjà posté ; interdit après livraison. Le retransfert cash/livraison est
+// automatique par dérivation du assigned_driver_id courant. Owner/manager.
+type ReassignOrderDriverArgs = Database['public']['Functions']['reassign_order_driver']['Args'];
+
+function reassignOrderDriverRpc(client: SupabaseServerClient) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'reassign_order_driver',
+    args: ReassignOrderDriverArgs,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>;
+}
+
+function reassignErrorMessage(raw: string): string {
+  if (raw.includes('reassign_not_allowed_in_state')) {
+    return 'Réassignation impossible : la commande est livrée ou clôturée.';
+  }
+  if (raw.includes('reassign_missing_outgoing_driver')) {
+    return 'Aucun livreur sortant à transférer.';
+  }
+  if (raw.includes('driver not found')) {
+    return 'Livreur introuvable pour ce compte.';
+  }
+  if (raw.includes('order_not_found')) {
+    return 'Commande introuvable.';
+  }
+  return 'La réassignation a échoué.';
+}
+
+export const reassignOrderDriverAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'orders.reassign_driver', section: 'orders' })
+  .inputSchema(
+    z.object({
+      orderId: z.string().uuid(),
+      newDriverId: z.string().uuid(),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, merchant_account_id, assigned_driver_id')
+      .eq('id', parsedInput.orderId)
+      .maybeSingle();
+
+    if (orderError) {
+      return {
+        ok: false as const,
+        errorCode: 'update_failed' as const,
+        message: "La commande n'a pas pu être chargée.",
+      };
+    }
+
+    if (!order) {
+      return {
+        ok: false as const,
+        errorCode: 'order_not_found' as const,
+        message: 'Commande introuvable.',
+      };
+    }
+
+    const reassign = reassignOrderDriverRpc(supabase);
+    const { error } = await reassign('reassign_order_driver', {
+      p_order_id: parsedInput.orderId,
+      p_actor: ctx.user.id,
+      p_new_driver: parsedInput.newDriverId,
+    });
+
+    if (error) {
+      return {
+        ok: false as const,
+        errorCode: 'reassign_failed' as const,
+        message: reassignErrorMessage(error.message),
+      };
+    }
+
+    const auditError = await writeOrderAuditLog({
+      action: 'order.driver_reassigned',
+      actorUserId: ctx.user.id,
+      merchantAccountId: order.merchant_account_id,
+      orderId: order.id,
+      payload: {
+        fromDriverId: order.assigned_driver_id,
+        toDriverId: parsedInput.newDriverId,
+      },
+    });
+
+    if (auditError) {
+      return {
+        ok: false as const,
+        errorCode: 'audit_failed' as const,
+        message: 'Réassignation effectuée mais journalisation en échec.',
+      };
+    }
+
+    revalidateOrderPaths(order.id);
+    revalidatePath('/livreurs');
+    revalidatePath('/tableau');
+
+    return { ok: true as const };
   });
