@@ -22,6 +22,7 @@ type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
 
 type OrdersWorkspaceProps = {
   activeView: OrderSavedViewId;
+  canReassign: boolean;
   drivers: ActiveDriverOption[];
   emptyValueLabel: string;
   initialHasMore: boolean;
@@ -37,6 +38,7 @@ type OrdersWorkspaceProps = {
 
 export function OrdersWorkspace({
   activeView,
+  canReassign,
   drivers,
   emptyValueLabel,
   initialHasMore,
@@ -104,6 +106,7 @@ export function OrdersWorkspace({
 
       <OrdersPageLoader
         activeView={displayedView}
+        canReassign={canReassign}
         drivers={driverOptions}
         emptyValueLabel={emptyValueLabel}
         initialHasMore={initialHasMore}

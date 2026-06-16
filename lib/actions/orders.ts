@@ -39,6 +39,7 @@ type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
 
 export type OrderListItem = Pick<
   Tables<'orders'>,
+  | 'assigned_driver_id'
   | 'cod_status'
   | 'call_state'
   | 'created_at'
@@ -206,6 +207,7 @@ function mapPaginatedOrderRow(order: PaginatedOrderRpcRow, role: TeamRole): Orde
     total_amount: order.total_amount,
     currency: order.currency,
     cod_status: order.cod_status,
+    assigned_driver_id: order.assigned_driver_id,
     order_state: order.order_state,
     call_state: order.call_state,
     delivery_state: order.delivery_state,

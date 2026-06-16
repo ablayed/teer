@@ -3,6 +3,7 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
+import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import {
   type OrderListCursor,
@@ -30,6 +31,7 @@ type TransitionSuccess = Extract<TransitionResult, { ok: true }>;
 
 type Props = {
   activeView: OrderSavedViewId;
+  canReassign: boolean;
   drivers: DriverOption[];
   emptyValueLabel: string;
   initialHasMore: boolean;
@@ -74,6 +76,7 @@ function formatOrderAddress(value: Json | null): string | null {
 
 export function OrdersPageLoader({
   activeView,
+  canReassign,
   drivers,
   emptyValueLabel,
   initialHasMore,
@@ -136,6 +139,7 @@ export function OrdersPageLoader({
 
     const nextOrder: OrderListItem = {
       ...previousOrder,
+      assigned_driver_id: result.order.assigned_driver_id,
       call_state: result.order.call_state,
       cash_state: result.order.cash_state,
       cod_status: result.order.cod_status,
@@ -251,6 +255,15 @@ export function OrdersPageLoader({
                   totalAmount: order.total_amount,
                 })}
               />
+              {canReassign && order.assigned_driver_id ? (
+                <OrderDriverReassign
+                  compact
+                  currentDriverId={order.assigned_driver_id}
+                  deliveryState={order.delivery_state}
+                  drivers={drivers}
+                  orderId={order.id}
+                />
+              ) : null}
             </div>
           </div>
         </article>

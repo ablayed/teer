@@ -3,7 +3,7 @@ import { OrdersSearchInput } from '@/components/orders/orders-search-input';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { getActiveDrivers } from '@/lib/actions/drivers';
-import { getMerchantAccount } from '@/lib/actions/merchant';
+import { getMerchantAccount, getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getOrdersPageData } from '@/lib/actions/orders';
 import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
@@ -39,18 +39,34 @@ async function countAllOrders(): Promise<number> {
   return count ?? 0;
 }
 
+// Phase 11 : la réassignation inline dans la liste est réservée owner/manager
+// (le serveur le ré-impose via requireRole sur reassignOrderDriverAction).
+async function canReassignDrivers(): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return false;
+  }
+  const member = await getMerchantMemberForUser(user.id);
+  return member?.role === 'owner' || member?.role === 'manager';
+}
+
 export default async function CommandesPage({ searchParams }: CommandesPageProps) {
   const t = await getTranslations('orders');
   const clientsT = await getTranslations('clients');
   const params = await searchParams;
   const search = normalizeOrderSearch(params.q);
-  const [pageData, shopConnection, merchant, productCatalog, drivers] = await Promise.all([
-    getOrdersPageData({ search, view: params.vue }),
-    getShopConnection(),
-    getMerchantAccount(),
-    getProductCatalogPageData(),
-    getActiveDrivers(),
-  ]);
+  const [pageData, shopConnection, merchant, productCatalog, drivers, canReassign] =
+    await Promise.all([
+      getOrdersPageData({ search, view: params.vue }),
+      getShopConnection(),
+      getMerchantAccount(),
+      getProductCatalogPageData(),
+      getActiveDrivers(),
+      canReassignDrivers(),
+    ]);
   const activeView = pageData.activeView;
   const productOptions = productCatalog.ok
     ? productCatalog.products
@@ -116,6 +132,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       {showWorkspace ? (
         <OrdersWorkspace
           activeView={activeView}
+          canReassign={canReassign}
           drivers={drivers}
           emptyValueLabel={t('table.emptyValue')}
           initialHasMore={pageData.hasMore}

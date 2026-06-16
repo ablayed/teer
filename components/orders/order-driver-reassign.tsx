@@ -9,6 +9,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
 
 type OrderDriverReassignProps = {
+  // compact : rendu dense pour une ligne de liste (sans le titre de section).
+  compact?: boolean;
   currentDriverId: string | null;
   deliveryState: string | null;
   drivers: DriverOption[];
@@ -20,6 +22,7 @@ type OrderDriverReassignProps = {
 const REASSIGNABLE_STATES = ['scheduled', 'assigned', 'out_for_delivery'];
 
 export function OrderDriverReassign({
+  compact = false,
   currentDriverId,
   deliveryState,
   drivers,
@@ -68,8 +71,8 @@ export function OrderDriverReassign({
   }
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase text-muted">Livreur</h2>
+    <section className="w-full space-y-3">
+      {compact ? null : <h2 className="text-sm font-semibold uppercase text-muted">Livreur</h2>}
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-text">
