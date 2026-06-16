@@ -17,6 +17,7 @@ import {
   resolveOrderDimensions,
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
+import { cashCollectableMinor } from '@/lib/finance/cash';
 import {
   type CallOutcome,
   callOutcomes,
@@ -383,7 +384,7 @@ async function writeOrderAuditLog({
   orderId,
   payload,
 }: {
-  action: 'call.logged' | 'order.transition';
+  action: 'call.logged' | 'order.transition' | 'order.amounts_updated';
   actorUserId: string;
   merchantAccountId: string;
   orderId: string;
@@ -1029,4 +1030,95 @@ export const updateCodStatusAction = requireRole('owner', 'manager', 'agent')
     }
 
     return { ok: true as const };
+  });
+
+// Phase 11 — édition des montants (total + frais de livraison) + ajustement de la
+// date/heure de livraison. CE N'EST PAS une transition d'état : aucune des 4
+// dimensions n'est touchée. Owner/manager uniquement (l'agent ne voit/édite pas
+// les montants). RLS orders_update (WITH CHECK owner/manager) couvre l'écriture.
+//
+// cash_collectable_minor : rejoue la logique canal de transition_order via
+// l'UNIQUE source canonique cashCollectableMinor() (lib/finance/cash.ts — même
+// helper que le dashboard / la consolidation cash, même set d'enums canal) :
+//   * déjà encaissé (collected/remitted/discrepancy) → NON réécrit (le cash figé
+//     reste, l'écart vs le nouveau total se reflète via le mécanisme discrepancy) ;
+//   * sinon → prépayé (WAVE/ORANGE_MONEY/FREE_MONEY) ⇒ 0 ; COD ⇒ round(total).
+const COLLECTED_CASH_STATES = ['collected', 'remitted', 'discrepancy'] as const;
+
+export const updateOrderAmountsAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'orders.update_amounts', section: 'orders' })
+  .inputSchema(
+    z.object({
+      orderId: z.string().uuid(),
+      totalAmount: z.number().int().min(0),
+      deliveryFeeMinor: z.number().int().min(0),
+      scheduledFor: z.string().datetime().optional(),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(
+        'id, merchant_account_id, cash_state, payment_channel_at_delivery, cash_collectable_minor',
+      )
+      .eq('id', parsedInput.orderId)
+      .maybeSingle();
+
+    if (orderError) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    if (!order) {
+      return { ok: false as const, errorCode: 'order_not_found' as const };
+    }
+
+    const alreadyCollected = (COLLECTED_CASH_STATES as readonly string[]).includes(
+      order.cash_state ?? '',
+    );
+    // stored=null force le recalcul canonique (canal + nouveau total) ; déjà
+    // encaissé → on passe le cash figé pour qu'il soit conservé tel quel.
+    const nextCashCollectable = cashCollectableMinor({
+      cashCollectableMinor: alreadyCollected ? order.cash_collectable_minor : null,
+      paymentChannel: order.payment_channel_at_delivery,
+      totalAmount: parsedInput.totalAmount,
+    });
+
+    const patch: TablesUpdate<'orders'> = {
+      total_amount: parsedInput.totalAmount,
+      delivery_fee_minor: parsedInput.deliveryFeeMinor,
+      cash_collectable_minor: nextCashCollectable,
+      ...(parsedInput.scheduledFor ? { scheduled_for: parsedInput.scheduledFor } : {}),
+    };
+
+    const { error: updateError } = await supabase.from('orders').update(patch).eq('id', order.id);
+
+    if (updateError) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    const auditError = await writeOrderAuditLog({
+      action: 'order.amounts_updated',
+      actorUserId: ctx.user.id,
+      merchantAccountId: order.merchant_account_id,
+      orderId: order.id,
+      payload: {
+        totalAmount: parsedInput.totalAmount,
+        deliveryFeeMinor: parsedInput.deliveryFeeMinor,
+        cashCollectableMinor: nextCashCollectable,
+        scheduledForChanged: Boolean(parsedInput.scheduledFor),
+      },
+    });
+
+    if (auditError) {
+      return { ok: false as const, errorCode: 'audit_failed' as const };
+    }
+
+    revalidateOrderPaths(order.id);
+    revalidatePath('/tableau');
+    revalidatePath('/finances');
+    revalidatePath('/livreurs');
+
+    return { ok: true as const, orderId: order.id };
   });

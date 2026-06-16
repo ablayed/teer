@@ -3,6 +3,7 @@
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
+import { OrderAmountsEditor } from '@/components/orders/order-amounts-editor';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { Button } from '@/components/ui/button';
 import type { OrderDetail } from '@/lib/actions/orders';
@@ -22,6 +23,9 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 type OrderDetailPanelProps = {
+  // Phase 11 : édition des montants (total + frais de livraison) réservée
+  // owner/manager — masquée à l'agent (qui ne voit pas delivery_fee_minor).
+  canEditAmounts: boolean;
   drivers: DriverOption[];
   mode: 'page' | 'sheet';
   onClose?: () => void;
@@ -119,6 +123,7 @@ function toOrderStatus(value: string): OrderStatus {
 }
 
 export function OrderDetailPanel({
+  canEditAmounts,
   drivers,
   mode,
   onClose,
@@ -291,18 +296,28 @@ export function OrderDetailPanel({
           )}
         </section>
 
-        <section className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-border p-4">
+        {canEditAmounts ? (
+          <OrderAmountsEditor
+            currency={order.currency}
+            deliveryFeeMinor={order.delivery_fee_minor}
+            deliveryState={order.delivery_state}
+            orderId={order.id}
+            scheduledFor={order.scheduled_for}
+            totalAmount={order.total_amount}
+          />
+        ) : (
+          <section className="rounded-lg border border-border p-4">
             <p className="text-sm text-muted">Total</p>
-            <p className="mt-1 text-xl font-semibold">
+            <p className="mt-1 font-mono text-xl font-semibold tabular-nums">
               {formatMoney(order.total_amount, order.currency)}
             </p>
-          </div>
-          <div className="rounded-lg border border-border p-4">
-            <p className="text-sm text-muted">Statut COD</p>
-            <div className="mt-2">
-              <CodStatusBadge status={currentStatus} />
-            </div>
+          </section>
+        )}
+
+        <section className="rounded-lg border border-border p-4">
+          <p className="text-sm text-muted">Statut COD</p>
+          <div className="mt-2">
+            <CodStatusBadge status={currentStatus} />
           </div>
         </section>
 

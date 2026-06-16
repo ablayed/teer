@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { type MouseEvent, useCallback, useEffect } from 'react';
 
 type OrderSideSheetProps = {
+  canEditAmounts: boolean;
   drivers: DriverOption[];
   order: OrderDetail;
   shopName: string;
@@ -22,7 +23,13 @@ const sheetTransition = {
   ease: [0.22, 1, 0.36, 1],
 } as const;
 
-export function OrderSideSheet({ drivers, order, shopName, whatsappLabels }: OrderSideSheetProps) {
+export function OrderSideSheet({
+  canEditAmounts,
+  drivers,
+  order,
+  shopName,
+  whatsappLabels,
+}: OrderSideSheetProps) {
   const router = useRouter();
 
   const close = useCallback(() => {
@@ -68,6 +75,7 @@ export function OrderSideSheet({ drivers, order, shopName, whatsappLabels }: Ord
           transition={sheetTransition}
         >
           <OrderDetailPanel
+            canEditAmounts={canEditAmounts}
             drivers={drivers}
             mode="sheet"
             onClose={close}
