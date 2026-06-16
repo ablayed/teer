@@ -12,14 +12,20 @@ const TEER_MARCHAND = {
   clientId: 'marchand_client',
   clientSecret: 'marchand_secret',
 };
+const TEER_KOBA = {
+  label: 'teer-koba' as const,
+  clientId: 'koba_client',
+  clientSecret: 'koba_secret',
+};
 
 describe('createShopifyAppRegistry', () => {
-  it('routes each client_id to the matching app config (Dev, Pilote, Marchand)', () => {
-    const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND]);
+  it('routes each client_id to the matching app config (Dev, Pilote, Marchand, Koba)', () => {
+    const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND, TEER_KOBA]);
 
     const dev = registry.getByClientId('dev_client');
     const pilote = registry.getByClientId('4a2cd2a0befe5d828e67b436edad7d5d');
     const marchand = registry.getByClientId('marchand_client');
+    const koba = registry.getByClientId('koba_client');
 
     expect(dev?.label).toBe('teer-dev');
     expect(dev?.clientSecret).toBe('dev_secret');
@@ -27,14 +33,19 @@ describe('createShopifyAppRegistry', () => {
     expect(pilote?.clientSecret).toBe('pilote_secret');
     expect(marchand?.label).toBe('teer-marchand');
     expect(marchand?.clientSecret).toBe('marchand_secret');
+    expect(koba?.label).toBe('teer-koba');
+    expect(koba?.clientSecret).toBe('koba_secret');
     expect(dev?.clientSecret).not.toBe(pilote?.clientSecret);
     expect(dev?.clientSecret).not.toBe(marchand?.clientSecret);
+    expect(dev?.clientSecret).not.toBe(koba?.clientSecret);
     expect(pilote?.clientSecret).not.toBe(marchand?.clientSecret);
-    expect(registry.all()).toHaveLength(3);
+    expect(pilote?.clientSecret).not.toBe(koba?.clientSecret);
+    expect(marchand?.clientSecret).not.toBe(koba?.clientSecret);
+    expect(registry.all()).toHaveLength(4);
   });
 
   it('rejects an unknown client_id', () => {
-    const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND]);
+    const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND, TEER_KOBA]);
 
     expect(registry.getByClientId('inconnu')).toBeNull();
     expect(registry.getByClientId(null)).toBeNull();
@@ -43,7 +54,7 @@ describe('createShopifyAppRegistry', () => {
   });
 
   it('exposes the common scopes on each app', () => {
-    const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND]);
+    const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND, TEER_KOBA]);
 
     expect(registry.getByClientId('dev_client')?.scopes).toBe(
       'read_orders,read_customers,read_products',
@@ -51,17 +62,17 @@ describe('createShopifyAppRegistry', () => {
   });
 
   it('uses Teer Dev as the default app (retrocompat)', () => {
-    // Meme si Pilote et Marchand sont listes avant, le defaut reste Teer Dev.
-    const registry = createShopifyAppRegistry([TEER_PILOTE, TEER_MARCHAND, TEER_DEV]);
+    // Meme si Pilote, Marchand et Koba sont listes avant, le defaut reste Teer Dev.
+    const registry = createShopifyAppRegistry([TEER_PILOTE, TEER_MARCHAND, TEER_KOBA, TEER_DEV]);
 
     expect(registry.getDefault()?.label).toBe('teer-dev');
   });
 
   it('falls back to the first registered app when Teer Dev is absent', () => {
-    const registry = createShopifyAppRegistry([TEER_PILOTE, TEER_MARCHAND]);
+    const registry = createShopifyAppRegistry([TEER_PILOTE, TEER_MARCHAND, TEER_KOBA]);
 
     expect(registry.getDefault()?.label).toBe('teer-pilote');
-    expect(registry.all()).toHaveLength(2);
+    expect(registry.all()).toHaveLength(3);
   });
 
   it('skips an app whose credentials are incomplete or missing', () => {
@@ -69,10 +80,12 @@ describe('createShopifyAppRegistry', () => {
       TEER_DEV,
       { label: 'teer-pilote', clientId: 'pilote_only_id', clientSecret: undefined },
       { label: 'teer-marchand', clientId: undefined, clientSecret: 'marchand_only_secret' },
+      { label: 'teer-koba', clientId: 'koba_only_id', clientSecret: undefined },
     ]);
 
     expect(registry.getByClientId('pilote_only_id')).toBeNull();
     expect(registry.getByClientId('marchand_only_secret')).toBeNull();
+    expect(registry.getByClientId('koba_only_id')).toBeNull();
     expect(registry.all()).toHaveLength(1);
     expect(registry.all()[0]?.label).toBe('teer-dev');
   });
@@ -91,7 +104,7 @@ describe('createShopifyAppRegistry', () => {
 // du client_id stocke, sinon on retombe sur l'app par defaut (Teer Dev). Garantit la NON-REGRESSION
 // des boutiques existantes (shopify_client_id = Teer Dev apres backfill, ou null pour un legacy).
 describe('resolution par boutique (non-regression Teer Dev)', () => {
-  const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND]);
+  const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND, TEER_KOBA]);
   const resolveForShop = (clientId: string | null | undefined) =>
     registry.getByClientId(clientId) ?? registry.getDefault();
 
@@ -101,6 +114,10 @@ describe('resolution par boutique (non-regression Teer Dev)', () => {
 
   it('resout une boutique Teer Marchand vers les credentials Marchand', () => {
     expect(resolveForShop(TEER_MARCHAND.clientId)?.label).toBe('teer-marchand');
+  });
+
+  it('resout une boutique Teer Koba vers les credentials Koba', () => {
+    expect(resolveForShop(TEER_KOBA.clientId)?.label).toBe('teer-koba');
   });
 
   it('resout une boutique Teer Dev vers les credentials Dev', () => {
