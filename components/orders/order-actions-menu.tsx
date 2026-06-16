@@ -10,7 +10,10 @@ import {
 import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { Button } from '@/components/ui/button';
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
-import type { TransitionAction } from '@/lib/domain/order-transition-actions';
+import {
+  type TransitionAction,
+  visibleAllowedActions,
+} from '@/lib/domain/order-transition-actions';
 import { cn } from '@/lib/utils';
 import { ChevronDown, Phone } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
@@ -84,8 +87,10 @@ export function OrderActionsMenu({
   const [callDialogOpen, setCallDialogOpen] = useState(false);
   const onTransitionSuccessRef = useRef(onTransitionSuccess);
 
-  const transitionEntries = transitionMenuOrder.filter((action) => allowedActions.includes(action));
-  const canLogCall = allowedActions.includes('journaliser_appel');
+  // Phase 11 : « programmer » supplante « confirmer » dans le dropdown.
+  const visibleActions = visibleAllowedActions(allowedActions);
+  const transitionEntries = transitionMenuOrder.filter((action) => visibleActions.includes(action));
+  const canLogCall = visibleActions.includes('journaliser_appel');
   const canDispatch =
     Boolean(dispatchWhatsAppUrl) &&
     (deliveryState === 'assigned' || deliveryState === 'out_for_delivery');

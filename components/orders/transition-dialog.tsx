@@ -37,17 +37,27 @@ function todayInputValue(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-// A <input type="date"> yields a local YYYY-MM-DD. We anchor it at local noon so
-// the resulting UTC instant lands on the same calendar day for any real timezone
-// (the "À livrer aujourd'hui" view compares scheduled_for::date to today).
-function dateInputToIso(value: string): string | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {
+// Phase 11 : la programmation porte une date ET une heure de livraison. On
+// combine le <input type="date"> (YYYY-MM-DD) et le <input type="time"> (HH:MM)
+// en un instant local → ISO. L'heure réelle choisie reste sur le bon jour
+// calendaire local (la vue « À livrer aujourd'hui » compare scheduled_for::date).
+function dateTimeInputToIso(dateValue: string, timeValue: string): string | null {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(timeValue);
+  if (!dateMatch || !timeMatch) {
     return null;
   }
 
-  const [, year, month, day] = match;
-  const date = new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0);
+  const [, year, month, day] = dateMatch;
+  const [, hour, minute] = timeMatch;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+  );
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
@@ -67,6 +77,7 @@ export function TransitionDialog({
   const fieldId = useId();
   const [driverId, setDriverId] = useState('');
   const [date, setDate] = useState(todayInputValue);
+  const [time, setTime] = useState('12:00');
   const [reasons, setReasons] = useState<Set<CancelReason>>(new Set());
   const [note, setNote] = useState('');
 
@@ -102,7 +113,7 @@ export function TransitionDialog({
     ? Boolean(driverId)
     : isCancel
       ? reasons.size > 0
-      : Boolean(dateInputToIso(date));
+      : Boolean(dateTimeInputToIso(date, time));
 
   function handleConfirm() {
     if (isAssign) {
@@ -124,7 +135,7 @@ export function TransitionDialog({
       return;
     }
 
-    const scheduledFor = dateInputToIso(date);
+    const scheduledFor = dateTimeInputToIso(date, time);
     if (!scheduledFor) {
       return;
     }
@@ -203,14 +214,25 @@ export function TransitionDialog({
             ) : null}
           </div>
         ) : (
-          <div className="space-y-2">
-            <Label htmlFor={fieldId}>Date de livraison</Label>
-            <Input
-              id={fieldId}
-              onChange={(event) => setDate(event.target.value)}
-              type="date"
-              value={date}
-            />
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor={fieldId}>Date de livraison</Label>
+              <Input
+                id={fieldId}
+                onChange={(event) => setDate(event.target.value)}
+                type="date"
+                value={date}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
+              <Input
+                id={`${fieldId}-time`}
+                onChange={(event) => setTime(event.target.value)}
+                type="time"
+                value={time}
+              />
+            </div>
           </div>
         )}
 

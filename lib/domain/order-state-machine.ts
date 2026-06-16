@@ -23,8 +23,10 @@ export const orderStatusLabels: Record<OrderStatus, string> = {
 };
 
 const legalTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
-  A_APPELER: ['TENTEE', 'CONFIRMEE', 'REFUSEE', 'ANNULEE'],
-  TENTEE: ['TENTEE', 'CONFIRMEE', 'REFUSEE', 'ANNULEE', 'A_APPELER'],
+  // Phase 11 : PROGRAMMEE ajoutée comme cible directe (action « programmer » =
+  // confirmation + programmation fusionnées depuis « À appeler »/« Tentée »).
+  A_APPELER: ['TENTEE', 'CONFIRMEE', 'PROGRAMMEE', 'REFUSEE', 'ANNULEE'],
+  TENTEE: ['TENTEE', 'CONFIRMEE', 'PROGRAMMEE', 'REFUSEE', 'ANNULEE', 'A_APPELER'],
   CONFIRMEE: ['PROGRAMMEE', 'ANNULEE', 'REFUSEE'],
   PROGRAMMEE: ['EN_LIVRAISON', 'ANNULEE', 'REFUSEE'],
   EN_LIVRAISON: ['LIVREE', 'REFUSEE', 'ANNULEE'],

@@ -69,7 +69,7 @@ describe('order state dimensions', () => {
   it('computes allowed actions from dimensions instead of legacy labels alone', () => {
     expect(
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('A_APPELER'), 'agent'),
-    ).toEqual(['journaliser_appel', 'confirmer']);
+    ).toEqual(['journaliser_appel', 'confirmer', 'programmer']);
     expect(
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('PROGRAMMEE'), 'agent'),
     ).toEqual(['assigner', 'deconfirmer']);

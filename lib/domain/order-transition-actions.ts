@@ -453,7 +453,16 @@ export function getAllowedTransitionActionsForDimensions(
             (dimensions.callState === 'to_call' || dimensions.callState === 'callback')
           );
         case 'programmer':
-          return dimensions.callState === 'validated' && dimensions.deliveryState === 'unassigned';
+          // Phase 11 : « programmer » fusionne confirmation + programmation.
+          // Légale dès « À appeler »/« Tentée » (to_call/callback) ET depuis une
+          // commande déjà confirmée (validated), tant que le stock est en entrepôt
+          // (unassigned). buildTransitionDimensionPatch pose validated+scheduled.
+          return (
+            (dimensions.callState === 'to_call' ||
+              dimensions.callState === 'callback' ||
+              dimensions.callState === 'validated') &&
+            dimensions.deliveryState === 'unassigned'
+          );
         case 'assigner':
           return dimensions.callState === 'validated' && dimensions.deliveryState === 'scheduled';
         case 'livrer':
@@ -468,6 +477,18 @@ export function getAllowedTransitionActionsForDimensions(
       }
     })
     .map((item) => item.action);
+}
+
+// Phase 11 : « programmer » remplace « confirmer » dans les surfaces d'action
+// (dropdown, kanban). confirmer reste légale au niveau moteur (chemins inline par
+// target via getTransitionActionForTarget, rétro-compat CONFIRMEE) mais n'est
+// jamais proposée à l'utilisateur quand programmer l'est — et programmer l'est
+// dans TOUS les états où confirmer l'est (to_call/callback + unassigned).
+export function visibleAllowedActions(actions: TransitionAction[]): TransitionAction[] {
+  if (!actions.includes('programmer')) {
+    return actions;
+  }
+  return actions.filter((action) => action !== 'confirmer');
 }
 
 export function buildTransitionDimensionPatch(

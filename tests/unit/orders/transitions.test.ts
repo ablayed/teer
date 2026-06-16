@@ -2,14 +2,18 @@ import { transitionInputSchema } from '@/lib/actions/transition-input-schema';
 import {
   getAllowedTransitionActions,
   getTransitionActionForTarget,
+  visibleAllowedActions,
 } from '@/lib/domain/order-transition-actions';
 import { describe, expect, it } from 'vitest';
 
 describe('server transition actions', () => {
   it('returns only legal agent actions for the current COD status', () => {
+    // Phase 11 : « programmer » est désormais légale dès « À appeler » (confirm
+    // + programmation fusionnés). « confirmer » reste au niveau moteur.
     expect(getAllowedTransitionActions('A_APPELER', 'agent')).toEqual([
       'journaliser_appel',
       'confirmer',
+      'programmer',
     ]);
     // Lot B : déconfirmer est légale dès qu'une commande ouverte est validée
     // et pré-dispatch (unassigned/scheduled) — agent inclus.
@@ -47,6 +51,34 @@ describe('server transition actions', () => {
     // Lot B : les actions reverse ne sont jamais résolues par target (sinon
     // « A_APPELER » deviendrait actionnable via les chemins inline status).
     expect(getTransitionActionForTarget('A_APPELER', 'owner')).toBeNull();
+  });
+
+  describe('Phase 11 — « programmer » supplante « confirmer » dans les surfaces', () => {
+    it('expose programmer (et masque confirmer) dès « À appeler »', () => {
+      const actions = getAllowedTransitionActions('A_APPELER', 'agent');
+      expect(actions).toContain('programmer');
+      expect(actions).toContain('confirmer');
+
+      // La surface utilisateur masque confirmer quand programmer est disponible.
+      const visible = visibleAllowedActions(actions);
+      expect(visible).toContain('programmer');
+      expect(visible).not.toContain('confirmer');
+      expect(visible).toEqual(['journaliser_appel', 'programmer']);
+    });
+
+    it('laisse confirmer intacte quand programmer est absente', () => {
+      expect(visibleAllowedActions(['journaliser_appel', 'confirmer'])).toEqual([
+        'journaliser_appel',
+        'confirmer',
+      ]);
+    });
+
+    it('programme une commande déjà confirmée (validated) sans confirmer redondant', () => {
+      expect(getAllowedTransitionActions('CONFIRMEE', 'agent')).toEqual([
+        'programmer',
+        'deconfirmer',
+      ]);
+    });
   });
 
   describe('Lot B — déconfirmer / désannuler', () => {

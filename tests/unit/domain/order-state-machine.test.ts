@@ -11,8 +11,8 @@ import {
 import { describe, expect, it } from 'vitest';
 
 const expectedTransitions: Record<OrderStatus, OrderStatus[]> = {
-  A_APPELER: ['TENTEE', 'CONFIRMEE', 'REFUSEE', 'ANNULEE'],
-  TENTEE: ['TENTEE', 'CONFIRMEE', 'REFUSEE', 'ANNULEE', 'A_APPELER'],
+  A_APPELER: ['TENTEE', 'CONFIRMEE', 'PROGRAMMEE', 'REFUSEE', 'ANNULEE'],
+  TENTEE: ['TENTEE', 'CONFIRMEE', 'PROGRAMMEE', 'REFUSEE', 'ANNULEE', 'A_APPELER'],
   CONFIRMEE: ['PROGRAMMEE', 'ANNULEE', 'REFUSEE'],
   PROGRAMMEE: ['EN_LIVRAISON', 'ANNULEE', 'REFUSEE'],
   EN_LIVRAISON: ['LIVREE', 'REFUSEE', 'ANNULEE'],

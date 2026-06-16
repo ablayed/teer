@@ -11,7 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import type { OrderListItem } from '@/lib/actions/orders';
 import { performTransition } from '@/lib/actions/transitions';
 import type { OrderStatus } from '@/lib/domain/order-state-machine';
-import type { TransitionAction } from '@/lib/domain/order-transition-actions';
+import {
+  type TransitionAction,
+  visibleAllowedActions,
+} from '@/lib/domain/order-transition-actions';
 import { cn } from '@/lib/utils';
 import { MotionConfig, motion, useReducedMotion } from 'framer-motion';
 import { MoreHorizontal } from 'lucide-react';
@@ -234,8 +237,10 @@ function MobileTransitionMenu({
   order: OrderListItem;
 }) {
   const [open, setOpen] = useState(false);
+  // Phase 11 : « programmer » supplante « confirmer » dans le menu.
+  const actions = visibleAllowedActions(order.allowedActions);
 
-  if (order.allowedActions.length === 0) {
+  if (actions.length === 0) {
     return (
       <Badge className="rounded-full" tone="neutral">
         {labels.closed}
@@ -266,7 +271,7 @@ function MobileTransitionMenu({
           }}
           role="menu"
         >
-          {order.allowedActions.map((action) => (
+          {actions.map((action) => (
             <button
               className="flex min-h-11 w-full items-center rounded-sm px-3 text-left text-sm text-text hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
               key={action}
