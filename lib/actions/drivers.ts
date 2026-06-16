@@ -208,7 +208,9 @@ export async function getDriverCashConsolidation(driverId: string): Promise<Driv
 
   const { data: orders, error: ordersError } = await admin
     .from('orders')
-    .select('id, cash_state, cash_collectable_minor, payment_channel_at_delivery, total_amount')
+    .select(
+      'id, cash_state, cash_collectable_minor, delivery_fee_minor, payment_channel_at_delivery, total_amount',
+    )
     .eq('merchant_account_id', merchantAccountId)
     .eq('assigned_driver_id', driverId);
 
@@ -236,6 +238,7 @@ export async function getDriverCashConsolidation(driverId: string): Promise<Driv
 
   const consolidation = deriveDriverCashConsolidation({
     orders: (orders ?? []).map((o) => ({
+      deliveryFeeMinor: o.delivery_fee_minor,
       cashState: o.cash_state,
       cashCollectableMinor: o.cash_collectable_minor,
       paymentChannel: o.payment_channel_at_delivery,

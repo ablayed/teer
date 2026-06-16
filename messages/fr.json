@@ -223,6 +223,17 @@
     "greeting": "Bonjour, {name}",
     "tableauPlaceholder": "Phase 0 OK. Le tableau arrive en semaine 11."
   },
+  "livreurs": {
+    "cash": {
+      "due": "Dû / attendu",
+      "collectedTotal": "Cash total collecté",
+      "deliveryFees": "Frais de livraison",
+      "remitted": "Remis",
+      "cashOnHand": "Cash chez le livreur",
+      "remittanceTitle": "Enregistrer un versement (remise globale)",
+      "discrepancy": "Écart non résolu : {amount}"
+    }
+  },
   "tableau": {
     "title": "Tableau",
     "greeting": "Bonjour {name}",

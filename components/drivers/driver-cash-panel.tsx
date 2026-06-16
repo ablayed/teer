@@ -3,6 +3,7 @@
 import { DriverRemittanceForm } from '@/components/drivers/driver-remittance-form';
 import { type DriverCashData, getDriverCashConsolidation } from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
+import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
 function statCard(label: string, value: string, accent?: boolean) {
@@ -31,6 +32,7 @@ type Props = {
 // dont le re-render RSC à travers ce composant client était racey (~27% de ratés
 // en build prod → chiffre cash périmé jusqu'au rechargement).
 export function DriverCashPanel({ driverId, initialCash }: Props) {
+  const t = useTranslations('livreurs.cash');
   const [cash, setCash] = useState(initialCash);
   const [, startTransition] = useTransition();
 
@@ -48,19 +50,20 @@ export function DriverCashPanel({ driverId, initialCash }: Props) {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {statCard('Dû / attendu', formatMoney(c.expectedMinor, 'XOF'))}
-        {statCard('Collecté', formatMoney(c.collectedMinor, 'XOF'))}
-        {statCard('Remis', formatMoney(c.remittedMinor, 'XOF'))}
-        {statCard('Cash chez le livreur', formatMoney(c.cashOnHandMinor, 'XOF'), true)}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {statCard(t('due'), formatMoney(c.expectedMinor, 'XOF'))}
+        {statCard(t('collectedTotal'), formatMoney(c.collectedMinor, 'XOF'))}
+        {statCard(t('deliveryFees'), formatMoney(c.deliveryFeesMinor, 'XOF'))}
+        {statCard(t('remitted'), formatMoney(c.remittedMinor, 'XOF'))}
+        {statCard(t('cashOnHand'), formatMoney(c.cashOnHandMinor, 'XOF'), true)}
       </div>
       {c.discrepancyMinor > 0 && (
         <p className="text-sm font-medium text-danger">
-          Écart non résolu : {formatMoney(c.discrepancyMinor, 'XOF')}
+          {t('discrepancy', { amount: formatMoney(c.discrepancyMinor, 'XOF') })}
         </p>
       )}
       <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
-        <p className="mb-3 text-sm font-medium">Enregistrer un versement (remise globale)</p>
+        <p className="mb-3 text-sm font-medium">{t('remittanceTitle')}</p>
         <DriverRemittanceForm driverId={driverId} onSettled={refreshCash} />
       </div>
     </>
