@@ -2,7 +2,12 @@
 
 import { PendingSpinner } from '@/components/app-shell/pending-spinner';
 import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
-import type { DriverCashData, DriverPerformanceData, DriverStockData } from '@/lib/actions/drivers';
+import type {
+  DriverCashData,
+  DriverPerformanceData,
+  DriverStockData,
+  SettlementHistoryRow,
+} from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { Phone } from 'lucide-react';
@@ -18,6 +23,7 @@ type DriverRow = { id: string; full_name: string; phone: string; is_active: bool
 
 type DriverDetail = {
   cash: DriverCashData;
+  history: SettlementHistoryRow[];
   orders: { cod_status: string; id: string; order_number: string | null; total_amount: number }[];
   perf: DriverPerformanceData;
   stock: DriverStockData;
@@ -232,7 +238,12 @@ export function DriversWorkspace({
               </div>
               {/* key={selected.id} : on remonte le panneau au changement de livreur
                   pour réinitialiser son état cash depuis la donnée serveur fraîche. */}
-              <DriverCashPanel driverId={selected.id} initialCash={detail.cash} key={selected.id} />
+              <DriverCashPanel
+                driverId={selected.id}
+                initialCash={detail.cash}
+                initialHistory={detail.history}
+                key={selected.id}
+              />
             </section>
 
             <section className="space-y-3">

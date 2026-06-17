@@ -1,7 +1,13 @@
 'use client';
 
 import { DriverRemittanceForm } from '@/components/drivers/driver-remittance-form';
-import { type DriverCashData, getDriverCashConsolidation } from '@/lib/actions/drivers';
+import { SettlementHistoryTable } from '@/components/drivers/settlement-history';
+import {
+  type DriverCashData,
+  type SettlementHistoryRow,
+  getDriverCashConsolidation,
+  getDriverSettlementHistory,
+} from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
@@ -22,6 +28,7 @@ function statCard(label: string, value: string, accent?: boolean) {
 type Props = {
   driverId: string;
   initialCash: DriverCashData;
+  initialHistory: SettlementHistoryRow[];
 };
 
 // Panneau cash d'un livreur. Après une remise, on relit la conso FRAÎCHE côté
@@ -31,14 +38,22 @@ type Props = {
 // drift, cf. piège matchesOrderSavedView). On NE dépend PAS de router.refresh()
 // dont le re-render RSC à travers ce composant client était racey (~27% de ratés
 // en build prod → chiffre cash périmé jusqu'au rechargement).
-export function DriverCashPanel({ driverId, initialCash }: Props) {
+export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props) {
   const t = useTranslations('livreurs.cash');
   const [cash, setCash] = useState(initialCash);
+  const [history, setHistory] = useState(initialHistory);
   const [, startTransition] = useTransition();
 
+  // Après une remise : relit la conso cash ET l'historique des versements FRAIS
+  // côté serveur (même source que le RSC) → aucun drift, pas de router.refresh().
   const refreshCash = () => {
     startTransition(async () => {
-      setCash(await getDriverCashConsolidation(driverId));
+      const [nextCash, nextHistory] = await Promise.all([
+        getDriverCashConsolidation(driverId),
+        getDriverSettlementHistory(driverId),
+      ]);
+      setCash(nextCash);
+      if (nextHistory.ok) setHistory(nextHistory.rows);
     });
   };
 
@@ -63,6 +78,10 @@ export function DriverCashPanel({ driverId, initialCash }: Props) {
       <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
         <p className="mb-3 text-sm font-medium">{t('remittanceTitle')}</p>
         <DriverRemittanceForm driverId={driverId} onSettled={refreshCash} />
+      </div>
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Historique des versements</p>
+        <SettlementHistoryTable rows={history} />
       </div>
     </>
   );

@@ -1,10 +1,14 @@
 import { DriversWorkspace } from '@/components/drivers/drivers-workspace';
+import { SettlementHistoryTable } from '@/components/drivers/settlement-history';
 import {
   type DriverCashData,
   type DriverPerformanceData,
   type DriverStockData,
+  type SettlementHistoryRow,
+  getAllSettlementHistory,
   getDriverCashConsolidation,
   getDriverPerformance,
+  getDriverSettlementHistory,
   getDriverStockOnHand,
 } from '@/lib/actions/drivers';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -88,15 +92,17 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
   let detail: {
     stock: DriverStockData;
     cash: DriverCashData;
+    history: SettlementHistoryRow[];
     perf: DriverPerformanceData;
     orders: { id: string; order_number: string | null; cod_status: string; total_amount: number }[];
   } | null = null;
 
   if (selected) {
     const range = periodRange(period);
-    const [stock, cash, perf, ordersResult] = await Promise.all([
+    const [stock, cash, history, perf, ordersResult] = await Promise.all([
       getDriverStockOnHand(selected.id),
       getDriverCashConsolidation(selected.id),
+      getDriverSettlementHistory(selected.id),
       getDriverPerformance(selected.id, range),
       supabase
         .from('orders')
@@ -110,6 +116,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     detail = {
       stock,
       cash,
+      history: history.ok ? history.rows : [],
       perf,
       orders: (ordersResult.data ?? []) as {
         id: string;
@@ -119,6 +126,8 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
       }[],
     };
   }
+
+  const globalHistory = await getAllSettlementHistory();
 
   return (
     <main className="space-y-6" id="main">
@@ -136,6 +145,18 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
         selected={selected}
         selectedId={selectedId}
       />
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Versements globaux</h2>
+        <p className="text-sm text-muted">
+          Tous les versements enregistrés, tous livreurs confondus, du plus récent au plus ancien.
+        </p>
+        <SettlementHistoryTable
+          emptyLabel="Aucun versement enregistré pour le moment."
+          rows={globalHistory.ok ? globalHistory.rows : []}
+          showDriver
+        />
+      </section>
     </main>
   );
 }

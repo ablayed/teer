@@ -218,3 +218,104 @@ export async function getDriverPerformance(
 
   return { ok: true, performance };
 }
+
+// Résout les noms d'auteur (created_by) via l'auth admin, dédupliqués. Few authors
+// en pratique (owner + managers) → un getUserById par id distinct suffit.
+async function resolveAuthorNames(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  userIds: (string | null)[],
+): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const distinct = [...new Set(userIds.filter((id): id is string => Boolean(id)))];
+  await Promise.all(
+    distinct.map(async (id) => {
+      const { data } = await admin.auth.admin.getUserById(id);
+      const meta = (data.user?.user_metadata ?? {}) as Record<string, unknown>;
+      const fromMeta =
+        (typeof meta.full_name === 'string' && meta.full_name) ||
+        (typeof meta.name === 'string' && meta.name) ||
+        '';
+      names.set(id, fromMeta || data.user?.email || 'Inconnu');
+    }),
+  );
+  return names;
+}
+
+export type SettlementHistoryRow = {
+  id: string;
+  settledAt: string; // ISO
+  amountMinor: number; // peut être négatif (reprise de retour, 0056)
+  method: string;
+  driverId: string | null;
+  driverName: string;
+  authorName: string;
+};
+
+export type SettlementHistoryData =
+  | { ok: true; rows: SettlementHistoryRow[] }
+  | { ok: false; message: string };
+
+type RawSettlementRow = {
+  id: string;
+  driver_id: string | null;
+  amount_received_minor: number;
+  method: string;
+  settled_at: string;
+  created_by: string | null;
+};
+
+// Construit l'historique des versements depuis cash_settlement (trié par date desc),
+// avec nom du livreur et auteur résolus. Owner/manager. `driverId` null = tous livreurs.
+async function buildSettlementHistory(driverId: string | null): Promise<SettlementHistoryData> {
+  const auth = await resolveOwnerManagerContext();
+  if (!auth.ok) return { ok: false, message: auth.message };
+  const { merchantAccountId, admin } = auth;
+
+  let query = admin
+    .from('cash_settlement')
+    .select('id, driver_id, amount_received_minor, method, settled_at, created_by')
+    .eq('merchant_account_id', merchantAccountId)
+    .order('settled_at', { ascending: false });
+  if (driverId) query = query.eq('driver_id', driverId);
+
+  const { data, error } = await query;
+  if (error) return { ok: false, message: error.message };
+
+  const settlements = (data ?? []) as RawSettlementRow[];
+  if (settlements.length === 0) return { ok: true, rows: [] };
+
+  const driverIds = [...new Set(settlements.map((s) => s.driver_id).filter(Boolean))] as string[];
+  const { data: drivers } = await admin
+    .from('driver')
+    .select('id, full_name')
+    .eq('merchant_account_id', merchantAccountId)
+    .in('id', driverIds.length > 0 ? driverIds : ['00000000-0000-0000-0000-000000000000']);
+  const driverNames = new Map((drivers ?? []).map((d) => [d.id, d.full_name]));
+
+  const authorNames = await resolveAuthorNames(
+    admin,
+    settlements.map((s) => s.created_by),
+  );
+
+  const rows: SettlementHistoryRow[] = settlements.map((s) => ({
+    id: s.id,
+    settledAt: s.settled_at,
+    amountMinor: s.amount_received_minor,
+    method: s.method,
+    driverId: s.driver_id,
+    driverName: (s.driver_id && driverNames.get(s.driver_id)) || 'Livreur',
+    authorName: (s.created_by && authorNames.get(s.created_by)) || 'Inconnu',
+  }));
+
+  return { ok: true, rows };
+}
+
+// Historique des versements d'un livreur (owner/manager).
+export async function getDriverSettlementHistory(driverId: string): Promise<SettlementHistoryData> {
+  return buildSettlementHistory(driverId);
+}
+
+// Historique global des versements, tous livreurs consolidés (owner/manager).
+export async function getAllSettlementHistory(): Promise<SettlementHistoryData> {
+  return buildSettlementHistory(null);
+}
