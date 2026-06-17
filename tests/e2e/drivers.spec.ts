@@ -412,15 +412,18 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
   // Attend l'EFFET RENDU de CETTE remise — la carte « Cash chez le livreur » —
   // et NON le toast seul. Sérialise les deux remises et prouve que l'affichage cash
   // reflète la lecture serveur fraîche.
-  const remit = async (amount: string, expectedRemittedMinor: number) => {
+  // « Cash chez le livreur » = collecté − frais − remis cumulé. Frais = 0 ici,
+  // donc il DÉCROÎT à chaque remise (100 000 → 50 000 → 0). On attend le rendu
+  // exact (toHaveText ancré) pour ne pas matcher un « 0 » contenu dans « 50 000 ».
+  const remit = async (amount: string, expectedCashOnHandMinor: number) => {
     await page.getByPlaceholder('0').fill(amount);
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
-    const grouped = String(expectedRemittedMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
+    const grouped = String(expectedCashOnHandMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
     });
-    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
-      new RegExp(`${grouped}\\s*F\\s*CFA`),
+    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toHaveText(
+      new RegExp(`^${grouped}\\s*F\\s*CFA$`),
       { timeout: 15_000 },
     );
   };
@@ -429,12 +432,14 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
     await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
     await expect(page.getByRole('heading', { name: 'Bilal Ecart' })).toBeVisible();
 
-    // Remise partielle 50 000 / 100 000 collectés → remis = 50 000, bandeau d'écart affiché.
+    // Remise partielle 50 000 / 100 000 collectés → cash chez le livreur = 50 000,
+    // bandeau d'écart affiché.
     await remit('50000', 50000);
     await expect(page.getByText('Écart non résolu')).toBeVisible({ timeout: 15_000 });
 
-    // Remise du solde 50 000 → remis = collecté = 100 000 → l'écart disparaît.
-    await remit('50000', 100000);
+    // Remise du solde 50 000 → remis = collecté = 100 000 → cash chez le livreur = 0,
+    // l'écart disparaît.
+    await remit('50000', 0);
     await expect(page.getByText('Écart non résolu')).toHaveCount(0, { timeout: 15_000 });
 
     // Le total remis couvre bien le collecté.
