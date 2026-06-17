@@ -151,6 +151,82 @@ async function seedCollectedOrderWithCogs(
   });
 }
 
+// Commande encaissée avec des montants FRACTIONNAIRES : `orders.total_amount` est
+// `numeric` et le prix `items_summary` est du jsonb libre (devise majeure Shopify).
+// Reproduit le crash prod BigInt(2536.06) sur tab=produits ET tab=livreurs.
+async function seedFractionalCollectedOrder(
+  admin: AdminClient,
+  merchantAccountId: string,
+  userId: string,
+) {
+  const { data: product } = await admin
+    .from('product')
+    .insert({ merchant_account_id: merchantAccountId, title: 'Produit Frac', unit_cost: 5000 })
+    .select('id')
+    .single();
+  if (!product) throw new Error('product insert returned no row');
+  await admin.from('product_stock').upsert(
+    {
+      product_id: product.id,
+      merchant_account_id: merchantAccountId,
+      qty_on_hand: 50,
+      unit_cost: 5000,
+    },
+    { onConflict: 'product_id' },
+  );
+  const { data: driver } = await admin
+    .from('driver')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      full_name: 'Livreur Frac',
+      phone: `+22177${Math.floor(1_000_000 + Math.random() * 8_999_999)}`,
+    })
+    .select('id')
+    .single();
+  if (!driver) throw new Error('driver insert returned no row');
+  const title = 'Sac Frac';
+  const { data: order } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      source: 'manual',
+      order_number: `FRAC-${Date.now()}`,
+      total_amount: 2536.06,
+      delivery_fee_minor: 0,
+      currency: 'XOF',
+      items_summary: [{ title, quantity: 2, price: 2536.06 }],
+      order_state: 'completed',
+      call_state: 'validated',
+      delivery_state: 'delivered',
+      cash_state: 'collected',
+      cash_collected_at: new Date().toISOString(),
+      assigned_driver_id: driver.id,
+      payment_channel_at_delivery: 'ESPECES',
+    })
+    .select('id')
+    .single();
+  if (!order) throw new Error('order insert returned no row');
+  await admin.from('order_line').insert({
+    merchant_account_id: merchantAccountId,
+    order_id: order.id,
+    product_id: product.id,
+    raw_title: title,
+    qty: 2,
+    match_status: 'matched',
+  });
+  await admin.from('stock_movement').insert({
+    merchant_account_id: merchantAccountId,
+    product_id: product.id,
+    order_id: order.id,
+    driver_id: driver.id,
+    movement_type: 'sold',
+    qty: 2,
+    unit_cost: 5000,
+    idempotency_key: `e2e-frac-sold-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    created_by: userId,
+  });
+}
+
 async function signIn(page: Page, email: string, redirectTo = '/finances') {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
   await page.getByLabel(messages.auth.email_label).fill(email);
@@ -286,6 +362,37 @@ test('CA unifié + onglets finances + graphe CA par boutique + exports PDF/CSV (
     const pdf = await page.request.get(`/api/rapport?from=${today}&to=${today}`);
     expect(pdf.status()).toBe(200);
     expect(pdf.headers()['content-type']).toContain('application/pdf');
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test('Vue par produit + par livreur : montants fractionnaires (numeric/jsonb) rendent sans 500', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('frac-bigint');
+  try {
+    await seedFractionalCollectedOrder(fixture.admin, fixture.merchantAccountId, fixture.userId);
+
+    // Vue par produit : la ligne au prix items_summary fractionnaire (2536.06) rend
+    // réellement — avant le fix, BigInt(float) levait un 500 RangeError.
+    await signIn(page, fixture.email, '/finances?tab=produits');
+    await expect(page.getByRole('heading', { name: messages.finance.products.title })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText('Produit Frac', { exact: false }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Vue par livreur : total_amount numeric fractionnaire → COGS/CA rendus, pas de 500.
+    await page.goto('/finances?tab=livreurs');
+    await page.waitForLoadState('networkidle');
+    await expect(
+      page.getByRole('heading', { name: messages.finance.driverCost.title }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Livreur Frac', { exact: false }).first()).toBeVisible({
+      timeout: 15_000,
+    });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
   }

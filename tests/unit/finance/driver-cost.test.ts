@@ -39,4 +39,32 @@ describe('computeFinanceDriverCostReport', () => {
       revenueMinor: 10_000,
     });
   });
+
+  it('arrondit un total_amount fractionnaire (numeric) sans lever BigInt(float)', () => {
+    // Reproduit le crash prod : orders.total_amount est `numeric` → BigInt(2536.06)
+    // lève un RangeError. FCFA = entier → arrondi par commande puis somme.
+    const run = () =>
+      computeFinanceDriverCostReport({
+        drivers: [{ fullName: 'Awa Diop', id: 'driver-a' }],
+        orders: [
+          { assignedDriverId: 'driver-a', deliveryFeeMinor: 0, totalAmount: 2_536.06 },
+          { assignedDriverId: 'driver-a', deliveryFeeMinor: 0, totalAmount: 7_609.34 },
+        ],
+        // 2 mouvements de coûts différents → unitCogs = 12146/3 non exact.
+        soldMovements: [
+          { driverId: 'driver-a', qty: 2, unitCost: 5_073 },
+          { driverId: 'driver-a', qty: 1, unitCost: 2_000 },
+        ],
+      });
+
+    expect(run).not.toThrow();
+    const report = run();
+    // round(2536.06) + round(7609.34) = 2536 + 7609 = 10145
+    expect(report.rows[0].revenueMinor).toBe(10_145);
+    expect(report.rows[0].cogsMinor).toBe(12_146);
+    // 12146 / 3 = 4048,67 → (12146 + 1) / 3 = 4049
+    expect(report.rows[0].unitCogsMinor).toBe(4_049);
+    // marge = CA 10145 − COGS 12146 = −2001
+    expect(report.rows[0].marginMinor).toBe(-2_001);
+  });
 });

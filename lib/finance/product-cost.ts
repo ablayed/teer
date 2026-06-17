@@ -116,6 +116,13 @@ function roundHalfUpDiv(numerator: bigint, denominator: bigint): bigint {
   return (numerator + denominator / 2n) / denominator;
 }
 
+// Les montants peuvent arriver fractionnaires (prix `items_summary` en jsonb,
+// `orders.total_amount` en `numeric`). FCFA = entier → on arrondit au minor le
+// plus proche AVANT BigInt (jamais BigInt(float), qui lève un RangeError).
+function toMinor(value: number): bigint {
+  return BigInt(Math.round(Number.isFinite(value) ? value : 0));
+}
+
 function parseSummaryLines(value: Json | null): SummaryLine[] {
   if (!Array.isArray(value)) {
     return [];
@@ -247,7 +254,7 @@ export function computeFinanceProductCostReport(
       }
 
       matchedUnitCount += pair.qty;
-      revenueRows.push({ amountMinor: BigInt(pair.revenueMinor), productId: pair.productId });
+      revenueRows.push({ amountMinor: toMinor(pair.revenueMinor), productId: pair.productId });
       quantityRows.push({ amountMinor: BigInt(pair.qty), productId: pair.productId });
     }
   }
@@ -262,7 +269,7 @@ export function computeFinanceProductCostReport(
     }
 
     const current = soldByProduct.get(movement.productId) ?? { cogsMinor: 0n, qtySold: 0n };
-    current.cogsMinor += BigInt(movement.unitCost) * BigInt(movement.qty);
+    current.cogsMinor += toMinor(movement.unitCost) * BigInt(movement.qty);
     current.qtySold += BigInt(movement.qty);
     soldByProduct.set(movement.productId, current);
   }
@@ -286,15 +293,13 @@ export function computeFinanceProductCostReport(
     }
     landedByProduct.set(
       line.productId,
-      (landedByProduct.get(line.productId) ?? 0n) + BigInt(line.landedTotalValue),
+      (landedByProduct.get(line.productId) ?? 0n) + toMinor(line.landedTotalValue ?? 0),
     );
   }
 
-  const adsTotalMinor = BigInt(
-    input.expenses
-      .filter((expense) => expense.categoryCode === 'ADS')
-      .reduce((sum, expense) => sum + expense.amountMinor, 0),
-  );
+  const adsTotalMinor = input.expenses
+    .filter((expense) => expense.categoryCode === 'ADS')
+    .reduce((sum, expense) => sum + toMinor(expense.amountMinor), 0n);
 
   const productIds = [
     ...new Set([...revenueByProduct.keys(), ...soldByProduct.keys(), ...landedByProduct.keys()]),
@@ -314,7 +319,7 @@ export function computeFinanceProductCostReport(
   });
 
   const totalDeliveryFeesMinor = input.orders.reduce(
-    (sum, order) => sum + BigInt(order.deliveryFeeMinor ?? 0),
+    (sum, order) => sum + toMinor(order.deliveryFeeMinor ?? 0),
     0n,
   );
   const deliveryByProduct = new Map<string, bigint>();
@@ -335,7 +340,7 @@ export function computeFinanceProductCostReport(
     }
 
     const shares = allocateByWeights(
-      BigInt(order.deliveryFeeMinor ?? 0),
+      toMinor(order.deliveryFeeMinor ?? 0),
       Array.from({ length: unitProducts.length }, () => 1n),
     );
 

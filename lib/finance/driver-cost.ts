@@ -42,6 +42,12 @@ function roundHalfUpDiv(numerator: bigint, denominator: bigint): bigint {
   return (numerator + denominator / 2n) / denominator;
 }
 
+// `orders.total_amount` est `numeric` (peut être fractionnaire) ; FCFA = entier.
+// On arrondit au minor le plus proche AVANT BigInt (jamais BigInt(float)).
+function toMinor(value: number): bigint {
+  return BigInt(Math.round(Number.isFinite(value) ? value : 0));
+}
+
 function groupByDriver(
   rows: Array<{ driverId: string; amountMinor: bigint; qty?: bigint }>,
 ): Map<string, { amountMinor: bigint; qtySold: bigint }> {
@@ -76,7 +82,7 @@ export function computeFinanceDriverCostReport(
       continue;
     }
     soldRows.push({
-      amountMinor: BigInt(movement.qty) * BigInt(movement.unitCost),
+      amountMinor: BigInt(movement.qty) * toMinor(movement.unitCost ?? 0),
       driverId: movement.driverId,
       qty: BigInt(movement.qty),
     });
@@ -89,7 +95,7 @@ export function computeFinanceDriverCostReport(
     }
 
     revenueRows.push({
-      amountMinor: BigInt(order.totalAmount - (order.deliveryFeeMinor ?? 0)),
+      amountMinor: toMinor(order.totalAmount - (order.deliveryFeeMinor ?? 0)),
       driverId: order.assignedDriverId,
     });
   }

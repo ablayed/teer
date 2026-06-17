@@ -66,4 +66,61 @@ describe('computeFinanceProductCostReport', () => {
     expect(report.unallocatedDeliveryMinor).toBe(0);
     expect(report.totalLandedReceivedMinor).toBe(14_000);
   });
+
+  it('n’explose pas sur un prix items_summary fractionnaire et arrondit le CA au minor', () => {
+    // Reproduit le crash prod : BigInt(2536.06) → RangeError. Le prix jsonb est
+    // fractionnaire (devise majeure Shopify), FCFA = entier → arrondi.
+    const run = () =>
+      computeFinanceProductCostReport({
+        expenses: [],
+        fromIso: '2026-06-01T00:00:00.000Z',
+        orderLines: [{ orderId: 'o1', productId: 'p1', qty: 2, rawTitle: 'Sac' }],
+        orders: [
+          {
+            deliveryFeeMinor: 0,
+            id: 'o1',
+            itemsSummary: [{ price: 2_536.06, quantity: 2, title: 'Sac' }],
+            totalAmount: 5_072.12,
+          },
+        ],
+        products: [{ id: 'p1', title: 'Sac' }],
+        purchaseLotLines: [],
+        purchaseLots: [],
+        soldMovements: [{ productId: 'p1', qty: 2, unitCost: 5_000 }],
+        toIso: '2026-06-30T23:59:59.999Z',
+      });
+
+    expect(run).not.toThrow();
+    const sac = run().rows.find((row) => row.productId === 'p1');
+    // round(2536.06 × 2) = round(5072.12) = 5072
+    expect(sac?.revenueMinor).toBe(5_072);
+  });
+
+  it('arrondit le coût de revient unitaire (pilotage) sur une division non exacte', () => {
+    // pilotCost = landed 5073 + ads 0 + livraison 0 ; qty 2 → 5073/2 = 2536,5 → 2537.
+    const report = computeFinanceProductCostReport({
+      expenses: [],
+      fromIso: '2026-06-01T00:00:00.000Z',
+      orderLines: [{ orderId: 'o1', productId: 'p1', qty: 2, rawTitle: 'Sac' }],
+      orders: [
+        {
+          deliveryFeeMinor: 0,
+          id: 'o1',
+          itemsSummary: [{ price: 6_000, quantity: 2, title: 'Sac' }],
+          totalAmount: 12_000,
+        },
+      ],
+      products: [{ id: 'p1', title: 'Sac' }],
+      purchaseLotLines: [
+        { landedTotalValue: 5_073, productId: 'p1', purchaseLotId: 'lot', qty: 2 },
+      ],
+      purchaseLots: [{ id: 'lot', receivedAt: '2026-06-10T08:00:00.000Z', status: 'received' }],
+      soldMovements: [{ productId: 'p1', qty: 2, unitCost: 3_000 }],
+      toIso: '2026-06-30T23:59:59.999Z',
+    });
+
+    const sac = report.rows.find((row) => row.productId === 'p1');
+    expect(sac?.pilotUnitCostMinor).toBe(2_537); // (5073 + 1) / 2
+    expect(sac?.officialUnitCostMinor).toBe(3_000);
+  });
 });
