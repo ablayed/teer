@@ -9,7 +9,7 @@ import { formatMoney } from '@/lib/format/fcfa';
 import { Pencil } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 type OrderAmountsEditorProps = {
   currency: string | null;
@@ -95,6 +95,20 @@ export function OrderAmountsEditor({
   );
 
   const isExecuting = update.isExecuting || startDelivery.isExecuting;
+
+  // Ouverture automatique du popup quand la commande PASSE à « assigned » en cours
+  // de page (assignation in-place sur le détail) — le useState initial ne couvre
+  // que le montage (navigation vers une commande déjà assignée). Le ref évite la
+  // réouverture après confirmation (assigned → out_for_delivery) et sur les
+  // re-rendus router.refresh() où delivery_state ne change pas.
+  const prevDeliveryState = useRef(deliveryState);
+  useEffect(() => {
+    if (deliveryState === 'assigned' && prevDeliveryState.current !== 'assigned') {
+      setOpen(true);
+      setFeedback(null);
+    }
+    prevDeliveryState.current = deliveryState;
+  }, [deliveryState]);
 
   useEffect(() => {
     if (!open) {

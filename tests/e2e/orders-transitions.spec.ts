@@ -453,6 +453,31 @@ async function waitForOrderStatus(
   throw new Error(`Statut ${status} non observe pour la commande ${orderId}.`);
 }
 
+async function waitForOrderDeliveryState(
+  admin: AdminClient,
+  orderId: string,
+  deliveryState: string,
+  timeoutMs = 15_000,
+) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const { data, error } = await admin
+      .from('orders')
+      .select('delivery_state')
+      .eq('id', orderId)
+      .single();
+
+    if (!error && data?.delivery_state === deliveryState) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  throw new Error(`delivery_state ${deliveryState} non observe pour la commande ${orderId}.`);
+}
+
 async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   const targetUrl =
     redirectTo === '/tableau'
@@ -533,8 +558,18 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await menuItem(page, 'Assigner').click();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
-    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
-    await page.reload();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
+
+    // À l'assignation, le popup s'ouvre : « Confirmer et démarrer la livraison »
+    // sauvegarde puis fait passer la commande en out_for_delivery.
+    const startButton = page.getByRole('button', {
+      name: 'Confirmer et démarrer la livraison',
+      exact: true,
+    });
+    await expect(startButton).toBeVisible({ timeout: 15_000 });
+    await startButton.click();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
+
     await openActionsMenu(page);
     await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 
@@ -669,7 +704,9 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
     expect(programmedOrder?.delivery_state).toBe('scheduled');
     expect(programmedOrder?.scheduled_for).not.toBeNull();
 
-    await page.goto('/commandes?vue=en-livraison');
+    // Phase 11.1 : une commande seulement programmée reste dans « Programmer »
+    // (id confirmee), PAS dans « En cours de livraison » (migration 0061).
+    await page.goto('/commandes?vue=confirmee');
     await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
 
     await openActionsMenu(page);
@@ -679,8 +716,9 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
     await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeDisabled();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
-    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
 
+    // Le détail d'une commande assignée ouvre automatiquement le popup éditable.
     await page.goto(`/commandes/${orderId}`);
     await expect(page.getByLabel('Total', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel('Frais de livraison', { exact: true })).toBeVisible({
@@ -704,7 +742,11 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
     await page.keyboard.type('1500');
     await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
     await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
-    await page.getByRole('button', { name: 'Confirmer', exact: true }).click();
+    // « Confirmer » sauvegarde ET fait passer la commande en cours de livraison.
+    await page
+      .getByRole('button', { name: 'Confirmer et démarrer la livraison', exact: true })
+      .click();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
 
     await expect(page.getByRole('button', { name: 'Modifier', exact: true })).toBeVisible({
       timeout: 15_000,
@@ -713,15 +755,18 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
 
     const { data: updatedOrder, error: updatedError } = await fixture.admin
       .from('orders')
-      .select('total_amount, delivery_fee_minor, scheduled_for')
+      .select('total_amount, delivery_fee_minor, scheduled_for, delivery_state')
       .eq('id', orderId)
       .single();
     expect(updatedError).toBeNull();
     expect(updatedOrder?.total_amount).toBe(25000);
     expect(updatedOrder?.delivery_fee_minor).toBe(1500);
     expect(updatedOrder?.scheduled_for).not.toBeNull();
+    expect(updatedOrder?.delivery_state).toBe('out_for_delivery');
 
+    // En cours de livraison, le détail reste réouvrable/modifiable via « Modifier ».
     await page.reload();
+    await page.getByRole('button', { name: 'Modifier', exact: true }).click();
     await expect(page.getByLabel('Total', { exact: true })).toHaveValue('25000');
     await expect(page.getByLabel('Frais de livraison', { exact: true })).toHaveValue('1500');
   } finally {
@@ -761,13 +806,15 @@ test('phase11 - la reassignation suit la vue en livraison et l agent n a pas les
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
-    await page.goto('/commandes?vue=en-livraison');
+    // Programmée → vue « Programmer » (confirmee) ; on y assigne le livreur.
+    await page.goto('/commandes?vue=confirmee');
     await openActionsMenu(page);
     await menuItem(page, 'Assigner').click();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverAId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
-    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
 
+    // Assignée → désormais dans « En cours de livraison ».
     await page.goto('/commandes?vue=en-livraison');
     const row = page.locator('article').filter({ hasText: 'Client Reassign' });
     await expect(row.getByText('Affecté à', { exact: false })).toBeVisible({ timeout: 15_000 });
@@ -799,7 +846,9 @@ test('phase11 - la reassignation suit la vue en livraison et l agent n a pas les
   }
 });
 
-test('programmer fait passer la commande dans la vue En cours de livraison', async ({ page }) => {
+test('programmer garde la commande dans Programmer et hors En cours de livraison', async ({
+  page,
+}) => {
   const fixture = await createOwnerFixture('schedule-today');
   await createOrderWithCustomer(fixture.admin, {
     merchantAccountId: fixture.merchantAccountId,
@@ -832,10 +881,14 @@ test('programmer fait passer la commande dans la vue En cours de livraison', asy
     expect(order?.delivery_state).toBe('scheduled');
     expect(order?.scheduled_for).not.toBeNull();
 
-    // delivery_state=scheduled → la commande tombe dans « En cours de livraison ».
+    // Phase 11.1 (0061) : scheduled reste dans « Programmer » (confirmee)…
+    await page.goto('/commandes?vue=confirmee');
+    await expect(page.getByText('Client Programme')).toBeVisible({ timeout: 15_000 });
+
+    // …et est ABSENTE de « En cours de livraison » tant qu'elle n'est pas assignée.
     await page.goto('/commandes?vue=en-livraison');
     await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=en-livraison(&.*)?$/);
-    await expect(page.getByText('Client Programme')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Client Programme')).toHaveCount(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -952,6 +1005,9 @@ test("Lot B - deconfirmer n'est pas propose apres dispatch", async ({ page }) =>
 
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    // La commande est assignée → le popup s'ouvre ; on le ferme pour atteindre le menu.
+    await page.getByRole('button', { name: 'Annuler', exact: true }).click();
 
     await openActionsMenu(page);
     await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
