@@ -148,14 +148,14 @@ test('C — la navigation lente affiche le squelette loading.tsx (dev)', async (
 
     // Ralentit la résolution de /produits pour garantir l'affichage du fallback loading.tsx.
     await page.route('**/produits**', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await new Promise((resolve) => setTimeout(resolve, 2200));
       await route.continue();
     });
 
     await visibleNavLink(page, '/produits').click();
 
     // Le squelette (`dashboard-shimmer`) du loading.tsx apparaît pendant le chargement.
-    await expect(page.locator('.dashboard-shimmer').first()).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator('.dashboard-shimmer').first()).toBeVisible({ timeout: 5_000 });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
   }

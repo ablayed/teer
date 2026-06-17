@@ -520,14 +520,11 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    await runDetailMenuAction(page, 'Confirmer');
-    await waitForOrderStatus(fixture.admin, orderId, 'CONFIRMEE');
-    await expect(page.getByText('Confirmée').first()).toBeVisible({ timeout: 15_000 });
-
-    // Programmer ouvre un dialog (date du jour par défaut) avant la transition.
+    // Programmer remplace le vieux couple Confirmer + Programmer.
     await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
     await page.reload();
     await openActionsMenu(page);
     await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
@@ -853,10 +850,10 @@ test('un agent ne voit que les actions legales sur une commande a appeler', asyn
     await signIn(page, agent.email, `/commandes/${orderId}`);
 
     await openActionsMenu(page);
-    // Un agent sur A_APPELER : seules Confirmer + journalisation d'appel sont légales.
-    await expect(menuItem(page, 'Confirmer')).toBeVisible();
+    // Un agent sur A_APPELER : Programmer + journalisation d'appel sont légales.
+    await expect(menuItem(page, 'Programmer la livraison')).toBeVisible();
     await expect(menuItem(page, 'Journaliser un appel')).toBeVisible();
-    await expect(menuItem(page, 'Programmer la livraison')).toHaveCount(0);
+    await expect(menuItem(page, 'Confirmer')).toHaveCount(0);
     await expect(menuItem(page, 'Assigner')).toHaveCount(0);
     await expect(menuItem(page, 'Marquer livree')).toHaveCount(0);
     await expect(menuItem(page, 'Annuler la commande')).toHaveCount(0);
@@ -995,8 +992,9 @@ test('Lot B - annuler avec raisons puis desannuler efface sans mouvement stock',
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    await runDetailMenuAction(page, 'Confirmer');
-    await waitForOrderStatus(fixture.admin, orderId, 'CONFIRMEE');
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
     await page.reload();
     await runDetailMenuAction(page, 'Annuler la commande');
@@ -1062,16 +1060,12 @@ test('Lot B - annuler avec raisons puis desannuler efface sans mouvement stock',
   }
 });
 
-test('confirmer puis programmer ne casse pas le rendu et survit au refresh', async ({ page }) => {
+test('programmer ne casse pas le rendu et survit au refresh', async ({ page }) => {
   const fixture = await createOwnerFixture('refresh');
   const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
 
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
-
-    await runDetailMenuAction(page, 'Confirmer');
-    await expect(page.locator('body')).not.toBeEmpty();
-    await expect(page.getByText('Confirmée').first()).toBeVisible({ timeout: 15_000 });
 
     await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
@@ -1208,7 +1202,7 @@ test('la transition inline confirmee deplace la commande vers la bonne vue et su
     await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-appeler(&.*)?$/);
     await expect(page.getByText('Client Inline')).toBeVisible({ timeout: 15_000 });
 
-    await runRowMenuAction(page, 'Client Inline', 'Confirmer');
+    await runRowMenuAction(page, 'Client Inline', 'Programmer la livraison');
     await expect(page.locator('article').filter({ hasText: 'Client Inline' })).toHaveCount(0, {
       timeout: 15_000,
     });

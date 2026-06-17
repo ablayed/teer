@@ -162,6 +162,10 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await expect(page.locator('main#main')).toBeVisible({ timeout: 15_000 });
 }
 
+function statValue(page: Page, label: string) {
+  return page.getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');
+}
+
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E livreurs');
 
 test('ajouter un livreur: toast affiche, champs vides, pas de doublon', async ({ page }) => {
@@ -348,6 +352,14 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
 
     await expect(page.getByRole('heading', { name: 'Awa Cash' })).toBeVisible();
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /20\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+    await expect(statValue(page, messages.livreurs.cash.deliveryFees)).toContainText(
+      /0\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
 
     // Performance: 1 livrée
     await expect(
@@ -357,13 +369,19 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     // Enregistrer une remise globale de 12 000
     await page.getByPlaceholder('0').fill('12000');
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
-    await expect(page.getByText('Versement enregistré.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('status')).toContainText('Versement enregistré.', {
+      timeout: 15_000,
+    });
 
-    // La carte « Remis » RENDUE reflète le versement (lecture serveur fraîche après
-    // la remise) — on assure l'affichage, pas seulement le toast / la base.
-    await expect(
-      page.getByText('Remis', { exact: true }).locator('xpath=following-sibling::p[1]'),
-    ).toContainText(/12\s*000\s*F\s*CFA/, { timeout: 15_000 });
+    // La carte « Cash chez le livreur » reflète le net collecté − frais − remis.
+    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
+      /8\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /20\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
 
     // Le versement est bien enregistré en base
     const { data: settlements } = await fixture.admin
@@ -391,17 +409,20 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
   const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Bilal Ecart');
   await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 100000);
 
-  // Attend l'EFFET RENDU de CETTE remise — la carte « Remis » au cumul attendu —
-  // et NON le toast « Versement enregistré. » (état local persistant d'une remise
-  // à l'autre → faux positif au 2e versement). Sérialise les deux remises et prouve
-  // que l'affichage cash reflète la lecture serveur fraîche.
+  // Attend l'EFFET RENDU de CETTE remise — la carte « Cash chez le livreur » —
+  // et NON le toast seul. Sérialise les deux remises et prouve que l'affichage cash
+  // reflète la lecture serveur fraîche.
   const remit = async (amount: string, expectedRemittedMinor: number) => {
     await page.getByPlaceholder('0').fill(amount);
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
     const grouped = String(expectedRemittedMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
-    await expect(
-      page.getByText('Remis', { exact: true }).locator('xpath=following-sibling::p[1]'),
-    ).toContainText(new RegExp(`${grouped}\\s*F\\s*CFA`), { timeout: 15_000 });
+    await expect(page.getByRole('status')).toContainText('Versement enregistré.', {
+      timeout: 15_000,
+    });
+    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
+      new RegExp(`${grouped}\\s*F\\s*CFA`),
+      { timeout: 15_000 },
+    );
   };
 
   try {

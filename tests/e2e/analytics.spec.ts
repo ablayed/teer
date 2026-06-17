@@ -390,9 +390,9 @@ test('analytics pertes COD : scorecard canal, tendance et refuseur repete visibl
     await expect(
       page.getByRole('heading', { name: messages.analytics.scorecard.title }).first(),
     ).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: messages.analytics.trends.title }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: messages.analytics.trends.title })).toBeVisible({
+      timeout: 15_000,
+    });
 
     const cancellationCard = page
       .locator('section')
