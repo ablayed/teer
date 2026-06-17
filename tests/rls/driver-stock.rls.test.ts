@@ -1,13 +1,11 @@
 /**
- * Tests RLS / intégration du module Livreurs (Phase 4, migration 0031 ; mode lot
- * RETIRÉ en Phase 12).
+ * Tests RLS / intégration du module Livreurs (Phase 4, migration 0031).
  *
- * Couvre : stock en main PAR COMMANDE (dispatch / courier_return) + l'invariant
- * stock HORS lot (Σ stock en main livreurs + entrepôt = total ledger), la
- * non-contribution des mouvements de lot HÉRITÉS au stock en main affiché (types
- * SQL inertes mais encore postables), la réconciliation/idempotence du ledger lot
- * historique, la contrainte « lot exige un livreur », et l'invisibilité du cash
- * livreur pour l'agent.
+ * Couvre : allocation de lot (allocate_to_courier) + retour (courier_return_lot)
+ * via post_stock_movement avec driver_id, l'invariant stock (Σ stock en main
+ * livreurs + entrepôt = total ledger), l'idempotence des allocations de lot,
+ * la contrainte « lot exige un livreur », et l'invisibilité du cash livreur
+ * pour l'agent.
  */
 
 import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
@@ -140,11 +138,11 @@ afterEach(async () => {
 // ALLOCATION / RETOUR DE LOT + INVARIANT STOCK
 // ──────────────────────────────────────────────────────────────────────────
 
-describe('stock en main par commande (dispatch/courier_return) + invariant hors lot', () => {
+describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', () => {
   skipIfNoServiceRole(
-    'dispatch et courier_return déplacent le stock entrepôt ↔ livreur ; invariant entrepôt + en main = ledger',
+    'allocation et retour de lot déplacent le stock entrepôt ↔ livreur ; invariant conservé',
     async () => {
-      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('perorder');
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot');
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
       const ownerClient = await signIn(email);
@@ -156,30 +154,30 @@ describe('stock en main par commande (dispatch/courier_return) + invariant hors 
         p_product_id: productId,
         p_movement_type: 'purchase_in',
         p_qty: 100,
-        p_idempotency_key: `po:${productId}:in`,
+        p_idempotency_key: `lot:${productId}:in`,
         p_created_by: userId,
         p_unit_cost: 5000,
       });
 
-      // dispatch -30 (commande, attribué au livreur) → entrepôt 70, en main 30
-      const { error: dispErr } = await post('post_stock_movement', {
+      // allocate_to_courier -30 → entrepôt 70, en main 30
+      const { error: allocErr } = await post('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
-        p_movement_type: 'dispatch',
+        p_movement_type: 'allocate_to_courier',
         p_qty: -30,
-        p_idempotency_key: `po:${productId}:disp`,
+        p_idempotency_key: `lot:${productId}:alloc`,
         p_created_by: userId,
         p_driver_id: driverId,
       });
-      expect(dispErr).toBeNull();
+      expect(allocErr).toBeNull();
 
-      // courier_return +10 (commande) → entrepôt 80, en main 20
+      // courier_return_lot +10 → entrepôt 80, en main 20
       await post('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
-        p_movement_type: 'courier_return',
+        p_movement_type: 'courier_return_lot',
         p_qty: 10,
-        p_idempotency_key: `po:${productId}:ret`,
+        p_idempotency_key: `lot:${productId}:return`,
         p_created_by: userId,
         p_driver_id: driverId,
       });
@@ -191,7 +189,7 @@ describe('stock en main par commande (dispatch/courier_return) + invariant hors 
         .single();
       expect(stock?.qty_on_hand).toBe(80);
 
-      // Stock en main du livreur dérivé du ledger (types par commande uniquement)
+      // Stock en main du livreur dérivé du ledger
       const { data: movements } = await admin
         .from('stock_movement')
         .select('driver_id, product_id, movement_type, qty')
@@ -201,60 +199,13 @@ describe('stock en main par commande (dispatch/courier_return) + invariant hors 
       const hand = driverStockRows((movements ?? []) as DriverStockMovement[], driverId);
       expect(hand).toEqual([{ driverId, productId, qtyOnHand: 20 }]);
 
-      // INVARIANT (hors lot) : entrepôt (80) + en main livreur (20) = total acheté (100)
+      // INVARIANT : entrepôt (80) + en main livreur (20) = total acheté (100)
       const driverHand = hand.reduce((sum, r) => sum + r.qtyOnHand, 0);
       expect((stock?.qty_on_hand ?? 0) + driverHand).toBe(100);
 
-      // Le mouvement de commande porte bien le livreur
-      const disp = (movements ?? []).find((m) => m.movement_type === 'dispatch');
-      expect(disp?.driver_id).toBe(driverId);
-    },
-  );
-
-  skipIfNoServiceRole(
-    'Phase 12 : un mouvement de lot hérité ne compte plus dans le stock en main affiché',
-    async () => {
-      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot-inert');
-      const productId = await createProduct(admin, merchantAccountId);
-      const driverId = await createDriver(admin, merchantAccountId);
-      const ownerClient = await signIn(email);
-      const post = postMovementRpc(ownerClient);
-
-      // purchase_in 50 puis allocate_to_courier -20 : le type SQL reste inerte mais
-      // encore postable (historique). L'entrepôt bouge (projection inchangée)…
-      await post('post_stock_movement', {
-        p_merchant_account_id: merchantAccountId,
-        p_product_id: productId,
-        p_movement_type: 'purchase_in',
-        p_qty: 50,
-        p_idempotency_key: `inert:${productId}:in`,
-        p_created_by: userId,
-        p_unit_cost: 5000,
-      });
-      const { error: allocErr } = await post('post_stock_movement', {
-        p_merchant_account_id: merchantAccountId,
-        p_product_id: productId,
-        p_movement_type: 'allocate_to_courier',
-        p_qty: -20,
-        p_idempotency_key: `inert:${productId}:alloc`,
-        p_created_by: userId,
-        p_driver_id: driverId,
-      });
-      expect(allocErr).toBeNull();
-
-      const { data: movements } = await admin
-        .from('stock_movement')
-        .select('driver_id, product_id, movement_type, qty')
-        .eq('merchant_account_id', merchantAccountId)
-        .eq('driver_id', driverId);
-
-      // …le mouvement existe en base (historique lisible)…
-      expect((movements ?? []).some((m) => m.movement_type === 'allocate_to_courier')).toBe(true);
-
-      // …mais il ne contribue PLUS au stock en main dérivé (exclu, Phase 12 : hors lot
-      // des deux côtés de l'invariant).
-      const hand = driverStockRows((movements ?? []) as DriverStockMovement[], driverId);
-      expect(hand).toEqual([]);
+      // Le mouvement d'allocation porte bien le livreur
+      const alloc = (movements ?? []).find((m) => m.movement_type === 'allocate_to_courier');
+      expect(alloc?.driver_id).toBe(driverId);
     },
   );
 

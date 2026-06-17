@@ -1,25 +1,23 @@
 // Dérivation du « stock en main du livreur » depuis le ledger stock_movement.
 // Source de vérité unique : le ledger. Aucune table dédiée.
 //
-// Un mouvement de COMMANDE attribué à un livreur (driver_id non nul) affecte le
-// stock qu'il détient physiquement. Le signe `qty` du ledger encode l'effet
-// ENTREPÔT (négatif = sortie d'entrepôt). L'effet sur la main du livreur est
-// l'OPPOSÉ :
-//   dispatch (qty < 0)                 →  +|qty| en main
-//   sold / courier_return (qty > 0)    →  −qty en main
-//
-// Phase 12 : le mode « lot d'avance » est retiré de bout en bout. Les mouvements
-// lot (allocate_to_courier / courier_return_lot) restent LISIBLES en base
-// (historique inerte) mais ne comptent PLUS dans le stock en main affiché — un
-// éventuel résidu hérité n'apparaît donc plus à l'écran, et plus aucun lot n'est
-// créable. L'invariant « entrepôt + en main = ledger » s'entend désormais HORS
-// types lot, des deux côtés.
+// Un mouvement attribué à un livreur (driver_id non nul) affecte le stock
+// qu'il détient physiquement. Le signe `qty` du ledger encode l'effet ENTREPÔT
+// (négatif = sortie d'entrepôt). L'effet sur la main du livreur est l'OPPOSÉ :
+//   dispatch / allocate_to_courier (qty < 0)  →  +|qty| en main
+//   sold / courier_return / courier_return_lot (qty > 0)  →  −qty en main
 //
 // reserve / release portent aussi un driver_id (transition_order) mais
 // concernent la réserve molle en entrepôt, AVANT que le stock parte chez le
 // livreur — ils sont exclus. purchase_in / manual_adjustment n'ont pas de livreur.
 
-export const DRIVER_HAND_MOVEMENT_TYPES = ['dispatch', 'sold', 'courier_return'] as const;
+export const DRIVER_HAND_MOVEMENT_TYPES = [
+  'dispatch',
+  'allocate_to_courier',
+  'sold',
+  'courier_return',
+  'courier_return_lot',
+] as const;
 
 export type DriverHandMovementType = (typeof DRIVER_HAND_MOVEMENT_TYPES)[number];
 

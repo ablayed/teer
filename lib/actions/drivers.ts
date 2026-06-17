@@ -1,5 +1,6 @@
 'use server';
 
+import { requireRole } from '@/lib/actions/safe-action';
 import {
   type ConsolidationOrder,
   type DriverCashConsolidation,
@@ -10,18 +11,86 @@ import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-o
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
+import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 
-// Phase 12 : le mode « lot d'avance » est retiré — les actions allocateToCourierAction
-// et courierReturnLotAction n'existent plus. Le stock en main reste géré PAR COMMANDE
-// (dispatch / courier_return via transition_order). Les types lot demeurent inertes en
-// base (historique lisible, non créable).
+type PostStockMovementArgs = Database['public']['Functions']['post_stock_movement']['Args'];
+
+function postStockMovementRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'post_stock_movement',
+    args: PostStockMovementArgs,
+  ) => Promise<{ data: string | null; error: { message: string } | null }>;
+}
 
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }
+
+// Allocates an advance lot of a product to a courier (lot d'avance).
+// Stock physically leaves the warehouse → qty_on_hand decremented, attributed
+// to the driver, outside any order. Atomic via post_stock_movement.
+export const allocateToCourierAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'drivers.allocate_to_courier', section: 'drivers' })
+  .inputSchema(
+    z.object({
+      driverId: z.string().uuid(),
+      productId: z.string().uuid(),
+      qty: z.number().int().min(1),
+      clientRequestId: z.string().uuid(),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const post = postStockMovementRpc(ctx.supabase);
+    const { error } = await post('post_stock_movement', {
+      p_merchant_account_id: ctx.member.merchantAccountId,
+      p_product_id: parsedInput.productId,
+      p_movement_type: 'allocate_to_courier',
+      p_qty: -parsedInput.qty,
+      p_idempotency_key: `lot_alloc:${parsedInput.driverId}:${parsedInput.productId}:${parsedInput.clientRequestId}`,
+      p_created_by: ctx.user.id,
+      p_driver_id: parsedInput.driverId,
+    });
+
+    if (error) return { ok: false as const, message: error.message };
+    revalidatePath('/livreurs');
+    revalidatePath('/produits');
+    return { ok: true as const };
+  });
+
+// Records the return of an unsold lot from a courier (retour de lot).
+// Stock comes back to the warehouse → qty_on_hand incremented, attributed to
+// the driver, outside any order. Atomic via post_stock_movement.
+export const courierReturnLotAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'drivers.courier_return_lot', section: 'drivers' })
+  .inputSchema(
+    z.object({
+      driverId: z.string().uuid(),
+      productId: z.string().uuid(),
+      qty: z.number().int().min(1),
+      clientRequestId: z.string().uuid(),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const post = postStockMovementRpc(ctx.supabase);
+    const { error } = await post('post_stock_movement', {
+      p_merchant_account_id: ctx.member.merchantAccountId,
+      p_product_id: parsedInput.productId,
+      p_movement_type: 'courier_return_lot',
+      p_qty: parsedInput.qty,
+      p_idempotency_key: `lot_return:${parsedInput.driverId}:${parsedInput.productId}:${parsedInput.clientRequestId}`,
+      p_created_by: ctx.user.id,
+      p_driver_id: parsedInput.driverId,
+    });
+
+    if (error) return { ok: false as const, message: error.message };
+    revalidatePath('/livreurs');
+    revalidatePath('/produits');
+    return { ok: true as const };
+  });
 
 export type ActiveDriverOption = { id: string; fullName: string };
 

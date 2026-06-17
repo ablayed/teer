@@ -94,16 +94,23 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     cash: DriverCashData;
     history: SettlementHistoryRow[];
     perf: DriverPerformanceData;
+    products: { id: string; title: string; sku: string | null }[];
     orders: { id: string; order_number: string | null; cod_status: string; total_amount: number }[];
   } | null = null;
 
   if (selected) {
     const range = periodRange(period);
-    const [stock, cash, history, perf, ordersResult] = await Promise.all([
+    const [stock, cash, history, perf, productsResult, ordersResult] = await Promise.all([
       getDriverStockOnHand(selected.id),
       getDriverCashConsolidation(selected.id),
       getDriverSettlementHistory(selected.id),
       getDriverPerformance(selected.id, range),
+      supabase
+        .from('product')
+        .select('id, title, sku')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('is_active', true)
+        .order('title'),
       supabase
         .from('orders')
         .select('id, order_number, cod_status, total_amount')
@@ -118,6 +125,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
       cash,
       history: history.ok ? history.rows : [],
       perf,
+      products: (productsResult.data ?? []) as { id: string; title: string; sku: string | null }[],
       orders: (ordersResult.data ?? []) as {
         id: string;
         order_number: string | null;
