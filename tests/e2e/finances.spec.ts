@@ -251,7 +251,9 @@ test('CA unifié + onglets finances + graphe CA par boutique + exports PDF/CSV (
     await signIn(page, fixture.email, '/finances');
 
     // CA unifié + onglets
-    await expect(page.getByText(messages.finance.kpis.caUnified, { exact: true })).toBeVisible({
+    await expect(
+      page.getByText(messages.finance.kpis.caUnified, { exact: true }).first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByRole('link', { name: messages.finance.tabs.products })).toBeVisible();
@@ -264,6 +266,11 @@ test('CA unifié + onglets finances + graphe CA par boutique + exports PDF/CSV (
     await expect(page.getByRole('link', { name: messages.finance.report.download })).toBeVisible();
     await expect(page.getByRole('button', { name: messages.finance.profit.csv })).toBeVisible();
 
+    // Graphe CA encaissé par boutique (titre rendu même sans données)
+    await expect(page.getByText(messages.finance.charts.shops, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
     await page.getByRole('link', { name: messages.finance.tabs.products }).click();
     await expect(page.getByText(messages.finance.products.title, { exact: true })).toBeVisible({
       timeout: 15_000,
@@ -271,11 +278,6 @@ test('CA unifié + onglets finances + graphe CA par boutique + exports PDF/CSV (
 
     await page.getByRole('link', { name: messages.finance.tabs.drivers }).click();
     await expect(page.getByText(messages.finance.driverCost.title, { exact: true })).toBeVisible({
-      timeout: 15_000,
-    });
-
-    // Graphe CA encaissé par boutique (titre rendu même sans données)
-    await expect(page.getByText(messages.finance.charts.shops, { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 

@@ -855,11 +855,19 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
       timeout: 15_000,
     });
 
-    const { data: allocations } = await fixture.admin
-      .from('settlement_allocation')
-      .select('allocated_minor')
-      .eq('order_id', orderId);
-    expect((allocations ?? []).reduce((s, a) => s + a.allocated_minor, 0)).toBe(amount);
+    await expect
+      .poll(
+        async () => {
+          const { data: allocations } = await fixture.admin
+            .from('settlement_allocation')
+            .select('allocated_minor')
+            .eq('merchant_account_id', fixture.merchantAccountId)
+            .eq('order_id', orderId);
+          return (allocations ?? []).reduce((s, a) => s + a.allocated_minor, 0);
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(amount);
 
     const { data: settlement } = await fixture.admin
       .from('cash_settlement')

@@ -317,7 +317,6 @@ async function renderGlobalTab({
   to: Date;
 }) {
   const t = await getTranslations('finance');
-  const tableT = await getTranslations('tableau');
   const [kpisResult, agingResult, settingsResult, settlementsResult, deliveredCountResult] =
     await Promise.all([
       financeKpisRpc(supabase)('finance_kpis', {
@@ -485,7 +484,7 @@ async function renderGlobalTab({
         emptyLabel={t('charts.empty')}
         funnel={codFunnel.map((item) => ({
           count: item.count,
-          label: tableT(`status.${item.status}`),
+          label: t(`status.${item.status}`),
         }))}
         funnelTitle={t('charts.funnel')}
         revenue={revenue}
