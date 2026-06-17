@@ -73,7 +73,7 @@ jobs:
         # `supabase` (2.102.0), version de référence du projet.
         with: { version: 2.102.0 }
       - run: pnpm install --frozen-lockfile
-      - run: supabase start
+      - run: supabase start -x edge-runtime
       - run: |
           while IFS= read -r line; do
             case "$line" in
@@ -107,7 +107,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         with: { version: 2.102.0 }
       - run: pnpm install --frozen-lockfile
-      - run: supabase start
+      - run: supabase start -x edge-runtime
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
       - run: |
