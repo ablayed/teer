@@ -851,7 +851,7 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     // Remise du solde : remis = encaissé, à l'unité près.
     await page.getByRole('spinbutton', { name: 'Montant reçu (FCFA)' }).fill(String(amount));
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
-    await expect(page.getByRole('alert')).toContainText('Versement enregistré.', {
+    await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
     });
 
