@@ -73,7 +73,7 @@ describe('order saved views', () => {
       view: 'confirmee',
     },
     {
-      // En cours de livraison : delivery ∈ {scheduled, assigned, out_for_delivery}, sans date.
+      // En cours de livraison : delivery ∈ {assigned, out_for_delivery} (0061, sans scheduled).
       order: orderFixture({
         call_state: 'validated',
         cash_state: 'expected',
@@ -116,7 +116,7 @@ describe('order saved views', () => {
     }
   });
 
-  it('reste aligne avec les predicats SQL des RPC saved-views 0052', () => {
+  it('reste aligne avec les predicats SQL des RPC saved-views (0052, en-livraison maj 0061)', () => {
     const orderStates = ['cancelled', 'completed', 'open', 'returned'] as const;
     const callStates = ['callback', 'to_call', 'unreachable', 'validated'] as const;
     const deliveryStates = [
@@ -144,11 +144,7 @@ describe('order saved views', () => {
             (order.delivery_state === 'unassigned' || order.delivery_state === 'scheduled')
           );
         case 'en-livraison':
-          return (
-            order.delivery_state === 'scheduled' ||
-            order.delivery_state === 'assigned' ||
-            order.delivery_state === 'out_for_delivery'
-          );
+          return order.delivery_state === 'assigned' || order.delivery_state === 'out_for_delivery';
         case 'valide':
           return order.order_state === 'completed';
         case 'annulees-retours':

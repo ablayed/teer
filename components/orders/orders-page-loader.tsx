@@ -1,6 +1,6 @@
 'use client';
 
-import { CodStatusBadge } from '@/components/orders/cod-status-badge';
+import { CodStatusBadge, codDisplayLabel } from '@/components/orders/cod-status-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
@@ -13,7 +13,7 @@ import {
 import type { TransitionResult } from '@/lib/actions/transitions';
 import { matchesOrderSavedView } from '@/lib/domain/order-saved-views';
 import type { OrderSavedViewId } from '@/lib/domain/order-saved-views';
-import { orderStatusLabels } from '@/lib/domain/order-state-machine';
+import type { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Json } from '@/lib/supabase/database.types';
@@ -200,9 +200,15 @@ export function OrdersPageLoader({
                 <p className="font-mono text-sm font-semibold text-muted">
                   {order.order_number ?? emptyValueLabel}
                 </p>
-                <CodStatusBadge status={order.cod_status as keyof typeof orderStatusLabels} />
+                <CodStatusBadge
+                  deliveryState={order.delivery_state}
+                  status={order.cod_status as keyof typeof orderStatusLabels}
+                />
                 <span className="text-sm text-muted">
-                  {orderStatusLabels[order.cod_status as keyof typeof orderStatusLabels]}
+                  {codDisplayLabel(
+                    order.cod_status as keyof typeof orderStatusLabels,
+                    order.delivery_state,
+                  )}
                 </span>
               </div>
 

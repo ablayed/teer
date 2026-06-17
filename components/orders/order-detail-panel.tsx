@@ -1,6 +1,6 @@
 'use client';
 
-import { CodStatusBadge } from '@/components/orders/cod-status-badge';
+import { CodStatusBadge, codDisplayLabel } from '@/components/orders/cod-status-badge';
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import { OrderAmountsEditor } from '@/components/orders/order-amounts-editor';
@@ -203,7 +203,9 @@ export function OrderDetailPanel({
           <h1 className="truncate text-xl font-semibold">
             {order.customer?.full_name ?? emptyValue}
           </h1>
-          <p className="text-sm font-medium text-muted">{orderStatusLabels[currentStatus]}</p>
+          <p className="text-sm font-medium text-muted">
+            {codDisplayLabel(currentStatus, order.delivery_state)}
+          </p>
         </div>
         {mode === 'sheet' ? (
           <button
@@ -318,7 +320,7 @@ export function OrderDetailPanel({
         <section className="rounded-lg border border-border p-4">
           <p className="text-sm text-muted">Statut COD</p>
           <div className="mt-2">
-            <CodStatusBadge status={currentStatus} />
+            <CodStatusBadge deliveryState={order.delivery_state} status={currentStatus} />
           </div>
         </section>
 

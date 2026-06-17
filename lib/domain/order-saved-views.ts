@@ -81,11 +81,10 @@ export function matchesOrderSavedView(order: OrderListViewShape, viewId: OrderSa
         (order.delivery_state === 'unassigned' || order.delivery_state === 'scheduled')
       );
     case 'en-livraison':
-      return (
-        order.delivery_state === 'scheduled' ||
-        order.delivery_state === 'assigned' ||
-        order.delivery_state === 'out_for_delivery'
-      );
+      // Phase 11.1 : « scheduled » (programmée non assignée) reste exclusivement
+      // dans la vue « Programmer » (confirmee). En cours de livraison = stock chez
+      // un livreur (assigned/out_for_delivery). Aligné sur la migration 0061.
+      return order.delivery_state === 'assigned' || order.delivery_state === 'out_for_delivery';
     case 'valide':
       return order.order_state === 'completed';
     case 'annulees-retours':

@@ -36,7 +36,10 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
           {orderLabel}
         </Link>
         <div className="flex shrink-0 items-start gap-2">
-          <CodStatusBadge status={normalizeOrderStatus(order.cod_status)} />
+          <CodStatusBadge
+            deliveryState={order.delivery_state}
+            status={normalizeOrderStatus(order.cod_status)}
+          />
           {actions}
         </div>
       </div>
