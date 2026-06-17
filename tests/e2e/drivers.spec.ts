@@ -304,43 +304,6 @@ test('supprimer un livreur vierge: retiré de la base (suppression dure)', async
   }
 });
 
-test('allouer un lot fait monter le stock en main du livreur', async ({ page }) => {
-  const fixture = await createOwnerFixture('lot');
-  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa Lot');
-  await createProduct(fixture.admin, fixture.merchantAccountId, 'Sac lot E2E');
-
-  try {
-    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
-
-    await expect(page.getByRole('heading', { name: 'Moussa Lot' })).toBeVisible();
-
-    // Mode "Allouer un lot" est actif par défaut ; choisir le produit + qté
-    await page.locator('select').filter({ hasText: 'Sac lot E2E' }).selectOption({
-      label: 'Sac lot E2E',
-    });
-    await page.getByPlaceholder('10').fill('15');
-    await page.getByRole('button', { name: 'Valider', exact: true }).click();
-
-    // Le mouvement est posté hors commande ; le stock en main remonte
-    await expect(page.getByText('Lot alloué au livreur.')).toBeVisible({ timeout: 15_000 });
-    await expect(
-      page.getByRole('row').filter({ hasText: 'Sac lot E2E' }).getByText('15'),
-    ).toBeVisible({ timeout: 15_000 });
-
-    // Vérifie le mouvement en base
-    const { data: movements } = await fixture.admin
-      .from('stock_movement')
-      .select('movement_type, qty, driver_id')
-      .eq('merchant_account_id', fixture.merchantAccountId)
-      .eq('driver_id', driverId);
-    const alloc = (movements ?? []).find((m) => m.movement_type === 'allocate_to_courier');
-    expect(alloc?.qty).toBe(-15);
-    expect(alloc?.driver_id).toBe(driverId);
-  } finally {
-    await cleanupUsers(fixture.admin, fixture.userIds);
-  }
-});
-
 test('cash livreur: commande livrée affiche le collecté puis la remise globale met à jour le remis', async ({
   page,
 }) => {

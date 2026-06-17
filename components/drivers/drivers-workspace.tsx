@@ -2,7 +2,6 @@
 
 import { PendingSpinner } from '@/components/app-shell/pending-spinner';
 import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
-import { DriverLotForm } from '@/components/drivers/driver-lot-form';
 import type { DriverCashData, DriverPerformanceData, DriverStockData } from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
@@ -21,7 +20,6 @@ type DriverDetail = {
   cash: DriverCashData;
   orders: { cod_status: string; id: string; order_number: string | null; total_amount: number }[];
   perf: DriverPerformanceData;
-  products: { id: string; sku: string | null; title: string }[];
   stock: DriverStockData;
 };
 
@@ -239,9 +237,6 @@ export function DriversWorkspace({
 
             <section className="space-y-3">
               <h3 className="text-lg font-semibold">Stock en main</h3>
-              <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
-                <DriverLotForm driverId={selected.id} products={detail.products} />
-              </div>
               {!detail.stock.ok ? (
                 <p className="text-sm text-danger">{detail.stock.message}</p>
               ) : detail.stock.rows.length === 0 ? (

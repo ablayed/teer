@@ -26,18 +26,22 @@ describe('deriveDriverStockOnHand', () => {
     expect(map.get(DRIVER)?.get(PROD_A)).toBe(3);
   });
 
-  it('mode lot: allocate_to_courier (qty<0) augmente le stock en main', () => {
-    const map = deriveDriverStockOnHand([mv({ movement_type: 'allocate_to_courier', qty: -10 })]);
-    expect(map.get(DRIVER)?.get(PROD_A)).toBe(10);
-  });
-
-  it('sold et courier_return_lot diminuent le stock en main', () => {
+  it('sold et courier_return (par commande) diminuent le stock en main', () => {
     const map = deriveDriverStockOnHand([
-      mv({ movement_type: 'allocate_to_courier', qty: -10 }),
+      mv({ movement_type: 'dispatch', qty: -10 }),
       mv({ movement_type: 'sold', qty: 4 }),
-      mv({ movement_type: 'courier_return_lot', qty: 6 }),
+      mv({ movement_type: 'courier_return', qty: 6 }),
     ]);
     expect(map.get(DRIVER)?.get(PROD_A)).toBe(0);
+  });
+
+  it('Phase 12: les mouvements de lot (allocate_to_courier / courier_return_lot) sont exclus', () => {
+    const map = deriveDriverStockOnHand([
+      mv({ movement_type: 'allocate_to_courier', qty: -10 }),
+      mv({ movement_type: 'courier_return_lot', qty: 4 }),
+    ]);
+    // Historique inerte : aucun stock en main n'est dérivé des types lot.
+    expect(map.get(DRIVER)).toBeUndefined();
   });
 
   it('reserve et release sont exclus (réserve entrepôt, pré-dispatch)', () => {
@@ -59,7 +63,7 @@ describe('deriveDriverStockOnHand', () => {
   it('sépare les livreurs et les produits', () => {
     const map = deriveDriverStockOnHand([
       mv({ driver_id: DRIVER, product_id: PROD_A, movement_type: 'dispatch', qty: -2 }),
-      mv({ driver_id: DRIVER, product_id: PROD_B, movement_type: 'allocate_to_courier', qty: -5 }),
+      mv({ driver_id: DRIVER, product_id: PROD_B, movement_type: 'dispatch', qty: -5 }),
       mv({ driver_id: OTHER, product_id: PROD_A, movement_type: 'dispatch', qty: -7 }),
     ]);
     expect(map.get(DRIVER)?.get(PROD_A)).toBe(2);
@@ -72,7 +76,7 @@ describe('driverStockRows', () => {
   it('filtre les positions nulles et renvoie les lignes du livreur', () => {
     const rows = driverStockRows(
       [
-        mv({ product_id: PROD_A, movement_type: 'allocate_to_courier', qty: -5 }),
+        mv({ product_id: PROD_A, movement_type: 'dispatch', qty: -5 }),
         mv({ product_id: PROD_A, movement_type: 'sold', qty: 5 }), // net 0 → filtré
         mv({ product_id: PROD_B, movement_type: 'dispatch', qty: -3 }),
       ],
