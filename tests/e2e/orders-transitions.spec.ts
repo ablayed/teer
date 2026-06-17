@@ -1203,6 +1203,8 @@ test('la transition inline confirmee deplace la commande vers la bonne vue et su
     await expect(page.getByText('Client Inline')).toBeVisible({ timeout: 15_000 });
 
     await runRowMenuAction(page, 'Client Inline', 'Programmer la livraison');
+    // « Programmer » ouvre un dialog (date du jour par défaut) avant la transition.
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await expect(page.locator('article').filter({ hasText: 'Client Inline' })).toHaveCount(0, {
       timeout: 15_000,
     });

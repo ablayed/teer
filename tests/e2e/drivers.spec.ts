@@ -369,7 +369,7 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     // Enregistrer une remise globale de 12 000
     await page.getByPlaceholder('0').fill('12000');
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
-    await expect(page.getByRole('status')).toContainText('Versement enregistré.', {
+    await expect(page.getByRole('alert')).toContainText('Versement enregistré.', {
       timeout: 15_000,
     });
 
@@ -416,7 +416,7 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
     await page.getByPlaceholder('0').fill(amount);
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
     const grouped = String(expectedRemittedMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
-    await expect(page.getByRole('status')).toContainText('Versement enregistré.', {
+    await expect(page.getByRole('alert')).toContainText('Versement enregistré.', {
       timeout: 15_000,
     });
     await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
