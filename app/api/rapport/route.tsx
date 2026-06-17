@@ -83,7 +83,7 @@ export async function GET(request: Request) {
     amount: t('amount'),
     cashDrivers: finance('kpis.cashDrivers'),
     collected: t('collected'),
-    deliveredRevenue: finance('kpis.caLivre'),
+    deliveredRevenue: finance('kpis.caUnified'),
     disclaimer: finance('disclaimer'),
     empty: finance('charts.empty'),
     estimatedMargin: finance('kpis.marginEstimate'),
