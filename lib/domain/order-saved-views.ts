@@ -75,16 +75,20 @@ export function matchesOrderSavedView(order: OrderListViewShape, viewId: OrderSa
     case 'tentee-a-rappeler':
       return order.order_state === 'open' && order.call_state === 'callback';
     case 'confirmee':
+      // Phase 11.1 : la vue « Programmer » garde aussi les commandes « assignées »
+      // (livreur choisi, popup détails/prix non encore confirmé) — elles n'entrent
+      // dans « En cours de livraison » qu'après confirmation. Aligné migration 0062.
       return (
         order.order_state === 'open' &&
         order.call_state === 'validated' &&
-        (order.delivery_state === 'unassigned' || order.delivery_state === 'scheduled')
+        (order.delivery_state === 'unassigned' ||
+          order.delivery_state === 'scheduled' ||
+          order.delivery_state === 'assigned')
       );
     case 'en-livraison':
-      // Phase 11.1 : « scheduled » (programmée non assignée) reste exclusivement
-      // dans la vue « Programmer » (confirmee). En cours de livraison = stock chez
-      // un livreur (assigned/out_for_delivery). Aligné sur la migration 0061.
-      return order.delivery_state === 'assigned' || order.delivery_state === 'out_for_delivery';
+      // En cours de livraison = uniquement out_for_delivery (après confirmation du
+      // popup d'assignation). Aligné sur la migration 0062.
+      return order.delivery_state === 'out_for_delivery';
     case 'valide':
       return order.order_state === 'completed';
     case 'annulees-retours':

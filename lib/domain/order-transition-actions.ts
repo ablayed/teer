@@ -499,10 +499,13 @@ export function getAllowedTransitionActionsForDimensions(
 // jamais proposée à l'utilisateur quand programmer l'est — et programmer l'est
 // dans TOUS les états où confirmer l'est (to_call/callback + unassigned).
 export function visibleAllowedActions(actions: TransitionAction[]): TransitionAction[] {
-  if (!actions.includes('programmer')) {
-    return actions;
+  // Phase 11.1 : « demarrer_livraison » n'est JAMAIS une entrée de dropdown — elle
+  // est déclenchée uniquement par le popup d'assignation (save + démarrage).
+  const withoutStart = actions.filter((action) => action !== 'demarrer_livraison');
+  if (!withoutStart.includes('programmer')) {
+    return withoutStart;
   }
-  return actions.filter((action) => action !== 'confirmer');
+  return withoutStart.filter((action) => action !== 'confirmer');
 }
 
 export function buildTransitionDimensionPatch(

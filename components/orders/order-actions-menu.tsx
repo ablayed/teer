@@ -1,5 +1,6 @@
 'use client';
 
+import { AssignmentDetailsDialog } from '@/components/orders/assignment-details-dialog';
 import { CallLogDialog } from '@/components/orders/call-log-dialog';
 import {
   type DriverOption,
@@ -22,6 +23,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 type OrderActionsMenuProps = {
   allowedActions: TransitionAction[];
+  // Phase 11.1 : ouvre le popup d'assignation (détails/prix) après « Assigner »
+  // et à la réouverture d'une commande assignée. Réservé owner/manager.
+  autoOpenAssignment?: boolean;
+  canEditAmounts?: boolean;
   deliveryState: string | null;
   dispatchWhatsAppUrl: string | null;
   drivers: DriverOption[];
@@ -69,6 +74,8 @@ const destructiveActions = new Set<TransitionAction>(['annuler', 'mark_returned'
 
 export function OrderActionsMenu({
   allowedActions,
+  autoOpenAssignment = false,
+  canEditAmounts = false,
   deliveryState,
   dispatchWhatsAppUrl,
   drivers,
@@ -87,6 +94,11 @@ export function OrderActionsMenu({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
   const [callDialogOpen, setCallDialogOpen] = useState(false);
+  // Phase 11.1 : popup d'assignation (détails/prix) ; ouvert après « Assigner »
+  // (ref armé au moment de la confirmation du dialog livreur) ou à l'ouverture
+  // d'une commande déjà assignée (autoOpenAssignment).
+  const [assignmentOpen, setAssignmentOpen] = useState(canEditAmounts && autoOpenAssignment);
+  const openAssignmentAfterSuccessRef = useRef(false);
   const onTransitionSuccessRef = useRef(onTransitionSuccess);
 
   // Phase 11 : « programmer » supplante « confirmer » dans le dropdown.
@@ -178,6 +190,11 @@ export function OrderActionsMenu({
       } else {
         router.refresh();
       }
+      // Phase 11.1 : après « Assigner », ouvrir le popup détails/prix (owner/manager).
+      if (openAssignmentAfterSuccessRef.current) {
+        openAssignmentAfterSuccessRef.current = false;
+        setAssignmentOpen(true);
+      }
       return;
     }
 
@@ -201,11 +218,25 @@ export function OrderActionsMenu({
       return;
     }
 
+    // Phase 11.1 : « Assigner » (owner/manager) enchaîne sur le popup détails/prix.
+    if (pendingAction === 'assigner' && canEditAmounts) {
+      openAssignmentAfterSuccessRef.current = true;
+    }
+
     transition.execute({ orderId, action: pendingAction, payload });
     setPendingAction(null);
   }
 
-  if (!hasMenu && !canCall && !whatsappUrl) {
+  function handleAssignmentConfirmed(result: Extract<TransitionResult, { ok: true }>) {
+    setAssignmentOpen(false);
+    if (onTransitionSuccessRef.current) {
+      onTransitionSuccessRef.current(result);
+    } else {
+      router.refresh();
+    }
+  }
+
+  if (!hasMenu && !canCall && !whatsappUrl && !assignmentOpen) {
     return null;
   }
 
@@ -317,6 +348,14 @@ export function OrderActionsMenu({
 
       {callDialogOpen ? (
         <CallLogDialog onClose={() => setCallDialogOpen(false)} orderId={orderId} />
+      ) : null}
+
+      {assignmentOpen ? (
+        <AssignmentDetailsDialog
+          onClose={() => setAssignmentOpen(false)}
+          onConfirmed={handleAssignmentConfirmed}
+          orderId={orderId}
+        />
       ) : null}
     </div>
   );

@@ -234,6 +234,7 @@ export function OrdersPageLoader({
               </p>
               <OrderActionsMenu
                 allowedActions={order.allowedActions}
+                canEditAmounts={canReassign}
                 deliveryState={order.delivery_state}
                 dispatchWhatsAppUrl={buildWhatsAppDispatchUrl({
                   address: formatOrderAddress(order.shipping_address),

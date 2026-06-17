@@ -178,6 +178,8 @@ export function OrderDetailPanel({
   const actionsMenu = (
     <OrderActionsMenu
       allowedActions={order.allowedActions}
+      autoOpenAssignment={canEditAmounts && order.delivery_state === 'assigned'}
+      canEditAmounts={canEditAmounts}
       deliveryState={order.delivery_state}
       dispatchWhatsAppUrl={dispatchWhatsAppUrl}
       drivers={drivers}
@@ -302,11 +304,9 @@ export function OrderDetailPanel({
         {canEditAmounts ? (
           <OrderAmountsEditor
             currency={order.currency}
-            customerName={order.customer?.full_name ?? null}
             deliveryFeeMinor={order.delivery_fee_minor}
             deliveryState={order.delivery_state}
             orderId={order.id}
-            orderNumber={order.order_number}
             scheduledFor={order.scheduled_for}
             totalAmount={order.total_amount}
           />

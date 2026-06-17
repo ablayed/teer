@@ -1125,6 +1125,66 @@ export const updateOrderAmountsAction = requireRole('owner', 'manager')
     return { ok: true as const, orderId: order.id };
   });
 
+// Phase 11.1 — lecture des détails/montants d'une commande pour le popup
+// d'assignation (owner/manager). Sert le popup ouvert depuis la LISTE où
+// OrderListItem ne porte pas delivery_fee_minor. RLS-scopé (client serveur).
+type AssignmentLine = { title: string; quantity: number; price: number };
+
+function parseAssignmentLines(value: Json | null): AssignmentLine[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const lines: AssignmentLine[] = [];
+  for (const item of value) {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const record = item as Record<string, unknown>;
+      lines.push({
+        title: typeof record.title === 'string' ? record.title : '',
+        quantity: typeof record.quantity === 'number' ? record.quantity : 0,
+        price: typeof record.price === 'number' ? record.price : 0,
+      });
+    }
+  }
+  return lines;
+}
+
+export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'orders.assignment_details', section: 'orders' })
+  .inputSchema(z.object({ orderId: z.string().uuid() }))
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select(
+        'id, order_number, total_amount, delivery_fee_minor, scheduled_for, currency, items_summary, customer:customer_id(full_name)',
+      )
+      .eq('id', parsedInput.orderId)
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    if (!order) {
+      return { ok: false as const, errorCode: 'order_not_found' as const };
+    }
+
+    const customer = order.customer as { full_name: string | null } | null;
+
+    return {
+      ok: true as const,
+      data: {
+        orderNumber: order.order_number,
+        totalAmount: order.total_amount,
+        deliveryFeeMinor: order.delivery_fee_minor,
+        scheduledFor: order.scheduled_for,
+        currency: order.currency,
+        customerName: customer?.full_name ?? null,
+        items: parseAssignmentLines(order.items_summary),
+      },
+    };
+  });
+
 // Phase 11 — réassignation du livreur. Délègue au RPC SECURITY INVOKER
 // reassign_order_driver (0058) : swap atomique de assigned_driver_id + compensation
 // stock (courier_return X / dispatch Y, qty_reserved INCHANGÉ) si le dispatch est
