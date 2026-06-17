@@ -669,7 +669,7 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
   }
 });
 
-test('phase11 - programmer puis assigner ouvre le panneau editable et le repli reste reouvrable', async ({
+test('phase11 - assigner ouvre le popup details puis passe en cours de livraison', async ({
   page,
 }) => {
   const fixture = await createOwnerFixture('phase11-editable');
@@ -705,21 +705,22 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
     expect(programmedOrder?.scheduled_for).not.toBeNull();
 
     // Phase 11.1 : une commande seulement programmée reste dans « Programmer »
-    // (id confirmee), PAS dans « En cours de livraison » (migration 0061).
+    // (id confirmee), PAS dans « En cours de livraison » (migration 0062).
     await page.goto('/commandes?vue=confirmee');
     await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
 
     await openActionsMenu(page);
     await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
     await expect(menuItem(page, 'Marquer livree')).toHaveCount(0);
+    // « Démarrer la livraison » n'est jamais dans le dropdown (popup uniquement).
+    await expect(menuItem(page, 'Démarrer la livraison')).toHaveCount(0);
     await menuItem(page, 'Assigner').click();
     await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeDisabled();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
 
-    // Le détail d'une commande assignée ouvre automatiquement le popup éditable.
-    await page.goto(`/commandes/${orderId}`);
+    // Le popup détails/prix s'ouvre automatiquement après l'assignation (depuis la liste).
     await expect(page.getByLabel('Total', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel('Frais de livraison', { exact: true })).toBeVisible({
       timeout: 15_000,
@@ -742,16 +743,11 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
     await page.keyboard.type('1500');
     await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
     await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
-    // « Confirmer » sauvegarde ET fait passer la commande en cours de livraison.
+    // Confirmer sauvegarde ET fait passer la commande en cours de livraison.
     await page
       .getByRole('button', { name: 'Confirmer et démarrer la livraison', exact: true })
       .click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
-
-    await expect(page.getByRole('button', { name: 'Modifier', exact: true })).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByLabel('Total', { exact: true })).toHaveCount(0);
 
     const { data: updatedOrder, error: updatedError } = await fixture.admin
       .from('orders')
@@ -764,8 +760,12 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
     expect(updatedOrder?.scheduled_for).not.toBeNull();
     expect(updatedOrder?.delivery_state).toBe('out_for_delivery');
 
+    // La commande est désormais dans « En cours de livraison ».
+    await page.goto('/commandes?vue=en-livraison');
+    await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
+
     // En cours de livraison, le détail reste réouvrable/modifiable via « Modifier ».
-    await page.reload();
+    await page.goto(`/commandes/${orderId}`);
     await page.getByRole('button', { name: 'Modifier', exact: true }).click();
     await expect(page.getByLabel('Total', { exact: true })).toHaveValue('25000');
     await expect(page.getByLabel('Frais de livraison', { exact: true })).toHaveValue('1500');
@@ -774,7 +774,7 @@ test('phase11 - programmer puis assigner ouvre le panneau editable et le repli r
   }
 });
 
-test('phase11 - la reassignation suit la vue en livraison et l agent n a pas les controles', async ({
+test('phase11 - la reassignation depuis Programmer et l agent n a pas les controles', async ({
   page,
 }) => {
   const fixture = await createOwnerFixture('phase11-reassign');
@@ -814,8 +814,10 @@ test('phase11 - la reassignation suit la vue en livraison et l agent n a pas les
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
 
-    // Assignée → désormais dans « En cours de livraison ».
-    await page.goto('/commandes?vue=en-livraison');
+    // Le popup détails/prix s'ouvre ; on le ferme sans démarrer la livraison →
+    // la commande reste assignée dans « Programmer », récupérable pour réassignation.
+    await page.getByRole('button', { name: 'Annuler', exact: true }).click();
+
     const row = page.locator('article').filter({ hasText: 'Client Reassign' });
     await expect(row.getByText('Affecté à', { exact: false })).toBeVisible({ timeout: 15_000 });
     await expect(row.getByText('Livreur A Phase11')).toBeVisible({ timeout: 15_000 });
@@ -1348,12 +1350,19 @@ test('#2 le menu Actions de la carte la plus basse reste atteignable en portrait
 
 test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) => {
   const fixture = await createOwnerFixture('dashboard-deeplink');
-  await createOrderWithCustomer(fixture.admin, {
+  const orderId = await createOrderWithCustomer(fixture.admin, {
     merchantAccountId: fixture.merchantAccountId,
     status: 'EN_LIVRAISON',
     customerName: 'Livraison Dashboard',
     phone: '+221781223344',
   });
+  // Phase 11.1 (0062) : seule out_for_delivery apparaît dans « En cours de livraison »
+  // (assigned reste dans « Programmer »). Le seed legacy EN_LIVRAISON pose assigned →
+  // on passe la dimension à out_for_delivery (le livreur seed est déjà renseigné).
+  await fixture.admin
+    .from('orders')
+    .update({ delivery_state: 'out_for_delivery' })
+    .eq('id', orderId);
 
   try {
     await signIn(page, fixture.email, '/tableau');
