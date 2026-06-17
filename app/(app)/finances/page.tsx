@@ -1,31 +1,39 @@
 import { DriverSettlementsLoader } from '@/components/finance/DriverSettlementsLoader';
 import { ExpenseSection } from '@/components/finance/ExpenseSection';
 import { FinanceChartsLoader } from '@/components/finance/FinanceChartsLoader';
+import { FinanceDriverCostView } from '@/components/finance/FinanceDriverCostView';
+import { FinanceProductCostView } from '@/components/finance/FinanceProductCostView';
 import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
+import { fetchFinanceDriverCostReport } from '@/lib/finance/driver-cost';
 import { buildDriverSettlements } from '@/lib/finance/driver-settlements';
 import {
   type MerchantFeeSettings,
   type SettlementForMargin,
   estimatedMarginMinor,
 } from '@/lib/finance/fees';
+import { fetchFinanceProductCostReport } from '@/lib/finance/product-cost';
+import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { AlertCircle, ArrowRight, LockKeyhole, Wallet } from 'lucide-react';
+import { AlertCircle, LockKeyhole, ReceiptText } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
 type FinanceKpiRow = Database['public']['Functions']['finance_kpis']['Returns'][number];
 type CashAgingRow = Database['public']['Functions']['cash_aging']['Returns'][number];
 
+type FinanceTab = 'global' | 'produits' | 'livreurs';
+
 type FinancesPageProps = {
   searchParams: Promise<{
     from?: string;
     period?: string;
+    tab?: string;
     to?: string;
   }>;
 };
@@ -90,6 +98,32 @@ function toDateInput(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+function normalizeFinanceTab(value: string | undefined): FinanceTab {
+  return value === 'produits' || value === 'livreurs' ? value : 'global';
+}
+
+function buildFinanceHref(params: {
+  from?: string;
+  period?: string;
+  tab: FinanceTab;
+  to?: string;
+}): string {
+  const search = new URLSearchParams();
+  search.set('tab', params.tab);
+  if (params.period) {
+    search.set('period', params.period);
+  }
+  if (params.from) {
+    search.set('from', params.from);
+  }
+  if (params.to) {
+    search.set('to', params.to);
+  }
+
+  const query = search.toString();
+  return query ? `/finances?${query}` : '/finances';
+}
+
 function kpiCard(label: string, value: string, description?: string) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
@@ -144,26 +178,146 @@ async function getCurrentMember() {
   };
 }
 
-export default async function FinancesPage({ searchParams }: FinancesPageProps) {
+async function FinanceTabBar({
+  activeTab,
+  from,
+  period,
+  to,
+}: {
+  activeTab: FinanceTab;
+  from: Date;
+  period: string;
+  to: Date;
+}) {
   const t = await getTranslations('finance');
-  const params = await searchParams;
-  const { activePeriod, from, to } = periodRange(params);
-  const { merchantAccountId, role, supabase } = await getCurrentMember();
+  const tabClass = (active: boolean) =>
+    `grid min-h-11 place-items-center rounded-md px-4 text-sm font-medium ${
+      active ? 'bg-accent text-text' : 'text-muted hover:text-text'
+    }`;
 
-  if (!merchantAccountId || role !== 'owner') {
-    return (
-      <main className="space-y-6" id="main">
-        <header className="space-y-2">
-          <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
-        </header>
-        <section className="flex max-w-2xl gap-3 rounded-lg border border-border bg-surface p-5 text-muted shadow-1">
-          <LockKeyhole aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-          <p>{t('restricted')}</p>
-        </section>
-      </main>
-    );
-  }
+  return (
+    <nav
+      aria-label={t('tabs.ariaLabel')}
+      className="flex flex-wrap gap-2 rounded-lg border border-border bg-surface p-1 shadow-1"
+    >
+      <Link
+        aria-current={activeTab === 'global' ? 'page' : undefined}
+        className={tabClass(activeTab === 'global')}
+        href={buildFinanceHref({
+          from: toDateInput(from),
+          period,
+          tab: 'global',
+          to: toDateInput(to),
+        })}
+      >
+        {t('tabs.global')}
+      </Link>
+      <Link
+        aria-current={activeTab === 'produits' ? 'page' : undefined}
+        className={tabClass(activeTab === 'produits')}
+        href={buildFinanceHref({
+          from: toDateInput(from),
+          period,
+          tab: 'produits',
+          to: toDateInput(to),
+        })}
+      >
+        {t('tabs.products')}
+      </Link>
+      <Link
+        aria-current={activeTab === 'livreurs' ? 'page' : undefined}
+        className={tabClass(activeTab === 'livreurs')}
+        href={buildFinanceHref({
+          from: toDateInput(from),
+          period,
+          tab: 'livreurs',
+          to: toDateInput(to),
+        })}
+      >
+        {t('tabs.drivers')}
+      </Link>
+    </nav>
+  );
+}
 
+async function PeriodControls({
+  activeTab,
+  activePeriod,
+  from,
+  to,
+}: {
+  activeTab: FinanceTab;
+  activePeriod: string;
+  from: Date;
+  to: Date;
+}) {
+  const t = await getTranslations('finance');
+  const periods = ['today', '7j', '30j'] as const;
+
+  return (
+    <form className="flex flex-wrap items-end gap-2" method="get">
+      <input name="tab" type="hidden" value={activeTab} />
+      <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
+        {periods.map((period) => (
+          <Link
+            className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
+              activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
+            }`}
+            href={buildFinanceHref({
+              from: toDateInput(from),
+              period,
+              tab: activeTab,
+              to: toDateInput(to),
+            })}
+            key={period}
+          >
+            {t(`periods.${period}`)}
+          </Link>
+        ))}
+      </div>
+      <label className="space-y-1 text-xs font-medium text-muted">
+        {t('periods.from')}
+        <input
+          className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+          defaultValue={toDateInput(from)}
+          name="from"
+          type="date"
+        />
+      </label>
+      <label className="space-y-1 text-xs font-medium text-muted">
+        {t('periods.to')}
+        <input
+          className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+          defaultValue={toDateInput(to)}
+          name="to"
+          type="date"
+        />
+      </label>
+      <button
+        className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
+        type="submit"
+      >
+        {t('periods.apply')}
+      </button>
+    </form>
+  );
+}
+
+async function renderGlobalTab({
+  from,
+  merchantAccountId,
+  role,
+  supabase,
+  to,
+}: {
+  from: Date;
+  merchantAccountId: string;
+  role: string;
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  to: Date;
+}) {
+  const t = await getTranslations('finance');
+  const tableT = await getTranslations('tableau');
   const [kpisResult, agingResult, settingsResult, settlementsResult, deliveredCountResult] =
     await Promise.all([
       financeKpisRpc(supabase)('finance_kpis', {
@@ -192,8 +346,6 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         .lte('created_at', to.toISOString()),
     ]);
 
-  // Consolidation versements/écarts par livreur via le builder partagé (même
-  // recalcul que l'action de relecture du panneau → aucun drift).
   const { drivers: driverOutstandings, shortfalls } = await buildDriverSettlements(
     supabase as unknown as SupabaseClient<Database>,
     merchantAccountId,
@@ -235,8 +387,6 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
     settings,
   });
   const driversConcerned = aging.filter((item) => item.outstanding_minor > 0).length;
-  const hasFinancialData = kpis.ca_livre > 0 || kpis.encaisse > 0 || kpis.cash_chez_livreurs > 0;
-  const periods = ['today', '7j', '30j'] as const;
 
   const [profitResult, chartsResult, expensesResult, categoriesResult] = await Promise.all([
     getFinanceReportAction({ from: from.toISOString(), to: to.toISOString() }),
@@ -252,64 +402,11 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
   const shopPerformance = charts?.shops ?? [];
   const expenses = expensesResult?.data?.ok ? expensesResult.data.expenses : [];
   const categories = categoriesResult?.data?.ok ? categoriesResult.data.categories : [];
+  const caMinor = profitReport?.netCAMinor ?? kpis.ca_livre;
+  const cashMinor = kpis.cash_chez_livreurs;
 
   return (
-    <main className="space-y-6" id="main">
-      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
-          <p className="max-w-2xl text-muted">{t('subtitle')}</p>
-        </div>
-        <div className="flex flex-col items-stretch gap-3 md:items-end">
-          <ReportDownloadButton
-            errorLabel={t('report.error')}
-            from={toDateInput(from)}
-            label={t('report.download')}
-            loadingLabel={t('report.loading')}
-            to={toDateInput(to)}
-          />
-          <form className="flex flex-wrap items-end gap-2" method="get">
-            <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
-              {periods.map((period) => (
-                <Link
-                  className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
-                    activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
-                  }`}
-                  href={`/finances?period=${period}`}
-                  key={period}
-                >
-                  {t(`periods.${period}`)}
-                </Link>
-              ))}
-            </div>
-            <label className="space-y-1 text-xs font-medium text-muted">
-              {t('periods.from')}
-              <input
-                className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-                defaultValue={toDateInput(from)}
-                name="from"
-                type="date"
-              />
-            </label>
-            <label className="space-y-1 text-xs font-medium text-muted">
-              {t('periods.to')}
-              <input
-                className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-                defaultValue={toDateInput(to)}
-                name="to"
-                type="date"
-              />
-            </label>
-            <button
-              className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
-              type="submit"
-            >
-              {t('periods.custom')}
-            </button>
-          </form>
-        </div>
-      </header>
-
+    <>
       <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
         <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         <p className="text-xs">{t('disclaimer')}</p>
@@ -326,16 +423,9 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         expenses={expenses}
       />
 
-      {!hasFinancialData ? (
-        <section className="rounded-lg border border-border bg-surface p-5 text-muted shadow-1">
-          {t('empty')}
-        </section>
-      ) : null}
-
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {kpiCard(t('kpis.caLivre'), formatMoney(kpis.ca_livre, 'XOF'))}
-        {kpiCard(t('kpis.encaisse'), formatMoney(kpis.encaisse, 'XOF'))}
-        {kpiCard(t('kpis.aEncaisser'), formatMoney(kpis.a_encaisser, 'XOF'))}
+        {kpiCard(t('kpis.caUnified'), formatMoney(caMinor, 'XOF'))}
+        {kpiCard(t('kpis.cashDrivers'), formatMoney(cashMinor, 'XOF'))}
         {profitReport
           ? kpiCard(
               t('kpis.grossMargin'),
@@ -350,36 +440,35 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
               settings.cogs_known ? undefined : t('kpis.marginEstimate'),
             )}
         {profitReport
-          ? kpiCard(
-              t('kpis.netProfit'),
-              formatMoney(profitReport.netProfitMinor, 'XOF'),
-              t('kpis.netProfitDesc'),
-            )
+          ? kpiCard(t('kpis.netProfit'), formatMoney(profitReport.netProfitMinor, 'XOF'))
           : null}
         {kpiCard(t('kpis.rto'), `${new Intl.NumberFormat('fr-FR').format(kpis.taux_refus)} %`)}
+        {kpiCard(
+          t('kpis.driversConcernedTitle'),
+          new Intl.NumberFormat('fr-FR').format(driversConcerned),
+          formatMoney(kpis.cash_chez_livreurs, 'XOF'),
+        )}
       </section>
 
       <Link
         className="group flex min-h-36 flex-col justify-between rounded-lg bg-accent p-5 text-text shadow-2 transition md:min-h-44 md:p-7"
-        href="/finances#versements"
+        href="/livreurs"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="flex items-center gap-2 text-sm font-semibold">
-              <Wallet aria-hidden="true" className="size-5" />
-              {t('kpis.cashDrivers')}
+              <ReceiptText aria-hidden="true" className="size-5" />
+              {t('kpis.cashDriversGlobal')}
             </p>
             <p className="mt-4 font-display text-5xl italic md:text-6xl">
               {formatMoney(kpis.cash_chez_livreurs, 'XOF')}
             </p>
           </div>
-          <ArrowRight
-            aria-hidden="true"
-            className="size-6 transition group-hover:translate-x-1 motion-reduce:transition-none"
-          />
         </div>
         <p className="mt-4 text-sm font-medium">
-          {t('kpis.driversConcerned', { count: driversConcerned })}
+          {t('kpis.driversConcerned', {
+            count: driversConcerned,
+          })}
         </p>
       </Link>
 
@@ -396,7 +485,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         emptyLabel={t('charts.empty')}
         funnel={codFunnel.map((item) => ({
           count: item.count,
-          label: t(`status.${item.status}`),
+          label: tableT(`status.${item.status}`),
         }))}
         funnelTitle={t('charts.funnel')}
         revenue={revenue}
@@ -404,6 +493,100 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
         shops={shopPerformance}
         shopsTitle={t('charts.shops')}
       />
+    </>
+  );
+}
+
+async function renderProductTab({
+  from,
+  merchantAccountId,
+  to,
+}: {
+  from: Date;
+  merchantAccountId: string;
+  to: Date;
+}) {
+  const admin = createFinanceAdminClient();
+  const report = await fetchFinanceProductCostReport(
+    admin,
+    merchantAccountId,
+    from.toISOString(),
+    to.toISOString(),
+  );
+
+  return <FinanceProductCostView from={toDateInput(from)} report={report} to={toDateInput(to)} />;
+}
+
+async function renderDriverTab({
+  from,
+  merchantAccountId,
+  to,
+}: {
+  from: Date;
+  merchantAccountId: string;
+  to: Date;
+}) {
+  const admin = createFinanceAdminClient();
+  const report = await fetchFinanceDriverCostReport(
+    admin,
+    merchantAccountId,
+    from.toISOString(),
+    to.toISOString(),
+  );
+
+  return <FinanceDriverCostView from={toDateInput(from)} report={report} to={toDateInput(to)} />;
+}
+
+export default async function FinancesPage({ searchParams }: FinancesPageProps) {
+  const nav = await getTranslations('nav');
+  const t = await getTranslations('finance');
+  const params = await searchParams;
+  const { activePeriod, from, to } = periodRange(params);
+  const activeTab = normalizeFinanceTab(params.tab);
+  const { merchantAccountId, role, supabase } = await getCurrentMember();
+
+  if (!merchantAccountId || role !== 'owner') {
+    return (
+      <main className="space-y-6" id="main">
+        <header className="space-y-2">
+          <h1 className="font-display text-4xl md:text-5xl">{nav('finances')}</h1>
+        </header>
+        <section className="flex max-w-2xl gap-3 rounded-lg border border-border bg-surface p-5 text-muted shadow-1">
+          <LockKeyhole aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+          <p>{t('restricted')}</p>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="space-y-6" id="main">
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <h1 className="font-display text-4xl md:text-5xl">{nav('finances')}</h1>
+          <p className="max-w-2xl text-muted">{t('subtitle')}</p>
+        </div>
+        <div className="flex flex-col items-stretch gap-3 md:items-end">
+          {activeTab === 'global' ? (
+            <ReportDownloadButton
+              errorLabel={t('report.error')}
+              from={toDateInput(from)}
+              label={t('report.download')}
+              loadingLabel={t('report.loading')}
+              to={toDateInput(to)}
+            />
+          ) : null}
+          {await PeriodControls({ activePeriod, activeTab, from, to })}
+        </div>
+      </header>
+
+      {await FinanceTabBar({ activeTab, from, period: activePeriod, to })}
+
+      {activeTab === 'global'
+        ? await renderGlobalTab({ from, merchantAccountId, role, supabase, to })
+        : activeTab === 'produits'
+          ? await renderProductTab({ from, merchantAccountId, to })
+          : await renderDriverTab({ from, merchantAccountId, to })}
     </main>
   );
 }

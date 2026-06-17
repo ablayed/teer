@@ -243,30 +243,41 @@ test('nav finances absente pour un manager', async ({ page }) => {
   }
 });
 
-test('cards séparées + résultat net + graphe CA par boutique + exports PDF/CSV (owner)', async ({
+test('CA unifié + onglets finances + graphe CA par boutique + exports PDF/CSV (owner)', async ({
   page,
 }) => {
   const fixture = await createOwnerFixture('cards-charts');
   try {
     await signIn(page, fixture.email, '/finances');
 
-    // Cards Encaissé / À encaisser séparées + Résultat net
-    await expect(page.getByText(messages.finance.kpis.encaisse, { exact: true })).toBeVisible({
+    // CA unifié + onglets
+    await expect(page.getByText(messages.finance.kpis.caUnified, { exact: true })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText(messages.finance.kpis.aEncaisser, { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: messages.finance.tabs.products })).toBeVisible();
+    await expect(page.getByRole('link', { name: messages.finance.tabs.drivers })).toBeVisible();
     await expect(
       page.getByText(messages.finance.kpis.netProfit, { exact: true }).first(),
     ).toBeVisible();
+
+    // Exports : PDF (lien) + CSV SYSCOHADA (bouton) coexistent
+    await expect(page.getByRole('link', { name: messages.finance.report.download })).toBeVisible();
+    await expect(page.getByRole('button', { name: messages.finance.profit.csv })).toBeVisible();
+
+    await page.getByRole('link', { name: messages.finance.tabs.products }).click();
+    await expect(page.getByText(messages.finance.products.title, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByRole('link', { name: messages.finance.tabs.drivers }).click();
+    await expect(page.getByText(messages.finance.driverCost.title, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Graphe CA encaissé par boutique (titre rendu même sans données)
     await expect(page.getByText(messages.finance.charts.shops, { exact: true })).toBeVisible({
       timeout: 15_000,
     });
-
-    // Exports : PDF (lien) + CSV SYSCOHADA (bouton) coexistent
-    await expect(page.getByRole('link', { name: messages.finance.report.download })).toBeVisible();
-    await expect(page.getByRole('button', { name: messages.finance.profit.csv })).toBeVisible();
 
     // Le PDF se génère réellement sur la période (cookies de session transmis)
     const today = new Date().toISOString().slice(0, 10);

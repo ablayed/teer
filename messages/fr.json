@@ -620,10 +620,16 @@
   },
   "finance": {
     "title": "Finances",
-    "subtitle": "Suivez le cash collecté, les versements livreurs et la marge estimée.",
+    "subtitle": "Suivez le cash collecté, les versements livreurs, le coût de revient pilote et la marge estimée.",
     "restricted": "Accès réservé au propriétaire.",
     "disclaimer": "Vue de gestion — indicateurs de pilotage non certifiés. Consultez un expert-comptable OHADA avant tout usage fiscal.",
     "empty": "Aucune donnée financière pour cette période.",
+    "tabs": {
+      "ariaLabel": "Choisir la vue finances",
+      "global": "Vue globale",
+      "products": "Vue par produit",
+      "drivers": "Vue par livreur"
+    },
     "report": {
       "download": "Télécharger le rapport PDF",
       "error": "Le rapport n'a pas pu être généré. Réessayez.",
@@ -634,16 +640,16 @@
       "7j": "7 j",
       "30j": "30 j",
       "custom": "Appliquer",
+      "apply": "Appliquer",
       "from": "Du",
       "to": "Au"
     },
     "kpis": {
-      "caLivre": "Chiffre d'affaires livré",
-      "encaisseAEncaisser": "Encaissé / À encaisser",
-      "encaisse": "Encaissé",
-      "aEncaisser": "À encaisser",
+      "caUnified": "Chiffre d'affaires",
       "cashDrivers": "Cash chez les livreurs",
+      "cashDriversGlobal": "Cash total chez tous les livreurs",
       "driversConcerned": "{count, plural, =0 {Aucun livreur concerné} one {# livreur concerné} other {# livreurs concernés}}",
+      "driversConcernedTitle": "Livreurs concernés",
       "margin": "Marge brute estimée",
       "grossMargin": "Marge brute",
       "grossMarginDescReal": "CA net − coût des produits vendus (≠ résultat net)",
@@ -724,7 +730,7 @@
       "ca": "CA encaissé",
       "deliveryFees": "Frais de livraison",
       "returns": "Retours (contra-revenue)",
-      "netCa": "CA net",
+      "netCa": "Chiffre d'affaires",
       "cogs": "Coût des ventes (COGS)",
       "cogsReversal": "Reprise COGS retours restockés",
       "netCogs": "COGS net",
@@ -767,12 +773,73 @@
       "total": "Total dépenses"
     },
     "products": {
-      "title": "Détail par produit",
-      "product": "Produit",
-      "qtySold": "Qté vendue",
-      "cogs": "COGS",
-      "currentCost": "CUMP actuel",
+      "title": "Vue par produit",
+      "subtitle": "Coût d'achat officiel et coût de revient complet de pilotage sur la période.",
+      "period": "Période : {from} → {to}",
+      "editExpenses": "Modifier les dépenses",
+      "editOrders": "Modifier les commandes",
+      "cards": {
+        "expanded": "Formule affichée",
+        "ads": {
+          "label": "Publicité allouée",
+          "hint": "Répartit les dépenses marketing selon la part de CA du produit.",
+          "detail": "Allocation par part de chiffre d'affaires.",
+          "formula": "publicité allouée = dépenses publicité × CA produit / CA total = {ads} × produit / total",
+          "formulaTitle": "Publicité allouée"
+        },
+        "delivery": {
+          "label": "Livraison allouée",
+          "hint": "Répartit les frais de livraison de commande par article.",
+          "detail": "Allocation par nombre d'articles de la commande.",
+          "formula": "livraison allouée = somme des frais de livraison répartis à parts égales par article = {delivery} sur {units} articles",
+          "formulaTitle": "Livraison allouée"
+        },
+        "pilot": {
+          "label": "Coût de revient unitaire (pilotage)",
+          "hint": "Inclut le coût atterri, la publicité et la livraison allouée.",
+          "detail": "Coût de revient complet de pilotage par unité vendue.",
+          "formula": "coût de revient pilote = (coût atterri reçu + publicité allouée + livraison allouée) / quantité vendue = ({landed} + {ads} + {delivery}) / {qty}",
+          "formulaTitle": "Coût de revient pilote"
+        }
+      },
+      "unallocatedDelivery": "Une partie des frais de livraison ({amount}) n'a pas pu être répartie faute d'articles liés.",
+      "table": {
+        "title": "Détail par produit",
+        "subtitle": "Le coût d'achat officiel reste séparé du coût de revient complet de pilotage.",
+        "summary": "Marge totale : {margin} · {products} produits",
+        "product": "Produit",
+        "qtySold": "Qté vendue",
+        "revenue": "CA généré",
+        "officialUnit": "Coût d'achat unitaire",
+        "pilotUnit": "Coût de revient unitaire",
+        "margin": "Marge",
+        "total": "Total"
+      },
       "empty": "Aucune vente sur cette période."
+    },
+    "driverCost": {
+      "title": "Vue par livreur",
+      "subtitle": "COGS figé des marchandises livrées, agrégé par livreur sur la période.",
+      "period": "Période : {from} → {to}",
+      "cards": {
+        "cogs": "Coût des marchandises livrées",
+        "cogsHint": "Somme des mouvements sold au coût figé.",
+        "qty": "Quantité livrée",
+        "qtyHint": "Volume total livré par ces mouvements.",
+        "unit": "COGS unitaire moyen",
+        "unitHint": "Coût figé moyen par unité livrée."
+      },
+      "table": {
+        "title": "Détail par livreur",
+        "subtitle": "Option de contexte avec le CA livré quand il existe.",
+        "context": "CA livré de contexte : {revenue}",
+        "driver": "Livreur",
+        "qty": "Qté livrée",
+        "cogs": "COGS",
+        "revenue": "CA livré",
+        "margin": "Marge de contexte"
+      },
+      "empty": "Aucun mouvement sold sur cette période."
     }
   },
   "analytics": {

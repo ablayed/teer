@@ -242,7 +242,7 @@ export function ExpenseSection({
   );
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-5 shadow-1">
+    <section className="rounded-lg border border-border bg-surface p-5 shadow-1" id="depenses">
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-text">{t('title')}</h2>
