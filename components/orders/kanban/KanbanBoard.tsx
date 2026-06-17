@@ -62,6 +62,7 @@ const actionLabels: Record<TransitionAction, string> = {
   confirmer: 'Confirmer',
   programmer: 'Programmer la livraison',
   assigner: 'Assigner',
+  demarrer_livraison: 'Démarrer la livraison',
   livrer: 'Marquer livree',
   mark_returned: 'Marquer retournée',
   annuler: 'Annuler',

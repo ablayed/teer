@@ -6,6 +6,7 @@ export const transitionActions = [
   'confirmer',
   'programmer',
   'assigner',
+  'demarrer_livraison',
   'livrer',
   'mark_returned',
   'annuler',
@@ -151,6 +152,16 @@ export const transitionCatalog: readonly TransitionCatalogItem[] = [
   {
     action: 'assigner',
     label: 'Assigner',
+    roles: ['owner', 'manager', 'agent'],
+    target: 'EN_LIVRAISON',
+  },
+  // Phase 11.1 (option C) : démarrer la livraison = assigned → out_for_delivery.
+  // target EN_LIVRAISON (legacy inchangé) MAIS exclue de getTransitionActionForTarget
+  // (sinon « EN_LIVRAISON » via target deviendrait ambigu avec « assigner »).
+  // Déclenchée explicitement par nom (popup d'assignation + dropdown).
+  {
+    action: 'demarrer_livraison',
+    label: 'Démarrer la livraison',
     roles: ['owner', 'manager', 'agent'],
     target: 'EN_LIVRAISON',
   },
@@ -465,6 +476,9 @@ export function getAllowedTransitionActionsForDimensions(
           );
         case 'assigner':
           return dimensions.callState === 'validated' && dimensions.deliveryState === 'scheduled';
+        case 'demarrer_livraison':
+          // Phase 11.1 : assigned (livreur affecté) → out_for_delivery.
+          return dimensions.callState === 'validated' && dimensions.deliveryState === 'assigned';
         case 'livrer':
           return (
             dimensions.callState === 'validated' &&
@@ -520,6 +534,14 @@ export function buildTransitionDimensionPatch(
         cashState: 'expected',
         deliveryState: 'assigned',
         ...(payload.assignedDriverId ? { assignedDriverId: payload.assignedDriverId } : {}),
+      };
+    // Phase 11.1 (option C) : démarrer la livraison. Seul delivery_state change
+    // (assigned→out_for_delivery). AUCUN mouvement stock (dispatch déjà posté à
+    // l'assignation ; le garde SQL exclut assigned du re-dispatch). cash reste
+    // expected, call reste validated, livreur inchangé.
+    case 'demarrer_livraison':
+      return {
+        deliveryState: 'out_for_delivery',
       };
     case 'livrer':
       return {
@@ -604,7 +626,11 @@ export function getTransitionActionForTarget(
         // (sinon « A_APPELER » deviendrait actionnable via les chemins inline).
         item.action !== 'deconfirmer' &&
         item.action !== 'desannuler' &&
-        item.action !== 'mark_returned',
+        item.action !== 'mark_returned' &&
+        // Phase 11.1 : « demarrer_livraison » partage la cible EN_LIVRAISON avec
+        // « assigner » → exclue ici pour que la sélection par target (chemins
+        // inline status) reste déterministe sur « assigner ».
+        item.action !== 'demarrer_livraison',
     )?.action ?? null
   );
 }

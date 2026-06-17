@@ -1,7 +1,10 @@
 import { transitionInputSchema } from '@/lib/actions/transition-input-schema';
 import {
+  buildTransitionDimensionPatch,
   getAllowedTransitionActions,
+  getAllowedTransitionActionsForDimensions,
   getTransitionActionForTarget,
+  legacyStatusToDimensions,
   visibleAllowedActions,
 } from '@/lib/domain/order-transition-actions';
 import { describe, expect, it } from 'vitest';
@@ -22,11 +25,14 @@ describe('server transition actions', () => {
       'deconfirmer',
     ]);
     expect(getAllowedTransitionActions('PROGRAMMEE', 'agent')).toEqual(['assigner', 'deconfirmer']);
-    expect(getAllowedTransitionActions('EN_LIVRAISON', 'agent')).toEqual([]);
+    // Phase 11.1 : EN_LIVRAISON (legacy) = delivery_state assigned → « démarrer la
+    // livraison » est désormais légale (agent inclus).
+    expect(getAllowedTransitionActions('EN_LIVRAISON', 'agent')).toEqual(['demarrer_livraison']);
   });
 
   it('keeps cash and closure actions for owner and manager roles', () => {
     expect(getAllowedTransitionActions('EN_LIVRAISON', 'owner')).toEqual([
+      'demarrer_livraison',
       'livrer',
       'annuler',
       'refuser',
@@ -78,6 +84,45 @@ describe('server transition actions', () => {
         'programmer',
         'deconfirmer',
       ]);
+    });
+  });
+
+  describe('Phase 11.1 — demarrer_livraison (assigned → out_for_delivery)', () => {
+    it('est légale à assigned (validated) pour tous les rôles, pas avant', () => {
+      const scheduled = legacyStatusToDimensions('PROGRAMMEE'); // delivery=scheduled
+      const assigned = legacyStatusToDimensions('EN_LIVRAISON'); // delivery=assigned
+
+      expect(getAllowedTransitionActionsForDimensions(scheduled, 'agent')).not.toContain(
+        'demarrer_livraison',
+      );
+      for (const role of ['owner', 'manager', 'agent'] as const) {
+        expect(getAllowedTransitionActionsForDimensions(assigned, role)).toContain(
+          'demarrer_livraison',
+        );
+      }
+    });
+
+    it("n'est plus légale une fois en cours de livraison (out_for_delivery)", () => {
+      const outForDelivery = {
+        ...legacyStatusToDimensions('EN_LIVRAISON'),
+        deliveryState: 'out_for_delivery' as const,
+      };
+      const actions = getAllowedTransitionActionsForDimensions(outForDelivery, 'owner');
+      expect(actions).not.toContain('demarrer_livraison');
+      expect(actions).toContain('livrer');
+    });
+
+    it('ne change que delivery_state → out_for_delivery (aucun autre champ)', () => {
+      const patch = buildTransitionDimensionPatch(
+        'demarrer_livraison',
+        legacyStatusToDimensions('EN_LIVRAISON'),
+      );
+      expect(patch).toEqual({ deliveryState: 'out_for_delivery' });
+    });
+
+    it('partage la cible EN_LIVRAISON mais reste exclue de la résolution par target', () => {
+      // « assigner » reste l'action résolue par target EN_LIVRAISON.
+      expect(getTransitionActionForTarget('EN_LIVRAISON', 'owner')).toBe('assigner');
     });
   });
 

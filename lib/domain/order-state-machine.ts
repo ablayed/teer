@@ -29,7 +29,10 @@ const legalTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
   TENTEE: ['TENTEE', 'CONFIRMEE', 'PROGRAMMEE', 'REFUSEE', 'ANNULEE', 'A_APPELER'],
   CONFIRMEE: ['PROGRAMMEE', 'ANNULEE', 'REFUSEE'],
   PROGRAMMEE: ['EN_LIVRAISON', 'ANNULEE', 'REFUSEE'],
-  EN_LIVRAISON: ['LIVREE', 'REFUSEE', 'ANNULEE'],
+  // Phase 11.1 (option C) : EN_LIVRAISON→EN_LIVRAISON autorisé pour l'étape
+  // `demarrer_livraison` (assigned→out_for_delivery). Le cod_status legacy reste
+  // EN_LIVRAISON pour les deux dimensions ; seul delivery_state change.
+  EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'REFUSEE', 'ANNULEE'],
   LIVREE: [],
   REFUSEE: [],
   ANNULEE: [],

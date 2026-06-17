@@ -15,7 +15,8 @@ const expectedTransitions: Record<OrderStatus, OrderStatus[]> = {
   TENTEE: ['TENTEE', 'CONFIRMEE', 'PROGRAMMEE', 'REFUSEE', 'ANNULEE', 'A_APPELER'],
   CONFIRMEE: ['PROGRAMMEE', 'ANNULEE', 'REFUSEE'],
   PROGRAMMEE: ['EN_LIVRAISON', 'ANNULEE', 'REFUSEE'],
-  EN_LIVRAISON: ['LIVREE', 'REFUSEE', 'ANNULEE'],
+  // Phase 11.1 : self-loop EN_LIVRAISON→EN_LIVRAISON (assigned→out_for_delivery).
+  EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'REFUSEE', 'ANNULEE'],
   LIVREE: [],
   REFUSEE: [],
   ANNULEE: [],

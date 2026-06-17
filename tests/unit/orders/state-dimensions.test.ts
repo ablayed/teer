@@ -75,7 +75,7 @@ describe('order state dimensions', () => {
     ).toEqual(['assigner', 'deconfirmer']);
     expect(
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('EN_LIVRAISON'), 'owner'),
-    ).toEqual(['livrer', 'annuler', 'refuser']);
+    ).toEqual(['demarrer_livraison', 'livrer', 'annuler', 'refuser']);
   });
 
   it('returns a delivered order with cash reset to not_due', () => {
