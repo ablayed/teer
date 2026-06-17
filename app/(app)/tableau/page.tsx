@@ -15,12 +15,15 @@ import {
   getShopPerformance,
   getTopProducts,
 } from '@/lib/actions/dashboard';
+import { getDriversCashOnHandTotal } from '@/lib/actions/drivers';
+import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
 import { getOrders } from '@/lib/actions/orders';
 import {
   buildOrderViewHref,
   isSameLocalDate,
   matchesOrderSavedView,
 } from '@/lib/domain/order-saved-views';
+import { formatMoney } from '@/lib/format/fcfa';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getTranslations } from 'next-intl/server';
 import { Suspense, cache } from 'react';
@@ -102,6 +105,68 @@ async function ExceptionsSection() {
   ];
 
   return <OrderExceptionsGrid cards={exceptionCards} title="Exceptions a traiter" />;
+}
+
+function essentialCard(label: string, value: string, hint?: string) {
+  return (
+    <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
+      <p className="text-[13px] font-medium text-muted">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+    </section>
+  );
+}
+
+// Essentiels opérations (owner/manager) : cash total chez tous les livreurs (réutilise
+// cash-consolidation) + taux d'annulation / livraison réussie / retour (réutilise
+// getLossAnalyticsAction, période-aware 30 j). /analyses reste la vue détaillée.
+async function OperationsEssentialsSection() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: member } = await supabase
+    .from('merchant_member')
+    .select('role')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+  const role = (member as { role: string } | null)?.role ?? null;
+  if (role !== 'owner' && role !== 'manager') return null;
+
+  const now = new Date();
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - 29);
+
+  const [cashTotal, lossResult] = await Promise.all([
+    getDriversCashOnHandTotal(),
+    getLossAnalyticsAction({ from: from.toISOString(), to: now.toISOString() }),
+  ]);
+
+  const loss = lossResult?.data?.ok ? lossResult.data.analytics.summary : null;
+  const pct = (ratio: number) =>
+    new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1, style: 'percent' }).format(ratio);
+  const deliveryRate =
+    loss && loss.rtoDenominator > 0 ? loss.deliveredCount / loss.rtoDenominator : 0;
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold">Essentiels opérations (30 j)</h2>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {essentialCard(
+          'Cash total chez les livreurs',
+          formatMoney(cashTotal.ok ? cashTotal.totalMinor : 0, 'XOF'),
+          cashTotal.ok ? `${cashTotal.driverCount} livreur(s) concerné(s)` : undefined,
+        )}
+        {essentialCard("Taux d'annulation", loss ? pct(loss.cancellationRate) : '—')}
+        {essentialCard('Taux de livraison réussie', loss ? pct(deliveryRate) : '—')}
+        {essentialCard('Taux de retour', loss ? pct(loss.returnRate) : '—')}
+      </div>
+    </section>
+  );
 }
 
 async function RevenueSection() {
@@ -311,6 +376,10 @@ export default async function TableauPage() {
 
         <Suspense fallback={<KpiStripSkeleton />}>
           <KpiStrip />
+        </Suspense>
+
+        <Suspense fallback={<div className="dashboard-shimmer h-36 rounded-md" />}>
+          <OperationsEssentialsSection />
         </Suspense>
 
         <Suspense fallback={<ExceptionsSkeleton />}>

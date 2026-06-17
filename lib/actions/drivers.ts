@@ -1,6 +1,7 @@
 'use server';
 
 import {
+  type ConsolidationOrder,
   type DriverCashConsolidation,
   deriveDriverCashConsolidation,
 } from '@/lib/drivers/cash-consolidation';
@@ -318,4 +319,74 @@ export async function getDriverSettlementHistory(driverId: string): Promise<Sett
 // Historique global des versements, tous livreurs consolidés (owner/manager).
 export async function getAllSettlementHistory(): Promise<SettlementHistoryData> {
   return buildSettlementHistory(null);
+}
+
+export type DriversCashTotal =
+  | { ok: true; totalMinor: number; driverCount: number }
+  | { ok: false; message: string };
+
+// Cash total « à remettre » chez TOUS les livreurs = Σ cashOnHand par livreur
+// (collecté − frais encaissés − remis), via la même dérivation que le panneau
+// Livreurs (deriveDriverCashConsolidation) → aucun chiffre dupliqué. Owner/manager.
+export async function getDriversCashOnHandTotal(): Promise<DriversCashTotal> {
+  const auth = await resolveOwnerManagerContext();
+  if (!auth.ok) return { ok: false, message: auth.message };
+  const { merchantAccountId, admin } = auth;
+
+  const { data: orders, error } = await admin
+    .from('orders')
+    .select(
+      'id, assigned_driver_id, cash_state, cash_collectable_minor, delivery_fee_minor, payment_channel_at_delivery, total_amount',
+    )
+    .eq('merchant_account_id', merchantAccountId)
+    .not('assigned_driver_id', 'is', null);
+  if (error) return { ok: false, message: error.message };
+
+  const rows = orders ?? [];
+  const orderIds = rows.map((o) => o.id);
+
+  const allocationsResult =
+    orderIds.length > 0
+      ? await admin
+          .from('settlement_allocation')
+          .select('order_id, allocated_minor')
+          .eq('merchant_account_id', merchantAccountId)
+          .in('order_id', orderIds)
+      : { data: [] as { order_id: string; allocated_minor: number }[], error: null };
+  if (allocationsResult.error) return { ok: false, message: allocationsResult.error.message };
+
+  const driverByOrder = new Map(rows.map((o) => [o.id, o.assigned_driver_id as string]));
+  const remittedByDriver = new Map<string, number>();
+  for (const a of allocationsResult.data ?? []) {
+    const driverId = driverByOrder.get(a.order_id);
+    if (!driverId) continue;
+    remittedByDriver.set(driverId, (remittedByDriver.get(driverId) ?? 0) + a.allocated_minor);
+  }
+
+  const ordersByDriver = new Map<string, ConsolidationOrder[]>();
+  for (const o of rows) {
+    const driverId = o.assigned_driver_id as string;
+    const list = ordersByDriver.get(driverId) ?? [];
+    list.push({
+      deliveryFeeMinor: o.delivery_fee_minor,
+      cashState: o.cash_state,
+      cashCollectableMinor: o.cash_collectable_minor,
+      paymentChannel: o.payment_channel_at_delivery,
+      totalAmount: o.total_amount,
+    });
+    ordersByDriver.set(driverId, list);
+  }
+
+  let totalMinor = 0;
+  let driverCount = 0;
+  for (const [driverId, driverOrders] of ordersByDriver) {
+    const consolidation = deriveDriverCashConsolidation({
+      orders: driverOrders,
+      remittedMinor: remittedByDriver.get(driverId) ?? 0,
+    });
+    totalMinor += consolidation.cashOnHandMinor;
+    if (consolidation.cashOnHandMinor > 0) driverCount += 1;
+  }
+
+  return { ok: true, totalMinor, driverCount };
 }
