@@ -227,6 +227,45 @@ async function seedFractionalCollectedOrder(
   });
 }
 
+// Commande encaissée d'un produit JAMAIS costé (unit_cost null) → coût manquant.
+// La ligne apparaît par appariement items_summary ↔ order_line, sans COGS figé.
+async function seedMissingCostOrder(admin: AdminClient, merchantAccountId: string, title: string) {
+  const { data: product } = await admin
+    .from('product')
+    .insert({ merchant_account_id: merchantAccountId, title })
+    .select('id')
+    .single();
+  if (!product) throw new Error('product insert returned no row');
+  const { data: order } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      source: 'manual',
+      order_number: `MISS-${Date.now()}`,
+      total_amount: 9000,
+      delivery_fee_minor: 0,
+      currency: 'XOF',
+      items_summary: [{ title, quantity: 3, price: 3000 }],
+      order_state: 'completed',
+      call_state: 'validated',
+      delivery_state: 'delivered',
+      cash_state: 'collected',
+      cash_collected_at: new Date().toISOString(),
+      payment_channel_at_delivery: 'ESPECES',
+    })
+    .select('id')
+    .single();
+  if (!order) throw new Error('order insert returned no row');
+  await admin.from('order_line').insert({
+    merchant_account_id: merchantAccountId,
+    order_id: order.id,
+    product_id: product.id,
+    raw_title: title,
+    qty: 3,
+    match_status: 'matched',
+  });
+}
+
 async function signIn(page: Page, email: string, redirectTo = '/finances') {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
   await page.getByLabel(messages.auth.email_label).fill(email);
@@ -412,6 +451,104 @@ test('COGS réel sur commande encaissée à coût connu → marge brute < 100 %'
     });
     // …et marge brute ≠ 100 % (le bug COGS=0 affichait 100 %). CA 20 000 − COGS 10 000 = 50 %.
     await expect(pnl.getByText('100 %')).toHaveCount(0);
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test('filtres période : les presets rechargent réellement (7j/30j/90j)', async ({ page }) => {
+  const fixture = await createOwnerFixture('presets');
+  try {
+    await signIn(page, fixture.email, '/finances');
+    await expect(
+      page.getByText(messages.finance.kpis.caUnified, { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('link', { name: messages.finance.periods['7j'], exact: true }).click();
+    await expect(page).toHaveURL(/period=7j/);
+
+    await page.getByRole('link', { name: messages.finance.periods['90j'], exact: true }).click();
+    await expect(page).toHaveURL(/period=90j/);
+
+    await page.getByRole('link', { name: messages.finance.periods['30j'], exact: true }).click();
+    await expect(page).toHaveURL(/period=30j/);
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test('vue globale sans « Versements par livreur », présent sur l’onglet livreurs', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('no-settlements');
+  try {
+    await signIn(page, fixture.email, '/finances');
+    await expect(
+      page.getByText(messages.finance.kpis.caUnified, { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // §3.6 : la section versements ne doit plus être dans la Vue globale.
+    await expect(page.getByText(messages.finance.settlements.title, { exact: true })).toHaveCount(
+      0,
+    );
+
+    // …mais reste dans l'onglet Livreurs.
+    await page.getByRole('link', { name: messages.finance.tabs.drivers }).click();
+    await expect(
+      page.getByText(messages.finance.settlements.title, { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test('vue produit : coût manquant éditable in-cell + card à définition au tap', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('inline-edit');
+  const title = `Sans Cout ${Date.now()}`;
+  try {
+    await seedMissingCostOrder(fixture.admin, fixture.merchantAccountId, title);
+    await signIn(page, fixture.email, '/finances?tab=produits');
+    await expect(page.getByRole('heading', { name: messages.finance.products.title })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Card à définition : tap → définition en langage simple visible.
+    await page
+      .getByRole('button')
+      .filter({ hasText: messages.finance.products.cards.purchase.label })
+      .first()
+      .click();
+    await expect(
+      page.getByText(messages.finance.products.cards.purchase.definition, { exact: false }).first(),
+    ).toBeVisible();
+
+    // Coût manquant signalé (jamais 0 silencieux).
+    await expect(
+      page.getByText(messages.finance.products.table.costMissing, { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Édition in-cell : crayon (visible) → saisie → OK → bascule en « estimée ».
+    await page
+      .locator(`button[aria-label="${messages.finance.products.table.editPurchase}"]:visible`)
+      .first()
+      .click();
+    await page
+      .locator(
+        `input[aria-label="${messages.finance.products.table.purchaseUnitPlaceholder}"]:visible`,
+      )
+      .first()
+      .fill('2000');
+    await page
+      .locator('button:visible')
+      .filter({ hasText: messages.finance.products.table.save })
+      .first()
+      .click();
+
+    await expect(
+      page.getByText(messages.finance.products.table.estimated, { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
   }

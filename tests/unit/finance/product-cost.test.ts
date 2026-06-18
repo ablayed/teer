@@ -145,8 +145,58 @@ describe('computeFinanceProductCostReport', () => {
     const cadeau = report.rows.find((row) => row.productId === 'p2');
     expect(inconnu?.purchasePriceMinor).toBe(0);
     expect(inconnu?.costMissing).toBe(true);
+    expect(inconnu?.estimated).toBe(false);
     expect(cadeau?.purchasePriceMinor).toBe(0);
     expect(cadeau?.costMissing).toBe(false);
+    expect(cadeau?.estimated).toBe(false);
+  });
+
+  it('repli estimé sur le coût catalogue (unit_cost) quand aucun COGS figé', () => {
+    // Pas de mouvement `sold` (COGS figé = 0) mais unit_cost connu → prix d'achat
+    // = unit_cost × qté, marqué « estimée ». C'est le repli qui rend l'édition
+    // inline du prix manquant utile (corriger → voir le bénéfice).
+    const report = computeFinanceProductCostReport({
+      expenses: [],
+      orderLines: [{ orderId: 'o1', productId: 'p1', qty: 3, rawTitle: 'Sac' }],
+      orders: [
+        {
+          deliveryFeeMinor: 0,
+          id: 'o1',
+          itemsSummary: [{ price: 5_000, quantity: 3, title: 'Sac' }],
+          totalAmount: 15_000,
+        },
+      ],
+      products: [{ id: 'p1', title: 'Sac', unitCost: 2_000 }],
+      soldMovements: [],
+    });
+
+    const sac = report.rows.find((row) => row.productId === 'p1');
+    expect(sac?.purchasePriceMinor).toBe(6_000); // 2000 × 3
+    expect(sac?.estimated).toBe(true);
+    expect(sac?.costMissing).toBe(false);
+    expect(sac?.profitBeforeMinor).toBe(9_000); // 15000 − 6000
+  });
+
+  it('le COGS figé prime sur le coût catalogue (pas estimé)', () => {
+    // unit_cost catalogue (9999) ne doit PAS écraser le COGS figé (1000) des `sold`.
+    const report = computeFinanceProductCostReport({
+      expenses: [],
+      orderLines: [{ orderId: 'o1', productId: 'p1', qty: 2, rawTitle: 'Sac' }],
+      orders: [
+        {
+          deliveryFeeMinor: 0,
+          id: 'o1',
+          itemsSummary: [{ price: 5_000, quantity: 2, title: 'Sac' }],
+          totalAmount: 10_000,
+        },
+      ],
+      products: [{ id: 'p1', title: 'Sac', unitCost: 9_999 }],
+      soldMovements: [{ productId: 'p1', qty: 2, unitCost: 1_000 }],
+    });
+
+    const sac = report.rows.find((row) => row.productId === 'p1');
+    expect(sac?.purchasePriceMinor).toBe(2_000); // COGS figé 1000 × 2, pas 9999
+    expect(sac?.estimated).toBe(false);
   });
 
   it('n’explose pas sur un prix items_summary fractionnaire et arrondit le CA au minor', () => {
