@@ -644,10 +644,15 @@
       "error": "Le rapport n'a pas pu être généré. Réessayez.",
       "loading": "Génération du rapport..."
     },
+    "loadError": {
+      "title": "Les données financières n'ont pas pu être chargées.",
+      "retry": "Réessayer"
+    },
     "periods": {
       "today": "Aujourd'hui",
       "7j": "7 j",
       "30j": "30 j",
+      "90j": "90 j",
       "custom": "Appliquer",
       "apply": "Appliquer",
       "from": "Du",

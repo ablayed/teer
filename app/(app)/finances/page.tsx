@@ -5,6 +5,7 @@ import { FinanceDriverCostView } from '@/components/finance/FinanceDriverCostVie
 import { FinanceProductCostView } from '@/components/finance/FinanceProductCostView';
 import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
+import { FinancePeriodPersistence } from '@/components/finance/finance-period-persistence';
 import { DefinitionCard } from '@/components/ui/definition-card';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
@@ -24,6 +25,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { AlertCircle, LockKeyhole, ReceiptText } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { Suspense } from 'react';
 
 type FinanceKpiRow = Database['public']['Functions']['finance_kpis']['Returns'][number];
 type CashAgingRow = Database['public']['Functions']['cash_aging']['Returns'][number];
@@ -88,11 +90,12 @@ function periodRange({
     return { activePeriod: 'today', from: startOfDay(now), to: end };
   }
 
-  const days = period === '7j' ? 7 : 30;
+  const days = period === '7j' ? 7 : period === '90j' ? 90 : 30;
   const start = startOfDay(now);
   start.setDate(start.getDate() - (days - 1));
+  const activePeriod = days === 7 ? '7j' : days === 90 ? '90j' : '30j';
 
-  return { activePeriod: days === 7 ? '7j' : '30j', from: start, to: end };
+  return { activePeriod, from: start, to: end };
 }
 
 function toDateInput(value: Date): string {
@@ -123,6 +126,20 @@ function buildFinanceHref(params: {
 
   const query = search.toString();
   return query ? `/finances?${query}` : '/finances';
+}
+
+// Paramètres de période à transporter d'un lien à l'autre (changement d'onglet) :
+// un preset ne porte QUE `period` (sinon `from`/`to` gagnent dans `periodRange` et
+// le clic du preset est ignoré — bug §4) ; seul « Personnalisé » porte `from`/`to`.
+function periodLinkParams(
+  activePeriod: string,
+  from: Date,
+  to: Date,
+): { from?: string; period?: string; to?: string } {
+  if (activePeriod === 'custom') {
+    return { from: toDateInput(from), to: toDateInput(to) };
+  }
+  return { period: activePeriod };
 }
 
 function kpiCard(label: string, value: string, description?: string) {
@@ -191,6 +208,7 @@ async function FinanceTabBar({
   to: Date;
 }) {
   const t = await getTranslations('finance');
+  const periodParams = periodLinkParams(period, from, to);
   const tabClass = (active: boolean) =>
     `grid min-h-11 place-items-center rounded-md px-4 text-sm font-medium ${
       active ? 'bg-accent text-text' : 'text-muted hover:text-text'
@@ -204,36 +222,21 @@ async function FinanceTabBar({
       <Link
         aria-current={activeTab === 'global' ? 'page' : undefined}
         className={tabClass(activeTab === 'global')}
-        href={buildFinanceHref({
-          from: toDateInput(from),
-          period,
-          tab: 'global',
-          to: toDateInput(to),
-        })}
+        href={buildFinanceHref({ ...periodParams, tab: 'global' })}
       >
         {t('tabs.global')}
       </Link>
       <Link
         aria-current={activeTab === 'produits' ? 'page' : undefined}
         className={tabClass(activeTab === 'produits')}
-        href={buildFinanceHref({
-          from: toDateInput(from),
-          period,
-          tab: 'produits',
-          to: toDateInput(to),
-        })}
+        href={buildFinanceHref({ ...periodParams, tab: 'produits' })}
       >
         {t('tabs.products')}
       </Link>
       <Link
         aria-current={activeTab === 'livreurs' ? 'page' : undefined}
         className={tabClass(activeTab === 'livreurs')}
-        href={buildFinanceHref({
-          from: toDateInput(from),
-          period,
-          tab: 'livreurs',
-          to: toDateInput(to),
-        })}
+        href={buildFinanceHref({ ...periodParams, tab: 'livreurs' })}
       >
         {t('tabs.drivers')}
       </Link>
@@ -253,7 +256,7 @@ async function PeriodControls({
   to: Date;
 }) {
   const t = await getTranslations('finance');
-  const periods = ['today', '7j', '30j'] as const;
+  const periods = ['today', '7j', '30j', '90j'] as const;
 
   return (
     <form className="flex flex-wrap items-end gap-2" method="get">
@@ -261,15 +264,12 @@ async function PeriodControls({
       <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
         {periods.map((period) => (
           <Link
+            aria-current={activePeriod === period ? 'true' : undefined}
             className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
               activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
             }`}
-            href={buildFinanceHref({
-              from: toDateInput(from),
-              period,
-              tab: activeTab,
-              to: toDateInput(to),
-            })}
+            // Preset = `period` seul (pas de from/to), sinon le clic est ignoré (§4).
+            href={buildFinanceHref({ period, tab: activeTab })}
             key={period}
           >
             {t(`periods.${period}`)}
@@ -580,6 +580,9 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
 
   return (
     <main className="space-y-6" id="main">
+      <Suspense fallback={null}>
+        <FinancePeriodPersistence activeTab={activeTab} />
+      </Suspense>
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <h1 className="font-display text-4xl md:text-5xl">{nav('finances')}</h1>
