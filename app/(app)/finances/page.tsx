@@ -6,6 +6,7 @@ import { FinanceProductCostView } from '@/components/finance/FinanceProductCostV
 import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
 import { FinancePeriodPersistence } from '@/components/finance/finance-period-persistence';
+import { FinanceTabSkeleton } from '@/components/finance/finance-tab-skeleton';
 import { DefinitionCard } from '@/components/ui/definition-card';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
@@ -304,16 +305,14 @@ async function PeriodControls({
   );
 }
 
-async function renderGlobalTab({
+async function GlobalTabContent({
   from,
   merchantAccountId,
-  role,
   supabase,
   to,
 }: {
   from: Date;
   merchantAccountId: string;
-  role: string;
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
   to: Date;
 }) {
@@ -345,11 +344,6 @@ async function renderGlobalTab({
         .gte('created_at', from.toISOString())
         .lte('created_at', to.toISOString()),
     ]);
-
-  const { drivers: driverOutstandings, shortfalls } = await buildDriverSettlements(
-    supabase as unknown as SupabaseClient<Database>,
-    merchantAccountId,
-  );
 
   const kpis = kpisResult.data?.[0] ?? {
     a_encaisser: 0,
@@ -491,12 +485,6 @@ async function renderGlobalTab({
         </p>
       </Link>
 
-      <DriverSettlementsLoader
-        currentRole={role}
-        drivers={driverOutstandings}
-        shortfalls={shortfalls}
-      />
-
       <FinanceChartsLoader
         aging={aging}
         agingTitle={t('charts.aging')}
@@ -516,7 +504,7 @@ async function renderGlobalTab({
   );
 }
 
-async function renderProductTab({
+async function ProductTabContent({
   from,
   merchantAccountId,
   to,
@@ -536,24 +524,36 @@ async function renderProductTab({
   return <FinanceProductCostView from={toDateInput(from)} report={report} to={toDateInput(to)} />;
 }
 
-async function renderDriverTab({
+async function DriverTabContent({
   from,
   merchantAccountId,
+  role,
+  supabase,
   to,
 }: {
   from: Date;
   merchantAccountId: string;
+  role: string;
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
   to: Date;
 }) {
   const admin = createFinanceAdminClient();
-  const report = await fetchFinanceDriverCostReport(
-    admin,
-    merchantAccountId,
-    from.toISOString(),
-    to.toISOString(),
-  );
+  const [report, settlements] = await Promise.all([
+    fetchFinanceDriverCostReport(admin, merchantAccountId, from.toISOString(), to.toISOString()),
+    // Versements par livreur relocalisés ici (retirés de la Vue globale, §3.6).
+    buildDriverSettlements(supabase as unknown as SupabaseClient<Database>, merchantAccountId),
+  ]);
 
-  return <FinanceDriverCostView from={toDateInput(from)} report={report} to={toDateInput(to)} />;
+  return (
+    <div className="space-y-5">
+      <FinanceDriverCostView from={toDateInput(from)} report={report} to={toDateInput(to)} />
+      <DriverSettlementsLoader
+        currentRole={role}
+        drivers={settlements.drivers}
+        shortfalls={settlements.shortfalls}
+      />
+    </div>
+  );
 }
 
 export default async function FinancesPage({ searchParams }: FinancesPageProps) {
@@ -604,11 +604,26 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
 
       {await FinanceTabBar({ activeTab, from, period: activePeriod, to })}
 
-      {activeTab === 'global'
-        ? await renderGlobalTab({ from, merchantAccountId, role, supabase, to })
-        : activeTab === 'produits'
-          ? await renderProductTab({ from, merchantAccountId, to })
-          : await renderDriverTab({ from, merchantAccountId, to })}
+      <Suspense fallback={<FinanceTabSkeleton />} key={`${activeTab}-${activePeriod}`}>
+        {activeTab === 'global' ? (
+          <GlobalTabContent
+            from={from}
+            merchantAccountId={merchantAccountId}
+            supabase={supabase}
+            to={to}
+          />
+        ) : activeTab === 'produits' ? (
+          <ProductTabContent from={from} merchantAccountId={merchantAccountId} to={to} />
+        ) : (
+          <DriverTabContent
+            from={from}
+            merchantAccountId={merchantAccountId}
+            role={role}
+            supabase={supabase}
+            to={to}
+          />
+        )}
+      </Suspense>
     </main>
   );
 }

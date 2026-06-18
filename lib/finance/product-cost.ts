@@ -241,6 +241,17 @@ export function computeFinanceProductCostReport(
     input.products.map((product) => [product.id, product.unitCost !== null] as const),
   );
 
+  // Index une seule fois (évite un `.filter` O(commandes × lignes) par commande).
+  const orderLinesByOrderId = new Map<string, OrderLineRow[]>();
+  for (const line of input.orderLines) {
+    const bucket = orderLinesByOrderId.get(line.orderId);
+    if (bucket) {
+      bucket.push(line);
+    } else {
+      orderLinesByOrderId.set(line.orderId, [line]);
+    }
+  }
+
   const revenueRows: Array<{ amountMinor: bigint; productId: string }> = [];
   const quantityRows: Array<{ amountMinor: bigint; productId: string }> = [];
   const matchedPairsByOrder = new Map<string, ProductPair[]>();
@@ -248,7 +259,7 @@ export function computeFinanceProductCostReport(
 
   for (const order of input.orders) {
     const summaryLines = parseSummaryLines(order.itemsSummary);
-    const orderLines = input.orderLines.filter((line) => line.orderId === order.id);
+    const orderLines = orderLinesByOrderId.get(order.id) ?? [];
     const pairs = pairOrderLines(orderLines, summaryLines);
     matchedPairsByOrder.set(order.id, pairs);
 
