@@ -1763,7 +1763,12 @@ export type Database = {
         Returns: string;
       };
       finance_kpis: {
-        Args: { p_from: string; p_merchant: string; p_to: string };
+        Args: {
+          p_from: string;
+          p_merchant: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
         Returns: {
           a_encaisser: number;
           ca_livre: number;
@@ -1799,7 +1804,10 @@ export type Database = {
           tier: string;
         }[];
       };
-      get_dashboard_kpi: { Args: { p_merchant_id: string }; Returns: Json };
+      get_dashboard_kpi: {
+        Args: { p_merchant_id: string; p_shop_id?: string };
+        Returns: Json;
+      };
       ia_count_recent_tool_calls: {
         Args: { p_merchant_account_id: string; p_since: string };
         Returns: number;
