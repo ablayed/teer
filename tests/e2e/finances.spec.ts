@@ -419,9 +419,11 @@ test('Vue par produit + par livreur : montants fractionnaires (numeric/jsonb) re
     await expect(page.getByRole('heading', { name: messages.finance.products.title })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText('Produit Frac', { exact: false }).first()).toBeVisible({
-      timeout: 15_000,
-    });
+    // La vue produit rend un tableau (desktop) ET des cards (mobile) ; on cible
+    // l'occurrence visible selon le viewport.
+    await expect(
+      page.getByText('Produit Frac', { exact: false }).and(page.locator(':visible')).first(),
+    ).toBeVisible({ timeout: 15_000 });
 
     // Vue par livreur : total_amount numeric fractionnaire → COGS/CA rendus, pas de 500.
     await page.goto('/finances?tab=livreurs');
@@ -487,15 +489,18 @@ test('vue globale sans « Versements par livreur », présent sur l’onglet liv
       page.getByText(messages.finance.kpis.caUnified, { exact: true }).first(),
     ).toBeVisible({ timeout: 15_000 });
 
-    // §3.6 : la section versements ne doit plus être dans la Vue globale.
+    // §3.6 : ni le titre ni l'état vide des versements ne sont dans la Vue globale.
     await expect(page.getByText(messages.finance.settlements.title, { exact: true })).toHaveCount(
       0,
     );
+    await expect(page.getByText(messages.finance.settlements.empty, { exact: true })).toHaveCount(
+      0,
+    );
 
-    // …mais reste dans l'onglet Livreurs.
+    // …mais la section (ici son état vide, fixture sans versement) est sur l'onglet Livreurs.
     await page.getByRole('link', { name: messages.finance.tabs.drivers }).click();
     await expect(
-      page.getByText(messages.finance.settlements.title, { exact: true }).first(),
+      page.getByText(messages.finance.settlements.empty, { exact: true }).first(),
     ).toBeVisible({ timeout: 15_000 });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
@@ -524,9 +529,13 @@ test('vue produit : coût manquant éditable in-cell + card à définition au ta
       page.getByText(messages.finance.products.cards.purchase.definition, { exact: false }).first(),
     ).toBeVisible();
 
-    // Coût manquant signalé (jamais 0 silencieux).
+    // Coût manquant signalé (jamais 0 silencieux). Badge présent dans le tableau ET
+    // les cards mobile → on cible l'occurrence visible.
     await expect(
-      page.getByText(messages.finance.products.table.costMissing, { exact: true }).first(),
+      page
+        .getByText(messages.finance.products.table.costMissing, { exact: true })
+        .and(page.locator(':visible'))
+        .first(),
     ).toBeVisible({ timeout: 15_000 });
 
     // Édition in-cell : crayon (visible) → saisie → OK → bascule en « estimée ».
@@ -547,7 +556,10 @@ test('vue produit : coût manquant éditable in-cell + card à définition au ta
       .click();
 
     await expect(
-      page.getByText(messages.finance.products.table.estimated, { exact: true }).first(),
+      page
+        .getByText(messages.finance.products.table.estimated, { exact: true })
+        .and(page.locator(':visible'))
+        .first(),
     ).toBeVisible({ timeout: 15_000 });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);

@@ -115,40 +115,43 @@ describe('computeFinanceProductCostReport', () => {
     expect(report.lowVolumeThreshold).toBe(3);
   });
 
-  it('badge « coût manquant » sur unit_cost NULL, jamais sur 0 assumé', () => {
+  it('badge « coût manquant » quand aucun coût connu (unit_cost 0/null, sans COGS figé)', () => {
+    // La colonne `product.unit_cost` est NOT NULL DEFAULT 0 : un produit jamais costé
+    // vaut 0 (pas null). Par §2.4 (« inconnu/0 »), 0 + aucun COGS figé = coût manquant,
+    // jamais un 0 silencieux à 100 % de marge.
     const report = computeFinanceProductCostReport({
       expenses: [],
       orderLines: [
-        { orderId: 'o1', productId: 'p1', qty: 1, rawTitle: 'Inconnu' },
-        { orderId: 'o1', productId: 'p2', qty: 1, rawTitle: 'Cadeau' },
+        { orderId: 'o1', productId: 'p1', qty: 1, rawTitle: 'Zero' },
+        { orderId: 'o1', productId: 'p2', qty: 1, rawTitle: 'Null' },
       ],
       orders: [
         {
           deliveryFeeMinor: 0,
           id: 'o1',
           itemsSummary: [
-            { price: 6_000, quantity: 1, title: 'Inconnu' },
-            { price: 4_000, quantity: 1, title: 'Cadeau' },
+            { price: 6_000, quantity: 1, title: 'Zero' },
+            { price: 4_000, quantity: 1, title: 'Null' },
           ],
           totalAmount: 10_000,
         },
       ],
-      // p1 jamais costé (null) ; p2 coût 0 assumé (cadeau).
+      // p1 unit_cost 0 (cas réel, colonne NOT NULL) ; p2 null (défensif) → tous deux manquants.
       products: [
-        { id: 'p1', title: 'Inconnu', unitCost: null },
-        { id: 'p2', title: 'Cadeau', unitCost: 0 },
+        { id: 'p1', title: 'Zero', unitCost: 0 },
+        { id: 'p2', title: 'Null', unitCost: null },
       ],
       soldMovements: [],
     });
 
-    const inconnu = report.rows.find((row) => row.productId === 'p1');
-    const cadeau = report.rows.find((row) => row.productId === 'p2');
-    expect(inconnu?.purchasePriceMinor).toBe(0);
-    expect(inconnu?.costMissing).toBe(true);
-    expect(inconnu?.estimated).toBe(false);
-    expect(cadeau?.purchasePriceMinor).toBe(0);
-    expect(cadeau?.costMissing).toBe(false);
-    expect(cadeau?.estimated).toBe(false);
+    const zero = report.rows.find((row) => row.productId === 'p1');
+    const nul = report.rows.find((row) => row.productId === 'p2');
+    expect(zero?.purchasePriceMinor).toBe(0);
+    expect(zero?.costMissing).toBe(true);
+    expect(zero?.estimated).toBe(false);
+    expect(nul?.purchasePriceMinor).toBe(0);
+    expect(nul?.costMissing).toBe(true);
+    expect(nul?.estimated).toBe(false);
   });
 
   it('repli estimé sur le coût catalogue (unit_cost) quand aucun COGS figé', () => {

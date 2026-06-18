@@ -238,12 +238,13 @@ export function computeFinanceProductCostReport(
   const titleByProductId = new Map(
     input.products.map((product) => [product.id, product.title] as const),
   );
-  // `unit_cost` du produit (null = jamais costé, distinct de 0 = coût assumé).
-  // Le COGS exact vient des mouvements `sold` (CUMP figé) ; unit_cost ne sert que
-  // de repli estimé quand aucun COGS figé n'existe sur la période (ex. après une
-  // correction inline du prix d'achat manquant).
+  // `unit_cost` du produit. ATTENTION : la colonne est `bigint NOT NULL DEFAULT 0`
+  // (migration 0027) → un produit jamais costé vaut 0, pas null. On ne peut donc PAS
+  // distinguer « 0 assumé » de « jamais costé » : par §2.4 (« inconnu/0 »), 0 +
+  // aucun COGS figé = coût manquant (badge), jamais un 0 silencieux à 100 % de marge.
+  // unit_cost > 0 sert de repli estimé quand aucun COGS figé n'existe sur la période.
   const unitCostByProductId = new Map(
-    input.products.map((product) => [product.id, product.unitCost] as const),
+    input.products.map((product) => [product.id, product.unitCost ?? 0] as const),
   );
 
   // Index une seule fois (évite un `.filter` O(commandes × lignes) par commande).
@@ -357,12 +358,13 @@ export function computeFinanceProductCostReport(
       const revenueMinor = revenueByProduct.get(productId) ?? 0n;
       const qtySold = qtyByProduct.get(productId) ?? 0n;
       const frozenCogsMinor = soldByProduct.get(productId)?.cogsMinor ?? 0n;
-      const unitCost = unitCostByProductId.get(productId) ?? null;
+      const unitCost = unitCostByProductId.get(productId) ?? 0;
       const adsAllocatedMinor = adsByProduct.get(productId) ?? 0n;
       const deliveryAllocatedMinor = deliveryByProduct.get(productId) ?? 0n;
 
       // Prix d'achat (base A) : COGS figé prioritaire ; sinon repli estimé sur le
-      // coût catalogue unit_cost (×qté). unit_cost null → coût manquant (badge, pas 0).
+      // coût catalogue unit_cost (×qté). Aucun des deux (unit_cost 0) → coût manquant
+      // (badge + « — » sur les bénéfices), jamais un 0 silencieux.
       let purchasePriceMinor: bigint;
       let estimated: boolean;
       let costMissing: boolean;
@@ -370,14 +372,14 @@ export function computeFinanceProductCostReport(
         purchasePriceMinor = frozenCogsMinor;
         estimated = false;
         costMissing = false;
-      } else if (unitCost === null) {
+      } else if (unitCost > 0) {
+        purchasePriceMinor = toMinor(unitCost) * qtySold;
+        estimated = true;
+        costMissing = false;
+      } else {
         purchasePriceMinor = 0n;
         estimated = false;
         costMissing = true;
-      } else {
-        purchasePriceMinor = toMinor(unitCost) * qtySold;
-        estimated = purchasePriceMinor > 0n;
-        costMissing = false;
       }
 
       // Coût total (B) = prix d'achat (A) + pub + livraison. Apparié au CA :

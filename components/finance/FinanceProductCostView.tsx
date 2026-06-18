@@ -27,7 +27,8 @@ function applyUnitCost(row: FinanceProductCostRow, unitCost: number): FinancePro
   const totalCostMinor = purchasePriceMinor + row.adsAllocatedMinor + row.deliveryAllocatedMinor;
   return {
     ...row,
-    costMissing: false,
+    // unit_cost 0 → toujours « coût manquant » (colonne NOT NULL, pas de null possible).
+    costMissing: unitCost <= 0,
     estimated: purchasePriceMinor > 0,
     profitAfterMinor: row.revenueMinor - totalCostMinor,
     profitBeforeMinor: row.revenueMinor - purchasePriceMinor,
