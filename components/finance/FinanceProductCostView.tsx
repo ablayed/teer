@@ -220,6 +220,67 @@ function DetailRow({ row }: { row: FinanceProductCostRow }) {
   );
 }
 
+// Mobile : une card par produit (pas de tableau rétréci). En-tête = nom + CA ;
+// primaire = prix d'achat + bénéfice avant ; détails secondaires en dépliable.
+function ProductCard({
+  expanded,
+  onToggle,
+  onUpdated,
+  row,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  onUpdated: (productId: string, unitCost: number) => void;
+  row: FinanceProductCostRow;
+}) {
+  const t = useTranslations('finance.products.table');
+  return (
+    <article className="rounded-lg border border-border bg-surface p-4 shadow-1">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-medium text-text">{row.title}</p>
+          <p className="text-xs text-muted">
+            {t('qtySold')} : {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[11px] text-muted">{t('revenue')}</p>
+          <p className="font-mono text-lg font-semibold tabular-nums">{money(row.revenueMinor)}</p>
+        </div>
+      </div>
+
+      <dl className="mt-3 space-y-2 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <dt className="text-muted">{t('purchase')}</dt>
+          <dd className="font-mono tabular-nums">
+            <PurchaseCell onUpdated={onUpdated} row={row} />
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <dt className="text-muted">{t('profitBefore')}</dt>
+          <dd className="font-mono tabular-nums">
+            <ProfitValue row={row} value={row.profitBeforeMinor} />
+          </dd>
+        </div>
+      </dl>
+
+      <button
+        aria-expanded={expanded}
+        className="mt-3 min-h-11 w-full rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+        onClick={onToggle}
+        type="button"
+      >
+        {expanded ? t('hideDetails') : t('details')}
+      </button>
+      {expanded ? (
+        <div className="mt-3">
+          <DetailRow row={row} />
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 export function FinanceProductCostView({ from, report, to }: Props) {
   const t = useTranslations('finance.products');
   const [rows, setRows] = useState<FinanceProductCostRow[]>(report.rows);
@@ -335,80 +396,117 @@ export function FinanceProductCostView({ from, report, to }: Props) {
         {rows.length === 0 ? (
           <p className="text-sm text-muted">{t('empty')}</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-canvas text-left">
-                  <th className="px-4 py-3 font-medium">{t('table.product')}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t('table.qtySold')}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t('table.revenue')}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t('table.purchase')}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t('table.profitBefore')}</th>
-                  <th className="px-4 py-3 text-right font-medium" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const expanded = expandedRows.has(row.productId);
-                  return (
-                    <Fragment key={row.productId}>
-                      <tr className="border-b border-border last:border-0">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-text">{row.title}</p>
-                          <p className="text-xs text-muted">{row.productId.slice(0, 8)}</p>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono tabular-nums">
-                          {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono tabular-nums">
-                          {money(row.revenueMinor)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono tabular-nums">
-                          <PurchaseCell onUpdated={handleUpdated} row={row} />
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono tabular-nums">
-                          <ProfitValue row={row} value={row.profitBeforeMinor} />
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            aria-expanded={expanded}
-                            className="min-h-11 rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
-                            onClick={() => toggleRow(row.productId)}
-                            type="button"
-                          >
-                            {expanded ? t('table.hideDetails') : t('table.details')}
-                          </button>
-                        </td>
-                      </tr>
-                      {expanded ? (
+          <>
+            <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-canvas text-left">
+                    <th className="px-4 py-3 font-medium">{t('table.product')}</th>
+                    <th className="px-4 py-3 text-right font-medium">{t('table.qtySold')}</th>
+                    <th className="px-4 py-3 text-right font-medium">{t('table.revenue')}</th>
+                    <th className="px-4 py-3 text-right font-medium">{t('table.purchase')}</th>
+                    <th className="px-4 py-3 text-right font-medium">{t('table.profitBefore')}</th>
+                    <th className="px-4 py-3 text-right font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const expanded = expandedRows.has(row.productId);
+                    return (
+                      <Fragment key={row.productId}>
                         <tr className="border-b border-border last:border-0">
-                          <td className="px-4 pb-3" colSpan={6}>
-                            <DetailRow row={row} />
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-text">{row.title}</p>
+                            <p className="text-xs text-muted">{row.productId.slice(0, 8)}</p>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            {money(row.revenueMinor)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            <PurchaseCell onUpdated={handleUpdated} row={row} />
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            <ProfitValue row={row} value={row.profitBeforeMinor} />
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              aria-expanded={expanded}
+                              className="min-h-11 rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+                              onClick={() => toggleRow(row.productId)}
+                              type="button"
+                            >
+                              {expanded ? t('table.hideDetails') : t('table.details')}
+                            </button>
                           </td>
                         </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-                <tr className="bg-canvas/70 font-semibold">
-                  <td className="px-4 py-3">{t('table.total')}</td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {new Intl.NumberFormat('fr-FR').format(totals.qty)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {money(totals.revenue)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {money(totals.purchase)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {money(totals.profitBefore)}
-                  </td>
-                  <td className="px-4 py-3" />
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                        {expanded ? (
+                          <tr className="border-b border-border last:border-0">
+                            <td className="px-4 pb-3" colSpan={6}>
+                              <DetailRow row={row} />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                  <tr className="bg-canvas/70 font-semibold">
+                    <td className="px-4 py-3">{t('table.total')}</td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums">
+                      {new Intl.NumberFormat('fr-FR').format(totals.qty)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums">
+                      {money(totals.revenue)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums">
+                      {money(totals.purchase)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono tabular-nums">
+                      {money(totals.profitBefore)}
+                    </td>
+                    <td className="px-4 py-3" />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-3 md:hidden">
+              {rows.map((row) => (
+                <ProductCard
+                  expanded={expandedRows.has(row.productId)}
+                  key={row.productId}
+                  onToggle={() => toggleRow(row.productId)}
+                  onUpdated={handleUpdated}
+                  row={row}
+                />
+              ))}
+              <article className="rounded-lg border border-border bg-canvas p-4 text-sm shadow-1">
+                <p className="font-semibold">{t('table.total')}</p>
+                <dl className="mt-2 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted">{t('table.revenue')}</dt>
+                    <dd className="font-mono tabular-nums">{money(totals.revenue)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted">{t('table.purchase')}</dt>
+                    <dd className="font-mono tabular-nums">{money(totals.purchase)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted">{t('table.profitAfter')}</dt>
+                    <dd
+                      className={`font-mono tabular-nums ${
+                        totals.profitAfter < 0 ? 'text-danger' : 'text-success'
+                      }`}
+                    >
+                      {money(totals.profitAfter)}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            </div>
+          </>
         )}
       </section>
     </section>
