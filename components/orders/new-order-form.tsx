@@ -4,6 +4,7 @@ import { createManualOrderAction } from '@/lib/actions/orders';
 import { createProductAction } from '@/lib/actions/products';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import { formatMoney } from '@/lib/format/fcfa';
+import type { ShopFilterOption } from '@/lib/shops/shop-filter';
 import { cn } from '@/lib/utils';
 import { Search, Trash2 } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
@@ -39,7 +40,7 @@ type LineError = {
 };
 
 type FieldErrors = Partial<
-  Record<'customerName' | 'phone', string> & {
+  Record<'customerName' | 'phone' | 'shop', string> & {
     lines: string;
     lineErrors: LineError[];
   }
@@ -47,6 +48,7 @@ type FieldErrors = Partial<
 
 type NewOrderFormProps = {
   products: ProductOption[];
+  shops: ShopFilterOption[];
 };
 
 const inputBase = 'min-h-11 w-full rounded-lg border border-border bg-canvas px-3';
@@ -70,14 +72,18 @@ function newLine(): OrderLine {
   };
 }
 
-export function NewOrderForm({ products }: NewOrderFormProps) {
+export function NewOrderForm({ products, shops }: NewOrderFormProps) {
   const router = useRouter();
   const createOrder = useAction(createManualOrderAction);
   const createProduct = useAction(createProductAction);
+  const requiresShopChoice = shops.length > 1;
   const [isOpen, setIsOpen] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [source, setSource] = useState<(typeof sourceOptions)[number]['value']>('manual');
+  // Boutique de rattachement (Phase 13). Avec une seule boutique, on n'affiche
+  // pas le sélecteur : le serveur rattache automatiquement.
+  const [shopId, setShopId] = useState('');
   const [lines, setLines] = useState<OrderLine[]>([newLine()]);
   const [address, setAddress] = useState('');
   const [feedback, setFeedback] = useState<{ message: string; kind: 'error' | 'success' } | null>(
@@ -113,6 +119,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       setCustomerName('');
       setPhone('');
       setSource('manual');
+      setShopId('');
       setLines([newLine()]);
       setAddress('');
       setFieldErrors({});
@@ -216,6 +223,10 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       errors.phone = 'Numéro sénégalais invalide (ex : 77 123 45 67).';
     }
 
+    if (requiresShopChoice && !shopId) {
+      errors.shop = 'Sélectionnez une boutique.';
+    }
+
     const lineErrors: LineError[] = lines.map((l) => {
       const err: LineError = {};
       if (!l.productId) err.productId = 'Sélectionnez un produit.';
@@ -240,6 +251,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
     return (
       !!errors.customerName ||
       !!errors.phone ||
+      !!errors.shop ||
       !!errors.lines ||
       !!errors.lineErrors?.some((e) => e.productId || e.quantity || e.unitPrice)
     );
@@ -259,6 +271,7 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
       customerName,
       phone,
       source,
+      ...(shopId ? { shopId } : {}),
       lines: lines.map((l) => ({
         productId: l.productId,
         quantity: Number.parseInt(l.quantity, 10),
@@ -349,6 +362,32 @@ export function NewOrderForm({ products }: NewOrderFormProps) {
                 ))}
               </select>
             </label>
+
+            {requiresShopChoice ? (
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Boutique</span>
+                <select
+                  aria-invalid={!!fieldErrors.shop}
+                  className={cn(
+                    'min-h-11 w-full rounded-lg border border-border bg-canvas px-3',
+                    fieldErrors.shop && 'border-danger',
+                  )}
+                  onChange={(e) => {
+                    setShopId(e.target.value);
+                    if (fieldErrors.shop) setFieldErrors((p) => ({ ...p, shop: undefined }));
+                  }}
+                  value={shopId}
+                >
+                  <option value="">Sélectionner une boutique</option>
+                  {shops.map((shop) => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.label}
+                    </option>
+                  ))}
+                </select>
+                <FieldError message={fieldErrors.shop} />
+              </label>
+            ) : null}
           </div>
 
           {/* Lignes produit */}

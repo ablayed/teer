@@ -729,6 +729,7 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       customerName: z.string().trim().min(2).max(120),
       phone: z.string().trim().min(1).max(40),
       source: z.enum(manualOrderSources).default('manual'),
+      shopId: z.string().uuid().optional(),
       lines: z
         .array(
           z.object({
@@ -751,6 +752,36 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
         ok: false as const,
         errorCode: 'merchant_not_found' as const,
         message: "Aucun compte marchand n'a ete trouve.",
+      };
+    }
+
+    // Multi-boutiques (Phase 13) : on rattache la commande à une boutique.
+    // 0 boutique → null (marchand manuel sans Shopify, comportement historique).
+    // 1 boutique → rattachement automatique. >1 boutique → la boutique est
+    // obligatoire (le formulaire l'impose aussi côté client).
+    const { data: tenantShops } = await supabase
+      .from('shop')
+      .select('id')
+      .eq('merchant_account_id', merchantAccountId);
+    const shopIds = (tenantShops ?? []).map((shop) => shop.id);
+
+    let resolvedShopId: string | null = null;
+    if (parsedInput.shopId) {
+      if (!shopIds.includes(parsedInput.shopId)) {
+        return {
+          ok: false as const,
+          errorCode: 'update_failed' as const,
+          message: 'Boutique introuvable.',
+        };
+      }
+      resolvedShopId = parsedInput.shopId;
+    } else if (shopIds.length === 1) {
+      resolvedShopId = shopIds[0];
+    } else if (shopIds.length > 1) {
+      return {
+        ok: false as const,
+        errorCode: 'shop_required' as const,
+        message: 'Veuillez sélectionner une boutique.',
       };
     }
 
@@ -811,6 +842,7 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       .insert({
         merchant_account_id: merchantAccountId,
         customer_id: customer.customerId,
+        shop_id: resolvedShopId,
         shopify_order_id: null,
         source: parsedInput.source,
         order_number: orderNumber,

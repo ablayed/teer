@@ -9,6 +9,7 @@ import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderSavedViews } from '@/lib/domain/order-saved-views';
 import { normalizeOrderSearch } from '@/lib/orders/search';
+import { listShopFilterOptions } from '@/lib/shops/shop-filter';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { AlertCircle, ArrowRight, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -78,6 +79,12 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         }))
     : [];
 
+  // Phase 13 : la création manuelle demande la boutique quand le marchand en a
+  // plusieurs (sinon rattachement automatique à l'unique boutique).
+  const shopOptions = merchant
+    ? await listShopFilterOptions(await createSupabaseServerClient(), merchant.id)
+    : [];
+
   const viewCounts = orderSavedViews.map((view) => ({
     id: view.id,
     label: view.label,
@@ -109,7 +116,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
           <p className="max-w-2xl text-muted">{t('subtitle')}</p>
         </div>
         <div className="flex flex-col gap-3 sm:items-end">
-          <NewOrderForm products={productOptions} />
+          <NewOrderForm products={productOptions} shops={shopOptions} />
           <SyncOrdersButton hasShop={Boolean(shopConnection)} />
         </div>
       </div>
