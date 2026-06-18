@@ -84,3 +84,46 @@ export function deriveDriverCashConsolidation({
     cashOnHandMinor,
   };
 }
+
+export type DriverConsolidationInput = ConsolidationOrder & {
+  driverId: string;
+  orderId: string;
+};
+
+// SOURCE UNIQUE de « cash chez le livreur » par livreur, pour TOUTES les surfaces TS :
+// total page Livreurs (getDriversCashOnHandTotal), panneau Finances (buildDriverSettlements)
+// ET rapport PDF (getReportData). La card Finances (RPC SQL finance_kpis) réplique cette même
+// arithmétique (migration 0065). Regroupe les commandes assignées par livreur, somme les
+// allocations (remis) par livreur, puis applique deriveDriverCashConsolidation — clamp AGRÉGÉ
+// par livreur (collecté − frais − remis, greatest 0), JAMAIS un clamp par commande (qui laisse
+// un résidu = frais sur un livreur multi-commandes, cf. piège record_cash_settlement oldest-first).
+export function consolidateCashByDriver(
+  orders: DriverConsolidationInput[],
+  allocatedByOrderId: ReadonlyMap<string, number>,
+): Map<string, DriverCashConsolidation> {
+  const ordersByDriver = new Map<string, DriverConsolidationInput[]>();
+  const remittedByDriver = new Map<string, number>();
+
+  for (const order of orders) {
+    const list = ordersByDriver.get(order.driverId) ?? [];
+    list.push(order);
+    ordersByDriver.set(order.driverId, list);
+
+    const remitted = allocatedByOrderId.get(order.orderId) ?? 0;
+    if (remitted !== 0) {
+      remittedByDriver.set(order.driverId, (remittedByDriver.get(order.driverId) ?? 0) + remitted);
+    }
+  }
+
+  const result = new Map<string, DriverCashConsolidation>();
+  for (const [driverId, driverOrders] of ordersByDriver) {
+    result.set(
+      driverId,
+      deriveDriverCashConsolidation({
+        orders: driverOrders,
+        remittedMinor: remittedByDriver.get(driverId) ?? 0,
+      }),
+    );
+  }
+  return result;
+}

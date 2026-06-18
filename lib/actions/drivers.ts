@@ -2,8 +2,8 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import {
-  type ConsolidationOrder,
   type DriverCashConsolidation,
+  consolidateCashByDriver,
   deriveDriverCashConsolidation,
 } from '@/lib/drivers/cash-consolidation';
 import { type DriverPerformance, deriveDriverPerformance } from '@/lib/drivers/performance';
@@ -424,35 +424,27 @@ export async function getDriversCashOnHandTotal(): Promise<DriversCashTotal> {
       : { data: [] as { order_id: string; allocated_minor: number }[], error: null };
   if (allocationsResult.error) return { ok: false, message: allocationsResult.error.message };
 
-  const driverByOrder = new Map(rows.map((o) => [o.id, o.assigned_driver_id as string]));
-  const remittedByDriver = new Map<string, number>();
+  const allocatedByOrder = new Map<string, number>();
   for (const a of allocationsResult.data ?? []) {
-    const driverId = driverByOrder.get(a.order_id);
-    if (!driverId) continue;
-    remittedByDriver.set(driverId, (remittedByDriver.get(driverId) ?? 0) + a.allocated_minor);
+    allocatedByOrder.set(a.order_id, (allocatedByOrder.get(a.order_id) ?? 0) + a.allocated_minor);
   }
 
-  const ordersByDriver = new Map<string, ConsolidationOrder[]>();
-  for (const o of rows) {
-    const driverId = o.assigned_driver_id as string;
-    const list = ordersByDriver.get(driverId) ?? [];
-    list.push({
+  const consolidations = consolidateCashByDriver(
+    rows.map((o) => ({
+      driverId: o.assigned_driver_id as string,
+      orderId: o.id,
       deliveryFeeMinor: o.delivery_fee_minor,
       cashState: o.cash_state,
       cashCollectableMinor: o.cash_collectable_minor,
       paymentChannel: o.payment_channel_at_delivery,
       totalAmount: o.total_amount,
-    });
-    ordersByDriver.set(driverId, list);
-  }
+    })),
+    allocatedByOrder,
+  );
 
   let totalMinor = 0;
   let driverCount = 0;
-  for (const [driverId, driverOrders] of ordersByDriver) {
-    const consolidation = deriveDriverCashConsolidation({
-      orders: driverOrders,
-      remittedMinor: remittedByDriver.get(driverId) ?? 0,
-    });
+  for (const consolidation of consolidations.values()) {
     totalMinor += consolidation.cashOnHandMinor;
     if (consolidation.cashOnHandMinor > 0) driverCount += 1;
   }

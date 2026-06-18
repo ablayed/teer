@@ -1,4 +1,4 @@
-import { cashCollectableMinor } from '@/lib/finance/cash';
+import { consolidateCashByDriver } from '@/lib/drivers/cash-consolidation';
 import {
   type MerchantFeeSettings,
   type SettlementForMargin,
@@ -21,9 +21,11 @@ type ReportOrderRow = Pick<
   Tables<'orders'>,
   | 'assigned_driver_id'
   | 'cash_collectable_minor'
+  | 'cash_state'
   | 'cod_status'
   | 'created_at'
   | 'currency'
+  | 'delivery_fee_minor'
   | 'id'
   | 'items_summary'
   | 'order_number'
@@ -223,10 +225,6 @@ function slugify(value: string): string {
   return slug || 'boutique';
 }
 
-function paymentChannelIsCash(channel: string | null): boolean {
-  return channel === null || channel === 'ESPECES' || channel === 'INCONNU';
-}
-
 function toSettings(row: Partial<MerchantFeeSettings> | null): MerchantFeeSettings {
   return row
     ? {
@@ -296,7 +294,7 @@ export async function getReportData({
   const ordersQuery = supabase
     .from('orders')
     .select(
-      'id, shop_id, order_number, total_amount, currency, cod_status, items_summary, assigned_driver_id, payment_channel_at_delivery, cash_collectable_minor, created_at, updated_at',
+      'id, shop_id, order_number, total_amount, currency, cod_status, items_summary, assigned_driver_id, payment_channel_at_delivery, cash_collectable_minor, cash_state, delivery_fee_minor, created_at, updated_at',
     )
     .eq('merchant_account_id', merchantAccountId)
     .gte('created_at', fromIso)
@@ -442,30 +440,40 @@ export async function getReportData({
     driverRows.set(settlement.driverId, current);
   }
 
-  for (const order of orders) {
-    if (!order.assigned_driver_id || order.cod_status !== 'LIVREE') {
+  // Cash chez le livreur NET = collecté − frais − remis, via le helper PARTAGÉ
+  // consolidateCashByDriver (même arithmétique agrégée que la page Livreurs, le panneau
+  // Finances et la card finance_kpis SQL — migration 0065). On retranche les frais de
+  // livraison (le livreur les garde) et on clampe par livreur, jamais par commande.
+  // Périmètre du rapport (commandes créées dans [from,to], boutique optionnelle) — c'est
+  // l'axe propre au PDF ; la FORMULE est identique aux autres surfaces.
+  const consolidations = consolidateCashByDriver(
+    orders
+      .filter((order) => order.assigned_driver_id !== null)
+      .map((order) => ({
+        driverId: order.assigned_driver_id as string,
+        orderId: order.id,
+        deliveryFeeMinor: order.delivery_fee_minor,
+        cashState: order.cash_state,
+        cashCollectableMinor: order.cash_collectable_minor,
+        paymentChannel: order.payment_channel_at_delivery,
+        totalAmount: order.total_amount,
+      })),
+    allocatedByOrder,
+  );
+
+  for (const [driverId, consolidation] of consolidations) {
+    if (consolidation.cashOnHandMinor <= 0) {
       continue;
     }
-
-    const collectableMinor = cashCollectableMinor({
-      cashCollectableMinor: order.cash_collectable_minor,
-      paymentChannel: order.payment_channel_at_delivery,
-      totalAmount: order.total_amount,
-    });
-
-    if (!paymentChannelIsCash(order.payment_channel_at_delivery) || collectableMinor <= 0) {
-      continue;
-    }
-
-    const current = driverRows.get(order.assigned_driver_id) ?? {
-      driverId: order.assigned_driver_id,
-      driverName: driversById.get(order.assigned_driver_id) ?? 'Livreur',
+    const current = driverRows.get(driverId) ?? {
+      driverId,
+      driverName: driversById.get(driverId) ?? 'Livreur',
       pendingMinor: 0,
       settledMinor: 0,
       shortfallMinor: 0,
     };
-    current.pendingMinor += Math.max(collectableMinor - (allocatedByOrder.get(order.id) ?? 0), 0);
-    driverRows.set(order.assigned_driver_id, current);
+    current.pendingMinor += consolidation.cashOnHandMinor;
+    driverRows.set(driverId, current);
   }
 
   for (const shortfall of (shortfallsResult.data ?? []) as ShortfallRow[]) {
