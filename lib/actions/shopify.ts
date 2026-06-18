@@ -25,11 +25,16 @@ export async function getShopConnection(): Promise<ShopConnection | null> {
   }
 
   const supabase = await createSupabaseServerClient();
+  // Phase 13 : un marchand multi-boutiques a plusieurs `shop` actifs. On retourne
+  // la plus ancienne comme boutique représentative (sert au booléen « a une
+  // boutique » et au contrôle de scope) ; `maybeSingle()` lèverait sur 2+ lignes.
   const { data, error } = await supabase
     .from('shop')
     .select('shop_domain, scopes, status, installed_at')
     .eq('merchant_account_id', merchantAccount.id)
     .eq('status', 'active')
+    .order('installed_at', { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
