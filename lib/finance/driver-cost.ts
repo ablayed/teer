@@ -137,29 +137,44 @@ export async function fetchFinanceDriverCostReport(
   merchantId: string,
   fromIso: string,
   toIso: string,
+  shopId?: string | null,
 ): Promise<FinanceDriverCostReport> {
-  const [driversRes, ordersRes, soldRes] = await Promise.all([
+  let ordersQuery = admin
+    .from('orders')
+    .select('id, assigned_driver_id, delivery_fee_minor, total_amount')
+    .eq('merchant_account_id', merchantId)
+    .gte('cash_collected_at', fromIso)
+    .lte('cash_collected_at', toIso);
+
+  if (shopId) {
+    ordersQuery = ordersQuery.eq('shop_id', shopId);
+  }
+
+  const [driversRes, ordersRes] = await Promise.all([
     admin
       .from('driver')
       .select('id, full_name')
       .eq('merchant_account_id', merchantId)
       .order('full_name', { ascending: true }),
-    admin
-      .from('orders')
-      .select('assigned_driver_id, delivery_fee_minor, total_amount')
-      .eq('merchant_account_id', merchantId)
-      .gte('cash_collected_at', fromIso)
-      .lte('cash_collected_at', toIso),
-    admin
-      .from('stock_movement')
-      .select('driver_id, qty, unit_cost')
-      .eq('merchant_account_id', merchantId)
-      .eq('movement_type', 'sold')
-      .gte('created_at', fromIso)
-      .lte('created_at', toIso),
+    ordersQuery,
   ]);
 
-  if (driversRes.error || ordersRes.error || soldRes.error) {
+  if (driversRes.error || ordersRes.error) {
+    throw new Error('finance_driver_cost_error');
+  }
+
+  const orderIds = (ordersRes.data ?? []).map((order) => order.id);
+  const soldRes =
+    orderIds.length > 0
+      ? await admin
+          .from('stock_movement')
+          .select('driver_id, qty, unit_cost')
+          .eq('merchant_account_id', merchantId)
+          .eq('movement_type', 'sold')
+          .in('order_id', orderIds)
+      : { data: [], error: null };
+
+  if (soldRes.error) {
     throw new Error('finance_driver_cost_error');
   }
 

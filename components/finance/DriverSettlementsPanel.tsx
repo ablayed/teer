@@ -45,6 +45,7 @@ export type FinanceShortfall = {
 type DriverSettlementsPanelProps = {
   currentRole: string;
   drivers: FinanceDriverOutstanding[];
+  scopeNote?: string;
   shortfalls: FinanceShortfall[];
 };
 
@@ -70,6 +71,7 @@ function agingTone(driver: FinanceDriverOutstanding): 'danger' | 'muted' | 'succ
 export function DriverSettlementsPanel({
   currentRole,
   drivers: initialDrivers,
+  scopeNote,
   shortfalls: initialShortfalls,
 }: DriverSettlementsPanelProps) {
   const t = useTranslations('finance');
@@ -183,6 +185,7 @@ export function DriverSettlementsPanel({
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">{t('settlements.title')}</h2>
+          {scopeNote ? <p className="mt-1 text-sm text-muted">{scopeNote}</p> : null}
           <output className="block text-sm text-muted">{notice}</output>
         </div>
       </div>

@@ -7,6 +7,8 @@ import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
 import { FinancePeriodPersistence } from '@/components/finance/finance-period-persistence';
 import { FinanceTabSkeleton } from '@/components/finance/finance-tab-skeleton';
+import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
+import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { DefinitionCard } from '@/components/ui/definition-card';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
@@ -20,6 +22,7 @@ import {
 import { fetchFinanceProductCostReport } from '@/lib/finance/product-cost';
 import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { formatMoney } from '@/lib/format/fcfa';
+import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -37,6 +40,7 @@ type FinancesPageProps = {
   searchParams: Promise<{
     from?: string;
     period?: string;
+    shop?: string;
     tab?: string;
     to?: string;
   }>;
@@ -110,6 +114,7 @@ function normalizeFinanceTab(value: string | undefined): FinanceTab {
 function buildFinanceHref(params: {
   from?: string;
   period?: string;
+  shop?: string | null;
   tab: FinanceTab;
   to?: string;
 }): string {
@@ -123,6 +128,9 @@ function buildFinanceHref(params: {
   }
   if (params.to) {
     search.set('to', params.to);
+  }
+  if (params.shop) {
+    search.set('shop', params.shop);
   }
 
   const query = search.toString();
@@ -156,7 +164,7 @@ function kpiCard(label: string, value: string, description?: string) {
 function financeKpisRpc(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
   const rpc = supabase.rpc.bind(supabase) as unknown as (
     fn: 'finance_kpis',
-    args: { p_from: string; p_merchant: string; p_to: string },
+    args: { p_from: string; p_merchant: string; p_shop_id?: string | null; p_to: string },
   ) => Promise<{ data: FinanceKpiRow[] | null; error: unknown }>;
 
   return rpc;
@@ -201,11 +209,13 @@ async function FinanceTabBar({
   activeTab,
   from,
   period,
+  shop,
   to,
 }: {
   activeTab: FinanceTab;
   from: Date;
   period: string;
+  shop: string;
   to: Date;
 }) {
   const t = await getTranslations('finance');
@@ -223,21 +233,21 @@ async function FinanceTabBar({
       <Link
         aria-current={activeTab === 'global' ? 'page' : undefined}
         className={tabClass(activeTab === 'global')}
-        href={buildFinanceHref({ ...periodParams, tab: 'global' })}
+        href={buildFinanceHref({ ...periodParams, shop, tab: 'global' })}
       >
         {t('tabs.global')}
       </Link>
       <Link
         aria-current={activeTab === 'produits' ? 'page' : undefined}
         className={tabClass(activeTab === 'produits')}
-        href={buildFinanceHref({ ...periodParams, tab: 'produits' })}
+        href={buildFinanceHref({ ...periodParams, shop, tab: 'produits' })}
       >
         {t('tabs.products')}
       </Link>
       <Link
         aria-current={activeTab === 'livreurs' ? 'page' : undefined}
         className={tabClass(activeTab === 'livreurs')}
-        href={buildFinanceHref({ ...periodParams, tab: 'livreurs' })}
+        href={buildFinanceHref({ ...periodParams, shop, tab: 'livreurs' })}
       >
         {t('tabs.drivers')}
       </Link>
@@ -249,11 +259,13 @@ async function PeriodControls({
   activeTab,
   activePeriod,
   from,
+  shop,
   to,
 }: {
   activeTab: FinanceTab;
   activePeriod: string;
   from: Date;
+  shop: string;
   to: Date;
 }) {
   const t = await getTranslations('finance');
@@ -262,6 +274,7 @@ async function PeriodControls({
   return (
     <form className="flex flex-wrap items-end gap-2" method="get">
       <input name="tab" type="hidden" value={activeTab} />
+      <input name="shop" type="hidden" value={shop} />
       <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
         {periods.map((period) => (
           <Link
@@ -270,7 +283,7 @@ async function PeriodControls({
               activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
             }`}
             // Preset = `period` seul (pas de from/to), sinon le clic est ignoré (§4).
-            href={buildFinanceHref({ period, tab: activeTab })}
+            href={buildFinanceHref({ period, shop, tab: activeTab })}
             key={period}
           >
             {t(`periods.${period}`)}
@@ -307,12 +320,16 @@ async function PeriodControls({
 
 async function GlobalTabContent({
   from,
+  isShopFiltered,
   merchantAccountId,
+  selectedShopId,
   supabase,
   to,
 }: {
   from: Date;
+  isShopFiltered: boolean;
   merchantAccountId: string;
+  selectedShopId: string | null;
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
   to: Date;
 }) {
@@ -322,6 +339,7 @@ async function GlobalTabContent({
       financeKpisRpc(supabase)('finance_kpis', {
         p_from: from.toISOString(),
         p_merchant: merchantAccountId,
+        p_shop_id: selectedShopId,
         p_to: to.toISOString(),
       }),
       cashAgingRpc(supabase)('cash_aging', { p_merchant: merchantAccountId }),
@@ -383,8 +401,16 @@ async function GlobalTabContent({
   const driversConcerned = aging.filter((item) => item.outstanding_minor > 0).length;
 
   const [profitResult, chartsResult, expensesResult, categoriesResult] = await Promise.all([
-    getFinanceReportAction({ from: from.toISOString(), to: to.toISOString() }),
-    getFinanceChartsAction({ from: from.toISOString(), to: to.toISOString() }),
+    getFinanceReportAction({
+      from: from.toISOString(),
+      shopId: selectedShopId,
+      to: to.toISOString(),
+    }),
+    getFinanceChartsAction({
+      from: from.toISOString(),
+      shopId: selectedShopId,
+      to: to.toISOString(),
+    }),
     listExpensesAction({ from: toDateInput(from), to: toDateInput(to) }),
     listExpenseCategoriesAction({}),
   ]);
@@ -423,7 +449,10 @@ async function GlobalTabContent({
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {kpiCard(t('kpis.caUnified'), formatMoney(caMinor, 'XOF'))}
-        {kpiCard(t('kpis.cashDrivers'), formatMoney(cashMinor, 'XOF'))}
+        {kpiCard(
+          isShopFiltered ? t('kpis.cashDriversAllShops') : t('kpis.cashDrivers'),
+          formatMoney(cashMinor, 'XOF'),
+        )}
         {profitReport ? (
           <DefinitionCard
             definition={t('kpis.grossMarginDefinition')}
@@ -510,50 +539,80 @@ async function GlobalTabContent({
 
 async function ProductTabContent({
   from,
+  isShopFiltered,
   merchantAccountId,
+  selectedShopId,
   to,
 }: {
   from: Date;
+  isShopFiltered: boolean;
   merchantAccountId: string;
+  selectedShopId: string | null;
   to: Date;
 }) {
+  const t = await getTranslations('finance');
   const admin = createFinanceAdminClient();
   const report = await fetchFinanceProductCostReport(
     admin,
     merchantAccountId,
     from.toISOString(),
     to.toISOString(),
+    selectedShopId,
   );
 
-  return <FinanceProductCostView from={toDateInput(from)} report={report} to={toDateInput(to)} />;
+  return (
+    <FinanceProductCostView
+      from={toDateInput(from)}
+      report={report}
+      scopeNote={isShopFiltered ? t('products.scopeNoteFiltered') : undefined}
+      to={toDateInput(to)}
+    />
+  );
 }
 
 async function DriverTabContent({
   from,
+  isShopFiltered,
   merchantAccountId,
   role,
+  selectedShopId,
   supabase,
   to,
 }: {
   from: Date;
+  isShopFiltered: boolean;
   merchantAccountId: string;
   role: string;
+  selectedShopId: string | null;
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
   to: Date;
 }) {
   const admin = createFinanceAdminClient();
+  const t = await getTranslations('finance');
   const [report, settlements] = await Promise.all([
-    fetchFinanceDriverCostReport(admin, merchantAccountId, from.toISOString(), to.toISOString()),
+    fetchFinanceDriverCostReport(
+      admin,
+      merchantAccountId,
+      from.toISOString(),
+      to.toISOString(),
+      selectedShopId,
+    ),
     // Versements par livreur relocalisés ici (retirés de la Vue globale, §3.6).
     buildDriverSettlements(supabase as unknown as SupabaseClient<Database>, merchantAccountId),
   ]);
 
   return (
     <div className="space-y-5">
-      <FinanceDriverCostView from={toDateInput(from)} report={report} to={toDateInput(to)} />
+      <FinanceDriverCostView
+        from={toDateInput(from)}
+        report={report}
+        scopeNote={isShopFiltered ? t('driverCost.scopeNoteFiltered') : undefined}
+        to={toDateInput(to)}
+      />
       <DriverSettlementsLoader
         currentRole={role}
         drivers={settlements.drivers}
+        scopeNote={isShopFiltered ? t('kpis.cashDriversAllShops') : undefined}
         shortfalls={settlements.shortfalls}
       />
     </div>
@@ -567,6 +626,9 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
   const { activePeriod, from, to } = periodRange(params);
   const activeTab = normalizeFinanceTab(params.tab);
   const { merchantAccountId, role, supabase } = await getCurrentMember();
+  const shops = merchantAccountId ? await listShopFilterOptions(supabase, merchantAccountId) : [];
+  const selectedShopId = normalizeShopParam(params.shop, shops);
+  const activeShopParam = selectedShopId ?? 'all';
 
   if (!merchantAccountId || role !== 'owner') {
     return (
@@ -587,6 +649,9 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
       <Suspense fallback={null}>
         <FinancePeriodPersistence activeTab={activeTab} />
       </Suspense>
+      <Suspense fallback={null}>
+        <ShopFilterPersistence storageKey="teer.finances.shop" />
+      </Suspense>
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <h1 className="font-display text-4xl md:text-5xl">{nav('finances')}</h1>
@@ -599,30 +664,64 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
               from={toDateInput(from)}
               label={t('report.download')}
               loadingLabel={t('report.loading')}
+              shopId={selectedShopId}
               to={toDateInput(to)}
             />
           ) : null}
-          {await PeriodControls({ activePeriod, activeTab, from, to })}
+          <ShopFilterSelector
+            allLabel={t('shops.all')}
+            ariaLabel={t('shops.ariaLabel')}
+            label={t('shops.label')}
+            pathname="/finances"
+            searchParams={{
+              from: params.from,
+              period: params.period,
+              shop: params.shop,
+              tab: params.tab,
+              to: params.to,
+            }}
+            selectedShopId={selectedShopId}
+            shops={shops}
+          />
+          {await PeriodControls({ activePeriod, activeTab, from, shop: activeShopParam, to })}
         </div>
       </header>
 
-      {await FinanceTabBar({ activeTab, from, period: activePeriod, to })}
+      {
+        await FinanceTabBar({
+          activeTab,
+          from,
+          period: activePeriod,
+          shop: activeShopParam,
+          to,
+        })
+      }
 
       <Suspense fallback={<FinanceTabSkeleton />} key={`${activeTab}-${activePeriod}`}>
         {activeTab === 'global' ? (
           <GlobalTabContent
             from={from}
+            isShopFiltered={selectedShopId !== null}
             merchantAccountId={merchantAccountId}
+            selectedShopId={selectedShopId}
             supabase={supabase}
             to={to}
           />
         ) : activeTab === 'produits' ? (
-          <ProductTabContent from={from} merchantAccountId={merchantAccountId} to={to} />
+          <ProductTabContent
+            from={from}
+            isShopFiltered={selectedShopId !== null}
+            merchantAccountId={merchantAccountId}
+            selectedShopId={selectedShopId}
+            to={to}
+          />
         ) : (
           <DriverTabContent
             from={from}
+            isShopFiltered={selectedShopId !== null}
             merchantAccountId={merchantAccountId}
             role={role}
+            selectedShopId={selectedShopId}
             supabase={supabase}
             to={to}
           />

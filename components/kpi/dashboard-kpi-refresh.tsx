@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 type DashboardKpiRefreshProps = {
   initialKpi: DashboardKpi | null;
   initialUpdatedAt: string;
+  shopId?: string | null;
 };
 
 const timeFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -21,7 +22,11 @@ function formatRefreshTime(value: string): string {
   return timeFormatter.format(new Date(value));
 }
 
-export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardKpiRefreshProps) {
+export function DashboardKpiRefresh({
+  initialKpi,
+  initialUpdatedAt,
+  shopId = null,
+}: DashboardKpiRefreshProps) {
   const t = useTranslations('tableau');
   const kpiAction = useAction(getDashboardKpiAction);
   const [kpi, setKpi] = useState<DashboardKpi | null>(initialKpi);
@@ -31,13 +36,13 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      kpiAction.execute();
+      kpiAction.execute({ shopId });
     }, 60_000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [kpiAction]);
+  }, [kpiAction, shopId]);
 
   useEffect(() => {
     const result = kpiAction.result.data;

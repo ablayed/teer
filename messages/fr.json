@@ -242,6 +242,11 @@
     "title": "Tableau",
     "greeting": "Bonjour {name}",
     "subtitle": "{count, plural, =0 {Tout est \u00e0 jour.} one {# commande en attente d'appel.} other {# commandes en attente d'appel.}}",
+    "shops": {
+      "label": "Boutique",
+      "ariaLabel": "Filtrer le tableau par boutique",
+      "all": "Toutes"
+    },
     "kpi": {
       "a_appeler": "\u00c0 appeler",
       "ca_collecte": "CA collect\u00e9 (7 j)",
@@ -640,6 +645,11 @@
       "products": "Vue par produit",
       "drivers": "Vue par livreur"
     },
+    "shops": {
+      "label": "Boutique",
+      "ariaLabel": "Filtrer les finances par boutique",
+      "all": "Toutes"
+    },
     "report": {
       "download": "Télécharger le rapport PDF",
       "error": "Le rapport n'a pas pu être généré. Réessayez.",
@@ -662,6 +672,7 @@
     "kpis": {
       "caUnified": "Chiffre d'affaires",
       "cashDrivers": "Cash chez les livreurs",
+      "cashDriversAllShops": "Cash chez les livreurs (toutes boutiques)",
       "cashDriversGlobal": "Cash total chez tous les livreurs",
       "driversConcerned": "{count, plural, =0 {Aucun livreur concerné} one {# livreur concerné} other {# livreurs concernés}}",
       "driversConcernedTitle": "Livreurs concernés",
@@ -796,6 +807,7 @@
     "products": {
       "title": "Vue par produit",
       "subtitle": "Vue pilotage — ce que chaque produit vous rapporte, prix d'achat, pub et livraison compris.",
+      "scopeNoteFiltered": "Commandes et mouvements sold filtrés par boutique. Les charges non rattachées à une boutique restent toutes boutiques.",
       "pilotBanner": "Coût total de pilotage — méthode période : prix d'achat moyen (CUMP) + publicité et livraison réparties. Sert au pilotage, diffère du coût comptable officiel (Vue globale).",
       "period": "Période : {from} → {to}",
       "editExpenses": "Modifier les dépenses",
@@ -855,6 +867,7 @@
     "driverCost": {
       "title": "Vue par livreur",
       "subtitle": "COGS figé des marchandises livrées, agrégé par livreur sur la période.",
+      "scopeNoteFiltered": "Commandes et mouvements sold filtrés par boutique. La consolidation cash livreur reste toutes boutiques.",
       "period": "Période : {from} → {to}",
       "cards": {
         "cogs": "Coût des marchandises livrées",

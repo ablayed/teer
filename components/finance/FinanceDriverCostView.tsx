@@ -5,10 +5,11 @@ import { getTranslations } from 'next-intl/server';
 type Props = {
   from: string;
   report: FinanceDriverCostReport;
+  scopeNote?: string;
   to: string;
 };
 
-export async function FinanceDriverCostView({ from, report, to }: Props) {
+export async function FinanceDriverCostView({ from, report, scopeNote, to }: Props) {
   const t = await getTranslations('finance.driverCost');
   const totalAverageUnitCogs =
     report.totalQtySold > 0 ? Math.round(report.totalCogsMinor / report.totalQtySold) : 0;
@@ -20,6 +21,7 @@ export async function FinanceDriverCostView({ from, report, to }: Props) {
           <h2 className="text-2xl font-semibold text-text">{t('title')}</h2>
           <p className="max-w-3xl text-sm text-muted">{t('subtitle')}</p>
           <p className="text-xs text-muted">{t('period', { from, to })}</p>
+          {scopeNote ? <p className="text-xs text-muted">{scopeNote}</p> : null}
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">

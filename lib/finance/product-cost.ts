@@ -444,21 +444,21 @@ export async function fetchFinanceProductCostReport(
   merchantId: string,
   fromIso: string,
   toIso: string,
+  shopId?: string | null,
 ): Promise<FinanceProductCostReport> {
-  const [ordersRes, soldRes, expensesRes, productsRes, categoriesRes] = await Promise.all([
-    admin
-      .from('orders')
-      .select('id, total_amount, delivery_fee_minor, items_summary')
-      .eq('merchant_account_id', merchantId)
-      .gte('cash_collected_at', fromIso)
-      .lte('cash_collected_at', toIso),
-    admin
-      .from('stock_movement')
-      .select('product_id, qty, unit_cost')
-      .eq('merchant_account_id', merchantId)
-      .eq('movement_type', 'sold')
-      .gte('created_at', fromIso)
-      .lte('created_at', toIso),
+  let ordersQuery = admin
+    .from('orders')
+    .select('id, total_amount, delivery_fee_minor, items_summary')
+    .eq('merchant_account_id', merchantId)
+    .gte('cash_collected_at', fromIso)
+    .lte('cash_collected_at', toIso);
+
+  if (shopId) {
+    ordersQuery = ordersQuery.eq('shop_id', shopId);
+  }
+
+  const [ordersRes, expensesRes, productsRes, categoriesRes] = await Promise.all([
+    ordersQuery,
     admin
       .from('expense')
       .select('amount_minor, category_id')
@@ -469,27 +469,32 @@ export async function fetchFinanceProductCostReport(
     admin.from('expense_category').select('id, code').eq('merchant_account_id', merchantId),
   ]);
 
-  if (
-    ordersRes.error ||
-    soldRes.error ||
-    expensesRes.error ||
-    productsRes.error ||
-    categoriesRes.error
-  ) {
+  if (ordersRes.error || expensesRes.error || productsRes.error || categoriesRes.error) {
     throw new Error('finance_product_cost_error');
   }
 
   const orderIds = (ordersRes.data ?? []).map((order) => order.id);
-  const orderLinesRes =
+  const [orderLinesRes, soldRes] =
     orderIds.length > 0
-      ? await admin
-          .from('order_line')
-          .select('order_id, product_id, raw_title, qty')
-          .eq('merchant_account_id', merchantId)
-          .in('order_id', orderIds)
-      : { data: [], error: null };
+      ? await Promise.all([
+          admin
+            .from('order_line')
+            .select('order_id, product_id, raw_title, qty')
+            .eq('merchant_account_id', merchantId)
+            .in('order_id', orderIds),
+          admin
+            .from('stock_movement')
+            .select('product_id, qty, unit_cost')
+            .eq('merchant_account_id', merchantId)
+            .eq('movement_type', 'sold')
+            .in('order_id', orderIds),
+        ])
+      : [
+          { data: [], error: null },
+          { data: [], error: null },
+        ];
 
-  if (orderLinesRes.error) {
+  if (orderLinesRes.error || soldRes.error) {
     throw new Error('finance_product_cost_error');
   }
 

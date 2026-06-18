@@ -20,13 +20,20 @@ const DriverSettlementsPanel = dynamic(
 export function DriverSettlementsLoader({
   currentRole,
   drivers,
+  scopeNote,
   shortfalls,
 }: {
   currentRole: string;
   drivers: FinanceDriverOutstanding[];
+  scopeNote?: string;
   shortfalls: FinanceShortfall[];
 }) {
   return (
-    <DriverSettlementsPanel currentRole={currentRole} drivers={drivers} shortfalls={shortfalls} />
+    <DriverSettlementsPanel
+      currentRole={currentRole}
+      drivers={drivers}
+      scopeNote={scopeNote}
+      shortfalls={shortfalls}
+    />
   );
 }

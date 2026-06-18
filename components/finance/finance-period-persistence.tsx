@@ -43,6 +43,10 @@ export function FinancePeriodPersistence({ activeTab }: { activeTab: string }) {
       const parsed = JSON.parse(saved) as { from?: string; period?: string; to?: string };
       const next = new URLSearchParams();
       next.set('tab', activeTab);
+      const shop = params.get('shop');
+      if (shop) {
+        next.set('shop', shop);
+      }
       if (parsed.period) {
         next.set('period', parsed.period);
       }

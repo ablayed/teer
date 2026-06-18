@@ -9,6 +9,7 @@ type ReportDownloadButtonProps = {
   from: string;
   label: string;
   loadingLabel: string;
+  shopId?: string | null;
   to: string;
 };
 
@@ -17,11 +18,14 @@ export function ReportDownloadButton({
   from,
   label,
   loadingLabel,
+  shopId = null,
   to,
 }: ReportDownloadButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const href = `/api/rapport?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  const href = `/api/rapport?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${
+    shopId ? `&shopId=${encodeURIComponent(shopId)}` : ''
+  }`;
 
   function startDownload() {
     setIsLoading(true);

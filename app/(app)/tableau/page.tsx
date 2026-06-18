@@ -6,6 +6,8 @@ import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
 import { TopProducts } from '@/components/dashboard/TopProducts';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
+import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
+import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { Card } from '@/components/ui/card';
 import {
   getCodBreakdown,
@@ -24,9 +26,16 @@ import {
   matchesOrderSavedView,
 } from '@/lib/domain/order-saved-views';
 import { formatMoney } from '@/lib/format/fcfa';
+import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getTranslations } from 'next-intl/server';
 import { Suspense, cache } from 'react';
+
+type TableauPageProps = {
+  searchParams: Promise<{
+    shop?: string;
+  }>;
+};
 
 function firstToken(value: string | null | undefined): string {
   return value?.trim().split(/\s+/)[0] ?? '';
@@ -42,22 +51,28 @@ function displayNameFromMetadata(metadata: Record<string, unknown>): string {
 // qui s'en servent pour la devise (revenue / top produits / boutiques).
 const loadDashboardKpi = cache(getDashboardKpi);
 
-async function CallQueueSubtitle() {
-  const [t, kpiResult] = await Promise.all([getTranslations('tableau'), loadDashboardKpi()]);
+async function CallQueueSubtitle({ shopId }: { shopId: string | null }) {
+  const [t, kpiResult] = await Promise.all([getTranslations('tableau'), loadDashboardKpi(shopId)]);
   const callQueueCount = kpiResult.ok ? kpiResult.data.a_appeler_count : 0;
 
   return <p className="text-muted">{t('subtitle', { count: callQueueCount })}</p>;
 }
 
-async function KpiStrip() {
-  const kpiResult = await loadDashboardKpi();
+async function KpiStrip({ shopId }: { shopId: string | null }) {
+  const kpiResult = await loadDashboardKpi(shopId);
   const kpi = kpiResult.ok ? kpiResult.data : null;
 
-  return <DashboardKpiRefresh initialKpi={kpi} initialUpdatedAt={new Date().toISOString()} />;
+  return (
+    <DashboardKpiRefresh
+      initialKpi={kpi}
+      initialUpdatedAt={new Date().toISOString()}
+      shopId={shopId}
+    />
+  );
 }
 
-async function ExceptionsSection() {
-  const orders = await getOrders();
+async function ExceptionsSection({ shopId }: { shopId: string | null }) {
+  const orders = await getOrders({ shopId });
   const callbackTodayCount = orders.filter(
     (order) =>
       order.order_state === 'open' &&
@@ -169,11 +184,11 @@ async function OperationsEssentialsSection() {
   );
 }
 
-async function RevenueSection() {
+async function RevenueSection({ shopId }: { shopId: string | null }) {
   const [t, revenueResult, kpiResult] = await Promise.all([
     getTranslations('tableau'),
-    getRevenue30d(),
-    loadDashboardKpi(),
+    getRevenue30d(shopId),
+    loadDashboardKpi(shopId),
   ]);
   const revenue = revenueResult.ok ? revenueResult.data : null;
   const kpi = kpiResult.ok ? kpiResult.data : null;
@@ -188,11 +203,11 @@ async function RevenueSection() {
   );
 }
 
-async function TopProductsSection() {
+async function TopProductsSection({ shopId }: { shopId: string | null }) {
   const [t, topProductsResult, kpiResult] = await Promise.all([
     getTranslations('tableau'),
-    getTopProducts(),
-    loadDashboardKpi(),
+    getTopProducts(shopId),
+    loadDashboardKpi(shopId),
   ]);
   const topProducts = topProductsResult.ok ? topProductsResult.data : [];
   const kpi = kpiResult.ok ? kpiResult.data : null;
@@ -208,11 +223,11 @@ async function TopProductsSection() {
   );
 }
 
-async function ShopPerformanceSection() {
+async function ShopPerformanceSection({ shopId }: { shopId: string | null }) {
   const [t, shopPerformanceResult, kpiResult] = await Promise.all([
     getTranslations('tableau'),
-    getShopPerformance(),
-    loadDashboardKpi(),
+    getShopPerformance(shopId),
+    loadDashboardKpi(shopId),
   ]);
   const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
   const kpi = kpiResult.ok ? kpiResult.data : null;
@@ -230,10 +245,10 @@ async function ShopPerformanceSection() {
   );
 }
 
-async function CodBreakdownSection() {
+async function CodBreakdownSection({ shopId }: { shopId: string | null }) {
   const [t, codBreakdownResult] = await Promise.all([
     getTranslations('tableau'),
-    getCodBreakdown(),
+    getCodBreakdown(shopId),
   ]);
   const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
 
@@ -247,10 +262,10 @@ async function CodBreakdownSection() {
   );
 }
 
-async function RecentActivitySection() {
+async function RecentActivitySection({ shopId }: { shopId: string | null }) {
   const [t, recentActivityResult] = await Promise.all([
     getTranslations('tableau'),
-    getRecentActivity(),
+    getRecentActivity(shopId),
   ]);
   const recentActivity = recentActivityResult.ok ? recentActivityResult.data : [];
 
@@ -352,31 +367,59 @@ function CodBreakdownSkeleton() {
   );
 }
 
-export default async function TableauPage() {
+export default async function TableauPage({ searchParams }: TableauPageProps) {
   const [t, supabase] = await Promise.all([
     getTranslations('tableau'),
     createSupabaseServerClient(),
   ]);
+  const params = await searchParams;
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  let merchantAccountId: string | null = null;
+  if (user) {
+    const { data: memberRow } = await supabase
+      .from('merchant_member')
+      .select('merchant_account_id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle();
+    const member = memberRow as { merchant_account_id: string } | null;
+    merchantAccountId = member?.merchant_account_id ?? null;
+  }
+  const shops = merchantAccountId ? await listShopFilterOptions(supabase, merchantAccountId) : [];
+  const selectedShopId = normalizeShopParam(params.shop, shops);
   const firstName =
     displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
 
   return (
     <main id="main">
+      <Suspense fallback={null}>
+        <ShopFilterPersistence storageKey="teer.tableau.shop" />
+      </Suspense>
       <DashboardMotion>
-        <header className="space-y-2">
-          <h1 className="font-display text-4xl md:text-5xl">
-            {t('greeting', { name: firstName })}
-          </h1>
-          <Suspense fallback={<div className="dashboard-shimmer h-5 w-80 rounded-sm" />}>
-            <CallQueueSubtitle />
-          </Suspense>
+        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-2">
+            <h1 className="font-display text-4xl md:text-5xl">
+              {t('greeting', { name: firstName })}
+            </h1>
+            <Suspense fallback={<div className="dashboard-shimmer h-5 w-80 rounded-sm" />}>
+              <CallQueueSubtitle shopId={selectedShopId} />
+            </Suspense>
+          </div>
+          <ShopFilterSelector
+            allLabel={t('shops.all')}
+            ariaLabel={t('shops.ariaLabel')}
+            label={t('shops.label')}
+            pathname="/tableau"
+            searchParams={{ shop: params.shop }}
+            selectedShopId={selectedShopId}
+            shops={shops}
+          />
         </header>
 
         <Suspense fallback={<KpiStripSkeleton />}>
-          <KpiStrip />
+          <KpiStrip shopId={selectedShopId} />
         </Suspense>
 
         <Suspense fallback={<div className="dashboard-shimmer h-36 rounded-md" />}>
@@ -384,28 +427,28 @@ export default async function TableauPage() {
         </Suspense>
 
         <Suspense fallback={<ExceptionsSkeleton />}>
-          <ExceptionsSection />
+          <ExceptionsSection shopId={selectedShopId} />
         </Suspense>
 
         <Suspense fallback={<RevenueSkeleton />}>
-          <RevenueSection />
+          <RevenueSection shopId={selectedShopId} />
         </Suspense>
 
         <section className="grid gap-4 xl:grid-cols-3">
           <Suspense fallback={<CardListSkeleton rows={5} />}>
-            <TopProductsSection />
+            <TopProductsSection shopId={selectedShopId} />
           </Suspense>
           <Suspense fallback={<CardListSkeleton rows={5} />}>
-            <ShopPerformanceSection />
+            <ShopPerformanceSection shopId={selectedShopId} />
           </Suspense>
           <Suspense fallback={<CodBreakdownSkeleton />}>
-            <CodBreakdownSection />
+            <CodBreakdownSection shopId={selectedShopId} />
           </Suspense>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
           <Suspense fallback={<CardListSkeleton rows={6} />}>
-            <RecentActivitySection />
+            <RecentActivitySection shopId={selectedShopId} />
           </Suspense>
         </section>
       </DashboardMotion>

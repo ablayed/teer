@@ -73,6 +73,7 @@ export type OrderDetail = Tables<'orders'> & {
 
 type GetOrdersInput = {
   codStatus?: CodStatus;
+  shopId?: string | null;
 };
 
 type SupabaseServerClient = SupabaseClient<Database>;
@@ -512,7 +513,10 @@ async function findOrCreateCustomerByPhone({
   };
 }
 
-export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<OrderListItem[]> {
+export async function getOrders({
+  codStatus,
+  shopId,
+}: GetOrdersInput = {}): Promise<OrderListItem[]> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const role = await getCurrentMemberRole(supabase);
   let query = supabase
@@ -524,6 +528,10 @@ export async function getOrders({ codStatus }: GetOrdersInput = {}): Promise<Ord
 
   if (codStatus) {
     query = query.eq('cod_status', codStatus);
+  }
+
+  if (shopId) {
+    query = query.eq('shop_id', shopId);
   }
 
   const { data, error } = await query;

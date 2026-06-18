@@ -5,9 +5,15 @@ import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machin
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { z } from 'zod';
 
 type SupabaseServerClient = SupabaseClient<Database>;
 type DashboardKpiRpcPayload = Record<string, unknown>;
+const dashboardShopFilterSchema = z
+  .object({
+    shopId: z.string().uuid().nullable().optional(),
+  })
+  .optional();
 
 export type DashboardSparklinePoint = {
   date: string;
@@ -273,9 +279,11 @@ function parseItems(value: unknown): Array<{ price: number; quantity: number; ti
 }
 
 async function fetchTopProductsForUser({
+  shopId,
   supabase,
   userId,
 }: {
+  shopId?: string | null;
   supabase: SupabaseServerClient;
   userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
@@ -285,13 +293,18 @@ async function fetchTopProductsForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select('items_summary')
     .eq('merchant_account_id', merchant.merchantAccountId)
     .in('cod_status', ['CONFIRMEE', 'PROGRAMMEE', 'EN_LIVRAISON', 'LIVREE'])
-    .order('created_at', { ascending: false })
-    .limit(500);
+    .order('created_at', { ascending: false });
+
+  if (shopId) {
+    query = query.eq('shop_id', shopId);
+  }
+
+  const { data, error } = await query.limit(500);
 
   if (error) {
     return { ok: false, errorCode: 'query_error' };
@@ -317,9 +330,11 @@ async function fetchTopProductsForUser({
 }
 
 async function fetchShopPerformanceForUser({
+  shopId,
   supabase,
   userId,
 }: {
+  shopId?: string | null;
   supabase: SupabaseServerClient;
   userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
@@ -329,17 +344,22 @@ async function fetchShopPerformanceForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  const [shopsResult, ordersResult] = await Promise.all([
-    supabase
-      .from('shop')
-      .select('id, shop_domain, status')
-      .eq('merchant_account_id', merchant.merchantAccountId)
-      .order('installed_at', { ascending: true }),
-    supabase
-      .from('orders')
-      .select('shop_id, total_amount')
-      .eq('merchant_account_id', merchant.merchantAccountId),
-  ]);
+  let shopsQuery = supabase
+    .from('shop')
+    .select('id, shop_domain, status')
+    .eq('merchant_account_id', merchant.merchantAccountId)
+    .order('installed_at', { ascending: true });
+  let ordersQuery = supabase
+    .from('orders')
+    .select('shop_id, total_amount')
+    .eq('merchant_account_id', merchant.merchantAccountId);
+
+  if (shopId) {
+    shopsQuery = shopsQuery.eq('id', shopId);
+    ordersQuery = ordersQuery.eq('shop_id', shopId);
+  }
+
+  const [shopsResult, ordersResult] = await Promise.all([shopsQuery, ordersQuery]);
 
   if (shopsResult.error || ordersResult.error) {
     return { ok: false, errorCode: 'query_error' };
@@ -371,9 +391,11 @@ async function fetchShopPerformanceForUser({
 }
 
 async function fetchCodBreakdownForUser({
+  shopId,
   supabase,
   userId,
 }: {
+  shopId?: string | null;
   supabase: SupabaseServerClient;
   userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
@@ -383,10 +405,16 @@ async function fetchCodBreakdownForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select('cod_status')
     .eq('merchant_account_id', merchant.merchantAccountId);
+
+  if (shopId) {
+    query = query.eq('shop_id', shopId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return { ok: false, errorCode: 'query_error' };
@@ -407,9 +435,11 @@ async function fetchCodBreakdownForUser({
 }
 
 async function fetchRecentActivityForUser({
+  shopId,
   supabase,
   userId,
 }: {
+  shopId?: string | null;
   supabase: SupabaseServerClient;
   userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardRecentActivityItem[]>> {
@@ -421,10 +451,10 @@ async function fetchRecentActivityForUser({
 
   const { data, error } = await supabase
     .from('order_state_transition')
-    .select('id, created_at, from_status, to_status, order:order_id(order_number)')
+    .select('id, created_at, from_status, to_status, order:order_id(order_number, shop_id)')
     .eq('merchant_account_id', merchant.merchantAccountId)
     .order('created_at', { ascending: false })
-    .limit(8);
+    .limit(shopId ? 40 : 8);
 
   if (error) {
     return { ok: false, errorCode: 'query_error' };
@@ -433,6 +463,8 @@ async function fetchRecentActivityForUser({
   return {
     ok: true,
     data: (data ?? [])
+      .filter((item) => !shopId || item.order?.shop_id === shopId)
+      .slice(0, 8)
       .map((item) => {
         const toStatus = isOrderStatus(item.to_status) ? item.to_status : null;
 
@@ -527,9 +559,11 @@ async function fetchAlertsForUser({
 }
 
 async function fetchRevenue30dForUser({
+  shopId,
   supabase,
   userId,
 }: {
+  shopId?: string | null;
   supabase: SupabaseServerClient;
   userId: string;
 }): Promise<DashboardRevenue30dActionResult> {
@@ -539,13 +573,18 @@ async function fetchRevenue30dForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select('created_at, created_at_shopify, currency, total_amount')
     .eq('merchant_account_id', merchant.merchantAccountId)
     .eq('cod_status', 'LIVREE')
-    .order('created_at', { ascending: false })
-    .limit(5000);
+    .order('created_at', { ascending: false });
+
+  if (shopId) {
+    query = query.eq('shop_id', shopId);
+  }
+
+  const { data, error } = await query.limit(5000);
 
   if (error) {
     return { ok: false, errorCode: 'query_error' };
@@ -555,9 +594,11 @@ async function fetchRevenue30dForUser({
 }
 
 async function fetchDashboardKpiForUser({
+  shopId,
   supabase,
   userId,
 }: {
+  shopId?: string | null;
   supabase: SupabaseServerClient;
   userId: string;
 }): Promise<DashboardKpiActionResult> {
@@ -576,17 +617,22 @@ async function fetchDashboardKpiForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
+  let currencyQuery = supabase
+    .from('orders')
+    .select('currency')
+    .eq('merchant_account_id', member.merchant_account_id)
+    .not('currency', 'is', null);
+
+  if (shopId) {
+    currencyQuery = currencyQuery.eq('shop_id', shopId);
+  }
+
   const [kpiResult, currencyResult] = await Promise.all([
     supabase.rpc('get_dashboard_kpi', {
       p_merchant_id: member.merchant_account_id,
+      ...(shopId ? { p_shop_id: shopId } : {}),
     }),
-    supabase
-      .from('orders')
-      .select('currency')
-      .eq('merchant_account_id', member.merchant_account_id)
-      .not('currency', 'is', null)
-      .limit(1)
-      .maybeSingle(),
+    currencyQuery.limit(1).maybeSingle(),
   ]);
 
   const { data, error } = kpiResult;
@@ -610,7 +656,7 @@ async function fetchDashboardKpiForUser({
   };
 }
 
-export async function getDashboardKpi(): Promise<DashboardKpiActionResult> {
+export async function getDashboardKpi(shopId?: string | null): Promise<DashboardKpiActionResult> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const {
     data: { user },
@@ -620,19 +666,23 @@ export async function getDashboardKpi(): Promise<DashboardKpiActionResult> {
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchDashboardKpiForUser({ supabase, userId: user.id });
+  return fetchDashboardKpiForUser({ shopId, supabase, userId: user.id });
 }
 
 export const getDashboardKpiAction = authActionClient
   .metadata({ actionName: 'dashboard.get_kpi', section: 'dashboard' })
-  .action(async ({ ctx }): Promise<DashboardKpiActionResult> => {
+  .inputSchema(dashboardShopFilterSchema)
+  .action(async ({ ctx, parsedInput }): Promise<DashboardKpiActionResult> => {
     return fetchDashboardKpiForUser({
+      shopId: parsedInput?.shopId ?? null,
       supabase: asTypedSupabaseClient(ctx.supabase),
       userId: ctx.user.id,
     });
   });
 
-export async function getRevenue30d(): Promise<DashboardRevenue30dActionResult> {
+export async function getRevenue30d(
+  shopId?: string | null,
+): Promise<DashboardRevenue30dActionResult> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const {
     data: { user },
@@ -642,7 +692,7 @@ export async function getRevenue30d(): Promise<DashboardRevenue30dActionResult> 
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchRevenue30dForUser({ supabase, userId: user.id });
+  return fetchRevenue30dForUser({ shopId, supabase, userId: user.id });
 }
 
 export const getRevenue30dAction = authActionClient
@@ -654,9 +704,9 @@ export const getRevenue30dAction = authActionClient
     });
   });
 
-export async function getTopProducts(): Promise<
-  DashboardReadonlyActionResult<DashboardTopProduct[]>
-> {
+export async function getTopProducts(
+  shopId?: string | null,
+): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const {
     data: { user },
@@ -666,7 +716,7 @@ export async function getTopProducts(): Promise<
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchTopProductsForUser({ supabase, userId: user.id });
+  return fetchTopProductsForUser({ shopId, supabase, userId: user.id });
 }
 
 export const getTopProductsAction = authActionClient
@@ -678,9 +728,9 @@ export const getTopProductsAction = authActionClient
     });
   });
 
-export async function getShopPerformance(): Promise<
-  DashboardReadonlyActionResult<DashboardShopPerformance[]>
-> {
+export async function getShopPerformance(
+  shopId?: string | null,
+): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const {
     data: { user },
@@ -690,7 +740,7 @@ export async function getShopPerformance(): Promise<
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchShopPerformanceForUser({ supabase, userId: user.id });
+  return fetchShopPerformanceForUser({ shopId, supabase, userId: user.id });
 }
 
 export const getShopPerformanceAction = authActionClient
@@ -702,9 +752,9 @@ export const getShopPerformanceAction = authActionClient
     });
   });
 
-export async function getCodBreakdown(): Promise<
-  DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>
-> {
+export async function getCodBreakdown(
+  shopId?: string | null,
+): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const {
     data: { user },
@@ -714,7 +764,7 @@ export async function getCodBreakdown(): Promise<
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchCodBreakdownForUser({ supabase, userId: user.id });
+  return fetchCodBreakdownForUser({ shopId, supabase, userId: user.id });
 }
 
 export const getCodBreakdownAction = authActionClient
@@ -726,9 +776,9 @@ export const getCodBreakdownAction = authActionClient
     });
   });
 
-export async function getRecentActivity(): Promise<
-  DashboardReadonlyActionResult<DashboardRecentActivityItem[]>
-> {
+export async function getRecentActivity(
+  shopId?: string | null,
+): Promise<DashboardReadonlyActionResult<DashboardRecentActivityItem[]>> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const {
     data: { user },
@@ -738,7 +788,7 @@ export async function getRecentActivity(): Promise<
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchRecentActivityForUser({ supabase, userId: user.id });
+  return fetchRecentActivityForUser({ shopId, supabase, userId: user.id });
 }
 
 export const getRecentActivityAction = authActionClient

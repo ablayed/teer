@@ -13,6 +13,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 type Props = {
   from: string;
   report: FinanceProductCostReport;
+  scopeNote?: string;
   to: string;
 };
 
@@ -282,7 +283,7 @@ function ProductCard({
   );
 }
 
-export function FinanceProductCostView({ from, report, to }: Props) {
+export function FinanceProductCostView({ from, report, scopeNote, to }: Props) {
   const t = useTranslations('finance.products');
   const [rows, setRows] = useState<FinanceProductCostRow[]>(report.rows);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -335,6 +336,7 @@ export function FinanceProductCostView({ from, report, to }: Props) {
             <h2 className="text-2xl font-semibold text-text">{t('title')}</h2>
             <p className="max-w-3xl text-sm text-muted">{t('subtitle')}</p>
             <p className="text-xs text-muted">{t('period', { from, to })}</p>
+            {scopeNote ? <p className="text-xs text-muted">{scopeNote}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Link

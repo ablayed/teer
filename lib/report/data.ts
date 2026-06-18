@@ -120,7 +120,7 @@ const codStatuses: CodStatus[] = [
 function financeKpisRpc(supabase: SupabaseServerClient) {
   const rpc = supabase.rpc.bind(supabase) as unknown as (
     fn: 'finance_kpis',
-    args: { p_from: string; p_merchant: string; p_to: string },
+    args: { p_from: string; p_merchant: string; p_shop_id?: string | null; p_to: string },
   ) => Promise<{ data: FinanceKpiRow[] | null; error: unknown }>;
 
   return rpc;
@@ -320,6 +320,7 @@ export async function getReportData({
     financeKpisRpc(supabase)('finance_kpis', {
       p_from: fromIso,
       p_merchant: merchantAccountId,
+      p_shop_id: shopId ?? null,
       p_to: toIso,
     }),
     cashAgingRpc(supabase)('cash_aging', { p_merchant: merchantAccountId }),
@@ -507,6 +508,7 @@ export async function getReportData({
         merchantAccountId,
         fromIso,
         toIso,
+        shopId ?? null,
       );
     } catch {
       profit = null;

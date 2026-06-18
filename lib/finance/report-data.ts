@@ -82,24 +82,37 @@ export async function fetchFinanceReport(
   merchantId: string,
   fromIso: string,
   toIso: string,
+  shopId?: string | null,
 ): Promise<FinanceReport> {
   // 1. Commandes encaissées dans la période
-  const { data: collectedRaw, error: e1 } = await admin
+  let collectedQuery = admin
     .from('orders')
     .select('id, total_amount, delivery_fee_minor, payment_channel_at_delivery')
     .eq('merchant_account_id', merchantId)
     .gte('cash_collected_at', fromIso)
     .lte('cash_collected_at', toIso);
+
+  if (shopId) {
+    collectedQuery = collectedQuery.eq('shop_id', shopId);
+  }
+
+  const { data: collectedRaw, error: e1 } = await collectedQuery;
   if (e1) throw new Error('finance_data_error');
 
   // 2. Retours dans la période (cash_collected_at non null = contra-revenue réel)
-  const { data: returnedRaw, error: e2 } = await admin
+  let returnedQuery = admin
     .from('orders')
     .select('id, total_amount, delivery_fee_minor')
     .eq('merchant_account_id', merchantId)
     .gte('returned_at', fromIso)
     .lte('returned_at', toIso)
     .not('cash_collected_at', 'is', null);
+
+  if (shopId) {
+    returnedQuery = returnedQuery.eq('shop_id', shopId);
+  }
+
+  const { data: returnedRaw, error: e2 } = await returnedQuery;
   if (e2) throw new Error('finance_data_error');
 
   const collectedIds = (collectedRaw ?? []).map((o) => o.id);

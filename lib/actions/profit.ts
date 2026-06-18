@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 const periodSchema = z.object({
   from: z.string().datetime(),
+  shopId: z.string().uuid().nullable().optional(),
   to: z.string().datetime(),
 });
 
@@ -24,9 +25,15 @@ export const getFinanceReportAction = requireRole('owner')
   .inputSchema(periodSchema)
   .action(async ({ ctx, parsedInput }) => {
     const admin = createFinanceAdminClient();
-    const { from, to } = parsedInput;
+    const { from, shopId, to } = parsedInput;
     try {
-      const report = await fetchFinanceReport(admin, ctx.member.merchantAccountId, from, to);
+      const report = await fetchFinanceReport(
+        admin,
+        ctx.member.merchantAccountId,
+        from,
+        to,
+        shopId ?? null,
+      );
       return { ok: true as const, report };
     } catch {
       return { ok: false as const, errorCode: 'data_error' as const };
@@ -50,22 +57,35 @@ export const getFinanceChartsAction = requireRole('owner')
   .action(async ({ ctx, parsedInput }) => {
     const admin = createFinanceAdminClient();
     const merchantId = ctx.member.merchantAccountId;
-    const { from, to } = parsedInput;
+    const { from, shopId, to } = parsedInput;
+
+    let collectedQuery = admin
+      .from('orders')
+      .select('total_amount, cash_collected_at, shop_id')
+      .eq('merchant_account_id', merchantId)
+      .gte('cash_collected_at', from)
+      .lte('cash_collected_at', to);
+    let shopsQuery = admin
+      .from('shop')
+      .select('id, shop_domain')
+      .eq('merchant_account_id', merchantId);
+    let funnelQuery = admin
+      .from('orders')
+      .select('cod_status')
+      .eq('merchant_account_id', merchantId)
+      .gte('created_at', from)
+      .lte('created_at', to);
+
+    if (shopId) {
+      collectedQuery = collectedQuery.eq('shop_id', shopId);
+      shopsQuery = shopsQuery.eq('id', shopId);
+      funnelQuery = funnelQuery.eq('shop_id', shopId);
+    }
 
     const [collectedRes, shopsRes, funnelRes] = await Promise.all([
-      admin
-        .from('orders')
-        .select('total_amount, cash_collected_at, shop_id')
-        .eq('merchant_account_id', merchantId)
-        .gte('cash_collected_at', from)
-        .lte('cash_collected_at', to),
-      admin.from('shop').select('id, shop_domain').eq('merchant_account_id', merchantId),
-      admin
-        .from('orders')
-        .select('cod_status')
-        .eq('merchant_account_id', merchantId)
-        .gte('created_at', from)
-        .lte('created_at', to),
+      collectedQuery,
+      shopsQuery,
+      funnelQuery,
     ]);
 
     if (collectedRes.error || shopsRes.error || funnelRes.error) {
