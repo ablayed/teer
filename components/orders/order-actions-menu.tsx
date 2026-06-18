@@ -98,7 +98,9 @@ export function OrderActionsMenu({
   // (ref armé au moment de la confirmation du dialog livreur) ou à l'ouverture
   // d'une commande déjà assignée (autoOpenAssignment).
   const [assignmentOpen, setAssignmentOpen] = useState(canEditAmounts && autoOpenAssignment);
-  const openAssignmentAfterSuccessRef = useRef(false);
+  // Phase 13.1 : livreur choisi dans le picker, à assigner SEULEMENT à la confirmation du
+  // popup (null à la réouverture d'une commande déjà assignée → popup = demarrer_livraison seul).
+  const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
   const onTransitionSuccessRef = useRef(onTransitionSuccess);
 
   // Phase 11 : « programmer » supplante « confirmer » dans le dropdown.
@@ -201,11 +203,6 @@ export function OrderActionsMenu({
       } else {
         router.refresh();
       }
-      // Phase 11.1 : après « Assigner », ouvrir le popup détails/prix (owner/manager).
-      if (openAssignmentAfterSuccessRef.current) {
-        openAssignmentAfterSuccessRef.current = false;
-        setAssignmentOpen(true);
-      }
       return;
     }
 
@@ -229,9 +226,15 @@ export function OrderActionsMenu({
       return;
     }
 
-    // Phase 11.1 : « Assigner » (owner/manager) enchaîne sur le popup détails/prix.
+    // Phase 13.1 : « Assigner » (owner/manager) ne transitionne PLUS au choix du livreur.
+    // On capture le livreur choisi et on ouvre le popup ; c'est le popup (« Envoyer au
+    // livreur (WhatsApp) ») qui exécute assigner + demarrer_livraison. Annuler le popup
+    // laisse la commande « Programmée » (scheduled), sans livreur ni dispatch.
     if (pendingAction === 'assigner' && canEditAmounts) {
-      openAssignmentAfterSuccessRef.current = true;
+      setPendingDriverId(payload.assignedDriverId ?? null);
+      setPendingAction(null);
+      setAssignmentOpen(true);
+      return;
     }
 
     transition.execute({ orderId, action: pendingAction, payload });
@@ -240,11 +243,19 @@ export function OrderActionsMenu({
 
   function handleAssignmentConfirmed(result: Extract<TransitionResult, { ok: true }>) {
     setAssignmentOpen(false);
+    setPendingDriverId(null);
     if (onTransitionSuccessRef.current) {
       onTransitionSuccessRef.current(result);
     } else {
       router.refresh();
     }
+  }
+
+  // Annuler/fermer le popup : aucune transition n'a eu lieu (le picker n'assigne plus) →
+  // la commande reste « Programmée », sans livreur. On oublie juste le livreur en attente.
+  function handleAssignmentClose() {
+    setAssignmentOpen(false);
+    setPendingDriverId(null);
   }
 
   if (!hasMenu && !canCall && !whatsappUrl && !assignmentOpen) {
@@ -363,7 +374,8 @@ export function OrderActionsMenu({
 
       {assignmentOpen ? (
         <AssignmentDetailsDialog
-          onClose={() => setAssignmentOpen(false)}
+          driverIdToAssign={pendingDriverId}
+          onClose={handleAssignmentClose}
           onConfirmed={handleAssignmentConfirmed}
           orderId={orderId}
         />

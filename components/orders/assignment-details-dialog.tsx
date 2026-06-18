@@ -14,19 +14,25 @@ import { useEffect, useId, useState } from 'react';
 type TransitionSuccess = Extract<TransitionResult, { ok: true }>;
 
 type AssignmentDetailsDialogProps = {
+  // Phase 13.1 — livreur CHOISI dans le picker mais PAS encore assigné : le popup
+  // exécutera `assigner`(+driver, dispatch) puis `demarrer_livraison` au clic. Null/absent =
+  // commande DÉJÀ assignée (réouverture) → seulement `demarrer_livraison`.
+  driverIdToAssign?: string | null;
   onClose: () => void;
-  // Appelé après le passage en livraison réussi (save montants + demarrer_livraison),
-  // avec le résultat de transition pour mettre à jour la liste/le détail.
+  // Appelé après le passage en livraison réussi, avec le résultat de transition pour
+  // mettre à jour la liste/le détail.
   onConfirmed: (result: TransitionSuccess) => void;
   orderId: string;
 };
 
-// Phase 11.1 (option C) — popup d'assignation : s'ouvre APRÈS le choix du livreur
-// (et à la réouverture d'une commande assignée). Affiche les détails (lecture) +
-// les montants modifiables. « Confirmer et démarrer la livraison » = save montants
-// (si modifié) → transition demarrer_livraison (assigned → out_for_delivery) →
-// fermeture. Annuler/Échap → la commande reste assignée (vue « Programmer »).
+// Phase 11.1 (option C) + Phase 13.1 — popup d'assignation : s'ouvre APRÈS le choix du
+// livreur (le picker NE déclenche plus la transition) et à la réouverture d'une commande
+// assignée. Affiche les détails (lecture) + montants modifiables. « Envoyer au livreur
+// (WhatsApp) » = save montants (si modifié) → assigner(+driver, dispatch) si le livreur
+// n'est pas encore assigné → demarrer_livraison → WhatsApp → fermeture. Annuler/Échap →
+// AUCUNE transition : la commande reste « Programmée » (scheduled), sans livreur ni dispatch.
 export function AssignmentDetailsDialog({
+  driverIdToAssign,
   onClose,
   onConfirmed,
   orderId,
@@ -59,7 +65,10 @@ export function AssignmentDetailsDialog({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const result = await fetchDetails.executeAsync({ orderId });
+      const result = await fetchDetails.executeAsync({
+        orderId,
+        ...(driverIdToAssign ? { driverId: driverIdToAssign } : {}),
+      });
       if (cancelled) {
         return;
       }
@@ -88,8 +97,8 @@ export function AssignmentDetailsDialog({
     return () => {
       cancelled = true;
     };
-    // orderId stable pour la durée de vie du popup ; executeAsync mémoïsé (next-safe-action v8).
-  }, [orderId, fetchDetails.executeAsync]);
+    // orderId/driverIdToAssign stables pour la durée de vie du popup ; executeAsync mémoïsé.
+  }, [orderId, driverIdToAssign, fetchDetails.executeAsync]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -124,9 +133,11 @@ export function AssignmentDetailsDialog({
     );
   }
 
-  // « Envoyer au livreur (WhatsApp) » : un clic = save montants (si modifiés) →
-  // demarrer_livraison → ouverture WhatsApp vers le livreur. L'onglet WhatsApp est
-  // PRÉ-OUVERT dans le geste (sinon les navigateurs bloquent window.open après un await).
+  // « Envoyer au livreur (WhatsApp) » : un clic = save montants (si modifiés) → assigner
+  // (+driver, dispatch) si le livreur n'est pas encore assigné → demarrer_livraison →
+  // ouverture WhatsApp vers le livreur. L'onglet WhatsApp est PRÉ-OUVERT dans le geste
+  // (sinon les navigateurs bloquent window.open après un await). C'est SEULEMENT ici que
+  // la commande est assignée : « Annuler » ne déclenche rien et laisse scheduled.
   async function handleConfirm() {
     if (!canConfirm) {
       return;
@@ -154,6 +165,25 @@ export function AssignmentDetailsDialog({
       if (!saved?.data?.ok) {
         whatsappWindow?.close();
         setFeedback('La mise à jour des montants a échoué.');
+        return;
+      }
+    }
+
+    // Assignation différée : c'est le clic « Envoyer au livreur » qui assigne (et poste le
+    // dispatch), pas le picker. Sauté à la réouverture d'une commande déjà assignée.
+    if (driverIdToAssign) {
+      const assigned = await startDelivery.executeAsync({
+        orderId,
+        action: 'assigner',
+        payload: { assignedDriverId: driverIdToAssign },
+      });
+      if (!assigned?.data?.ok) {
+        whatsappWindow?.close();
+        const message =
+          assigned?.data && 'message' in assigned.data && typeof assigned.data.message === 'string'
+            ? assigned.data.message
+            : "L'assignation au livreur a échoué.";
+        setFeedback(message);
         return;
       }
     }

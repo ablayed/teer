@@ -558,11 +558,10 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await menuItem(page, 'Assigner').click();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
-    await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
-
-    // À l'assignation, le popup s'ouvre : « Envoyer au livreur (WhatsApp) » sauvegarde,
-    // fait passer la commande en out_for_delivery, ET ouvre WhatsApp vers le livreur (C5).
-    // On neutralise le réseau wa.me pour rester déterministe.
+    // Phase 13.1 : le choix du livreur n'assigne PLUS — la commande reste « Programmée »
+    // (scheduled) et le popup s'ouvre. C'est « Envoyer au livreur (WhatsApp) » qui assigne
+    // (+dispatch) puis passe en out_for_delivery ET ouvre WhatsApp (C5). Réseau wa.me neutralisé.
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'scheduled');
     await page
       .context()
       .route('https://wa.me/**', (route) =>
@@ -657,15 +656,26 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
     await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeDisabled();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
-    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+    // Phase 13.1 : le picker n'assigne plus ; le popup s'ouvre. « Envoyer au livreur »
+    // assigne (+dispatch attribué au livreur) puis passe en out_for_delivery. wa.me neutralisé.
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page
+      .context()
+      .route('https://wa.me/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
+      );
+    const assignWhatsappPopup = page.waitForEvent('popup');
+    await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
+    await (await assignWhatsappPopup).close();
 
-    // assigned_driver_id renseigné avec le livreur ciblé.
+    // assigned_driver_id renseigné avec le livreur ciblé (assignation faite au popup).
     const { data: order } = await fixture.admin
       .from('orders')
       .select('assigned_driver_id, delivery_state')
       .eq('id', orderId)
       .single();
-    expect(order?.delivery_state).toBe('assigned');
+    expect(order?.delivery_state).toBe('out_for_delivery');
     expect(order?.assigned_driver_id).toBe(driverId);
 
     // Le dispatch est attribué au livreur → stock en main du livreur dérivé = +2.
@@ -677,6 +687,76 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
     const dispatch = (movements ?? []).find((m) => m.movement_type === 'dispatch');
     expect(dispatch?.qty).toBe(-2);
     expect(dispatch?.driver_id).toBe(driverId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('phase13.1 - annuler le popup d assignation laisse la commande programmee sans livreur ni dispatch', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('assign-cancel');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Annule');
+  const productTitle = 'Produit Annule Popup';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  const ownerClient = await signInClient(fixture.email);
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'purchase_in',
+    p_qty: 10,
+    p_idempotency_key: `assign-cancel-in:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_unit_cost: 5000,
+  });
+  const orderId = await createConfirmedOrderWithLine(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productId,
+    productTitle,
+    2,
+  );
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
+
+    // Choix du livreur : ouvre le popup SANS assigner (Phase 13.1).
+    await runDetailMenuAction(page, 'Assigner');
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+
+    // Annuler le popup → aucune transition.
+    await expect(page.getByRole('button', { name: 'Annuler', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByRole('button', { name: 'Annuler', exact: true }).click();
+
+    // La commande reste « Programmée » : scheduled, aucun livreur affecté.
+    const { data: order } = await fixture.admin
+      .from('orders')
+      .select('cod_status, delivery_state, assigned_driver_id')
+      .eq('id', orderId)
+      .single();
+    expect(order?.cod_status).toBe('PROGRAMMEE');
+    expect(order?.delivery_state).toBe('scheduled');
+    expect(order?.assigned_driver_id).toBeNull();
+
+    // Aucun dispatch stock posté (seule la réserve molle du programmer existe).
+    const { data: movements } = await fixture.admin
+      .from('stock_movement')
+      .select('movement_type')
+      .eq('order_id', orderId);
+    const types = (movements ?? []).map((movement) => movement.movement_type);
+    expect(types).not.toContain('dispatch');
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -731,9 +811,11 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeDisabled();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
-    await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
+    // Phase 13.1 : le choix du livreur n'assigne PLUS ; la commande reste scheduled et le
+    // popup s'ouvre. L'assignation (+dispatch) se fait au clic « Envoyer au livreur ».
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'scheduled');
 
-    // Le popup détails/prix s'ouvre automatiquement après l'assignation (depuis la liste).
+    // Le popup détails/prix s'ouvre automatiquement après le choix du livreur (depuis la liste).
     await expect(page.getByLabel('Total', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel('Frais de livraison', { exact: true })).toBeVisible({
       timeout: 15_000,

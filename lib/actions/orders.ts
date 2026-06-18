@@ -1191,7 +1191,10 @@ function parseAssignmentLines(value: Json | null): AssignmentLine[] {
 
 export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager')
   .metadata({ actionName: 'orders.assignment_details', section: 'orders' })
-  .inputSchema(z.object({ orderId: z.string().uuid() }))
+  // driverId optionnel = livreur CHOISI dans le picker mais PAS encore assigné (le popup
+  // s'ouvre avant la transition `assigner` depuis Phase 13.1). À défaut, on retombe sur le
+  // livreur déjà assigné (réouverture d'une commande assignée).
+  .inputSchema(z.object({ orderId: z.string().uuid(), driverId: z.string().uuid().optional() }))
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
     const { data: order, error } = await supabase
@@ -1212,14 +1215,15 @@ export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager'
 
     const customer = order.customer as { full_name: string | null; phone: string | null } | null;
 
-    // Livreur assigné : nom + téléphone pour le lien WhatsApp d'expédition (C5).
+    // Livreur (choisi ou déjà assigné) : nom + téléphone pour le lien WhatsApp d'expédition (C5).
+    const driverLookupId = parsedInput.driverId ?? order.assigned_driver_id;
     let driverName: string | null = null;
     let driverPhone: string | null = null;
-    if (order.assigned_driver_id) {
+    if (driverLookupId) {
       const { data: driver } = await supabase
         .from('driver')
         .select('full_name, phone')
-        .eq('id', order.assigned_driver_id)
+        .eq('id', driverLookupId)
         .maybeSingle();
       driverName = driver?.full_name ?? null;
       driverPhone = driver?.phone ?? null;
