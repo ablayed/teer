@@ -5,6 +5,7 @@ import { FinanceDriverCostView } from '@/components/finance/FinanceDriverCostVie
 import { FinanceProductCostView } from '@/components/finance/FinanceProductCostView';
 import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
+import { DefinitionCard } from '@/components/ui/definition-card';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
 import { fetchFinanceDriverCostReport } from '@/lib/finance/driver-cost';
@@ -425,23 +426,42 @@ async function renderGlobalTab({
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {kpiCard(t('kpis.caUnified'), formatMoney(caMinor, 'XOF'))}
         {kpiCard(t('kpis.cashDrivers'), formatMoney(cashMinor, 'XOF'))}
-        {profitReport
-          ? kpiCard(
-              t('kpis.grossMargin'),
-              formatMoney(profitReport.grossMarginMinor, 'XOF'),
+        {profitReport ? (
+          <DefinitionCard
+            definition={t('kpis.grossMarginDefinition')}
+            description={
               profitReport.cogsEstimated
                 ? t('kpis.grossMarginDescEstimated')
-                : t('kpis.grossMarginDescReal'),
-            )
-          : kpiCard(
-              t('kpis.margin'),
-              formatMoney(marginMinor, 'XOF'),
-              settings.cogs_known ? undefined : t('kpis.marginEstimate'),
-            )}
-        {profitReport
-          ? kpiCard(t('kpis.netProfit'), formatMoney(profitReport.netProfitMinor, 'XOF'))
-          : null}
-        {kpiCard(t('kpis.rto'), `${new Intl.NumberFormat('fr-FR').format(kpis.taux_refus)} %`)}
+                : t('kpis.grossMarginDescReal')
+            }
+            formula={t('kpis.grossMarginFormula')}
+            label={t('kpis.grossMargin')}
+            value={formatMoney(profitReport.grossMarginMinor, 'XOF')}
+          />
+        ) : (
+          <DefinitionCard
+            definition={t('kpis.grossMarginDefinition')}
+            description={settings.cogs_known ? undefined : t('kpis.marginEstimate')}
+            formula={t('kpis.grossMarginFormula')}
+            label={t('kpis.margin')}
+            value={formatMoney(marginMinor, 'XOF')}
+          />
+        )}
+        {profitReport ? (
+          <DefinitionCard
+            definition={t('kpis.netProfitDefinition')}
+            description={t('kpis.netProfitDesc')}
+            formula={t('kpis.netProfitFormula')}
+            label={t('kpis.netProfit')}
+            value={formatMoney(profitReport.netProfitMinor, 'XOF')}
+          />
+        ) : null}
+        <DefinitionCard
+          definition={t('kpis.rtoDefinition')}
+          formula={t('kpis.rtoFormula')}
+          label={t('kpis.rto')}
+          value={`${new Intl.NumberFormat('fr-FR').format(kpis.taux_refus)} %`}
+        />
         {kpiCard(
           t('kpis.driversConcernedTitle'),
           new Intl.NumberFormat('fr-FR').format(driversConcerned),

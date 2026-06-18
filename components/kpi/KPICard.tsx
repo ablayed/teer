@@ -1,6 +1,7 @@
 'use client';
 
 import { Sparkline } from '@/components/kpi/Sparkline';
+import { DefinitionToggle } from '@/components/ui/definition-card';
 import { formatFCFA } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { animate, useReducedMotion } from 'framer-motion';
@@ -30,6 +31,9 @@ export type KPICardProps = {
   invertDelta?: boolean;
   error?: boolean;
   errorLabel?: string;
+  // Optionnel : explication marchand révélée au tap (libellé jargon → langage simple).
+  definition?: string;
+  definitionFormula?: string;
 };
 
 const toneStyles = {
@@ -159,6 +163,8 @@ function resolveTone({ accentColor, tone }: Pick<KPICardProps, 'accentColor' | '
 
 export function KPICard({
   accentColor,
+  definition,
+  definitionFormula,
   deltaAbs,
   deltaPct,
   deltaType = 'pct',
@@ -187,7 +193,12 @@ export function KPICard({
       title={error ? errorLabel : undefined}
     >
       <div className="space-y-2">
-        <p className="text-[13px] font-medium leading-snug text-muted">{label}</p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-[13px] font-medium leading-snug text-muted">{label}</p>
+          {definition && !loading && !error ? (
+            <DefinitionToggle definition={definition} formula={definitionFormula} />
+          ) : null}
+        </div>
         {loading ? (
           <div
             className="dashboard-shimmer h-10 w-32 rounded-sm md:h-11"

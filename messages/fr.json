@@ -234,6 +234,10 @@
       "discrepancy": "Écart non résolu : {amount}"
     }
   },
+  "definitionCard": {
+    "show": "Définition",
+    "hide": "Masquer"
+  },
   "tableau": {
     "title": "Tableau",
     "greeting": "Bonjour {name}",
@@ -241,7 +245,11 @@
     "kpi": {
       "a_appeler": "\u00c0 appeler",
       "ca_collecte": "CA collect\u00e9 (7 j)",
+      "ca_collecte_def": "Le chiffre d'affaires : l'argent des commandes livr\u00e9es et encaiss\u00e9es sur les 7 derniers jours.",
+      "ca_collecte_formula": "CA collect\u00e9 = somme des montants des commandes encaiss\u00e9es (7 derniers jours)",
       "ca_attente": "CA à livrer",
+      "ca_attente_def": "Le chiffre d'affaires attendu : l'argent des commandes confirmées pas encore livrées.",
+      "ca_attente_formula": "CA à livrer = somme des montants des commandes en attente de livraison",
       "taux_confirmation": "Taux confirmation",
       "taux_livraison": "Taux livraison",
       "delta_hier": "vs hier",
@@ -275,6 +283,7 @@
       },
       "codBreakdown": {
         "title": "R\u00e9partition COD",
+        "definition": "COD = paiement \u00e0 la livraison. La r\u00e9partition de vos commandes par \u00e9tape : \u00e0 appeler, confirm\u00e9e, programm\u00e9e, en livraison, livr\u00e9e, refus\u00e9e, annul\u00e9e.",
         "empty": "Aucune commande \u00e0 afficher."
       },
       "recentActivity": {
@@ -654,10 +663,16 @@
       "grossMargin": "Marge brute",
       "grossMarginDescReal": "CA net − coût des produits vendus (≠ résultat net)",
       "grossMarginDescEstimated": "Estimée — une partie du coût des produits est au coût moyen courant",
+      "grossMarginDefinition": "Votre bénéfice avant pub et livraison : le chiffre d'affaires moins le coût d'achat des produits vendus.",
+      "grossMarginFormula": "marge brute = chiffre d'affaires net − coût des produits vendus",
       "netProfit": "Résultat net",
       "netProfitDesc": "Marge brute − charges − frais mobile money",
+      "netProfitDefinition": "Ce qu'il vous reste vraiment, une fois toutes les charges et les frais payés.",
+      "netProfitFormula": "résultat net = marge brute − charges − frais mobile money",
       "marginEstimate": "Estimation — coût des produits non pris en compte",
-      "rto": "Taux de refus / RTO"
+      "rto": "Taux de refus / RTO",
+      "rtoDefinition": "RTO = retour à l'expéditeur. La part de vos livraisons refusées par le client à la livraison.",
+      "rtoFormula": "taux RTO = livraisons refusées / (livrées + refusées)"
     },
     "charts": {
       "revenue": "CA encaissé par jour",

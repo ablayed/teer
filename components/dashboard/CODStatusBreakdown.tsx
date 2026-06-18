@@ -1,10 +1,12 @@
 import { Card } from '@/components/ui/card';
+import { DefinitionToggle } from '@/components/ui/definition-card';
 import type { DashboardCodBreakdownItem } from '@/lib/actions/dashboard';
 import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { cn } from '@/lib/utils';
 import { formatDashboardCount } from './dashboard-format';
 
 type CODStatusBreakdownProps = {
+  definition?: string;
   emptyLabel: string;
   items: DashboardCodBreakdownItem[];
   title: string;
@@ -21,12 +23,20 @@ const segmentStyles: Record<OrderStatus, string> = {
   ANNULEE: 'bg-danger',
 };
 
-export function CODStatusBreakdown({ emptyLabel, items, title }: CODStatusBreakdownProps) {
+export function CODStatusBreakdown({
+  definition,
+  emptyLabel,
+  items,
+  title,
+}: CODStatusBreakdownProps) {
   const total = items.reduce((sum, item) => sum + item.count, 0);
 
   return (
     <Card className="rounded-lg" padding="lg">
-      <h2 className="mb-5 text-[15px] font-semibold text-text">{title}</h2>
+      <div className="mb-5 flex items-start justify-between gap-2">
+        <h2 className="text-[15px] font-semibold text-text">{title}</h2>
+        {definition ? <DefinitionToggle definition={definition} /> : null}
+      </div>
       {total === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-canvas p-4 text-sm text-muted">
           {emptyLabel}

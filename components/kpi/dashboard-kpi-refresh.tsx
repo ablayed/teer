@@ -70,6 +70,8 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         </div>
         <KPICard
           currency={kpi?.currency}
+          definition={t('kpi.ca_collecte_def')}
+          definitionFormula={t('kpi.ca_collecte_formula')}
           error={hasError}
           errorLabel={unavailableLabel}
           label={t('kpi.ca_collecte')}
@@ -81,6 +83,8 @@ export function DashboardKpiRefresh({ initialKpi, initialUpdatedAt }: DashboardK
         />
         <KPICard
           currency={kpi?.currency}
+          definition={t('kpi.ca_attente_def')}
+          definitionFormula={t('kpi.ca_attente_formula')}
           error={hasError}
           errorLabel={unavailableLabel}
           label={t('kpi.ca_attente')}

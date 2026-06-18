@@ -1,5 +1,6 @@
 'use client';
 
+import { DefinitionCard } from '@/components/ui/definition-card';
 import type { FinanceProductCostReport, FinanceProductCostRow } from '@/lib/finance/product-cost';
 import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
@@ -14,49 +15,6 @@ type Props = {
 
 function money(value: number): string {
   return formatMoney(value, 'XOF');
-}
-
-function DefinitionCard({
-  definition,
-  formula,
-  label,
-  value,
-}: {
-  definition: string;
-  formula: string;
-  label: string;
-  value: number;
-}) {
-  const t = useTranslations('finance.products.cards');
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <button
-      aria-expanded={expanded}
-      className="group rounded-lg border border-border bg-surface p-4 text-left shadow-1 transition hover:-translate-y-0.5 hover:shadow-2"
-      onClick={() => setExpanded((current) => !current)}
-      type="button"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[13px] font-medium text-muted">{label}</p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{money(value)}</p>
-        </div>
-        <span className="rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted">
-          {expanded ? t('expanded') : t('collapsed')}
-        </span>
-      </div>
-
-      {expanded ? (
-        <div className="mt-3 rounded-md border border-border bg-canvas p-3">
-          <p className="text-sm text-text">{definition}</p>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-muted">
-            {formula}
-          </pre>
-        </div>
-      ) : null}
-    </button>
-  );
 }
 
 function CostMissingBadge() {
@@ -174,19 +132,19 @@ export function FinanceProductCostView({ from, report, to }: Props) {
             definition={t('cards.purchase.definition')}
             formula={t('cards.purchase.formula')}
             label={t('cards.purchase.label')}
-            value={report.totalPurchasePriceMinor}
+            value={money(report.totalPurchasePriceMinor)}
           />
           <DefinitionCard
             definition={t('cards.totalCost.definition')}
             formula={t('cards.totalCost.formula')}
             label={t('cards.totalCost.label')}
-            value={report.totalCostMinor}
+            value={money(report.totalCostMinor)}
           />
           <DefinitionCard
             definition={t('cards.profitAfter.definition')}
             formula={t('cards.profitAfter.formula')}
             label={t('cards.profitAfter.label')}
-            value={report.totalProfitAfterMinor}
+            value={money(report.totalProfitAfterMinor)}
           />
         </div>
 

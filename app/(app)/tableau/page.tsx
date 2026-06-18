@@ -239,6 +239,7 @@ async function CodBreakdownSection() {
 
   return (
     <CODStatusBreakdown
+      definition={t('blocks.codBreakdown.definition')}
       emptyLabel={t('blocks.codBreakdown.empty')}
       items={codBreakdown}
       title={t('blocks.codBreakdown.title')}
