@@ -406,6 +406,10 @@ async function GlobalTabContent({
         <p className="text-xs">{t('disclaimer')}</p>
       </div>
 
+      <p className="rounded-lg border border-border bg-surface p-3 text-xs text-muted shadow-1">
+        {t('natureGlobal')}
+      </p>
+
       {profitReport ? (
         <ProfitSection from={toDateInput(from)} report={profitReport} to={toDateInput(to)} />
       ) : null}

@@ -632,6 +632,7 @@
     "subtitle": "Suivez le cash collecté, les versements livreurs, le coût de revient pilote et la marge estimée.",
     "restricted": "Accès réservé au propriétaire.",
     "disclaimer": "Vue de gestion — indicateurs de pilotage non certifiés. Consultez un expert-comptable OHADA avant tout usage fiscal.",
+    "natureGlobal": "Vue comptable — la marge est calculée sur le coût d'achat officiel (CUMP figé), sans répartir la publicité ni la livraison par produit. La Vue par produit, elle, est une vue de pilotage (prix d'achat + pub + livraison) : c'est pourquoi les deux marges peuvent différer.",
     "empty": "Aucune donnée financière pour cette période.",
     "tabs": {
       "ariaLabel": "Choisir la vue finances",
@@ -794,7 +795,8 @@
     },
     "products": {
       "title": "Vue par produit",
-      "subtitle": "Ce que chaque produit vous rapporte vraiment, prix d'achat et coûts compris.",
+      "subtitle": "Vue pilotage — ce que chaque produit vous rapporte, prix d'achat, pub et livraison compris.",
+      "pilotBanner": "Coût total de pilotage — méthode période : prix d'achat moyen (CUMP) + publicité et livraison réparties. Sert au pilotage, diffère du coût comptable officiel (Vue globale).",
       "period": "Période : {from} → {to}",
       "editExpenses": "Modifier les dépenses",
       "editOrders": "Modifier les commandes",
@@ -808,7 +810,7 @@
         },
         "totalCost": {
           "label": "Coût total (tout compris)",
-          "definition": "Tout ce que vos ventes vous coûtent vraiment : prix d'achat + publicité + livraison.",
+          "definition": "Tout ce que vos ventes vous coûtent vraiment : prix d'achat + publicité + livraison. C'est un coût de pilotage : il diffère du coût comptable officiel (Vue globale), qui n'inclut ni la publicité ni la livraison.",
           "formula": "coût total = prix d'achat + publicité allouée + livraison allouée"
         },
         "profitAfter": {
