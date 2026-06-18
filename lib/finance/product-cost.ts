@@ -27,19 +27,6 @@ type SoldMovementRow = {
   unitCost: number | null;
 };
 
-type PurchaseLotRow = {
-  id: string;
-  receivedAt: string | null;
-  status: string;
-};
-
-type PurchaseLotLineRow = {
-  landedTotalValue: number | null;
-  productId: string;
-  purchaseLotId: string;
-  qty: number;
-};
-
 type ExpenseRow = {
   amountMinor: number;
   categoryCode: string;
@@ -48,6 +35,8 @@ type ExpenseRow = {
 type ProductRow = {
   id: string;
   title: string;
+  // `null` = produit jamais costé (distinct de `0` = coût assumé, ex. cadeau).
+  unitCost: number | null;
 };
 
 type ProductPair = {
@@ -56,32 +45,46 @@ type ProductPair = {
   revenueMinor: number;
 };
 
+// En dessous de ce seuil de ventes sur la période, le coût UNITAIRE (pub/livraison
+// réparties sur 1-2 ventes) n'a pas de sens → on masque l'unitaire et on n'affiche
+// que les totaux période. Cf. §2.3 (garde-fou faible volume).
+export const LOW_VOLUME_THRESHOLD = 3;
+
 export type FinanceProductCostRow = {
   adsAllocatedMinor: number;
+  // `true` quand le prix d'achat est inconnu (jamais costé) → on n'affiche pas 0.
+  costMissing: boolean;
   deliveryAllocatedMinor: number;
-  landedReceivedMinor: number;
-  marginMinor: number;
-  officialCogsMinor: number;
-  officialUnitCostMinor: number;
-  pilotCostMinor: number;
-  pilotUnitCostMinor: number;
+  // `true` quand qtySold < seuil → l'unitaire n'est pas fiable, on montre les totaux.
+  lowVolume: boolean;
+  // Bénéfice avant pub et livraison = CA − prix d'achat (base A, CUMP figé).
+  profitBeforeMinor: number;
+  // Bénéfice après pub et livraison = CA − coût total (base B).
+  profitAfterMinor: number;
   productId: string;
+  // Prix d'achat total = CUMP figé × qté vendue (base A, mouvements `sold`).
+  purchasePriceMinor: number;
+  purchaseUnitMinor: number;
   qtySold: number;
   revenueMinor: number;
+  // Coût total (tout compris) = prix d'achat + pub + livraison (base B).
+  totalCostMinor: number;
+  totalCostUnitMinor: number;
   title: string;
 };
 
 export type FinanceProductCostReport = {
   adsTotalMinor: number;
-  deliveryAllocatedMinor: number;
+  lowVolumeThreshold: number;
   matchedUnitCount: number;
   productCount: number;
   rows: FinanceProductCostRow[];
   totalAdsAllocatedMinor: number;
-  totalLandedReceivedMinor: number;
-  totalMarginMinor: number;
-  totalOfficialCogsMinor: number;
-  totalPilotCostMinor: number;
+  totalDeliveryAllocatedMinor: number;
+  totalProfitAfterMinor: number;
+  totalProfitBeforeMinor: number;
+  totalPurchasePriceMinor: number;
+  totalCostMinor: number;
   totalQtySold: number;
   totalRevenueMinor: number;
   unallocatedDeliveryMinor: number;
@@ -89,14 +92,10 @@ export type FinanceProductCostReport = {
 
 export type FinanceProductCostInput = {
   expenses: ExpenseRow[];
-  fromIso: string;
   orderLines: OrderLineRow[];
   orders: OrderSummary[];
   products: ProductRow[];
-  purchaseLotLines: PurchaseLotLineRow[];
-  purchaseLots: PurchaseLotRow[];
   soldMovements: SoldMovementRow[];
-  toIso: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -236,6 +235,11 @@ export function computeFinanceProductCostReport(
   const titleByProductId = new Map(
     input.products.map((product) => [product.id, product.title] as const),
   );
+  // `unit_cost` du produit : sert UNIQUEMENT à distinguer « jamais costé » (null)
+  // de « coût 0 assumé » (0). Le COGS lui-même vient des mouvements `sold` (CUMP figé).
+  const unitCostKnownByProductId = new Map(
+    input.products.map((product) => [product.id, product.unitCost !== null] as const),
+  );
 
   const revenueRows: Array<{ amountMinor: bigint; productId: string }> = [];
   const quantityRows: Array<{ amountMinor: bigint; productId: string }> = [];
@@ -262,6 +266,9 @@ export function computeFinanceProductCostReport(
   const revenueByProduct = groupByProduct(revenueRows);
   const qtyByProduct = groupByProduct(quantityRows);
 
+  // Prix d'achat (base A) = CUMP figé porté par les mouvements `sold` (×qté vendue).
+  // C'est la SEULE composante coût d'achat de (B) : on n'utilise plus « lots reçus
+  // dans la période ÷ qté vendue », qui faisait exploser le coût à faible volume.
   const soldByProduct = new Map<string, { cogsMinor: bigint; qtySold: bigint }>();
   for (const movement of input.soldMovements) {
     if (!movement.unitCost || movement.qty <= 0) {
@@ -274,36 +281,11 @@ export function computeFinanceProductCostReport(
     soldByProduct.set(movement.productId, current);
   }
 
-  const receivedLotIds = new Set(
-    input.purchaseLots
-      .filter(
-        (lot) =>
-          lot.status === 'received' &&
-          lot.receivedAt !== null &&
-          lot.receivedAt >= input.fromIso &&
-          lot.receivedAt <= input.toIso,
-      )
-      .map((lot) => lot.id),
-  );
-  const landedByProduct = new Map<string, bigint>();
-  for (const line of input.purchaseLotLines) {
-    const lot = input.purchaseLots.find((candidate) => candidate.id === line.purchaseLotId);
-    if (!lot || !receivedLotIds.has(lot.id) || !line.landedTotalValue || line.qty <= 0) {
-      continue;
-    }
-    landedByProduct.set(
-      line.productId,
-      (landedByProduct.get(line.productId) ?? 0n) + toMinor(line.landedTotalValue ?? 0),
-    );
-  }
-
   const adsTotalMinor = input.expenses
     .filter((expense) => expense.categoryCode === 'ADS')
     .reduce((sum, expense) => sum + toMinor(expense.amountMinor), 0n);
 
-  const productIds = [
-    ...new Set([...revenueByProduct.keys(), ...soldByProduct.keys(), ...landedByProduct.keys()]),
-  ];
+  const productIds = [...new Set([...revenueByProduct.keys(), ...soldByProduct.keys()])];
   const revenueWeights = productIds.map((productId) => revenueByProduct.get(productId) ?? 0n);
   const qtyWeights = productIds.map((productId) => qtyByProduct.get(productId) ?? 0n);
   const adsWeights =
@@ -358,29 +340,32 @@ export function computeFinanceProductCostReport(
     .map((productId) => {
       const revenueMinor = revenueByProduct.get(productId) ?? 0n;
       const qtySold = qtyByProduct.get(productId) ?? 0n;
-      const officialCogsMinor = soldByProduct.get(productId)?.cogsMinor ?? 0n;
-      const landedReceivedMinor = landedByProduct.get(productId) ?? 0n;
+      const purchasePriceMinor = soldByProduct.get(productId)?.cogsMinor ?? 0n;
       const adsAllocatedMinor = adsByProduct.get(productId) ?? 0n;
       const deliveryAllocatedMinor = deliveryByProduct.get(productId) ?? 0n;
-      const pilotCostMinor = landedReceivedMinor + adsAllocatedMinor + deliveryAllocatedMinor;
-      const marginMinor =
-        revenueMinor - officialCogsMinor - adsAllocatedMinor - deliveryAllocatedMinor;
+      // Coût total (B) = prix d'achat (A) + pub + livraison. Apparié au CA :
+      // bénéfice avant = CA − prix d'achat ; bénéfice après = CA − coût total.
+      const totalCostMinor = purchasePriceMinor + adsAllocatedMinor + deliveryAllocatedMinor;
+      const profitBeforeMinor = revenueMinor - purchasePriceMinor;
+      const profitAfterMinor = revenueMinor - totalCostMinor;
+      const costMissing =
+        purchasePriceMinor === 0n && unitCostKnownByProductId.get(productId) !== true;
 
       return {
         adsAllocatedMinor: Number(adsAllocatedMinor),
+        costMissing,
         deliveryAllocatedMinor: Number(deliveryAllocatedMinor),
-        landedReceivedMinor: Number(landedReceivedMinor),
-        marginMinor: Number(marginMinor),
-        officialCogsMinor: Number(officialCogsMinor),
-        officialUnitCostMinor: Number(
-          qtySold > 0n ? roundHalfUpDiv(officialCogsMinor, qtySold) : 0n,
-        ),
-        pilotCostMinor: Number(pilotCostMinor),
-        pilotUnitCostMinor: Number(qtySold > 0n ? roundHalfUpDiv(pilotCostMinor, qtySold) : 0n),
+        lowVolume: qtySold < BigInt(LOW_VOLUME_THRESHOLD),
+        profitAfterMinor: Number(profitAfterMinor),
+        profitBeforeMinor: Number(profitBeforeMinor),
         productId,
+        purchasePriceMinor: Number(purchasePriceMinor),
+        purchaseUnitMinor: Number(qtySold > 0n ? roundHalfUpDiv(purchasePriceMinor, qtySold) : 0n),
         qtySold: Number(qtySold),
         revenueMinor: Number(revenueMinor),
         title: titleByProductId.get(productId) ?? productId,
+        totalCostMinor: Number(totalCostMinor),
+        totalCostUnitMinor: Number(qtySold > 0n ? roundHalfUpDiv(totalCostMinor, qtySold) : 0n),
       } satisfies FinanceProductCostRow;
     })
     .filter((row) => row.qtySold > 0)
@@ -391,24 +376,25 @@ export function computeFinanceProductCostReport(
     (sum, row) => sum + row.deliveryAllocatedMinor,
     0,
   );
-  const totalLandedReceivedMinor = rows.reduce((sum, row) => sum + row.landedReceivedMinor, 0);
-  const totalOfficialCogsMinor = rows.reduce((sum, row) => sum + row.officialCogsMinor, 0);
-  const totalPilotCostMinor = rows.reduce((sum, row) => sum + row.pilotCostMinor, 0);
-  const totalMarginMinor = rows.reduce((sum, row) => sum + row.marginMinor, 0);
+  const totalPurchasePriceMinor = rows.reduce((sum, row) => sum + row.purchasePriceMinor, 0);
+  const totalCostMinor = rows.reduce((sum, row) => sum + row.totalCostMinor, 0);
+  const totalProfitBeforeMinor = rows.reduce((sum, row) => sum + row.profitBeforeMinor, 0);
+  const totalProfitAfterMinor = rows.reduce((sum, row) => sum + row.profitAfterMinor, 0);
   const totalQtySold = rows.reduce((sum, row) => sum + row.qtySold, 0);
   const totalRevenueMinor = rows.reduce((sum, row) => sum + row.revenueMinor, 0);
 
   return {
     adsTotalMinor: Number(adsTotalMinor),
-    deliveryAllocatedMinor: totalDeliveryAllocatedMinor,
+    lowVolumeThreshold: LOW_VOLUME_THRESHOLD,
     matchedUnitCount,
     productCount: rows.length,
     rows,
     totalAdsAllocatedMinor,
-    totalLandedReceivedMinor,
-    totalMarginMinor,
-    totalOfficialCogsMinor,
-    totalPilotCostMinor,
+    totalCostMinor,
+    totalDeliveryAllocatedMinor,
+    totalProfitAfterMinor,
+    totalProfitBeforeMinor,
+    totalPurchasePriceMinor,
     totalQtySold,
     totalRevenueMinor,
     unallocatedDeliveryMinor: Number(totalDeliveryFeesMinor - allocatedDeliveryMinor),
@@ -421,15 +407,7 @@ export async function fetchFinanceProductCostReport(
   fromIso: string,
   toIso: string,
 ): Promise<FinanceProductCostReport> {
-  const [
-    ordersRes,
-    soldRes,
-    purchaseLotsRes,
-    purchaseLotLinesRes,
-    expensesRes,
-    productsRes,
-    categoriesRes,
-  ] = await Promise.all([
+  const [ordersRes, soldRes, expensesRes, productsRes, categoriesRes] = await Promise.all([
     admin
       .from('orders')
       .select('id, total_amount, delivery_fee_minor, items_summary')
@@ -444,28 +422,18 @@ export async function fetchFinanceProductCostReport(
       .gte('created_at', fromIso)
       .lte('created_at', toIso),
     admin
-      .from('purchase_lot')
-      .select('id, received_at, status')
-      .eq('merchant_account_id', merchantId),
-    admin
-      .from('purchase_lot_line')
-      .select('purchase_lot_id, product_id, qty, landed_total_value')
-      .eq('merchant_account_id', merchantId),
-    admin
       .from('expense')
       .select('amount_minor, category_id')
       .eq('merchant_account_id', merchantId)
       .gte('spent_at', fromIso.slice(0, 10))
       .lte('spent_at', toIso.slice(0, 10)),
-    admin.from('product').select('id, title').eq('merchant_account_id', merchantId),
+    admin.from('product').select('id, title, unit_cost').eq('merchant_account_id', merchantId),
     admin.from('expense_category').select('id, code').eq('merchant_account_id', merchantId),
   ]);
 
   if (
     ordersRes.error ||
     soldRes.error ||
-    purchaseLotsRes.error ||
-    purchaseLotLinesRes.error ||
     expensesRes.error ||
     productsRes.error ||
     categoriesRes.error
@@ -495,7 +463,6 @@ export async function fetchFinanceProductCostReport(
         categoryCode: category?.code ?? 'OTHER',
       };
     }),
-    fromIso,
     orderLines: (orderLinesRes.data ?? []).map((line) => ({
       orderId: line.order_id,
       productId: line.product_id,
@@ -511,23 +478,12 @@ export async function fetchFinanceProductCostReport(
     products: (productsRes.data ?? []).map((product) => ({
       id: product.id,
       title: product.title,
-    })),
-    purchaseLotLines: (purchaseLotLinesRes.data ?? []).map((line) => ({
-      landedTotalValue: line.landed_total_value,
-      productId: line.product_id,
-      purchaseLotId: line.purchase_lot_id,
-      qty: line.qty,
-    })),
-    purchaseLots: (purchaseLotsRes.data ?? []).map((lot) => ({
-      id: lot.id,
-      receivedAt: lot.received_at,
-      status: lot.status,
+      unitCost: product.unit_cost,
     })),
     soldMovements: (soldRes.data ?? []).map((movement) => ({
       productId: movement.product_id,
       qty: movement.qty,
       unitCost: movement.unit_cost,
     })),
-    toIso,
   });
 }

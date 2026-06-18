@@ -1,10 +1,10 @@
 'use client';
 
-import type { FinanceProductCostReport } from '@/lib/finance/product-cost';
+import type { FinanceProductCostReport, FinanceProductCostRow } from '@/lib/finance/product-cost';
 import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
 type Props = {
   from: string;
@@ -12,47 +12,45 @@ type Props = {
   to: string;
 };
 
-function MetricCard({
-  detail,
-  expandedLabel,
+function money(value: number): string {
+  return formatMoney(value, 'XOF');
+}
+
+function DefinitionCard({
+  definition,
   formula,
-  hint,
   label,
   value,
 }: {
-  detail: string;
-  expandedLabel: string;
+  definition: string;
   formula: string;
-  hint: string;
   label: string;
   value: number;
 }) {
+  const t = useTranslations('finance.products.cards');
   const [expanded, setExpanded] = useState(false);
 
   return (
     <button
+      aria-expanded={expanded}
       className="group rounded-lg border border-border bg-surface p-4 text-left shadow-1 transition hover:-translate-y-0.5 hover:shadow-2"
       onClick={() => setExpanded((current) => !current)}
-      title={hint}
       type="button"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[13px] font-medium text-muted">{label}</p>
-          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">
-            {formatMoney(value, 'XOF')}
-          </p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{money(value)}</p>
         </div>
         <span className="rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted">
-          {expanded ? expandedLabel : detail}
+          {expanded ? t('expanded') : t('collapsed')}
         </span>
       </div>
 
-      <p className="mt-3 text-sm text-muted">{detail}</p>
       {expanded ? (
         <div className="mt-3 rounded-md border border-border bg-canvas p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-text">
+          <p className="text-sm text-text">{definition}</p>
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-muted">
             {formula}
           </pre>
         </div>
@@ -61,13 +59,90 @@ function MetricCard({
   );
 }
 
+function CostMissingBadge() {
+  const t = useTranslations('finance.products.table');
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+      title={t('costMissingHint')}
+    >
+      {t('costMissing')}
+    </span>
+  );
+}
+
+function LowVolumeBadge() {
+  const t = useTranslations('finance.products.table');
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+      title={t('lowVolumeHint')}
+    >
+      {t('lowVolume')}
+    </span>
+  );
+}
+
+function ProfitCell({ row, value }: { row: FinanceProductCostRow; value: number }) {
+  const t = useTranslations('finance.products.table');
+  if (row.costMissing) {
+    return (
+      <span className="text-muted" title={t('costMissingHint')}>
+        —
+      </span>
+    );
+  }
+  return <span className={value < 0 ? 'text-danger' : 'text-success'}>{money(value)}</span>;
+}
+
+function DetailRow({ row }: { row: FinanceProductCostRow }) {
+  const t = useTranslations('finance.products.table');
+  return (
+    <div className="grid gap-3 rounded-md border border-border bg-canvas p-3 sm:grid-cols-4">
+      <div>
+        <p className="text-xs text-muted">{t('ads')}</p>
+        <p className="font-mono tabular-nums">{money(row.adsAllocatedMinor)}</p>
+      </div>
+      <div>
+        <p className="text-xs text-muted">{t('delivery')}</p>
+        <p className="font-mono tabular-nums">{money(row.deliveryAllocatedMinor)}</p>
+      </div>
+      <div>
+        <p className="text-xs text-muted">{t('totalCost')}</p>
+        <p className="font-mono tabular-nums">
+          {row.costMissing ? <span className="text-muted">—</span> : money(row.totalCostMinor)}
+        </p>
+      </div>
+      <div>
+        <p className="text-xs text-muted">{t('profitAfter')}</p>
+        <p className="font-mono tabular-nums">
+          <ProfitCell row={row} value={row.profitAfterMinor} />
+        </p>
+      </div>
+      {row.lowVolume ? (
+        <div className="sm:col-span-4">
+          <LowVolumeBadge />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function FinanceProductCostView({ from, report, to }: Props) {
   const t = useTranslations('finance.products');
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  const avgPilotUnitCost =
-    report.totalQtySold > 0 ? Math.round(report.totalPilotCostMinor / report.totalQtySold) : 0;
-  const avgOfficialUnitCost =
-    report.totalQtySold > 0 ? Math.round(report.totalOfficialCogsMinor / report.totalQtySold) : 0;
+  function toggleRow(productId: string) {
+    setExpandedRows((current) => {
+      const next = new Set(current);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  }
 
   return (
     <section className="space-y-5">
@@ -95,48 +170,29 @@ export function FinanceProductCostView({ from, report, to }: Props) {
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <MetricCard
-            detail={t('cards.ads.detail')}
-            expandedLabel={t('cards.expanded')}
-            formula={t('cards.ads.formula', {
-              ads: formatMoney(report.adsTotalMinor, 'XOF'),
-              revenue: formatMoney(report.totalRevenueMinor, 'XOF'),
-            })}
-            hint={t('cards.ads.hint')}
-            label={t('cards.ads.label')}
-            value={report.totalAdsAllocatedMinor}
+          <DefinitionCard
+            definition={t('cards.purchase.definition')}
+            formula={t('cards.purchase.formula')}
+            label={t('cards.purchase.label')}
+            value={report.totalPurchasePriceMinor}
           />
-          <MetricCard
-            detail={t('cards.delivery.detail')}
-            expandedLabel={t('cards.expanded')}
-            formula={t('cards.delivery.formula', {
-              delivery: formatMoney(report.deliveryAllocatedMinor, 'XOF'),
-              units: new Intl.NumberFormat('fr-FR').format(report.matchedUnitCount),
-            })}
-            hint={t('cards.delivery.hint')}
-            label={t('cards.delivery.label')}
-            value={report.deliveryAllocatedMinor}
+          <DefinitionCard
+            definition={t('cards.totalCost.definition')}
+            formula={t('cards.totalCost.formula')}
+            label={t('cards.totalCost.label')}
+            value={report.totalCostMinor}
           />
-          <MetricCard
-            detail={t('cards.pilot.detail')}
-            expandedLabel={t('cards.expanded')}
-            formula={t('cards.pilot.formula', {
-              ads: formatMoney(report.totalAdsAllocatedMinor, 'XOF'),
-              delivery: formatMoney(report.deliveryAllocatedMinor, 'XOF'),
-              landed: formatMoney(report.totalLandedReceivedMinor, 'XOF'),
-              qty: new Intl.NumberFormat('fr-FR').format(report.totalQtySold),
-            })}
-            hint={t('cards.pilot.hint')}
-            label={t('cards.pilot.label')}
-            value={avgPilotUnitCost}
+          <DefinitionCard
+            definition={t('cards.profitAfter.definition')}
+            formula={t('cards.profitAfter.formula')}
+            label={t('cards.profitAfter.label')}
+            value={report.totalProfitAfterMinor}
           />
         </div>
 
         {report.unallocatedDeliveryMinor > 0 ? (
           <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
-            {t('unallocatedDelivery', {
-              amount: formatMoney(report.unallocatedDeliveryMinor, 'XOF'),
-            })}
+            {t('unallocatedDelivery', { amount: money(report.unallocatedDeliveryMinor) })}
           </p>
         ) : null}
       </header>
@@ -149,8 +205,8 @@ export function FinanceProductCostView({ from, report, to }: Props) {
           </div>
           <p className="text-sm text-muted">
             {t('table.summary', {
-              margin: formatMoney(report.totalMarginMinor, 'XOF'),
               products: new Intl.NumberFormat('fr-FR').format(report.productCount),
+              profit: money(report.totalProfitAfterMinor),
             })}
           </p>
         </div>
@@ -165,56 +221,69 @@ export function FinanceProductCostView({ from, report, to }: Props) {
                   <th className="px-4 py-3 font-medium">{t('table.product')}</th>
                   <th className="px-4 py-3 text-right font-medium">{t('table.qtySold')}</th>
                   <th className="px-4 py-3 text-right font-medium">{t('table.revenue')}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t('table.officialUnit')}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t('table.pilotUnit')}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t('table.margin')}</th>
+                  <th className="px-4 py-3 text-right font-medium">{t('table.purchase')}</th>
+                  <th className="px-4 py-3 text-right font-medium">{t('table.profitBefore')}</th>
+                  <th className="px-4 py-3 text-right font-medium" />
                 </tr>
               </thead>
               <tbody>
-                {report.rows.map((row) => (
-                  <tr className="border-b border-border last:border-0" key={row.productId}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-text">{row.title}</p>
-                      <p className="text-xs text-muted">{row.productId.slice(0, 8)}</p>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {formatMoney(row.revenueMinor, 'XOF')}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {formatMoney(row.officialUnitCostMinor, 'XOF')}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {formatMoney(row.pilotUnitCostMinor, 'XOF')}
-                    </td>
-                    <td
-                      className={`px-4 py-3 text-right font-mono tabular-nums ${
-                        row.marginMinor < 0 ? 'text-danger' : 'text-success'
-                      }`}
-                    >
-                      {formatMoney(row.marginMinor, 'XOF')}
-                    </td>
-                  </tr>
-                ))}
+                {report.rows.map((row) => {
+                  const expanded = expandedRows.has(row.productId);
+                  return (
+                    <Fragment key={row.productId}>
+                      <tr className="border-b border-border last:border-0">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-text">{row.title}</p>
+                          <p className="text-xs text-muted">{row.productId.slice(0, 8)}</p>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          {money(row.revenueMinor)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          {row.costMissing ? <CostMissingBadge /> : money(row.purchasePriceMinor)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <ProfitCell row={row} value={row.profitBeforeMinor} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            aria-expanded={expanded}
+                            className="min-h-11 rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+                            onClick={() => toggleRow(row.productId)}
+                            type="button"
+                          >
+                            {expanded ? t('table.hideDetails') : t('table.details')}
+                          </button>
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <tr className="border-b border-border last:border-0">
+                          <td className="px-4 pb-3" colSpan={6}>
+                            <DetailRow row={row} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
                 <tr className="bg-canvas/70 font-semibold">
                   <td className="px-4 py-3">{t('table.total')}</td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
                     {new Intl.NumberFormat('fr-FR').format(report.totalQtySold)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatMoney(report.totalRevenueMinor, 'XOF')}
+                    {money(report.totalRevenueMinor)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatMoney(avgOfficialUnitCost, 'XOF')}
+                    {money(report.totalPurchasePriceMinor)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatMoney(avgPilotUnitCost, 'XOF')}
+                    {money(report.totalProfitBeforeMinor)}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {formatMoney(report.totalMarginMinor, 'XOF')}
-                  </td>
+                  <td className="px-4 py-3" />
                 </tr>
               </tbody>
             </table>

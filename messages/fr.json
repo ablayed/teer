@@ -774,46 +774,50 @@
     },
     "products": {
       "title": "Vue par produit",
-      "subtitle": "Coût d'achat officiel et coût de revient complet de pilotage sur la période.",
+      "subtitle": "Ce que chaque produit vous rapporte vraiment, prix d'achat et coûts compris.",
       "period": "Période : {from} → {to}",
       "editExpenses": "Modifier les dépenses",
       "editOrders": "Modifier les commandes",
       "cards": {
-        "expanded": "Formule affichée",
-        "ads": {
-          "label": "Publicité allouée",
-          "hint": "Répartit les dépenses marketing selon la part de CA du produit.",
-          "detail": "Allocation par part de chiffre d'affaires.",
-          "formula": "publicité allouée = dépenses publicité × CA produit / CA total = {ads} × produit / total",
-          "formulaTitle": "Publicité allouée"
+        "collapsed": "Définition",
+        "expanded": "Masquer",
+        "purchase": {
+          "label": "Prix d'achat",
+          "definition": "Le prix moyen payé pour acheter vos produits vendus (transport et douane compris).",
+          "formula": "prix d'achat = coût d'achat moyen (CUMP) × quantité vendue"
         },
-        "delivery": {
-          "label": "Livraison allouée",
-          "hint": "Répartit les frais de livraison de commande par article.",
-          "detail": "Allocation par nombre d'articles de la commande.",
-          "formula": "livraison allouée = somme des frais de livraison répartis à parts égales par article = {delivery} sur {units} articles",
-          "formulaTitle": "Livraison allouée"
+        "totalCost": {
+          "label": "Coût total (tout compris)",
+          "definition": "Tout ce que vos ventes vous coûtent vraiment : prix d'achat + publicité + livraison.",
+          "formula": "coût total = prix d'achat + publicité allouée + livraison allouée"
         },
-        "pilot": {
-          "label": "Coût de revient unitaire (pilotage)",
-          "hint": "Inclut le coût atterri, la publicité et la livraison allouée.",
-          "detail": "Coût de revient complet de pilotage par unité vendue.",
-          "formula": "coût de revient pilote = (coût atterri reçu + publicité allouée + livraison allouée) / quantité vendue = ({landed} + {ads} + {delivery}) / {qty}",
-          "formulaTitle": "Coût de revient pilote"
+        "profitAfter": {
+          "label": "Bénéfice après pub et livraison",
+          "definition": "Ce qu'il vous reste vraiment, publicité et livraison payées.",
+          "formula": "bénéfice après = chiffre d'affaires − coût total"
         }
       },
       "unallocatedDelivery": "Une partie des frais de livraison ({amount}) n'a pas pu être répartie faute d'articles liés.",
       "table": {
         "title": "Détail par produit",
-        "subtitle": "Le coût d'achat officiel reste séparé du coût de revient complet de pilotage.",
-        "summary": "Marge totale : {margin} · {products} produits",
+        "subtitle": "Bénéfice avant = CA − prix d'achat. Bénéfice après = CA − coût total (pub et livraison incluses).",
+        "summary": "Bénéfice après total : {profit} · {products} produits",
         "product": "Produit",
         "qtySold": "Qté vendue",
-        "revenue": "CA généré",
-        "officialUnit": "Coût d'achat unitaire",
-        "pilotUnit": "Coût de revient unitaire",
-        "margin": "Marge",
-        "total": "Total"
+        "revenue": "Chiffre d'affaires",
+        "purchase": "Prix d'achat",
+        "profitBefore": "Bénéfice avant pub et livraison",
+        "ads": "Publicité",
+        "delivery": "Livraison",
+        "totalCost": "Coût total",
+        "profitAfter": "Bénéfice après pub et livraison",
+        "details": "Détails",
+        "hideDetails": "Masquer",
+        "total": "Total",
+        "costMissing": "Coût manquant",
+        "costMissingHint": "Ajoutez le prix d'achat pour voir votre bénéfice.",
+        "lowVolume": "Estimation peu fiable — peu de ventes",
+        "lowVolumeHint": "Trop peu de ventes sur la période pour un coût unitaire fiable ; seuls les totaux sont affichés."
       },
       "empty": "Aucune vente sur cette période."
     },
