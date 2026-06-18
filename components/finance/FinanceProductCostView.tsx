@@ -1,11 +1,14 @@
 'use client';
 
 import { DefinitionCard } from '@/components/ui/definition-card';
+import { updateProductUnitCostAction } from '@/lib/actions/products';
 import type { FinanceProductCostReport, FinanceProductCostRow } from '@/lib/finance/product-cost';
 import { formatMoney } from '@/lib/format/fcfa';
+import { Pencil } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 
 type Props = {
   from: string;
@@ -17,6 +20,24 @@ function money(value: number): string {
   return formatMoney(value, 'XOF');
 }
 
+// Recalcule une ligne après correction inline du prix d'achat unitaire. Reproduit
+// le repli serveur (unit_cost × qté) pour que l'édition optimiste soit cohérente.
+function applyUnitCost(row: FinanceProductCostRow, unitCost: number): FinanceProductCostRow {
+  const purchasePriceMinor = unitCost * row.qtySold;
+  const totalCostMinor = purchasePriceMinor + row.adsAllocatedMinor + row.deliveryAllocatedMinor;
+  return {
+    ...row,
+    costMissing: false,
+    estimated: purchasePriceMinor > 0,
+    profitAfterMinor: row.revenueMinor - totalCostMinor,
+    profitBeforeMinor: row.revenueMinor - purchasePriceMinor,
+    purchasePriceMinor,
+    purchaseUnitMinor: row.qtySold > 0 ? Math.round(purchasePriceMinor / row.qtySold) : 0,
+    totalCostMinor,
+    totalCostUnitMinor: row.qtySold > 0 ? Math.round(totalCostMinor / row.qtySold) : 0,
+  };
+}
+
 function CostMissingBadge() {
   const t = useTranslations('finance.products.table');
   return (
@@ -25,6 +46,18 @@ function CostMissingBadge() {
       title={t('costMissingHint')}
     >
       {t('costMissing')}
+    </span>
+  );
+}
+
+function EstimatedBadge() {
+  const t = useTranslations('finance.products.table');
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+      title={t('estimatedHint')}
+    >
+      {t('estimated')}
     </span>
   );
 }
@@ -41,7 +74,7 @@ function LowVolumeBadge() {
   );
 }
 
-function ProfitCell({ row, value }: { row: FinanceProductCostRow; value: number }) {
+function ProfitValue({ row, value }: { row: FinanceProductCostRow; value: number }) {
   const t = useTranslations('finance.products.table');
   if (row.costMissing) {
     return (
@@ -51,6 +84,107 @@ function ProfitCell({ row, value }: { row: FinanceProductCostRow; value: number 
     );
   }
   return <span className={value < 0 ? 'text-danger' : 'text-success'}>{money(value)}</span>;
+}
+
+// Cellule « Prix d'achat » éditable in-cell (pattern du seuil par produit). Éditable
+// uniquement quand unit_cost pilote la valeur (coût manquant ou estimé) — un COGS
+// figé ne se réécrit pas ici. L'écriture passe par l'action produit existante.
+function PurchaseCell({
+  onUpdated,
+  row,
+}: {
+  onUpdated: (productId: string, unitCost: number) => void;
+  row: FinanceProductCostRow;
+}) {
+  const t = useTranslations('finance.products.table');
+  const action = useAction(updateProductUnitCostAction);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [feedback, setFeedback] = useState<{ kind: 'error' | 'success'; msg: string } | null>(null);
+
+  const editable = row.costMissing || row.estimated;
+
+  function startEditing() {
+    setValue(
+      row.estimated && row.qtySold > 0
+        ? String(Math.round(row.purchasePriceMinor / row.qtySold))
+        : '',
+    );
+    setFeedback(null);
+    setEditing(true);
+  }
+
+  async function submit() {
+    const next = Number.parseInt(value, 10);
+    if (!Number.isFinite(next) || next < 0) {
+      setFeedback({ kind: 'error', msg: t('costInvalid') });
+      return;
+    }
+    const res = await action.executeAsync({ productId: row.productId, unitCost: next });
+    if (res?.data?.ok) {
+      onUpdated(row.productId, next);
+      setEditing(false);
+    } else {
+      setFeedback({ kind: 'error', msg: t('costError') });
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        <input
+          aria-label={t('purchaseUnitPlaceholder')}
+          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-right text-sm md:min-h-9"
+          inputMode="numeric"
+          min="0"
+          onChange={(event) => setValue(event.target.value)}
+          placeholder={t('purchaseUnitPlaceholder')}
+          type="number"
+          value={value}
+        />
+        <button
+          className="min-h-11 rounded-md px-2 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
+          disabled={action.isExecuting}
+          onClick={submit}
+          type="button"
+        >
+          {action.isExecuting ? '…' : t('save')}
+        </button>
+        <button
+          className="min-h-11 rounded-md px-2 text-sm text-muted underline md:min-h-9"
+          onClick={() => setEditing(false)}
+          type="button"
+        >
+          {t('cancel')}
+        </button>
+        {feedback ? <span className="text-xs font-medium text-danger">{feedback.msg}</span> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {row.costMissing ? (
+        <CostMissingBadge />
+      ) : (
+        <>
+          <span>{money(row.purchasePriceMinor)}</span>
+          {row.estimated ? <EstimatedBadge /> : null}
+        </>
+      )}
+      {editable ? (
+        <button
+          aria-label={t('editPurchase')}
+          className="grid size-9 place-items-center rounded-md border border-border text-muted hover:bg-canvas hover:text-text"
+          onClick={startEditing}
+          title={t('editPurchase')}
+          type="button"
+        >
+          <Pencil aria-hidden="true" className="size-3.5" />
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function DetailRow({ row }: { row: FinanceProductCostRow }) {
@@ -74,7 +208,7 @@ function DetailRow({ row }: { row: FinanceProductCostRow }) {
       <div>
         <p className="text-xs text-muted">{t('profitAfter')}</p>
         <p className="font-mono tabular-nums">
-          <ProfitCell row={row} value={row.profitAfterMinor} />
+          <ProfitValue row={row} value={row.profitAfterMinor} />
         </p>
       </div>
       {row.lowVolume ? (
@@ -88,7 +222,36 @@ function DetailRow({ row }: { row: FinanceProductCostRow }) {
 
 export function FinanceProductCostView({ from, report, to }: Props) {
   const t = useTranslations('finance.products');
+  const [rows, setRows] = useState<FinanceProductCostRow[]>(report.rows);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Resync quand le serveur recalcule (changement de période).
+  useEffect(() => {
+    setRows(report.rows);
+  }, [report.rows]);
+
+  // Totaux dérivés des lignes (état) → restent cohérents après une édition optimiste.
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (acc, row) => ({
+          profitAfter: acc.profitAfter + row.profitAfterMinor,
+          profitBefore: acc.profitBefore + row.profitBeforeMinor,
+          purchase: acc.purchase + row.purchasePriceMinor,
+          qty: acc.qty + row.qtySold,
+          revenue: acc.revenue + row.revenueMinor,
+          totalCost: acc.totalCost + row.totalCostMinor,
+        }),
+        { profitAfter: 0, profitBefore: 0, purchase: 0, qty: 0, revenue: 0, totalCost: 0 },
+      ),
+    [rows],
+  );
+
+  function handleUpdated(productId: string, unitCost: number) {
+    setRows((current) =>
+      current.map((row) => (row.productId === productId ? applyUnitCost(row, unitCost) : row)),
+    );
+  }
 
   function toggleRow(productId: string) {
     setExpandedRows((current) => {
@@ -132,19 +295,19 @@ export function FinanceProductCostView({ from, report, to }: Props) {
             definition={t('cards.purchase.definition')}
             formula={t('cards.purchase.formula')}
             label={t('cards.purchase.label')}
-            value={money(report.totalPurchasePriceMinor)}
+            value={money(totals.purchase)}
           />
           <DefinitionCard
             definition={t('cards.totalCost.definition')}
             formula={t('cards.totalCost.formula')}
             label={t('cards.totalCost.label')}
-            value={money(report.totalCostMinor)}
+            value={money(totals.totalCost)}
           />
           <DefinitionCard
             definition={t('cards.profitAfter.definition')}
             formula={t('cards.profitAfter.formula')}
             label={t('cards.profitAfter.label')}
-            value={money(report.totalProfitAfterMinor)}
+            value={money(totals.profitAfter)}
           />
         </div>
 
@@ -163,13 +326,13 @@ export function FinanceProductCostView({ from, report, to }: Props) {
           </div>
           <p className="text-sm text-muted">
             {t('table.summary', {
-              products: new Intl.NumberFormat('fr-FR').format(report.productCount),
-              profit: money(report.totalProfitAfterMinor),
+              products: new Intl.NumberFormat('fr-FR').format(rows.length),
+              profit: money(totals.profitAfter),
             })}
           </p>
         </div>
 
-        {report.rows.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="text-sm text-muted">{t('empty')}</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
@@ -185,7 +348,7 @@ export function FinanceProductCostView({ from, report, to }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {report.rows.map((row) => {
+                {rows.map((row) => {
                   const expanded = expandedRows.has(row.productId);
                   return (
                     <Fragment key={row.productId}>
@@ -201,10 +364,10 @@ export function FinanceProductCostView({ from, report, to }: Props) {
                           {money(row.revenueMinor)}
                         </td>
                         <td className="px-4 py-3 text-right font-mono tabular-nums">
-                          {row.costMissing ? <CostMissingBadge /> : money(row.purchasePriceMinor)}
+                          <PurchaseCell onUpdated={handleUpdated} row={row} />
                         </td>
                         <td className="px-4 py-3 text-right font-mono tabular-nums">
-                          <ProfitCell row={row} value={row.profitBeforeMinor} />
+                          <ProfitValue row={row} value={row.profitBeforeMinor} />
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
@@ -230,16 +393,16 @@ export function FinanceProductCostView({ from, report, to }: Props) {
                 <tr className="bg-canvas/70 font-semibold">
                   <td className="px-4 py-3">{t('table.total')}</td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {new Intl.NumberFormat('fr-FR').format(report.totalQtySold)}
+                    {new Intl.NumberFormat('fr-FR').format(totals.qty)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {money(report.totalRevenueMinor)}
+                    {money(totals.revenue)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {money(report.totalPurchasePriceMinor)}
+                    {money(totals.purchase)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums">
-                    {money(report.totalProfitBeforeMinor)}
+                    {money(totals.profitBefore)}
                   </td>
                   <td className="px-4 py-3" />
                 </tr>

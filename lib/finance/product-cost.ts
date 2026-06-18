@@ -55,6 +55,9 @@ export type FinanceProductCostRow = {
   // `true` quand le prix d'achat est inconnu (jamais costé) → on n'affiche pas 0.
   costMissing: boolean;
   deliveryAllocatedMinor: number;
+  // `true` quand le prix d'achat vient du coût catalogue (unit_cost) faute de COGS
+  // figé sur la période → estimation (badge), pas le CUMP exact. Précédent 6c.
+  estimated: boolean;
   // `true` quand qtySold < seuil → l'unitaire n'est pas fiable, on montre les totaux.
   lowVolume: boolean;
   // Bénéfice avant pub et livraison = CA − prix d'achat (base A, CUMP figé).
@@ -235,10 +238,12 @@ export function computeFinanceProductCostReport(
   const titleByProductId = new Map(
     input.products.map((product) => [product.id, product.title] as const),
   );
-  // `unit_cost` du produit : sert UNIQUEMENT à distinguer « jamais costé » (null)
-  // de « coût 0 assumé » (0). Le COGS lui-même vient des mouvements `sold` (CUMP figé).
-  const unitCostKnownByProductId = new Map(
-    input.products.map((product) => [product.id, product.unitCost !== null] as const),
+  // `unit_cost` du produit (null = jamais costé, distinct de 0 = coût assumé).
+  // Le COGS exact vient des mouvements `sold` (CUMP figé) ; unit_cost ne sert que
+  // de repli estimé quand aucun COGS figé n'existe sur la période (ex. après une
+  // correction inline du prix d'achat manquant).
+  const unitCostByProductId = new Map(
+    input.products.map((product) => [product.id, product.unitCost] as const),
   );
 
   // Index une seule fois (évite un `.filter` O(commandes × lignes) par commande).
@@ -351,21 +356,41 @@ export function computeFinanceProductCostReport(
     .map((productId) => {
       const revenueMinor = revenueByProduct.get(productId) ?? 0n;
       const qtySold = qtyByProduct.get(productId) ?? 0n;
-      const purchasePriceMinor = soldByProduct.get(productId)?.cogsMinor ?? 0n;
+      const frozenCogsMinor = soldByProduct.get(productId)?.cogsMinor ?? 0n;
+      const unitCost = unitCostByProductId.get(productId) ?? null;
       const adsAllocatedMinor = adsByProduct.get(productId) ?? 0n;
       const deliveryAllocatedMinor = deliveryByProduct.get(productId) ?? 0n;
+
+      // Prix d'achat (base A) : COGS figé prioritaire ; sinon repli estimé sur le
+      // coût catalogue unit_cost (×qté). unit_cost null → coût manquant (badge, pas 0).
+      let purchasePriceMinor: bigint;
+      let estimated: boolean;
+      let costMissing: boolean;
+      if (frozenCogsMinor > 0n) {
+        purchasePriceMinor = frozenCogsMinor;
+        estimated = false;
+        costMissing = false;
+      } else if (unitCost === null) {
+        purchasePriceMinor = 0n;
+        estimated = false;
+        costMissing = true;
+      } else {
+        purchasePriceMinor = toMinor(unitCost) * qtySold;
+        estimated = purchasePriceMinor > 0n;
+        costMissing = false;
+      }
+
       // Coût total (B) = prix d'achat (A) + pub + livraison. Apparié au CA :
       // bénéfice avant = CA − prix d'achat ; bénéfice après = CA − coût total.
       const totalCostMinor = purchasePriceMinor + adsAllocatedMinor + deliveryAllocatedMinor;
       const profitBeforeMinor = revenueMinor - purchasePriceMinor;
       const profitAfterMinor = revenueMinor - totalCostMinor;
-      const costMissing =
-        purchasePriceMinor === 0n && unitCostKnownByProductId.get(productId) !== true;
 
       return {
         adsAllocatedMinor: Number(adsAllocatedMinor),
         costMissing,
         deliveryAllocatedMinor: Number(deliveryAllocatedMinor),
+        estimated,
         lowVolume: qtySold < BigInt(LOW_VOLUME_THRESHOLD),
         profitAfterMinor: Number(profitAfterMinor),
         profitBeforeMinor: Number(profitBeforeMinor),
