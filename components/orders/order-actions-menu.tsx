@@ -103,7 +103,18 @@ export function OrderActionsMenu({
 
   // Phase 11 : « programmer » supplante « confirmer » dans le dropdown.
   const visibleActions = visibleAllowedActions(allowedActions);
-  const transitionEntries = transitionMenuOrder.filter((action) => visibleActions.includes(action));
+  const transitionEntries = transitionMenuOrder
+    .filter((action) => visibleActions.includes(action))
+    // Phase 13.1 (point 3) — nettoyage dropdown, UI SEULEMENT (les actions restent
+    // au moteur) : « Programmée » (scheduled) → retirer Déconfirmer + Refuser.
+    // NB : « En cours de livraison » (out_for_delivery) → Refuser conservé pour
+    // l'instant (= marquage d'une livraison échouée ; retrait à confirmer).
+    .filter((action) => {
+      if (deliveryState === 'scheduled' && (action === 'deconfirmer' || action === 'refuser')) {
+        return false;
+      }
+      return true;
+    });
   const canLogCall = visibleActions.includes('journaliser_appel');
   const canDispatch =
     Boolean(dispatchWhatsAppUrl) &&
