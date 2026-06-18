@@ -7,6 +7,7 @@ import { getOrderAmountsForAssignmentAction, updateOrderAmountsAction } from '@/
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
 import { dateTimeInputsToIso, isoToDateTimeInputs } from '@/lib/format/datetime-input';
 import { formatMoney } from '@/lib/format/fcfa';
+import { buildWhatsAppDispatchUrlForDriver, firstName } from '@/lib/whatsapp/link';
 import { useAction } from 'next-safe-action/hooks';
 import { useEffect, useId, useState } from 'react';
 
@@ -38,6 +39,9 @@ export function AssignmentDetailsDialog({
   const [loaded, setLoaded] = useState(false);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string | null>(null);
+  const [customerPhone, setCustomerPhone] = useState<string | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState<string | null>(null);
+  const [driverPhone, setDriverPhone] = useState<string | null>(null);
   const [currency, setCurrency] = useState<string | null>(null);
   const [items, setItems] = useState<{ title: string; quantity: number; price: number }[]>([]);
   const [savedTotal, setSavedTotal] = useState(0);
@@ -66,6 +70,9 @@ export function AssignmentDetailsDialog({
       const d = result.data.data;
       setOrderNumber(d.orderNumber);
       setCustomerName(d.customerName);
+      setCustomerPhone(d.customerPhone);
+      setDeliveryAddress(d.deliveryAddress);
+      setDriverPhone(d.driverPhone);
       setCurrency(d.currency);
       setItems(d.items);
       setSavedTotal(d.totalAmount);
@@ -99,6 +106,27 @@ export function AssignmentDetailsDialog({
   const feeValid = Number.isFinite(fee) && fee >= 0;
   const canConfirm = loaded && totalValid && feeValid && !isExecuting;
 
+  // Message d'expédition pré-rempli vers le livreur, construit à partir de l'état LIVE
+  // (total édité reflété). Null si le livreur n'a pas de numéro mobile valide → fallback.
+  function buildDriverWhatsAppUrl(roundedTotal: number): string | null {
+    return buildWhatsAppDispatchUrlForDriver(
+      {
+        orderNumber,
+        customerFirstName: firstName(customerName),
+        phone: customerPhone,
+        address: deliveryAddress,
+        itemsSummary: items.map((item) => ({ title: item.title, quantity: item.quantity })),
+        totalAmount: roundedTotal,
+        currency,
+        shopName: '',
+      },
+      driverPhone,
+    );
+  }
+
+  // « Envoyer au livreur (WhatsApp) » : un clic = save montants (si modifiés) →
+  // demarrer_livraison → ouverture WhatsApp vers le livreur. L'onglet WhatsApp est
+  // PRÉ-OUVERT dans le geste (sinon les navigateurs bloquent window.open après un await).
   async function handleConfirm() {
     if (!canConfirm) {
       return;
@@ -108,6 +136,9 @@ export function AssignmentDetailsDialog({
     const roundedTotal = Math.round(total);
     const roundedFee = Math.round(fee);
     const scheduledForIso = dateTimeInputsToIso(date, time);
+    const whatsappUrl = buildDriverWhatsAppUrl(roundedTotal);
+    const whatsappWindow = whatsappUrl ? window.open('', '_blank') : null;
+
     const amountsChanged =
       roundedTotal !== savedTotal ||
       roundedFee !== savedFee ||
@@ -121,6 +152,7 @@ export function AssignmentDetailsDialog({
         ...(scheduledForIso ? { scheduledFor: scheduledForIso } : {}),
       });
       if (!saved?.data?.ok) {
+        whatsappWindow?.close();
         setFeedback('La mise à jour des montants a échoué.');
         return;
       }
@@ -128,12 +160,20 @@ export function AssignmentDetailsDialog({
 
     const started = await startDelivery.executeAsync({ orderId, action: 'demarrer_livraison' });
     if (!started?.data?.ok) {
+      whatsappWindow?.close();
       const message =
         started?.data && 'message' in started.data && typeof started.data.message === 'string'
           ? started.data.message
           : 'Le passage en livraison a échoué.';
       setFeedback(message);
       return;
+    }
+
+    // Livraison démarrée : ouvre WhatsApp vers le livreur (ou rien si pas de numéro).
+    if (whatsappWindow && whatsappUrl) {
+      whatsappWindow.location.href = whatsappUrl;
+    } else {
+      whatsappWindow?.close();
     }
 
     onConfirmed(started.data);
@@ -248,7 +288,7 @@ export function AssignmentDetailsDialog({
             type="button"
             variant="primary"
           >
-            Confirmer et démarrer la livraison
+            Envoyer au livreur (WhatsApp)
           </Button>
         </div>
       </dialog>

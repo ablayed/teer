@@ -560,15 +560,28 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
 
-    // À l'assignation, le popup s'ouvre : « Confirmer et démarrer la livraison »
-    // sauvegarde puis fait passer la commande en out_for_delivery.
+    // À l'assignation, le popup s'ouvre : « Envoyer au livreur (WhatsApp) » sauvegarde,
+    // fait passer la commande en out_for_delivery, ET ouvre WhatsApp vers le livreur (C5).
+    // On neutralise le réseau wa.me pour rester déterministe.
+    await page
+      .context()
+      .route('https://wa.me/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
+      );
     const startButton = page.getByRole('button', {
-      name: 'Confirmer et démarrer la livraison',
+      name: 'Envoyer au livreur (WhatsApp)',
       exact: true,
     });
     await expect(startButton).toBeVisible({ timeout: 15_000 });
+    const whatsappPopupPromise = page.waitForEvent('popup');
     await startButton.click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
+
+    // C5 : l'onglet WhatsApp cible le numéro du LIVREUR (+221 77 000 00 00 → 221770000000).
+    const whatsappPopup = await whatsappPopupPromise;
+    await whatsappPopup.waitForURL(/wa\.me\/221770000000/, { timeout: 15_000 });
+    expect(whatsappPopup.url()).toContain('wa.me/221770000000');
+    await whatsappPopup.close();
 
     await openActionsMenu(page);
     await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
@@ -743,11 +756,22 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     await page.keyboard.type('1500');
     await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
     await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
-    // Confirmer sauvegarde ET fait passer la commande en cours de livraison.
+    // « Envoyer au livreur (WhatsApp) » sauvegarde, passe en cours de livraison ET ouvre
+    // WhatsApp avec le message reflétant le TOTAL ÉDITÉ (C5). Réseau wa.me neutralisé.
     await page
-      .getByRole('button', { name: 'Confirmer et démarrer la livraison', exact: true })
-      .click();
+      .context()
+      .route('https://wa.me/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
+      );
+    const whatsappPopupPromise = page.waitForEvent('popup');
+    await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
+
+    // C5 : le message d'expédition cible le livreur et porte le total édité (25 000).
+    const whatsappPopup = await whatsappPopupPromise;
+    await whatsappPopup.waitForURL(/wa\.me\/221770000000/, { timeout: 15_000 });
+    expect(decodeURIComponent(whatsappPopup.url())).toContain('25 000 F CFA');
+    await whatsappPopup.close();
 
     const { data: updatedOrder, error: updatedError } = await fixture.admin
       .from('orders')

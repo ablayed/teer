@@ -18,6 +18,7 @@ import {
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
 import { cashCollectableMinor } from '@/lib/finance/cash';
+import { formatOrderAddress } from '@/lib/format/order-address';
 import {
   type CallOutcome,
   callOutcomes,
@@ -1196,7 +1197,7 @@ export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager'
     const { data: order, error } = await supabase
       .from('orders')
       .select(
-        'id, order_number, total_amount, delivery_fee_minor, scheduled_for, currency, items_summary, customer:customer_id(full_name)',
+        'id, order_number, total_amount, delivery_fee_minor, scheduled_for, currency, items_summary, shipping_address, assigned_driver_id, customer:customer_id(full_name, phone)',
       )
       .eq('id', parsedInput.orderId)
       .maybeSingle();
@@ -1209,7 +1210,20 @@ export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager'
       return { ok: false as const, errorCode: 'order_not_found' as const };
     }
 
-    const customer = order.customer as { full_name: string | null } | null;
+    const customer = order.customer as { full_name: string | null; phone: string | null } | null;
+
+    // Livreur assigné : nom + téléphone pour le lien WhatsApp d'expédition (C5).
+    let driverName: string | null = null;
+    let driverPhone: string | null = null;
+    if (order.assigned_driver_id) {
+      const { data: driver } = await supabase
+        .from('driver')
+        .select('full_name, phone')
+        .eq('id', order.assigned_driver_id)
+        .maybeSingle();
+      driverName = driver?.full_name ?? null;
+      driverPhone = driver?.phone ?? null;
+    }
 
     return {
       ok: true as const,
@@ -1220,6 +1234,10 @@ export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager'
         scheduledFor: order.scheduled_for,
         currency: order.currency,
         customerName: customer?.full_name ?? null,
+        customerPhone: customer?.phone ?? null,
+        deliveryAddress: formatOrderAddress(order.shipping_address),
+        driverName,
+        driverPhone,
         items: parseAssignmentLines(order.items_summary),
       },
     };

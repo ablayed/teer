@@ -146,3 +146,20 @@ export function buildWhatsAppDispatchMessage(order: WhatsAppOrderInput): string 
 export function buildWhatsAppDispatchUrl(order: WhatsAppOrderInput): string {
   return `https://wa.me/?text=${encodeURIComponent(buildWhatsAppDispatchMessage(order))}`;
 }
+
+// Phase 13.1 (C5) — lien wa.me CIBLANT le numéro du livreur (Sénégal). `order.phone`
+// reste le téléphone CLIENT (ligne « Tél » du message) ; `driverPhone` est le destinataire.
+// Renvoie null si le livreur n'a pas de numéro mobile valide → l'appelant démarre la
+// livraison sans ouvrir de lien (fallback).
+export function buildWhatsAppDispatchUrlForDriver(
+  order: WhatsAppOrderInput,
+  driverPhone: string | null | undefined,
+): string | null {
+  const phone = normalizeWhatsAppSenegalPhone(driverPhone);
+
+  if (!phone) {
+    return null;
+  }
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(buildWhatsAppDispatchMessage(order))}`;
+}
