@@ -1434,6 +1434,22 @@ test('la transition inline confirmee deplace la commande vers la bonne vue et su
     await runRowMenuAction(page, 'Client Inline', 'Programmer la livraison');
     // « Programmer » ouvre un dialog (date du jour par défaut) avant la transition.
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await expect
+      .poll(
+        () => {
+          const url = new URL(page.url());
+          return {
+            q: url.searchParams.get('q'),
+            vue: url.searchParams.get('vue'),
+          };
+        },
+        { timeout: 15_000 },
+      )
+      .toEqual({
+        q: 'client inline',
+        vue: 'a-appeler',
+      });
+    await expect(page).toHaveURL(/\/commandes\?/);
     await expect(page.locator('article').filter({ hasText: 'Client Inline' })).toHaveCount(0, {
       timeout: 15_000,
     });
