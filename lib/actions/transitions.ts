@@ -69,6 +69,49 @@ function revalidateOrderPaths(orderId: string) {
   revalidatePath(`/commandes/${orderId}`);
 }
 
+function revalidateAffectedAggregatePaths({
+  orderId,
+  previousOrder,
+  updatedOrder,
+}: {
+  orderId: string;
+  previousOrder: Pick<
+    OrderRow,
+    'assigned_driver_id' | 'cash_state' | 'cod_status' | 'delivery_state' | 'order_state'
+  >;
+  updatedOrder: Pick<
+    OrderRow,
+    'assigned_driver_id' | 'cash_state' | 'cod_status' | 'delivery_state' | 'order_state'
+  >;
+}) {
+  revalidateOrderPaths(orderId);
+
+  // Tableau agrège toujours les statuts/activité des commandes → toute transition
+  // d'état peut impacter les KPI, la répartition COD et l'activité récente.
+  revalidatePath('/tableau');
+
+  const driverTouched =
+    previousOrder.assigned_driver_id !== null || updatedOrder.assigned_driver_id !== null;
+  if (driverTouched) {
+    // Livreurs dépend de l'affectation, des statuts visibles par livreur, du cash
+    // en main et des performances des commandes rattachées au livreur.
+    revalidatePath('/livreurs');
+  }
+
+  const financeTouched =
+    driverTouched ||
+    previousOrder.cash_state !== updatedOrder.cash_state ||
+    previousOrder.delivery_state !== updatedOrder.delivery_state ||
+    previousOrder.order_state !== updatedOrder.order_state ||
+    previousOrder.cod_status !== updatedOrder.cod_status;
+  if (financeTouched) {
+    // Finances agrège le cash, les livraisons, les retours et les commandes
+    // rattachées à un livreur ; on n'invalide que si une dimension lue par ces
+    // vues change réellement.
+    revalidatePath('/finances');
+  }
+}
+
 function transitionRpc(supabase: SupabaseServerClient) {
   return supabase.rpc.bind(supabase) as unknown as (
     fn: 'transition_order',
@@ -345,7 +388,23 @@ export async function performTransitionForContext({
   // Stock movements are now posted atomically inside transition_order (SQL).
   // Nothing to do here — the RPC already committed them in the same transaction.
 
-  revalidateOrderPaths(order.id);
+  revalidateAffectedAggregatePaths({
+    orderId: order.id,
+    previousOrder: {
+      assigned_driver_id: order.assigned_driver_id,
+      cash_state: order.cash_state,
+      cod_status: order.cod_status,
+      delivery_state: order.delivery_state,
+      order_state: order.order_state,
+    },
+    updatedOrder: {
+      assigned_driver_id: updatedOrder.assigned_driver_id,
+      cash_state: updatedOrder.cash_state,
+      cod_status: updatedOrder.cod_status,
+      delivery_state: updatedOrder.delivery_state,
+      order_state: updatedOrder.order_state,
+    },
+  });
 
   return {
     ok: true,
