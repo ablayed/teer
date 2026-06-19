@@ -395,6 +395,12 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
   }
   const shops = merchantAccountId ? await listShopFilterOptions(supabase, merchantAccountId) : [];
   const selectedShopId = normalizeShopParam(params.shop, shops);
+  // Suffixe de boutique pour les clés Suspense : il DOIT être combiné a un prefixe
+  // unique par bloc. Plusieurs Suspense freres partageant la meme clé littérale
+  // (« all ») produisent des clés dupliquees (aggravé par le React.Children.map de
+  // DashboardMotion) → au changement de boutique la réconciliation empile les blocs
+  // au lieu de les remplacer. Cf. régression empilement KpiStrip.
+  const shopKey = selectedShopId ?? 'all';
   const firstName =
     displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
 
@@ -411,7 +417,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
             </h1>
             <Suspense
               fallback={<div className="dashboard-shimmer h-5 w-80 rounded-sm" />}
-              key={selectedShopId ?? 'all'}
+              key={`subtitle-${shopKey}`}
             >
               <CallQueueSubtitle shopId={selectedShopId} />
             </Suspense>
@@ -427,39 +433,39 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           />
         </header>
 
-        <Suspense fallback={<KpiStripSkeleton />} key={selectedShopId ?? 'all'}>
+        <Suspense fallback={<KpiStripSkeleton />} key={`kpi-${shopKey}`}>
           <KpiStrip shopId={selectedShopId} />
         </Suspense>
 
         <Suspense
           fallback={<div className="dashboard-shimmer h-36 rounded-md" />}
-          key={selectedShopId ?? 'all'}
+          key={`ops-${shopKey}`}
         >
           <OperationsEssentialsSection shopId={selectedShopId} />
         </Suspense>
 
-        <Suspense fallback={<ExceptionsSkeleton />} key={selectedShopId ?? 'all'}>
+        <Suspense fallback={<ExceptionsSkeleton />} key={`exceptions-${shopKey}`}>
           <ExceptionsSection shopId={selectedShopId} />
         </Suspense>
 
-        <Suspense fallback={<RevenueSkeleton />} key={selectedShopId ?? 'all'}>
+        <Suspense fallback={<RevenueSkeleton />} key={`revenue-${shopKey}`}>
           <RevenueSection shopId={selectedShopId} />
         </Suspense>
 
         <section className="grid gap-4 xl:grid-cols-3">
-          <Suspense fallback={<CardListSkeleton rows={5} />} key={selectedShopId ?? 'all'}>
+          <Suspense fallback={<CardListSkeleton rows={5} />} key={`top-${shopKey}`}>
             <TopProductsSection shopId={selectedShopId} />
           </Suspense>
-          <Suspense fallback={<CardListSkeleton rows={5} />} key={selectedShopId ?? 'all'}>
+          <Suspense fallback={<CardListSkeleton rows={5} />} key={`shopperf-${shopKey}`}>
             <ShopPerformanceSection shopId={selectedShopId} />
           </Suspense>
-          <Suspense fallback={<CodBreakdownSkeleton />} key={selectedShopId ?? 'all'}>
+          <Suspense fallback={<CodBreakdownSkeleton />} key={`cod-${shopKey}`}>
             <CodBreakdownSection shopId={selectedShopId} />
           </Suspense>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
-          <Suspense fallback={<CardListSkeleton rows={6} />} key={selectedShopId ?? 'all'}>
+          <Suspense fallback={<CardListSkeleton rows={6} />} key={`activity-${shopKey}`}>
             <RecentActivitySection shopId={selectedShopId} />
           </Suspense>
         </section>
