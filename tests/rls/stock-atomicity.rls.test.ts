@@ -1062,6 +1062,514 @@ describe('Phase 13.1 : désannuler post-dispatch vide le livreur sans mouvement'
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// 0068 / 0069 : livraison depuis le lot d'avance (Option A)
+//   La livraison PUISE D'ABORD dans l'avance du livreur (advance_commit, effet
+//   nul sur entrepôt/main, libère la réserve de la part couverte) et ne dispatche
+//   que le complément. Désannuler restaure l'avance (compensation négative).
+// ──────────────────────────────────────────────────────────────────────────
+
+const HAND_TYPES = [
+  'dispatch',
+  'allocate_to_courier',
+  'sold',
+  'courier_return',
+  'courier_return_lot',
+];
+
+async function purchaseIn(
+  client: SupabaseClient<Database>,
+  merchantAccountId: string,
+  productId: string,
+  userId: string,
+  qty: number,
+  unitCost = 5000,
+) {
+  const { error } = await client.rpc('post_stock_movement', {
+    p_merchant_account_id: merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'purchase_in',
+    p_qty: qty,
+    p_idempotency_key: `pin:${productId}:${Date.now()}:${Math.random()}`,
+    p_created_by: userId,
+    p_unit_cost: unitCost,
+  });
+  if (error) throw new Error(`purchase_in failed: ${error.message}`);
+}
+
+async function allocateToCourier(
+  client: SupabaseClient<Database>,
+  merchantAccountId: string,
+  productId: string,
+  driverId: string,
+  userId: string,
+  qty: number,
+) {
+  // allocate_to_courier : sortie entrepôt → livreur (qty négative dans le ledger).
+  const { error } = await client.rpc('post_stock_movement', {
+    p_merchant_account_id: merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'allocate_to_courier',
+    p_qty: -qty,
+    p_idempotency_key: `alloc:${productId}:${driverId}:${Date.now()}:${Math.random()}`,
+    p_created_by: userId,
+    p_driver_id: driverId,
+  });
+  if (error) throw new Error(`allocate_to_courier failed: ${error.message}`);
+}
+
+async function createOrderForDriver(
+  admin: AdminClient,
+  merchantAccountId: string,
+  driverId: string,
+  lines: Array<{ productId: string; qty: number }>,
+) {
+  const { data: order } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      order_number: `ADV-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      total_amount: 10000,
+      currency: 'XOF',
+      order_state: 'open',
+      call_state: 'to_call',
+      delivery_state: 'unassigned',
+      cash_state: 'not_due',
+      assigned_driver_id: driverId,
+    })
+    .select('id')
+    .single();
+  if (!order) throw new Error('order insert failed');
+  await admin.from('order_line').insert(
+    lines.map((l) => ({
+      merchant_account_id: merchantAccountId,
+      order_id: order.id,
+      product_id: l.productId,
+      raw_title: 'Produit avance',
+      qty: l.qty,
+      match_status: 'matched' as const,
+    })),
+  );
+  return order.id;
+}
+
+async function readDriverProductMovements(admin: AdminClient, productId: string, driverId: string) {
+  const { data } = await admin
+    .from('stock_movement')
+    .select('movement_type, qty')
+    .eq('product_id', productId)
+    .eq('driver_id', driverId);
+  return data ?? [];
+}
+
+// Stock en main dérivé du ledger (Σ −qty sur HAND_TYPES) — advance_commit EXCLU.
+async function driverHand(admin: AdminClient, productId: string, driverId: string) {
+  const rows = await readDriverProductMovements(admin, productId, driverId);
+  return rows
+    .filter((m) => HAND_TYPES.includes(m.movement_type))
+    .reduce((sum, m) => sum - (m.qty ?? 0), 0);
+}
+
+// Avance disponible dérivée du ledger : (−Σ allocate) − Σ crl − Σ advance_commit.
+async function advanceAvailable(admin: AdminClient, productId: string, driverId: string) {
+  const rows = await readDriverProductMovements(admin, productId, driverId);
+  let avail = 0;
+  for (const m of rows) {
+    if (m.movement_type === 'allocate_to_courier') avail += -(m.qty ?? 0);
+    else if (m.movement_type === 'courier_return_lot') avail -= m.qty ?? 0;
+    else if (m.movement_type === 'advance_commit') avail -= m.qty ?? 0;
+  }
+  return avail;
+}
+
+async function readStock(admin: AdminClient, productId: string) {
+  const { data } = await admin
+    .from('product_stock')
+    .select('qty_on_hand, qty_reserved')
+    .eq('product_id', productId)
+    .single();
+  return data;
+}
+
+async function reconcileDiscrepancyFor(admin: AdminClient, productId: string) {
+  const { data } = await admin.rpc('reconcile_product_stock' as 'reconcile_order_cod_status');
+  return ((data as Array<{ product_id: string }> | null) ?? []).filter(
+    (r) => r.product_id === productId,
+  );
+}
+
+describe('0068/0069 : livraison depuis le lot d’avance', () => {
+  skipIfNoServiceRole(
+    'avance 6, commande 1 → advance_commit (pas de dispatch), main 5, entrepôt −6, reserved 0',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('adv-6-1');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50); // entrepôt 50 (via ledger)
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 6); // → 44
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 1 },
+      ]);
+
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      }); // reserve +1
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      const assign = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+      expect(assign.error).toBeNull();
+
+      // Après assign : avance couvre tout → advance_commit, AUCUN dispatch,
+      // réserve libérée par advance_commit.
+      const afterAssign = await readStock(admin, productId);
+      expect(afterAssign?.qty_on_hand).toBe(44); // 50 − 6 (allocate), pas de dispatch
+      expect(afterAssign?.qty_reserved).toBe(0); // reserve libéré par advance_commit
+
+      const assignMovements = await admin
+        .from('stock_movement')
+        .select('movement_type, qty')
+        .eq('order_id', orderId)
+        .order('created_at');
+      expect(assignMovements.data?.map((m) => m.movement_type)).toEqual([
+        'reserve',
+        'advance_commit',
+      ]);
+
+      // Livrer → sold
+      const deliver = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'delivered',
+        p_cash_state: 'collected',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(deliver.error).toBeNull();
+
+      const final = await readStock(admin, productId);
+      expect(final?.qty_on_hand).toBe(44); // sold ne touche pas l’entrepôt
+      expect(final?.qty_reserved).toBe(0);
+
+      expect(await driverHand(admin, productId, driverId)).toBe(5); // 6 avance − 1 vendu
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(5);
+
+      // advance_commit & sold exclus des allowlists qty_on_hand → aucun faux écart.
+      expect(await reconcileDiscrepancyFor(admin, productId)).toHaveLength(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'partiel : avance 2, commande 3 → advance_commit 2 + dispatch 1, reserved 0 après assign, main 0, entrepôt −3',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('adv-2-3');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50); // 50
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 2); // → 48
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 3 },
+      ]);
+
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      }); // reserve +3
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      const assign = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+      expect(assign.error).toBeNull();
+
+      // Après assign : cover 2 (advance_commit libère 2) + remainder 1 (dispatch
+      // libère 1) → reserved entièrement libéré.
+      const afterAssign = await readStock(admin, productId);
+      expect(afterAssign?.qty_on_hand).toBe(47); // 48 − 1 (dispatch du complément)
+      expect(afterAssign?.qty_reserved).toBe(0); // 3 − 2 (commit) − 1 (dispatch)
+
+      const assignMovements = await admin
+        .from('stock_movement')
+        .select('movement_type, qty')
+        .eq('order_id', orderId)
+        .order('created_at');
+      expect(assignMovements.data?.map((m) => m.movement_type)).toEqual([
+        'reserve',
+        'advance_commit',
+        'dispatch',
+      ]);
+      expect(assignMovements.data?.find((m) => m.movement_type === 'advance_commit')?.qty).toBe(2);
+      expect(assignMovements.data?.find((m) => m.movement_type === 'dispatch')?.qty).toBe(-1);
+
+      // Livrer → sold +3
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'delivered',
+        p_cash_state: 'collected',
+        p_payment_channel: 'ESPECES',
+      });
+
+      const final = await readStock(admin, productId);
+      expect(final?.qty_on_hand).toBe(47);
+      expect(final?.qty_reserved).toBe(0);
+      expect(await driverHand(admin, productId, driverId)).toBe(0); // 2 avance + 1 dispatch − 3 vendu
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(0);
+      expect(await reconcileDiscrepancyFor(admin, productId)).toHaveLength(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'double commande successive : avance 1 → 1ʳᵉ couverte (advance_commit), 2ᵉ dispatchée (pas de double-puisage)',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('adv-double');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50); // 50
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 1); // → 49
+
+      const client = await signIn(email);
+
+      async function deliverQty1(orderId: string) {
+        await transitionRpc(client)('transition_order', {
+          p_actor: userId,
+          p_order_id: orderId,
+          p_call_state: 'validated',
+          p_attempt_count: 1,
+        });
+        await transitionRpc(client)('transition_order', {
+          p_actor: userId,
+          p_order_id: orderId,
+          p_delivery_state: 'scheduled',
+        });
+        await transitionRpc(client)('transition_order', {
+          p_actor: userId,
+          p_order_id: orderId,
+          p_delivery_state: 'out_for_delivery',
+        });
+        await transitionRpc(client)('transition_order', {
+          p_actor: userId,
+          p_order_id: orderId,
+          p_delivery_state: 'delivered',
+          p_cash_state: 'collected',
+          p_payment_channel: 'ESPECES',
+        });
+      }
+
+      // Commande A : couverte par l'avance (advance_commit), AUCUN dispatch.
+      const orderA = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 1 },
+      ]);
+      await deliverQty1(orderA);
+
+      const movesA = await admin
+        .from('stock_movement')
+        .select('movement_type')
+        .eq('order_id', orderA);
+      expect(movesA.data?.some((m) => m.movement_type === 'advance_commit')).toBe(true);
+      expect(movesA.data?.some((m) => m.movement_type === 'dispatch')).toBe(false);
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(0); // 1 − 1 engagé
+
+      // Commande B : avance épuisée → dispatch entrepôt, PAS de nouvel advance_commit
+      // (l'avance n'est pas puisée deux fois).
+      const orderB = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 1 },
+      ]);
+      await deliverQty1(orderB);
+
+      const movesB = await admin
+        .from('stock_movement')
+        .select('movement_type, qty')
+        .eq('order_id', orderB);
+      expect(movesB.data?.some((m) => m.movement_type === 'advance_commit')).toBe(false);
+      expect(movesB.data?.find((m) => m.movement_type === 'dispatch')?.qty).toBe(-1);
+
+      const final = await readStock(admin, productId);
+      expect(final?.qty_on_hand).toBe(48); // 50 − 1 (allocate) − 1 (dispatch B)
+      expect(final?.qty_reserved).toBe(0);
+      expect(await driverHand(admin, productId, driverId)).toBe(0); // 1 avance + 1 dispatch − 2 vendus
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(0);
+      expect(await reconcileDiscrepancyFor(admin, productId)).toHaveLength(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'multi-produits : chaque ligne calcule son avance indépendamment',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('adv-multi');
+      const prodA = await createProduct(admin, merchantAccountId);
+      const prodB = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+
+      await purchaseIn(owner, merchantAccountId, prodA, userId, 50);
+      await purchaseIn(owner, merchantAccountId, prodB, userId, 50);
+      // Avance sur prodA seulement (3), rien sur prodB.
+      await allocateToCourier(owner, merchantAccountId, prodA, driverId, userId, 3); // A → 47
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId: prodA, qty: 2 },
+        { productId: prodB, qty: 2 },
+      ]);
+
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+
+      // prodA : couvert par l'avance → advance_commit 2, aucun dispatch.
+      const movesA = await admin
+        .from('stock_movement')
+        .select('movement_type, qty')
+        .eq('order_id', orderId)
+        .eq('product_id', prodA);
+      expect(movesA.data?.find((m) => m.movement_type === 'advance_commit')?.qty).toBe(2);
+      expect(movesA.data?.some((m) => m.movement_type === 'dispatch')).toBe(false);
+
+      // prodB : aucune avance → dispatch 2, aucun advance_commit.
+      const movesB = await admin
+        .from('stock_movement')
+        .select('movement_type, qty')
+        .eq('order_id', orderId)
+        .eq('product_id', prodB);
+      expect(movesB.data?.some((m) => m.movement_type === 'advance_commit')).toBe(false);
+      expect(movesB.data?.find((m) => m.movement_type === 'dispatch')?.qty).toBe(-2);
+
+      const stockA = await readStock(admin, prodA);
+      const stockB = await readStock(admin, prodB);
+      expect(stockA?.qty_on_hand).toBe(47); // 50 − 3 (allocate), pas de dispatch
+      expect(stockA?.qty_reserved).toBe(0);
+      expect(stockB?.qty_on_hand).toBe(48); // 50 − 2 (dispatch)
+      expect(stockB?.qty_reserved).toBe(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'désannuler une commande couverte par l’avance → avance restaurée, AUCUNE réserve fantôme',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('adv-desann');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 5); // → 45
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 2 },
+      ]);
+
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      }); // reserve +2
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      }); // advance_commit +2 (couvre tout), reserved libéré
+
+      const afterAssign = await readStock(admin, productId);
+      expect(afterAssign?.qty_reserved).toBe(0);
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(3); // 5 − 2 engagé
+
+      // refuser post-dispatch (REFUSEE : cancelled + failed) — aucun mouvement.
+      const refused = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'cancelled',
+        p_delivery_state: 'failed',
+        p_call_state: 'validated',
+        p_cash_state: 'not_due',
+      });
+      expect(refused.error).toBeNull();
+      expect(refused.data).toBe('REFUSEE');
+
+      // désannuler avec effacement du livreur → compensation advance_commit −2.
+      const desann = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'open',
+        p_call_state: 'to_call',
+        p_delivery_state: 'unassigned',
+        p_cash_state: 'not_due',
+        p_clear_cancel_reasons: true,
+        p_clear_scheduled_for: true,
+        p_clear_assigned_driver: true,
+      });
+      expect(desann.error).toBeNull();
+      expect(desann.data).toBe('A_APPELER');
+
+      // Avance restaurée : Σ advance_commit = +2 −2 = 0 → avance dispo = 5.
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(5);
+
+      // PAS de réserve fantôme : la compensation négative ne touche pas qty_reserved.
+      const afterDesann = await readStock(admin, productId);
+      expect(afterDesann?.qty_reserved).toBe(0);
+      expect(afterDesann?.qty_on_hand).toBe(45); // 50 − 5 (allocate) ; advance_commit n’y touche pas
+
+      // Deux advance_commit (engagement +2, compensation −2), driver d’origine.
+      const commits = await admin
+        .from('stock_movement')
+        .select('qty, driver_id')
+        .eq('order_id', orderId)
+        .eq('movement_type', 'advance_commit')
+        .order('created_at');
+      expect(commits.data?.map((m) => m.qty)).toEqual([2, -2]);
+      expect(commits.data?.every((m) => m.driver_id === driverId)).toBe(true);
+
+      // Stock en main toujours 5 (advance_commit exclu) — rien de fantôme.
+      expect(await driverHand(admin, productId, driverId)).toBe(5);
+    },
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // RÉCONCILIATION : zéro écart après un parcours complet
 // ──────────────────────────────────────────────────────────────────────────
 
