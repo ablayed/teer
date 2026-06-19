@@ -178,7 +178,6 @@ export function OrderDetailPanel({
   const actionsMenu = (
     <OrderActionsMenu
       allowedActions={order.allowedActions}
-      autoOpenAssignment={canEditAmounts && order.delivery_state === 'assigned'}
       canEditAmounts={canEditAmounts}
       deliveryState={order.delivery_state}
       dispatchWhatsAppUrl={dispatchWhatsAppUrl}

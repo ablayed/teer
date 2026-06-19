@@ -954,6 +954,71 @@ test('phase11 - la reassignation depuis Programmer et l agent n a pas les contro
   }
 });
 
+test('phase11 - la reassignation fonctionne aussi depuis la fiche commande', async ({ page }) => {
+  const fixture = await createOwnerFixture('phase11-reassign-detail');
+  const driverAId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur Detail A',
+  );
+  const driverBId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur Detail B',
+  );
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'PROGRAMMEE',
+    customerName: 'Client Reassign Detail',
+    phone: '+221771335566',
+  });
+
+  try {
+    const { error: seedAssignedError } = await fixture.admin
+      .from('orders')
+      .update({
+        cod_status: 'EN_LIVRAISON',
+        delivery_state: 'assigned',
+        assigned_driver_id: driverAId,
+      })
+      .eq('id', orderId);
+    expect(seedAssignedError).toBeNull();
+
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+    await page.goto(`/commandes/${orderId}`);
+    const reassignButton = page.getByRole('button', { name: 'Changer le livreur' });
+    await expect(reassignButton).toBeVisible({ timeout: 15_000 });
+    await reassignButton.click();
+    await expect(page.getByLabel('Nouveau livreur', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByLabel('Nouveau livreur', { exact: true }).selectOption(driverBId);
+    await page.getByRole('button', { name: 'Réassigner', exact: true }).click();
+    await expect(page.getByText('Livreur Detail B')).toBeVisible({ timeout: 15_000 });
+
+    let reassignedDriverId: string | null = null;
+    let reassignedState: string | null = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const { data: reassigned, error: reassignedError } = await fixture.admin
+        .from('orders')
+        .select('assigned_driver_id, delivery_state')
+        .eq('id', orderId)
+        .single();
+      expect(reassignedError).toBeNull();
+      reassignedDriverId = reassigned?.assigned_driver_id ?? null;
+      reassignedState = reassigned?.delivery_state ?? null;
+      if (reassignedDriverId === driverBId) {
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+    expect(reassignedState).toBe('assigned');
+    expect(reassignedDriverId).toBe(driverBId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('programmer garde la commande dans Programmer et hors En cours de livraison', async ({
   page,
 }) => {
