@@ -403,7 +403,10 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
             <h1 className="font-display text-4xl md:text-5xl">
               {t('greeting', { name: firstName })}
             </h1>
-            <Suspense fallback={<div className="dashboard-shimmer h-5 w-80 rounded-sm" />}>
+            <Suspense
+              fallback={<div className="dashboard-shimmer h-5 w-80 rounded-sm" />}
+              key={selectedShopId ?? 'all'}
+            >
               <CallQueueSubtitle shopId={selectedShopId} />
             </Suspense>
           </div>
@@ -418,7 +421,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           />
         </header>
 
-        <Suspense fallback={<KpiStripSkeleton />}>
+        <Suspense fallback={<KpiStripSkeleton />} key={selectedShopId ?? 'all'}>
           <KpiStrip shopId={selectedShopId} />
         </Suspense>
 
@@ -426,28 +429,28 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           <OperationsEssentialsSection />
         </Suspense>
 
-        <Suspense fallback={<ExceptionsSkeleton />}>
+        <Suspense fallback={<ExceptionsSkeleton />} key={selectedShopId ?? 'all'}>
           <ExceptionsSection shopId={selectedShopId} />
         </Suspense>
 
-        <Suspense fallback={<RevenueSkeleton />}>
+        <Suspense fallback={<RevenueSkeleton />} key={selectedShopId ?? 'all'}>
           <RevenueSection shopId={selectedShopId} />
         </Suspense>
 
         <section className="grid gap-4 xl:grid-cols-3">
-          <Suspense fallback={<CardListSkeleton rows={5} />}>
+          <Suspense fallback={<CardListSkeleton rows={5} />} key={selectedShopId ?? 'all'}>
             <TopProductsSection shopId={selectedShopId} />
           </Suspense>
-          <Suspense fallback={<CardListSkeleton rows={5} />}>
+          <Suspense fallback={<CardListSkeleton rows={5} />} key={selectedShopId ?? 'all'}>
             <ShopPerformanceSection shopId={selectedShopId} />
           </Suspense>
-          <Suspense fallback={<CodBreakdownSkeleton />}>
+          <Suspense fallback={<CodBreakdownSkeleton />} key={selectedShopId ?? 'all'}>
             <CodBreakdownSection shopId={selectedShopId} />
           </Suspense>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
-          <Suspense fallback={<CardListSkeleton rows={6} />}>
+          <Suspense fallback={<CardListSkeleton rows={6} />} key={selectedShopId ?? 'all'}>
             <RecentActivitySection shopId={selectedShopId} />
           </Suspense>
         </section>
