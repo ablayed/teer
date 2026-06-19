@@ -12,6 +12,7 @@ type CustomerReliabilityRow =
 
 const periodSchema = z.object({
   from: z.string().datetime(),
+  shopId: z.string().uuid().nullable().optional(),
   to: z.string().datetime(),
 });
 
@@ -72,17 +73,23 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
     const merchantId = ctx.member.merchantAccountId;
-    const { from, to } = parsedInput;
+    const { from, shopId, to } = parsedInput;
+
+    let ordersQuery = supabase
+      .from('orders')
+      .select(
+        'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at, returned_at',
+      )
+      .eq('merchant_account_id', merchantId)
+      .gte('created_at', from)
+      .lte('created_at', to);
+
+    if (shopId) {
+      ordersQuery = ordersQuery.eq('shop_id', shopId);
+    }
 
     const [ordersResult, auditResult, reliabilityResult] = await Promise.all([
-      supabase
-        .from('orders')
-        .select(
-          'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at, returned_at',
-        )
-        .eq('merchant_account_id', merchantId)
-        .gte('created_at', from)
-        .lte('created_at', to),
+      ordersQuery,
       supabase
         .from('audit_log')
         .select('resource_id, payload, created_at')

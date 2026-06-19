@@ -135,7 +135,7 @@ function essentialCard(label: string, value: string, hint?: string) {
 // Essentiels opérations (owner/manager) : cash total chez tous les livreurs (réutilise
 // cash-consolidation) + taux d'annulation / livraison réussie / retour (réutilise
 // getLossAnalyticsAction, période-aware 30 j). /analyses reste la vue détaillée.
-async function OperationsEssentialsSection() {
+async function OperationsEssentialsSection({ shopId }: { shopId: string | null }) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -158,7 +158,7 @@ async function OperationsEssentialsSection() {
 
   const [cashTotal, lossResult] = await Promise.all([
     getDriversCashOnHandTotal(),
-    getLossAnalyticsAction({ from: from.toISOString(), to: now.toISOString() }),
+    getLossAnalyticsAction({ from: from.toISOString(), shopId, to: now.toISOString() }),
   ]);
 
   const loss = lossResult?.data?.ok ? lossResult.data.analytics.summary : null;
@@ -167,6 +167,12 @@ async function OperationsEssentialsSection() {
   const deliveryRate =
     loss && loss.rtoDenominator > 0 ? loss.deliveredCount / loss.rtoDenominator : 0;
 
+  const cashHint = cashTotal.ok
+    ? [`${cashTotal.driverCount} livreur(s) concerné(s)`, shopId ? '· toutes boutiques' : null]
+        .filter(Boolean)
+        .join(' ')
+    : undefined;
+
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">Essentiels opérations (30 j)</h2>
@@ -174,7 +180,7 @@ async function OperationsEssentialsSection() {
         {essentialCard(
           'Cash total chez les livreurs',
           formatMoney(cashTotal.ok ? cashTotal.totalMinor : 0, 'XOF'),
-          cashTotal.ok ? `${cashTotal.driverCount} livreur(s) concerné(s)` : undefined,
+          cashHint,
         )}
         {essentialCard("Taux d'annulation", loss ? pct(loss.cancellationRate) : '—')}
         {essentialCard('Taux de livraison réussie', loss ? pct(deliveryRate) : '—')}
@@ -425,8 +431,11 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           <KpiStrip shopId={selectedShopId} />
         </Suspense>
 
-        <Suspense fallback={<div className="dashboard-shimmer h-36 rounded-md" />}>
-          <OperationsEssentialsSection />
+        <Suspense
+          fallback={<div className="dashboard-shimmer h-36 rounded-md" />}
+          key={selectedShopId ?? 'all'}
+        >
+          <OperationsEssentialsSection shopId={selectedShopId} />
         </Suspense>
 
         <Suspense fallback={<ExceptionsSkeleton />} key={selectedShopId ?? 'all'}>
