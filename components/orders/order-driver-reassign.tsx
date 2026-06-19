@@ -81,14 +81,14 @@ export function OrderDriverReassign({
         </p>
         {picking ? null : (
           <Button
-            className="min-h-10"
+            className="min-h-10 border border-border bg-surface hover:border-accent/40 hover:bg-accent-subtle hover:text-text"
             onClick={() => {
               setFeedback(null);
               setPicking(true);
             }}
             size="sm"
             type="button"
-            variant="ghost"
+            variant="secondary"
           >
             Changer le livreur
           </Button>
