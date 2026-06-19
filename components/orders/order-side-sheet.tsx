@@ -34,9 +34,6 @@ export function OrderSideSheet({
 
   const close = useCallback(() => {
     router.back();
-    window.setTimeout(() => {
-      router.replace('/commandes');
-    }, 150);
   }, [router]);
 
   function keepSheetOpen(event: MouseEvent) {

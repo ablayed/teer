@@ -1450,6 +1450,41 @@ test('la transition inline confirmee deplace la commande vers la bonne vue et su
   }
 });
 
+test('fermer le detail conserve la vue et la recherche d origine', async ({ page }) => {
+  const fixture = await createOwnerFixture('detail-close-preserves-view');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'PROGRAMMEE',
+    customerName: 'Client Detail Preserve',
+    phone: '+221771556677',
+  });
+
+  try {
+    await signIn(page, fixture.email, '/commandes');
+
+    await page.goto('/commandes?q=Client%20Detail%20Preserve&vue=confirmee');
+    await expect(page).toHaveURL(
+      /\/commandes\?(.*&)?q=Client%20Detail%20Preserve(&.*)?vue=confirmee|\/commandes\?(.*&)?vue=confirmee(&.*)?q=Client%20Detail%20Preserve/,
+    );
+    await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
+
+    await page.locator(`a[href="/commandes/${orderId}"]`).click();
+    await page.waitForURL(`**/commandes/${orderId}`);
+    await expect(page.getByRole('button', { name: 'Fermer', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await page.waitForURL(
+      /\/commandes\?(.*&)?vue=confirmee(&.*)?q=Client%20Detail%20Preserve|\/commandes\?(.*&)?q=Client%20Detail%20Preserve(&.*)?vue=confirmee/,
+    );
+    await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'Client Detail Preserve' })).toHaveCount(0);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('la recherche retrouve une commande par nom puis par telephone', async ({ page }) => {
   const fixture = await createOwnerFixture('search-list');
   await createOrderWithCustomer(fixture.admin, {
