@@ -912,18 +912,32 @@ test('phase11 - la reassignation depuis Programmer et l agent n a pas les contro
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
-    // Programmée → vue « Programmer » (confirmee) ; on y assigne le livreur.
+    // Programmée → vue « Programmer » (confirmee) ; on y CHOISIT le livreur via le picker.
     await page.goto('/commandes?vue=confirmee');
     await openActionsMenu(page);
     await menuItem(page, 'Assigner').click();
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverAId);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
-    await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
+    // Phase 13.1 : le picker CAPTURE le livreur SANS transition (la commande reste
+    // « Programmée »/scheduled) et ouvre le popup. C'est « Envoyer au livreur (WhatsApp) »
+    // qui assigne réellement (assigner + demarrer_livraison → out_for_delivery).
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'scheduled');
 
-    // Le popup détails/prix s'ouvre ; on le ferme sans démarrer la livraison →
-    // la commande reste assignée dans « Programmer », récupérable pour réassignation.
-    await page.getByRole('button', { name: 'Annuler', exact: true }).click();
+    // Neutralise wa.me et on NE consomme PAS l'event popup (source de flakiness WebKit) :
+    // l'assignation (assigner + demarrer_livraison) se fait côté serveur quel que soit
+    // le sort de la fenêtre WhatsApp → on s'aligne sur l'état DB.
+    await page
+      .context()
+      .route('https://wa.me/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
+      );
+    await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
 
+    // Affectée au livreur A et désormais « En cours de livraison ». On y réassigne vers B :
+    // reassign_order_driver (0058) ne touche PAS delivery_state → la commande reste
+    // out_for_delivery (donc dans cette vue), seul assigned_driver_id change.
+    await page.goto('/commandes?vue=en-livraison');
     const row = page.locator('article').filter({ hasText: 'Client Reassign' });
     await expect(row.getByText('Affecté à', { exact: false })).toBeVisible({ timeout: 15_000 });
     await expect(row.getByText('Livreur A Phase11')).toBeVisible({ timeout: 15_000 });
@@ -942,7 +956,7 @@ test('phase11 - la reassignation depuis Programmer et l agent n a pas les contro
       .eq('id', orderId)
       .single();
     expect(reassignedError).toBeNull();
-    expect(reassigned?.delivery_state).toBe('assigned');
+    expect(reassigned?.delivery_state).toBe('out_for_delivery');
     expect(reassigned?.assigned_driver_id).toBe(driverBId);
 
     await signIn(page, agent.email, `/commandes/${orderId}`);
@@ -1179,9 +1193,10 @@ test("Lot B - deconfirmer n'est pas propose apres dispatch", async ({ page }) =>
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    // La commande est assignée → le popup s'ouvre ; on le ferme pour atteindre le menu.
-    await page.getByRole('button', { name: 'Annuler', exact: true }).click();
-
+    // Phase 13.1 (bug #2) : rouvrir une commande déjà assignée en consultation NE rouvre
+    // PLUS le popup d'assignation (autoOpenAssignment retiré du détail — l'overlay
+    // interceptait les clics, p.ex. « Changer le livreur »). On accède donc directement
+    // au menu, sans popup à fermer.
     await openActionsMenu(page);
     await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
     await expect(menuItem(page, 'Livrer')).toHaveCount(0);
