@@ -89,6 +89,7 @@ function transitionRpc(supabase: SupabaseServerClient) {
       p_cancel_reasons?: string[];
       p_clear_scheduled_for?: boolean;
       p_clear_cancel_reasons?: boolean;
+      p_clear_assigned_driver?: boolean;
     },
   ) => Promise<PostgrestSingleResponse<string>>;
 }
@@ -269,6 +270,7 @@ export async function performTransitionForContext({
       ...(transitionPatch.deliveryState ? { p_delivery_state: transitionPatch.deliveryState } : {}),
       ...(transitionPatch.clearScheduledFor ? { p_clear_scheduled_for: true } : {}),
       ...(transitionPatch.clearCancelReasons ? { p_clear_cancel_reasons: true } : {}),
+      ...(transitionPatch.clearAssignedDriver ? { p_clear_assigned_driver: true } : {}),
       ...(transitionPatch.nextContactAt
         ? { p_next_contact_at: transitionPatch.nextContactAt }
         : {}),

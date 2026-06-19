@@ -83,6 +83,7 @@ type TransitionOrderArgs = {
   p_cancel_reasons?: string[];
   p_clear_scheduled_for?: boolean;
   p_clear_cancel_reasons?: boolean;
+  p_clear_assigned_driver?: boolean;
 };
 
 function transitionRpc(client: SupabaseClient<Database>) {
@@ -934,6 +935,128 @@ describe('Lot B : déconfirmer libère la réserve, le cycle ne déduplique pas'
         .eq('order_id', orderId)
         .eq('movement_type', 'release');
       expect(releases).toHaveLength(0);
+    },
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Phase 13.1 : désannuler POST-dispatch (REFUSÉE / annulée après dispatch)
+//   → retour « À appeler » (to_call, unassigned, open), assigned_driver_id VIDÉ
+//   (migration 0066, p_clear_assigned_driver), AUCUN mouvement, qty_reserved
+//   inchangé. Le stock reste attribué au livreur d'origine dans le ledger (dispatch
+//   conservé) : seul le pointeur assigned_driver_id de la commande est effacé.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('Phase 13.1 : désannuler post-dispatch vide le livreur sans mouvement', () => {
+  skipIfNoServiceRole(
+    'refuser après dispatch → désannuler : to_call/unassigned/open, livreur vidé, qty_reserved inchangé, 0 mouvement neuf',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('desann-postdispatch');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+
+      // valider → programmer → dispatch (reserve +3, puis dispatch -3 attribué au livreur)
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+
+      const dispatched = await admin
+        .from('orders')
+        .select('assigned_driver_id, delivery_state')
+        .eq('id', orderId)
+        .single();
+      expect(dispatched.data?.delivery_state).toBe('out_for_delivery');
+      const dispatchDriverId = dispatched.data?.assigned_driver_id;
+      expect(dispatchDriverId).not.toBeNull();
+
+      // refuser post-dispatch → REFUSEE (cancelled + failed), AUCUN mouvement (stock chez livreur)
+      const refused = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'cancelled',
+        p_delivery_state: 'failed',
+        p_call_state: 'validated',
+        p_cash_state: 'not_due',
+      });
+      expect(refused.error).toBeNull();
+      expect(refused.data).toBe('REFUSEE');
+
+      const stockBefore = await admin
+        .from('product_stock')
+        .select('qty_on_hand, qty_reserved')
+        .eq('product_id', productId)
+        .single();
+      expect(stockBefore.data?.qty_on_hand).toBe(47); // 50 - 3 (dispatch conservé)
+      expect(stockBefore.data?.qty_reserved).toBe(0);
+
+      const movementsBefore = await admin
+        .from('stock_movement')
+        .select('movement_type')
+        .eq('order_id', orderId)
+        .order('created_at');
+      expect(movementsBefore.data?.map((m) => m.movement_type)).toEqual(['reserve', 'dispatch']);
+
+      // désannuler post-dispatch (avec effacement du livreur)
+      const desann = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'open',
+        p_call_state: 'to_call',
+        p_delivery_state: 'unassigned',
+        p_cash_state: 'not_due',
+        p_clear_cancel_reasons: true,
+        p_clear_scheduled_for: true,
+        p_clear_assigned_driver: true,
+      });
+      expect(desann.error).toBeNull();
+      expect(desann.data).toBe('A_APPELER');
+
+      const reopened = await admin
+        .from('orders')
+        .select('order_state, call_state, delivery_state, assigned_driver_id')
+        .eq('id', orderId)
+        .single();
+      expect(reopened.data?.order_state).toBe('open');
+      expect(reopened.data?.call_state).toBe('to_call');
+      expect(reopened.data?.delivery_state).toBe('unassigned');
+      // assigned_driver_id VIDÉ (le ledger garde l'attribution, pas la commande).
+      expect(reopened.data?.assigned_driver_id).toBeNull();
+
+      // AUCUN nouveau mouvement (toujours reserve + dispatch) ; qty inchangées.
+      const movementsAfter = await admin
+        .from('stock_movement')
+        .select('movement_type, driver_id')
+        .eq('order_id', orderId)
+        .order('created_at');
+      expect(movementsAfter.data?.map((m) => m.movement_type)).toEqual(['reserve', 'dispatch']);
+      // Le dispatch reste attribué au livreur d'origine dans le ledger.
+      const dispatchMovement = movementsAfter.data?.find((m) => m.driver_id === dispatchDriverId);
+      expect(dispatchMovement).toBeTruthy();
+
+      const stockAfter = await admin
+        .from('product_stock')
+        .select('qty_on_hand, qty_reserved')
+        .eq('product_id', productId)
+        .single();
+      expect(stockAfter.data?.qty_on_hand).toBe(47); // inchangé
+      expect(stockAfter.data?.qty_reserved).toBe(0); // inchangé, pas de réserve fantôme
     },
   );
 });

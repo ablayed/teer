@@ -114,6 +114,7 @@ export type TransitionDimensionPatch = {
   cancelReasons?: string[];
   cashState?: CashStateDimension;
   // Lot B : effacements explicites (le RPC ne peut sinon que coalesce, jamais NULL).
+  clearAssignedDriver?: boolean;
   clearCancelReasons?: boolean;
   clearScheduledFor?: boolean;
   deliveryState?: DeliveryStateDimension;
@@ -422,15 +423,15 @@ export function getAllowedTransitionActionsForDimensions(
         .map((item) => item.action);
     }
 
-    // Lot B : désannuler est la SEULE action légale sur une commande annulée,
-    // ET uniquement pré-dispatch (delivery unassigned/scheduled). Une livraison
-    // échouée (REFUSEE : order_state=cancelled MAIS delivery_state=failed, stock
-    // chez le livreur) n'est PAS rouvrable ici — ni les retours terminaux. Géré
-    // avant le filtrage « open » du catalogue.
-    if (
-      dimensions.orderState === 'cancelled' &&
-      (dimensions.deliveryState === 'unassigned' || dimensions.deliveryState === 'scheduled')
-    ) {
+    // Lot B + Phase 13.1 : désannuler est la SEULE action légale sur une commande
+    // ANNULÉE ou REFUSÉE, PRÉ ET POST-dispatch. order_state='cancelled' couvre ANNULÉE
+    // (annuler, toute delivery) ET REFUSÉE (refuser → order_state='cancelled',
+    // delivery_state='failed'). Post-dispatch : aucun mouvement stock posté, le stock
+    // reste attribué au livreur d'origine dans le ledger, assigned_driver_id est vidé
+    // (migration 0066). Les RETOURS terminaux (order_state='returned' / mark_returned :
+    // reprise cash + courier_return déjà postés) restent EXCLUS. Géré avant le filtrage
+    // « open » du catalogue.
+    if (dimensions.orderState === 'cancelled') {
       return transitionCatalog
         .filter((item) => item.action === 'desannuler' && item.roles.includes(role))
         .map((item) => item.action);
@@ -586,13 +587,16 @@ export function buildTransitionDimensionPatch(
         deliveryState: 'unassigned',
         clearScheduledFor: true,
       };
-    // Lot B — désannuler : ré-ouvre une commande annulée au tout début du tunnel.
-    // AUCUN mouvement stock (la réserve a déjà été libérée à l'annulation ; la garde
-    // SQL order_state='open' empêche tout release ici).
+    // Lot B + Phase 13.1 — désannuler : ré-ouvre une commande ANNULÉE ou REFUSÉE (pré ET
+    // post-dispatch) au tout début du tunnel « À appeler ». AUCUN mouvement stock (la garde
+    // de dérivation tombe sur null pour call→to_call / order→open) ; le stock reste attribué
+    // au livreur d'origine dans le ledger. On VIDE assigned_driver_id (delivery repart
+    // unassigned) via clearAssignedDriver (migration 0066, p_clear_assigned_driver).
     case 'desannuler':
       return {
         callState: 'to_call',
         cashState: 'not_due',
+        clearAssignedDriver: true,
         clearCancelReasons: true,
         clearScheduledFor: true,
         deliveryState: 'unassigned',

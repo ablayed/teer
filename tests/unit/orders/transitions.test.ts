@@ -132,11 +132,56 @@ describe('server transition actions', () => {
       expect(getAllowedTransitionActions('ANNULEE', 'manager')).toEqual(['desannuler']);
     });
 
-    it("n'expose pas désannuler à l'agent ni sur un retour terminal", () => {
+    it("n'expose pas désannuler à l'agent", () => {
       expect(getAllowedTransitionActions('ANNULEE', 'agent')).toEqual([]);
-      // REFUSEE = retour terminal (order_state returned/cancelled via failed) :
-      // pas de désannuler (seules les annulations se rouvrent).
-      expect(getAllowedTransitionActions('REFUSEE', 'owner')).toEqual([]);
+      expect(getAllowedTransitionActions('REFUSEE', 'agent')).toEqual([]);
+    });
+
+    // Phase 13.1 — désannuler étendu : ANNULÉE + REFUSÉE, pré ET post-dispatch.
+    it('expose désannuler sur une commande REFUSÉE (refuser → order_state=cancelled)', () => {
+      // legacyStatusToDimensions('REFUSEE') = order_state cancelled + delivery failed.
+      expect(getAllowedTransitionActions('REFUSEE', 'owner')).toEqual(['desannuler']);
+      expect(getAllowedTransitionActions('REFUSEE', 'manager')).toEqual(['desannuler']);
+    });
+
+    it('expose désannuler sur une annulation POST-dispatch (cancelled + assigned/out)', () => {
+      for (const deliveryState of ['assigned', 'out_for_delivery', 'failed'] as const) {
+        const dimensions = {
+          ...legacyStatusToDimensions('ANNULEE'),
+          deliveryState,
+          assignedDriverId: '00000000-0000-4000-8000-0000000000aa',
+        };
+        expect(getAllowedTransitionActionsForDimensions(dimensions, 'owner')).toEqual([
+          'desannuler',
+        ]);
+      }
+    });
+
+    it("n'expose PAS désannuler sur un retour terminal (mark_returned, order_state=returned)", () => {
+      const returned = {
+        ...legacyStatusToDimensions('LIVREE'),
+        orderState: 'returned' as const,
+        deliveryState: 'returned' as const,
+      };
+      expect(getAllowedTransitionActionsForDimensions(returned, 'owner')).not.toContain(
+        'desannuler',
+      );
+    });
+
+    it('le patch désannuler réinitialise À appeler ET vide le livreur (clearAssignedDriver)', () => {
+      const patch = buildTransitionDimensionPatch(
+        'desannuler',
+        legacyStatusToDimensions('ANNULEE'),
+      );
+      expect(patch).toEqual({
+        callState: 'to_call',
+        cashState: 'not_due',
+        clearAssignedDriver: true,
+        clearCancelReasons: true,
+        clearScheduledFor: true,
+        deliveryState: 'unassigned',
+        orderState: 'open',
+      });
     });
 
     it("n'expose pas déconfirmer une fois la commande dispatchée", () => {

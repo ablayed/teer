@@ -2005,6 +2005,7 @@ export type Database = {
               p_cancel_reason?: string;
               p_cancel_reasons?: string[];
               p_cash_state?: string;
+              p_clear_assigned_driver?: boolean;
               p_clear_cancel_reasons?: boolean;
               p_clear_scheduled_for?: boolean;
               p_delivery_state?: string;
