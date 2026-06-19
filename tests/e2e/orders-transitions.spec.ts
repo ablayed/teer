@@ -833,9 +833,9 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     await page.keyboard.type('25000');
 
     const deliveryFeeInput = page.getByLabel('Frais de livraison', { exact: true });
-    await deliveryFeeInput.click();
-    await page.keyboard.press('Control+A');
-    await page.keyboard.type('1500');
+    await deliveryFeeInput.fill('');
+    await expect(deliveryFeeInput).toHaveValue('');
+    await deliveryFeeInput.type('1500');
     await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
     await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
     // « Envoyer au livreur (WhatsApp) » sauvegarde, passe en cours de livraison ET ouvre

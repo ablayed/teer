@@ -54,7 +54,7 @@ export function AssignmentDetailsDialog({
   const [savedFee, setSavedFee] = useState(0);
   const [savedScheduledFor, setSavedScheduledFor] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [fee, setFee] = useState(0);
+  const [feeInput, setFeeInput] = useState('0');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -88,7 +88,7 @@ export function AssignmentDetailsDialog({
       setSavedFee(d.deliveryFeeMinor);
       setSavedScheduledFor(d.scheduledFor);
       setTotal(d.totalAmount);
-      setFee(d.deliveryFeeMinor);
+      setFeeInput(String(d.deliveryFeeMinor));
       const dt = isoToDateTimeInputs(d.scheduledFor);
       setDate(dt.date);
       setTime(dt.time);
@@ -110,9 +110,11 @@ export function AssignmentDetailsDialog({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isExecuting, onClose]);
 
+  const parsedFee = feeInput === '' ? Number.NaN : Number(feeInput);
+  const fee = Number.isFinite(parsedFee) ? parsedFee : 0;
   const netMinor = Math.max(total - fee, 0);
   const totalValid = Number.isFinite(total) && total >= 0;
-  const feeValid = Number.isFinite(fee) && fee >= 0;
+  const feeValid = feeInput !== '' && Number.isFinite(parsedFee) && parsedFee >= 0;
   const canConfirm = loaded && totalValid && feeValid && !isExecuting;
 
   // Message d'expédition pré-rempli vers le livreur, construit à partir de l'état LIVE
@@ -265,9 +267,9 @@ export function AssignmentDetailsDialog({
                 id={`${fieldId}-fee`}
                 inputMode="numeric"
                 min={0}
-                onChange={(event) => setFee(Number(event.target.value))}
+                onChange={(event) => setFeeInput(event.target.value)}
                 type="number"
-                value={Number.isFinite(fee) ? fee : ''}
+                value={feeInput}
               />
             </div>
 
