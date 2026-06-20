@@ -152,9 +152,20 @@ test('C — la navigation lente affiche le squelette loading.tsx (dev)', async (
       await route.continue();
     });
 
-    await visibleNavLink(page, '/produits').click();
+    const navLink = visibleNavLink(page, '/produits');
+    await expect(navLink).toBeVisible();
+    // Attente déterministe : garantir que /commandes est hydraté/navigable AVANT le tap.
+    // Un tap pré-hydratation part en navigation DURE (plus lente : le squelette apparaît
+    // tard, au bord de la fenêtre → flaky). networkidle = réseau initial + hydratation
+    // settle (même signal que signIn).
+    await page.waitForLoadState('networkidle');
+    await navLink.click();
 
-    // Le squelette (`dashboard-shimmer`) du loading.tsx apparaît pendant le chargement.
+    // La navigation commit (URL → /produits). Comme les données /produits sont encore
+    // retardées (route ci-dessus, 2200 ms), le fallback loading.tsx est GARANTI affiché à
+    // cet instant → on asserte le squelette de façon déterministe, au lieu de courir après
+    // l'état transitoire dans une fenêtre fixe de 5 s.
+    await page.waitForURL('**/produits', { timeout: 20_000 });
     await expect(page.locator('.dashboard-shimmer').first()).toBeVisible({ timeout: 5_000 });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
