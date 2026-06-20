@@ -1466,8 +1466,12 @@ test('la transition inline confirmee deplace la commande vers la bonne vue et su
         },
         { timeout: 15_000 },
       )
+      // Phase 13.1 : l'URL préserve la recherche en CASSE D'ORIGINE (le router.replace
+      // cosmétique de re-casse a été retiré — il causait une course avec l'ouverture du
+      // modal). Le matching reste insensible à la casse côté serveur ; q est conservé tel
+      // que tapé/deep-linké (« Client Inline »), pas re-cassé en « client inline ».
       .toEqual({
-        q: 'client inline',
+        q: 'Client Inline',
         vue: 'a-appeler',
       });
     await expect(page).toHaveURL(/\/commandes\?/);
