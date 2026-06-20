@@ -1,5 +1,6 @@
 'use client';
 
+import { normalizeOrderSearch } from '@/lib/orders/search';
 import { Search, X } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -20,8 +21,14 @@ export function OrdersSearchInput({ initialValue }: OrdersSearchInputProps) {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       const nextParams = new URLSearchParams(window.location.search);
-      const currentValue = nextParams.get('q')?.trim() ?? '';
-      const normalizedValue = value.trim();
+      // Guard idempotent : on compare les recherches NORMALISÉES (trim + lowercase, comme
+      // le matching serveur). Si la recherche de l'URL est déjà équivalente à la saisie,
+      // on NE fait AUCUN router.replace — sinon un replace purement cosmétique (re-casse
+      // « Client » → « client ») partirait 180 ms après montage et annulerait la soft-nav
+      // d'un <Link> cliqué dans cette fenêtre (le détail ne s'ouvrirait pas — pire sur
+      // connexion lente). Le replace ne part donc QUE sur un vrai changement de recherche.
+      const currentValue = normalizeOrderSearch(nextParams.get('q'));
+      const normalizedValue = normalizeOrderSearch(value);
 
       if (normalizedValue === currentValue) {
         return;
