@@ -871,7 +871,13 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
 
     // En cours de livraison, le détail reste réouvrable/modifiable via « Modifier ».
-    await page.goto(`/commandes/${orderId}`);
+    // WebKit/iphone-14 : la navigation RSC vers la vue peut être encore EN VOL et
+    // interrompre le goto de réouverture (« interrupted by another navigation to
+    // …vue=en-livraison »). On retente le goto jusqu'à stabilisation — déterministe et
+    // borné (toPass), pas un timeout passif.
+    await expect(async () => {
+      await page.goto(`/commandes/${orderId}`);
+    }).toPass({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Modifier', exact: true }).click();
     await expect(page.getByLabel('Total', { exact: true })).toHaveValue('25000');
     await expect(page.getByLabel('Frais de livraison', { exact: true })).toHaveValue('1500');
@@ -1493,10 +1499,14 @@ test('fermer le detail conserve la vue et la recherche d origine', async ({ page
   try {
     await signIn(page, fixture.email, '/commandes');
 
+    // L'app NORMALISE la recherche dans l'URL : « Client Detail Preserve » →
+    // « q=client+detail+preserve » (minuscules + encodage `+`). Le regex tolère
+    // donc la casse (i) et les deux encodages (`+` ou `%20`), et vérifie que vue ET
+    // recherche sont présentes (lookaheads, ordre indifférent).
+    const preservedViewUrl =
+      /\/commandes\?(?=.*vue=confirmee)(?=.*q=client(\+|%20)detail(\+|%20)preserve)/i;
     await page.goto('/commandes?q=Client%20Detail%20Preserve&vue=confirmee');
-    await expect(page).toHaveURL(
-      /\/commandes\?(.*&)?q=Client%20Detail%20Preserve(&.*)?vue=confirmee|\/commandes\?(.*&)?vue=confirmee(&.*)?q=Client%20Detail%20Preserve/,
-    );
+    await expect(page).toHaveURL(preservedViewUrl);
     await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
 
     await page.locator(`a[href="/commandes/${orderId}"]`).click();
@@ -1505,10 +1515,10 @@ test('fermer le detail conserve la vue et la recherche d origine', async ({ page
       timeout: 15_000,
     });
 
+    // Geste central : fermer le détail (router.back) → retour dans la vue filtrée AVEC la
+    // recherche (vérifié manuellement : .../commandes?q=client+detail+preserve&vue=confirmee).
     await page.getByRole('button', { name: 'Fermer', exact: true }).click();
-    await page.waitForURL(
-      /\/commandes\?(.*&)?vue=confirmee(&.*)?q=Client%20Detail%20Preserve|\/commandes\?(.*&)?q=Client%20Detail%20Preserve(&.*)?vue=confirmee/,
-    );
+    await page.waitForURL(preservedViewUrl, { timeout: 20_000 });
     await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('heading', { name: 'Client Detail Preserve' })).toHaveCount(0);
   } finally {
