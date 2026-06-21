@@ -27,6 +27,9 @@ jobs:
   # toute fuite. fetch-depth: 0 → scanne tout l'historique, pas seulement le dernier
   # commit. Faux positifs (lockfile, .env.example) allowlistés dans .gitleaks.toml.
   gitleaks:
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-latest
     permissions:
       contents: read
