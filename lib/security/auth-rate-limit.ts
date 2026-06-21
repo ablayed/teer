@@ -1,7 +1,5 @@
-import { env } from '@/lib/env';
+import { checkRateLimit, isRateLimitBackendConfigured } from '@/lib/security/rate-limit';
 import * as Sentry from '@sentry/nextjs';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 
 // Rate-limiting PAR IP des actions d'authentification (login / signup), sur Upstash
 // Redis en fenêtre glissante. DISTINCT de lib/ia/rate-limit.ts (compteur métier
@@ -13,31 +11,12 @@ import { Redis } from '@upstash/redis';
 // limiter est actif ; si jamais il manquait en prod, on émet une alerte Sentry (une
 // fois) pour rendre la mauvaise config visible sans bloquer.
 
-const url = env.UPSTASH_REDIS_REST_URL;
-const token = env.UPSTASH_REDIS_REST_TOKEN;
-
-const redis = url && token ? new Redis({ url, token }) : null;
-
-const limiters = redis
-  ? {
-      // 5 tentatives / 60 s / IP.
-      login: new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(5, '60 s'),
-        prefix: 'rl:auth:login',
-        analytics: false,
-      }),
-      // 3 inscriptions / heure / IP.
-      signup: new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(3, '1 h'),
-        prefix: 'rl:auth:signup',
-        analytics: false,
-      }),
-    }
-  : null;
-
 export type AuthRateLimitName = 'login' | 'signup';
+
+const authPolicyByName = {
+  login: 'auth_login',
+  signup: 'auth_signup',
+} as const;
 
 // Garde-fou de démarrage : appelé une fois au boot (instrumentation.ts register()).
 // Si on tourne en PROD Vercel (VERCEL_ENV === 'production') sans les env Upstash, on
@@ -48,7 +27,7 @@ export function reportAuthRateLimitConfigAtBoot(): void {
   if (process.env.VERCEL_ENV !== 'production') {
     return;
   }
-  if (url && token) {
+  if (isRateLimitBackendConfigured()) {
     return; // correctement configuré
   }
   Sentry.captureMessage(
@@ -61,19 +40,7 @@ export async function checkAuthRateLimit(
   name: AuthRateLimitName,
   key: string,
 ): Promise<{ ok: boolean }> {
-  if (!limiters) {
-    // Non configuré → fail-open (l'alerte prod est émise au boot, cf. ci-dessus).
-    return { ok: true };
-  }
-
-  try {
-    const { success } = await limiters[name].limit(key);
-    return { ok: success };
-  } catch (error) {
-    // Redis injoignable → fail-open (ne pas verrouiller les marchands).
-    Sentry.captureException(error, { tags: { component: 'auth-rate-limit', limiter: name } });
-    return { ok: true };
-  }
+  return checkRateLimit(authPolicyByName[name], key);
 }
 
 // Clé de rate-limit = IP de l'appelant. `x-forwarded-for` (1er hop) puis fallback

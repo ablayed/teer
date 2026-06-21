@@ -1,3 +1,4 @@
+import { checkRateLimit } from '@/lib/security/rate-limit';
 import { getRegisteredShopifyApps, getShopifyAppForShop } from '@/lib/shopify/apps';
 import { compileCustomerData, redactCustomer, redactShop } from '@/lib/shopify/gdpr';
 import {
@@ -923,6 +924,14 @@ export async function POST(request: Request) {
   // Contexte boutique/tenant pour la ligne de dédup (résolution légère par domaine).
   // On réutilise la boutique déjà chargée pour le routage HMAC quand le domaine concorde.
   const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+  if (resolvedShopDomain) {
+    const rateLimit = await checkRateLimit('shopify_webhook', `webhook:${resolvedShopDomain}`);
+    if (!rateLimit.ok) {
+      logWebhookError('[webhook] rate limit exceeded', { topic, resolvedShopDomain });
+      return new Response(null, { headers: { 'retry-after': '60' }, status: 429 });
+    }
+  }
+
   const shop = resolvedShopDomain
     ? headerShop && headerShop.shop_domain === resolvedShopDomain
       ? headerShop
