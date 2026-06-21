@@ -2,7 +2,7 @@
 
 > `AGENTS.md` mirrors this file. If they diverge, this file wins.
 
-**Latest applied migration: `0072`** (prod; `merchant_member_single_org_guard` trigger confirmed; run `pnpm db:types` after next schema push).
+**Latest applied migration: `0074`** (prod; RPC filet invitation par email confirmées; types régénérés après push de schéma).
 
 ## Commands
 
