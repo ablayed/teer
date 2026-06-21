@@ -18,10 +18,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 //      RLS-enforced (un non-owner ne lit pas une table owner-only) + aller-retour XOF
 //      scale-0 (aucun drift /100) + déni de lecture cross-tenant direct.
 //
-// NB : la garde d'équipe « un non-owner ne crée pas de membre » est appliquée au
-// niveau APPLICATIF (requireRole('owner')), PAS au niveau RLS (merchant_member.INSERT
-// = is_member_of, tout membre) — écart de défense en profondeur signalé pour une
-// future migration (hors périmètre Phase 9 : aucune migration).
+// NB : l'ancien écart « un non-owner ne crée pas de membre » n'est plus vrai :
+// depuis 0051, merchant_member.INSERT est owner-only au niveau RLS
+// (current_member_role(merchant_account_id) = 'owner'), et 0071–0072 ajoutent en
+// plus le garde-fou single-org par trigger. Le sweep structurel reste utile pour
+// attraper tout futur relâchement de policy ou WITH CHECK manquant.
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -53,6 +54,16 @@ async function makeUser(label: string): Promise<{ id: string; email: string }> {
   }
   createdUserIds.push(id);
   return { id, email };
+}
+
+async function makeUserWithoutOrg(label: string): Promise<{ id: string; email: string }> {
+  const user = await makeUser(label);
+  const { error } = await serviceClient()
+    .from('merchant_account')
+    .delete()
+    .eq('owner_user_id', user.id);
+  expect(error).toBeNull();
+  return user;
 }
 
 async function authClientFor(email: string) {
@@ -201,7 +212,7 @@ describe.skipIf(!hasEnv)('Tenant isolation — sweep structurel + comportemental
   it('un non-owner ne lit pas une table owner-only (déni de role-escalation RLS)', async () => {
     const owner = await makeUser('po-owner');
     const accountA = await accountIdOf(owner.id);
-    const manager = await makeUser('po-manager');
+    const manager = await makeUserWithoutOrg('po-manager');
 
     const svc = serviceClient();
     const addMember = await svc

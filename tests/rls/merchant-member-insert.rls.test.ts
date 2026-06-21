@@ -31,6 +31,14 @@ async function createUser(label: string) {
   return { id: user.id, email };
 }
 
+async function createUserWithoutOrg(label: string) {
+  const user = await createUser(label);
+  const service = serviceClient();
+  const { error } = await service.from('merchant_account').delete().eq('owner_user_id', user.id);
+  expect(error).toBeNull();
+  return user;
+}
+
 // auth.admin.createUser déclenche handle_new_user -> merchant_account perso
 // + merchant_member owner. On récupère l'id du compte dont l'user est owner.
 async function ownedAccountId(userId: string) {
@@ -75,7 +83,7 @@ describe('merchant_member INSERT RLS (anti-escalation)', () => {
     'blocks cross-tenant self-insert (un user non-membre ne peut pas s’ajouter owner ailleurs)',
     async () => {
       const userA = await createUser('a');
-      const userB = await createUser('b');
+      const userB = await createUserWithoutOrg('b');
       const accountA = await ownedAccountId(userA.id);
 
       const clientB = await signedInClient(userB.email);
@@ -91,8 +99,8 @@ describe('merchant_member INSERT RLS (anti-escalation)', () => {
     'blocks intra-tenant escalation (un agent ne peut pas insérer un membre owner)',
     async () => {
       const userA = await createUser('a');
-      const userB = await createUser('b');
-      const userC = await createUser('c');
+      const userB = await createUserWithoutOrg('b');
+      const userC = await createUserWithoutOrg('c');
       const accountA = await ownedAccountId(userA.id);
 
       // Seed userB comme agent du tenant A via service role (bypass RLS).
@@ -116,7 +124,7 @@ describe('merchant_member INSERT RLS (anti-escalation)', () => {
     'allows an owner to insert a member in their own tenant (policy not over-restrictive)',
     async () => {
       const userA = await createUser('a');
-      const userC = await createUser('c');
+      const userC = await createUserWithoutOrg('c');
       const accountA = await ownedAccountId(userA.id);
 
       const clientA = await signedInClient(userA.email);
