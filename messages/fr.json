@@ -216,8 +216,23 @@
       "invalid": "Lien d'invitation invalide.",
       "expired": "Cette invitation a expiré.",
       "email_mismatch": "Cette invitation a été envoyée à une autre adresse e-mail.",
-      "login": "Connexion"
-    }
+      "already_has_organization": "Vous appartenez déjà à une organisation. Vous ne pouvez en rejoindre qu'une seule à la fois.",
+      "login": "Connexion",
+      "chooseTitle": "Vos invitations",
+      "chooseSubtitle": "Choisissez l'organisation que vous souhaitez rejoindre.",
+      "orgRole": "Rôle : {role}",
+      "accept": "Accepter",
+      "accepting": "Acceptation…",
+      "empty": "Vous n'avez aucune invitation en attente.",
+      "emptyCta": "Créer mon organisation",
+      "genericError": "Une erreur est survenue, réessayez."
+    },
+    "roles": {
+      "owner": "Propriétaire",
+      "manager": "Gestionnaire",
+      "agent": "Agent"
+    },
+    "welcome": "Vous avez rejoint {org} en tant que {role}."
   },
   "app": {
     "greeting": "Bonjour, {name}",
@@ -413,7 +428,15 @@
         "title": "Inviter un membre",
         "email": "Adresse e-mail",
         "role": "Rôle",
-        "submit": "Envoyer l’invitation"
+        "submit": "Envoyer l’invitation",
+        "linkTitle": "Invitation créée",
+        "linkHint": "Partagez ce lien avec la personne invitée. Il expire dans 7 jours.",
+        "linkLabel": "Lien d’invitation",
+        "copy": "Copier le lien",
+        "copied": "Copié",
+        "whatsapp": "Envoyer par WhatsApp",
+        "whatsappMessage": "Bonjour, vous êtes invité·e à rejoindre {org} sur Tëër : {url}",
+        "emailFailedHint": "L’e-mail n’a pas pu être envoyé automatiquement — partagez plutôt le lien ci-dessus."
       },
       "invitations": {
         "title": "Invitations en attente",

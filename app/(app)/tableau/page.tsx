@@ -34,8 +34,12 @@ import { Suspense, cache } from 'react';
 type TableauPageProps = {
   searchParams: Promise<{
     shop?: string;
+    welcome?: string;
+    role?: string;
   }>;
 };
+
+const welcomeRoles = ['owner', 'manager', 'agent'] as const;
 
 function firstToken(value: string | null | undefined): string {
   return value?.trim().split(/\s+/)[0] ?? '';
@@ -374,11 +378,23 @@ function CodBreakdownSkeleton() {
 }
 
 export default async function TableauPage({ searchParams }: TableauPageProps) {
-  const [t, supabase] = await Promise.all([
+  const [t, tInvitation, supabase] = await Promise.all([
     getTranslations('tableau'),
+    getTranslations('invitation'),
     createSupabaseServerClient(),
   ]);
   const params = await searchParams;
+  // Bandeau d'accueil post-acceptation d'invitation (B5) : alimenté par
+  // /invitation/accept via ?welcome=<org>&role=<rôle>. Affiché une fois, non
+  // bloquant ; on n'affiche que pour un rôle connu.
+  const welcomeRole = welcomeRoles.find((role) => role === params.role) ?? null;
+  const welcomeBanner =
+    params.welcome && welcomeRole
+      ? tInvitation('welcome', {
+          org: params.welcome,
+          role: tInvitation(`roles.${welcomeRole}`),
+        })
+      : null;
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -406,6 +422,11 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
 
   return (
     <main id="main">
+      {welcomeBanner ? (
+        <output className="mb-4 block rounded-lg border border-success/30 bg-success-subtle p-3 text-sm font-medium text-success">
+          {welcomeBanner}
+        </output>
+      ) : null}
       <Suspense fallback={null}>
         <ShopFilterPersistence storageKey="teer.tableau.shop" />
       </Suspense>

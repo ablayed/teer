@@ -260,7 +260,7 @@ export function SettingsProfile({
           id="settings-panel-team"
           role="tabpanel"
         >
-          <SettingsTeam currentRole={currentRole} />
+          <SettingsTeam currentRole={currentRole} orgName={currentShopName} />
         </section>
       ) : activeTab === 'shops' ? (
         <section

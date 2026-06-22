@@ -95,6 +95,15 @@ function expiresInSevenDays(): string {
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 }
 
+// Lien d'invitation complet. Le token clair n'existe qu'à la création (seul
+// son hash est stocké) : c'est l'unique moment où l'on peut le renvoyer pour
+// un partage WhatsApp / copier-coller. Même base que l'e-mail Resend.
+function buildInvitationUrl(token: string): string {
+  const url = new URL('/invitation/accept', env.NEXT_PUBLIC_APP_URL);
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
 function revalidateTeamPaths() {
   revalidatePath('/parametres');
 }
@@ -326,16 +335,21 @@ export const inviteMemberAction = requireRole('owner', 'manager')
       return { ok: false as const, errorCode: 'update_failed' as const };
     }
 
-    const sent = await sendInvitationOrFail({
-      accountName,
-      email,
-      invitedByEmail: ctx.user.email ?? 'Tëër',
-      role: parsedInput.role,
-      token,
-    });
-
-    if (!sent) {
-      return { ok: false as const, errorCode: 'email_failed' as const };
+    // Envoi Resend BEST-EFFORT : l'invitation est déjà créée et le lien clair
+    // est renvoyé pour un partage manuel (WhatsApp / copier). Un échec d'e-mail
+    // (Resend down, quota, secret absent en local) ne doit plus faire échouer
+    // l'action ni perdre l'invitation. On signale juste `emailSent: false`.
+    let emailSent = false;
+    try {
+      emailSent = await sendInvitationOrFail({
+        accountName,
+        email,
+        invitedByEmail: ctx.user.email ?? 'Tëër',
+        role: parsedInput.role,
+        token,
+      });
+    } catch {
+      emailSent = false;
     }
 
     const auditError = await writeTeamAuditLog({
@@ -353,7 +367,13 @@ export const inviteMemberAction = requireRole('owner', 'manager')
 
     revalidateTeamPaths();
 
-    return { ok: true as const };
+    return {
+      ok: true as const,
+      inviteUrl: buildInvitationUrl(token),
+      email,
+      role: parsedInput.role,
+      emailSent,
+    };
   });
 
 export const resendInviteAction = requireRole('owner', 'manager')
@@ -401,17 +421,22 @@ export const resendInviteAction = requireRole('owner', 'manager')
       return { ok: false as const, errorCode: 'update_failed' as const };
     }
 
+    // « Renvoyer » régénère le token (token_hash + expires_at mis à jour ci-dessus) :
+    // c'est aussi le seul moyen de ré-obtenir un lien clair partageable pour une
+    // invitation déjà en attente (le token clair d'origine est perdu). Envoi Resend
+    // BEST-EFFORT (cf. inviteMemberAction) ; on renvoie toujours le lien frais.
     const role = invitation.role as InviteRole;
-    const sent = await sendInvitationOrFail({
-      accountName,
-      email: invitation.email,
-      invitedByEmail: ctx.user.email ?? 'Tëër',
-      role,
-      token,
-    });
-
-    if (!sent) {
-      return { ok: false as const, errorCode: 'email_failed' as const };
+    let emailSent = false;
+    try {
+      emailSent = await sendInvitationOrFail({
+        accountName,
+        email: invitation.email,
+        invitedByEmail: ctx.user.email ?? 'Tëër',
+        role,
+        token,
+      });
+    } catch {
+      emailSent = false;
     }
 
     const auditError = await writeTeamAuditLog({
@@ -429,7 +454,13 @@ export const resendInviteAction = requireRole('owner', 'manager')
 
     revalidateTeamPaths();
 
-    return { ok: true as const };
+    return {
+      ok: true as const,
+      inviteUrl: buildInvitationUrl(token),
+      email: invitation.email,
+      role,
+      emailSent,
+    };
   });
 
 export const revokeInviteAction = requireRole('owner', 'manager')
