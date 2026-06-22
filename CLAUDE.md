@@ -2,7 +2,7 @@
 
 > `AGENTS.md` mirrors this file. If they diverge, this file wins.
 
-**Latest applied migration: `0072`** (prod; `merchant_member_single_org_guard` trigger confirmed; run `pnpm db:types` after next schema push).
+**Latest applied migration: `0074`** (prod; RPC filet invitation par email confirmées; types régénérés après push de schéma).
 
 ## Commands
 
@@ -86,6 +86,8 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 **(a) Cause racine non résolue — compilation on-demand next dev en CI.** Le warm-up pré-compile les routes statiques mais Next.js dev évince son cache sous pression mémoire et recompile pendant les specs. Les routes dynamiques `/commandes/[id]`, `/api/rapport`, `/api/shopify/webhooks` ne sont pas warm-upées. Le vrai fix : généraliser `next build + next start` (pattern de `e2e-prod.yml`) à tout le job CI — **MAIS** ça rouvre le piège UIR/WebKit (`upgrade-insecure-requests` casse WebKit sur `http://localhost` → blank page). Lot dédié à planifier avec désactivation UIR en mode test.
 
 **(b) `qa-prelaunch versement` — résolu PR stabilisation-e2e-flaky.** Cause : `fill()` sur spinbutton React contrôlé ne déclenche pas `onChange` sous WebKit iphone-14 → formulaire soumis avec 0. `cash_collectable_minor = 50000` prouvé correct en DB (assertion ligne 830 passe) — ce n'est PAS un bug applicatif. Fix : `click({clickCount:3}) + pressSequentially()` + guard `toHaveValue()` avant submit.
+
+**(c) Audit fill() → pressSequentially à étendre.** Le fix ci-dessus s'applique à tout spinbutton/input numérique React contrôlé dans les specs E2E. À auditer lors du prochain lot E2E : `drivers.spec.ts` (`getByPlaceholder('10').fill('15')`), et tout autre `fill(someNumber)` sur un `<input type="number">` dans les specs iphone-14. Pattern à adopter partout : `click({clickCount:3}) + pressSequentially()`.
 
 ---
 *This file supersedes any implicit understanding. If in doubt between this file and an ad-hoc instruction, ask the developer.*

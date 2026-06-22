@@ -1741,6 +1741,10 @@ export type Database = {
     };
     Functions: {
       accept_invitation: { Args: { p_token: string }; Returns: Json };
+      accept_pending_invitation_by_email: {
+        Args: { p_invitation_id: string };
+        Returns: Json;
+      };
       cash_aging: {
         Args: { p_merchant: string };
         Returns: {
@@ -1864,6 +1868,16 @@ export type Database = {
           refused_weighted: number;
           score: number;
           tier: string;
+        }[];
+      };
+      list_my_pending_invitations: {
+        Args: never;
+        Returns: {
+          expires_at: string;
+          id: string;
+          merchant_account_id: string;
+          org_name: string;
+          role: string;
         }[];
       };
       list_orders_paginated: {
