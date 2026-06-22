@@ -849,8 +849,13 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
 
     // Remise du solde : remis = encaissé, à l'unité près.
-    await page.getByRole('spinbutton', { name: 'Montant reçu (FCFA)' }).fill(String(amount));
-    await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    // Attendre que le formulaire soit rendu + interactif avant fill/click (WebKit timing).
+    const versementInput = page.getByRole('spinbutton', { name: 'Montant reçu (FCFA)' });
+    const versementBtn = page.getByRole('button', { name: 'Enregistrer le versement' });
+    await expect(versementInput).toBeVisible({ timeout: 15_000 });
+    await expect(versementBtn).toBeEnabled({ timeout: 15_000 });
+    await versementInput.fill(String(amount));
+    await versementBtn.click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
     });

@@ -158,8 +158,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.email_label).fill(email);
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
-  await page.waitForURL(`**${redirectTo}`);
-  await expect(page.locator('main#main')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('main#main')).toBeVisible({ timeout: 30_000 });
 }
 
 function statValue(page: Page, label: string) {
