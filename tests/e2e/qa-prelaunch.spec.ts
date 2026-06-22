@@ -386,7 +386,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
+  await expect(page.locator('main').first()).toBeVisible({ timeout: 30_000 });
 }
 
 function menuItem(page: Page, name: string) {
