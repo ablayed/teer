@@ -18,3 +18,8 @@ supabase/.temp/*
 supabase/.branches/_current_branch
 
 .vercel
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
