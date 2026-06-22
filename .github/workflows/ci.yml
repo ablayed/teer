@@ -139,7 +139,6 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm test:e2e
         env:
-          DEBUG: pw:webserver
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

@@ -79,6 +79,13 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 - **`SECURITY DEFINER` role gates must be NULL-safe.** `current_member_role()` returns NULL for non-members; `NULL NOT IN (...)` is not TRUE — the gate is silently skipped → cross-tenant leak. Always guard as `v_role IS NULL OR v_role NOT IN (...)`.
 - **`upgrade-insecure-requests` in CSP must be prod-only.** WebKit applies it to `http://localhost` → blank page in all iphone-14 E2E tests. Chromium exempts loopback; WebKit does not.
 - **Do not pre-start `pnpm dev` before `pnpm test:e2e`.** Playwright manages the webServer. Pre-starting causes login failures (`.env.local` vs `.env.test` Supabase credential mismatch).
+- **E2E CI stabilisation (PR #24, juin 2026)** : globalSetup warm-up des 10 routes principales + `expect.timeout 10s` + iphone-14 `timeout 90s` + `webServer.timeout 180s`. Job test-e2e vert : 191 passed, 0 failed, 4 flaky rattrapés par `retries: 1`.
+
+## Dette E2E ouverte
+
+**(a) Cause racine non résolue — compilation on-demand next dev en CI.** Le warm-up pré-compile les routes statiques mais Next.js dev évince son cache sous pression mémoire et recompile pendant les specs. Les routes dynamiques `/commandes/[id]`, `/api/rapport`, `/api/shopify/webhooks` ne sont pas warm-upées. Le vrai fix : généraliser `next build + next start` (pattern de `e2e-prod.yml`) à tout le job CI — **MAIS** ça rouvre le piège UIR/WebKit (`upgrade-insecure-requests` casse WebKit sur `http://localhost` → blank page). Lot dédié à planifier avec désactivation UIR en mode test.
+
+**(b) `qa-prelaunch:789` flaky répété** (`Expected 50000 / Received 0`). Reproductible sur plusieurs runs. Suspicion : bug timing applicatif (cash_collectable_minor pas encore propagé au moment de l'assertion), pas juste CI. À diagnostiquer en isolation avant le merge du lot prelaunch.
 
 ---
 *This file supersedes any implicit understanding. If in doubt between this file and an ad-hoc instruction, ask the developer.*
