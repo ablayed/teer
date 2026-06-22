@@ -87,5 +87,7 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 **(b) `qa-prelaunch versement` — résolu PR stabilisation-e2e-flaky.** Cause : `fill()` sur spinbutton React contrôlé ne déclenche pas `onChange` sous WebKit iphone-14 → formulaire soumis avec 0. `cash_collectable_minor = 50000` prouvé correct en DB (assertion ligne 830 passe) — ce n'est PAS un bug applicatif. Fix : `click({clickCount:3}) + pressSequentially()` + guard `toHaveValue()` avant submit.
 
+**(c) Audit fill() → pressSequentially à étendre.** Le fix ci-dessus s'applique à tout spinbutton/input numérique React contrôlé dans les specs E2E. À auditer lors du prochain lot E2E : `drivers.spec.ts` (`getByPlaceholder('10').fill('15')`), et tout autre `fill(someNumber)` sur un `<input type="number">` dans les specs iphone-14. Pattern à adopter partout : `click({clickCount:3}) + pressSequentially()`.
+
 ---
 *This file supersedes any implicit understanding. If in doubt between this file and an ad-hoc instruction, ask the developer.*
