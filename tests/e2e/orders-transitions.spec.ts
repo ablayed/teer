@@ -489,7 +489,6 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('domcontentloaded');
 }
 
 // Les actions de commande vivent desormais dans un dropdown unique « Actions »
