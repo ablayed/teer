@@ -63,6 +63,8 @@ export default defineConfig({
     command: process.env.E2E_PROD_BUILD === '1' ? 'pnpm start' : 'pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
+    stdout: 'pipe',
+    stderr: 'pipe',
     timeout: 120_000,
   },
 });
