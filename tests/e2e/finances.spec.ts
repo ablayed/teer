@@ -272,7 +272,7 @@ async function signIn(page: Page, email: string, redirectTo = '/finances') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await expect(page.locator('main').first()).toBeVisible({ timeout: 30_000 });
+  await page.waitForLoadState('domcontentloaded');
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E finances');

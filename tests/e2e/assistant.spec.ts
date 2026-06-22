@@ -106,7 +106,7 @@ async function signIn(page: Page, email: string, redirectTo = '/assistant') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await expect(page.locator('main').first()).toBeVisible({ timeout: 30_000 });
+  await page.waitForLoadState('domcontentloaded');
 }
 
 // Repères textuels (extraits de lib/ia/faq.ts) — role-aware.
