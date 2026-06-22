@@ -386,7 +386,6 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
 }
 
 function menuItem(page: Page, name: string) {
@@ -849,8 +848,16 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
 
     // Remise du solde : remis = encaissé, à l'unité près.
-    await page.getByRole('spinbutton', { name: 'Montant reçu (FCFA)' }).fill(String(amount));
-    await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    // pressSequentially déclenche les événements natifs (keydown/input/keyup) que React
+    // capte sur WebKit ; fill() seul ne déclenche pas onChange sur les spinbuttons contrôlés.
+    const versementInput = page.getByRole('spinbutton', { name: 'Montant reçu (FCFA)' });
+    const versementBtn = page.getByRole('button', { name: 'Enregistrer le versement' });
+    await expect(versementInput).toBeVisible({ timeout: 15_000 });
+    await expect(versementBtn).toBeEnabled({ timeout: 15_000 });
+    await versementInput.click({ clickCount: 3 });
+    await versementInput.pressSequentially(String(amount));
+    await expect(versementInput).toHaveValue(String(amount));
+    await versementBtn.click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
     });

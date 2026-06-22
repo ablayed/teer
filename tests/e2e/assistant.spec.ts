@@ -106,7 +106,6 @@ async function signIn(page: Page, email: string, redirectTo = '/assistant') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
 }
 
 // Repères textuels (extraits de lib/ia/faq.ts) — role-aware.
@@ -136,19 +135,19 @@ test('owner : onglet Assistant, FAQ marge + résultat net et suggestion marge', 
     const assistantLink = page
       .getByRole('link', { name: messages.nav.assistant, exact: true })
       .first();
-    await expect(assistantLink).toBeVisible();
+    await expect(assistantLink).toBeVisible({ timeout: 15_000 });
     await assistantLink.click();
     await expect(page.getByRole('heading', { name: messages.assistant.title })).toBeVisible({
       timeout: 15_000,
     });
 
     // Onglet chat (par défaut) : suggestion finance réservée à l'owner.
-    await expect(page.getByText(SUGGESTION_MARGE)).toBeVisible();
+    await expect(page.getByText(SUGGESTION_MARGE)).toBeVisible({ timeout: 15_000 });
 
     // Onglet FAQ : l'entrée marge/résultat net est visible pour l'owner.
     await page.getByRole('tab', { name: 'FAQ' }).click();
-    await expect(page.getByText(FAQ_MARGE)).toBeVisible();
-    await expect(page.getByText(FAQ_CA)).toBeVisible();
+    await expect(page.getByText(FAQ_MARGE)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(FAQ_CA)).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

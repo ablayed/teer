@@ -272,7 +272,6 @@ async function signIn(page: Page, email: string, redirectTo = '/finances') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E finances');
@@ -348,7 +347,6 @@ test('nav finances absente pour un manager', async ({ page }) => {
 
     // En accès direct : message restreint
     await page.goto('/finances');
-    await page.waitForLoadState('networkidle');
     await expect(page.getByText(messages.finance.restricted, { exact: false })).toBeVisible({
       timeout: 10_000,
     });
@@ -371,8 +369,12 @@ test('CA unifié + onglets finances + graphe CA par boutique + exports PDF/CSV (
     ).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByRole('link', { name: messages.finance.tabs.products })).toBeVisible();
-    await expect(page.getByRole('link', { name: messages.finance.tabs.drivers })).toBeVisible();
+    await expect(page.getByRole('link', { name: messages.finance.tabs.products })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('link', { name: messages.finance.tabs.drivers })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(
       page.getByText(messages.finance.kpis.netProfit, { exact: true }).first(),
     ).toBeVisible();
@@ -427,7 +429,6 @@ test('Vue par produit + par livreur : montants fractionnaires (numeric/jsonb) re
 
     // Vue par livreur : total_amount numeric fractionnaire → COGS/CA rendus, pas de 500.
     await page.goto('/finances?tab=livreurs');
-    await page.waitForLoadState('networkidle');
     await expect(
       page.getByRole('heading', { name: messages.finance.driverCost.title }),
     ).toBeVisible({ timeout: 15_000 });

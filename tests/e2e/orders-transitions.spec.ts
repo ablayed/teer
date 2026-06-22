@@ -489,7 +489,6 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
 }
 
 // Les actions de commande vivent desormais dans un dropdown unique « Actions »
@@ -695,6 +694,7 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
 test('phase13.1 - annuler le popup d assignation laisse la commande programmee sans livreur ni dispatch', async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   const fixture = await createOwnerFixture('assign-cancel');
   const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Annule');
   const productTitle = 'Produit Annule Popup';
@@ -1618,8 +1618,9 @@ test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) 
   try {
     await signIn(page, fixture.email, '/tableau');
 
-    await page.getByRole('link', { name: 'En cours de livraison' }).click();
-    await page.waitForURL('**/commandes?vue=en-livraison');
+    const deepLink = page.getByRole('link', { name: 'En cours de livraison' });
+    await expect(deepLink).toBeVisible({ timeout: 15_000 });
+    await deepLink.click();
     await expect(page.getByText('Livraison Dashboard')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);

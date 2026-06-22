@@ -85,7 +85,7 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 **(a) Cause racine non résolue — compilation on-demand next dev en CI.** Le warm-up pré-compile les routes statiques mais Next.js dev évince son cache sous pression mémoire et recompile pendant les specs. Les routes dynamiques `/commandes/[id]`, `/api/rapport`, `/api/shopify/webhooks` ne sont pas warm-upées. Le vrai fix : généraliser `next build + next start` (pattern de `e2e-prod.yml`) à tout le job CI — **MAIS** ça rouvre le piège UIR/WebKit (`upgrade-insecure-requests` casse WebKit sur `http://localhost` → blank page). Lot dédié à planifier avec désactivation UIR en mode test.
 
-**(b) `qa-prelaunch:789` flaky répété** (`Expected 50000 / Received 0`). Reproductible sur plusieurs runs. Suspicion : bug timing applicatif (cash_collectable_minor pas encore propagé au moment de l'assertion), pas juste CI. À diagnostiquer en isolation avant le merge du lot prelaunch.
+**(b) `qa-prelaunch versement` — résolu PR stabilisation-e2e-flaky.** Cause : `fill()` sur spinbutton React contrôlé ne déclenche pas `onChange` sous WebKit iphone-14 → formulaire soumis avec 0. `cash_collectable_minor = 50000` prouvé correct en DB (assertion ligne 830 passe) — ce n'est PAS un bug applicatif. Fix : `click({clickCount:3}) + pressSequentially()` + guard `toHaveValue()` avant submit.
 
 ---
 *This file supersedes any implicit understanding. If in doubt between this file and an ad-hoc instruction, ask the developer.*
