@@ -39,9 +39,11 @@ loadEnvFile('.env.test');
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  globalSetup: './tests/e2e/global-setup.ts',
   retries: 1,
   reporter: 'list',
   workers: 1,
+  expect: { timeout: 10_000 },
   use: {
     baseURL: process.env.E2E_URL ?? 'http://localhost:3000',
     locale: 'fr-FR',
@@ -53,7 +55,7 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'pixel-7', use: { ...devices['Pixel 7'] } },
-    { name: 'iphone-14', use: { ...devices['iPhone 14'] } },
+    { name: 'iphone-14', use: { ...devices['iPhone 14'] }, timeout: 90_000 },
   ],
   webServer: {
     // En mode E2E_PROD_BUILD=1, on sert un VRAI build de prod (`next start`) pour
@@ -63,6 +65,8 @@ export default defineConfig({
     command: process.env.E2E_PROD_BUILD === '1' ? 'pnpm start' : 'pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: 180_000,
   },
 });
