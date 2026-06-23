@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { updateOrderAmountsAction } from '@/lib/actions/orders';
-import { dateTimeInputsToIso, isoToDateTimeInputs } from '@/lib/format/datetime-input';
 import { formatMoney } from '@/lib/format/fcfa';
 import { Pencil } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
@@ -20,13 +19,33 @@ type OrderAmountsEditorProps = {
   totalAmount: number;
 };
 
-// Phase 11.1 : éditeur de montants (total + frais de livraison + date/heure) — un
+// Phase 11.1 : éditeur de montants (total + frais de livraison + date) — un
 // modal ouvert via « Modifier ». PAS de transition d'état (le passage en livraison
 // est géré par le popup d'assignation). Sert la consultation/édition à tout moment
 // (programmée, en cours de livraison…). owner/manager (gating amont canEditAmounts).
 
-// États de livraison où une date/heure de livraison est pertinente.
+// États de livraison où une date de livraison est pertinente.
 const SCHEDULING_STATES = ['scheduled', 'assigned', 'out_for_delivery'];
+
+function dateInputToIso(dateValue: string, fallbackTime = '12:00'): string | null {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(fallbackTime);
+  if (!dateMatch || !timeMatch) {
+    return null;
+  }
+
+  const [, year, month, day] = dateMatch;
+  const [, hour, minute] = timeMatch;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+  );
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 export function OrderAmountsEditor({
   currency,
@@ -46,9 +65,9 @@ export function OrderAmountsEditor({
   const [displayedFee, setDisplayedFee] = useState(deliveryFeeMinor);
   const [total, setTotal] = useState(totalAmount);
   const [fee, setFee] = useState(deliveryFeeMinor);
-  const initialDateTime = isoToDateTimeInputs(scheduledFor);
-  const [date, setDate] = useState(initialDateTime.date);
-  const [time, setTime] = useState(initialDateTime.time);
+  const initialDate = scheduledFor ? scheduledFor.slice(0, 10) : '';
+  const initialTime = scheduledFor ? scheduledFor.slice(11, 16) || '12:00' : '12:00';
+  const [date, setDate] = useState(initialDate);
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
     null,
   );
@@ -75,8 +94,7 @@ export function OrderAmountsEditor({
   function resetFields() {
     setTotal(displayedTotal);
     setFee(displayedFee);
-    setDate(initialDateTime.date);
-    setTime(initialDateTime.time);
+    setDate(initialDate);
   }
 
   async function handleConfirm() {
@@ -87,7 +105,7 @@ export function OrderAmountsEditor({
 
     const roundedTotal = Math.round(total);
     const roundedFee = Math.round(fee);
-    const scheduledForIso = showScheduling ? dateTimeInputsToIso(date, time) : null;
+    const scheduledForIso = showScheduling ? dateInputToIso(date, initialTime) : null;
 
     const result = await update.executeAsync({
       orderId,
@@ -187,25 +205,14 @@ export function OrderAmountsEditor({
             </div>
 
             {showScheduling ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor={`${fieldId}-date`}>Date de livraison</Label>
-                  <Input
-                    id={`${fieldId}-date`}
-                    onChange={(event) => setDate(event.target.value)}
-                    type="date"
-                    value={date}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
-                  <Input
-                    id={`${fieldId}-time`}
-                    onChange={(event) => setTime(event.target.value)}
-                    type="time"
-                    value={time}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${fieldId}-date`}>Date de livraison</Label>
+                <Input
+                  id={`${fieldId}-date`}
+                  onChange={(event) => setDate(event.target.value)}
+                  type="date"
+                  value={date}
+                />
               </div>
             ) : null}
 

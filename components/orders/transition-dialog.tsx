@@ -37,27 +37,16 @@ function todayInputValue(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-// Phase 11 : la programmation porte une date ET une heure de livraison. On
-// combine le <input type="date"> (YYYY-MM-DD) et le <input type="time"> (HH:MM)
-// en un instant local → ISO. L'heure réelle choisie reste sur le bon jour
-// calendaire local (la vue « À livrer aujourd'hui » compare scheduled_for::date).
-function dateTimeInputToIso(dateValue: string, timeValue: string): string | null {
+// Phase 11 : la programmation expose seulement une date. On convertit en ISO
+// avec une heure fixe au milieu de journée pour éviter les décalages de fuseau.
+function dateInputToIso(dateValue: string): string | null {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
-  const timeMatch = /^(\d{2}):(\d{2})$/.exec(timeValue);
-  if (!dateMatch || !timeMatch) {
+  if (!dateMatch) {
     return null;
   }
 
   const [, year, month, day] = dateMatch;
-  const [, hour, minute] = timeMatch;
-  const date = new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    0,
-  );
+  const date = new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
@@ -77,7 +66,6 @@ export function TransitionDialog({
   const fieldId = useId();
   const [driverId, setDriverId] = useState('');
   const [date, setDate] = useState(todayInputValue);
-  const [time, setTime] = useState('12:00');
   const [reasons, setReasons] = useState<Set<CancelReason>>(new Set());
   const [note, setNote] = useState('');
 
@@ -113,7 +101,7 @@ export function TransitionDialog({
     ? Boolean(driverId)
     : isCancel
       ? reasons.size > 0
-      : Boolean(dateTimeInputToIso(date, time));
+      : Boolean(dateInputToIso(date));
 
   function handleConfirm() {
     if (isAssign) {
@@ -135,7 +123,7 @@ export function TransitionDialog({
       return;
     }
 
-    const scheduledFor = dateTimeInputToIso(date, time);
+    const scheduledFor = dateInputToIso(date);
     if (!scheduledFor) {
       return;
     }
@@ -222,15 +210,6 @@ export function TransitionDialog({
                 onChange={(event) => setDate(event.target.value)}
                 type="date"
                 value={date}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
-              <Input
-                id={`${fieldId}-time`}
-                onChange={(event) => setTime(event.target.value)}
-                type="time"
-                value={time}
               />
             </div>
           </div>

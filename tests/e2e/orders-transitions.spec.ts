@@ -515,10 +515,6 @@ function formatDateInput(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-function formatTimeInput(hours: number, minutes: number): string {
-  return `${`${hours}`.padStart(2, '0')}:${`${minutes}`.padStart(2, '0')}`;
-}
-
 function addDays(date: Date, days: number): Date {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -765,9 +761,7 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     phone: '+221771223344',
   });
   const programDate = formatDateInput(addDays(new Date(), 1));
-  const programTime = formatTimeInput(14, 30);
   const revisedDate = formatDateInput(addDays(new Date(), 1));
-  const revisedTime = formatTimeInput(16, 45);
 
   try {
     await signIn(page, fixture.email, '/commandes?vue=a-appeler');
@@ -775,7 +769,6 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
 
     await runRowMenuAction(page, 'Client Editable', 'Programmer la livraison');
     await page.getByLabel('Date de livraison', { exact: true }).fill(programDate);
-    await page.getByLabel('Heure de livraison', { exact: true }).fill(programTime);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
@@ -814,9 +807,6 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     await expect(page.getByLabel('Date de livraison', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByLabel('Heure de livraison', { exact: true })).toBeVisible({
-      timeout: 15_000,
-    });
 
     const totalInput = page.getByLabel('Total', { exact: true });
     await totalInput.click();
@@ -828,7 +818,6 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     await expect(deliveryFeeInput).toHaveValue('');
     await deliveryFeeInput.type('1500');
     await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
-    await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
     // « Envoyer au livreur (WhatsApp) » sauvegarde, passe en cours de livraison ET ouvre
     // WhatsApp avec le message reflétant le TOTAL ÉDITÉ (C5). Réseau wa.me neutralisé.
     await page
@@ -905,7 +894,6 @@ test('phase11 - la reassignation depuis Programmer et l agent n a pas les contro
     await page
       .getByLabel('Date de livraison', { exact: true })
       .fill(formatDateInput(addDays(new Date(), 1)));
-    await page.getByLabel('Heure de livraison', { exact: true }).fill(formatTimeInput(10, 15));
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
