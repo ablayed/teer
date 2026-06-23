@@ -10,6 +10,7 @@ import { FinanceTabSkeleton } from '@/components/finance/finance-tab-skeleton';
 import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { DefinitionCard } from '@/components/ui/definition-card';
+import { PeriodControls } from '@/components/ui/period-controls';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
 import { fetchFinanceDriverCostReport } from '@/lib/finance/driver-cost';
@@ -22,6 +23,8 @@ import {
 import { fetchFinanceProductCostReport } from '@/lib/finance/product-cost';
 import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { formatMoney } from '@/lib/format/fcfa';
+import type { ActivePeriod } from '@/lib/periods/date-range';
+import { resolvePeriodRange, toDateInput } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -57,21 +60,6 @@ const defaultSettings: MerchantFeeSettings = {
   wave_fee_bps: 100,
 };
 
-function startOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function parseDateInput(value: string | undefined): Date | null {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 function periodRange({
   from,
   period,
@@ -80,31 +68,14 @@ function periodRange({
   from?: string;
   period?: string;
   to?: string;
-}): { activePeriod: string; from: Date; to: Date } {
-  const now = new Date();
-  const end = now;
-  const customFrom = parseDateInput(from);
-  const customTo = parseDateInput(to);
-
-  if (customFrom && customTo) {
-    customTo.setHours(23, 59, 59, 999);
-    return { activePeriod: 'custom', from: customFrom, to: customTo };
-  }
-
-  if (period === 'today') {
-    return { activePeriod: 'today', from: startOfDay(now), to: end };
-  }
-
-  const days = period === '7j' ? 7 : period === '90j' ? 90 : 30;
-  const start = startOfDay(now);
-  start.setDate(start.getDate() - (days - 1));
-  const activePeriod = days === 7 ? '7j' : days === 90 ? '90j' : '30j';
-
-  return { activePeriod, from: start, to: end };
-}
-
-function toDateInput(value: Date): string {
-  return value.toISOString().slice(0, 10);
+}): { activePeriod: ActivePeriod; from: Date; to: Date } {
+  return resolvePeriodRange({
+    allowedPresets: ['today', '7j', '30j', '90j'],
+    defaultPreset: '30j',
+    from,
+    period,
+    to,
+  });
 }
 
 function normalizeFinanceTab(value: string | undefined): FinanceTab {
@@ -252,69 +223,6 @@ async function FinanceTabBar({
         {t('tabs.drivers')}
       </Link>
     </nav>
-  );
-}
-
-async function PeriodControls({
-  activeTab,
-  activePeriod,
-  from,
-  shop,
-  to,
-}: {
-  activeTab: FinanceTab;
-  activePeriod: string;
-  from: Date;
-  shop: string;
-  to: Date;
-}) {
-  const t = await getTranslations('finance');
-  const periods = ['today', '7j', '30j', '90j'] as const;
-
-  return (
-    <form className="flex flex-wrap items-end gap-2" method="get">
-      <input name="tab" type="hidden" value={activeTab} />
-      <input name="shop" type="hidden" value={shop} />
-      <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
-        {periods.map((period) => (
-          <Link
-            aria-current={activePeriod === period ? 'true' : undefined}
-            className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
-              activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
-            }`}
-            // Preset = `period` seul (pas de from/to), sinon le clic est ignoré (§4).
-            href={buildFinanceHref({ period, shop, tab: activeTab })}
-            key={period}
-          >
-            {t(`periods.${period}`)}
-          </Link>
-        ))}
-      </div>
-      <label className="space-y-1 text-xs font-medium text-muted">
-        {t('periods.from')}
-        <input
-          className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-          defaultValue={toDateInput(from)}
-          name="from"
-          type="date"
-        />
-      </label>
-      <label className="space-y-1 text-xs font-medium text-muted">
-        {t('periods.to')}
-        <input
-          className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-          defaultValue={toDateInput(to)}
-          name="to"
-          type="date"
-        />
-      </label>
-      <button
-        className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
-        type="submit"
-      >
-        {t('periods.apply')}
-      </button>
-    </form>
   );
 }
 
@@ -683,7 +591,29 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
             selectedShopId={selectedShopId}
             shops={shops}
           />
-          {await PeriodControls({ activePeriod, activeTab, from, shop: activeShopParam, to })}
+          <PeriodControls
+            activePeriod={activePeriod}
+            from={from}
+            labels={{
+              apply: t('periods.apply'),
+              from: t('periods.from'),
+              presets: {
+                today: t('periods.today'),
+                yesterday: t('periods.yesterday'),
+                '7j': t('periods.7j'),
+                '30j': t('periods.30j'),
+                '90j': t('periods.90j'),
+              },
+              to: t('periods.to'),
+            }}
+            pathname="/finances"
+            presets={['today', '7j', '30j', '90j']}
+            searchParams={{
+              shop: activeShopParam,
+              tab: activeTab,
+            }}
+            to={to}
+          />
         </div>
       </header>
 

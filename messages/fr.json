@@ -684,6 +684,7 @@
     },
     "periods": {
       "today": "Aujourd'hui",
+      "yesterday": "Hier",
       "7j": "7 j",
       "30j": "30 j",
       "90j": "90 j",
@@ -1030,6 +1031,21 @@
     "filters": {
       "ariaLabel": "Filtrer les commandes par statut",
       "all": "Toutes"
+    },
+    "shops": {
+      "label": "Boutique",
+      "all": "Toutes",
+      "ariaLabel": "Filtrer les commandes par boutique"
+    },
+    "periods": {
+      "today": "Aujourd'hui",
+      "yesterday": "Hier",
+      "7j": "7 j",
+      "30j": "30 j",
+      "90j": "90 j",
+      "custom": "Personnalisé",
+      "from": "Du",
+      "to": "Au"
     },
     "table": {
       "order": "Commande",

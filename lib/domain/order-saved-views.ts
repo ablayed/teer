@@ -56,7 +56,9 @@ export function isSameLocalDate(value: string | null, date = new Date()) {
   return candidate.getTime() === target.getTime();
 }
 
-function queueDate(order: Pick<OrderListViewShape, 'created_at' | 'created_at_shopify'>) {
+export function orderQueueDate(
+  order: Pick<OrderListViewShape, 'created_at' | 'created_at_shopify'>,
+) {
   return order.created_at_shopify ?? order.created_at;
 }
 
@@ -118,12 +120,12 @@ export function compareOrdersForSavedView(
   viewId: OrderSavedViewId,
 ) {
   if (viewId === 'tentee-a-rappeler') {
-    const leftDate = left.next_contact_at ?? queueDate(left);
-    const rightDate = right.next_contact_at ?? queueDate(right);
+    const leftDate = left.next_contact_at ?? orderQueueDate(left);
+    const rightDate = right.next_contact_at ?? orderQueueDate(right);
     return leftDate.localeCompare(rightDate);
   }
 
-  return queueDate(right).localeCompare(queueDate(left));
+  return orderQueueDate(right).localeCompare(orderQueueDate(left));
 }
 
 export function buildOrderViewHref(viewId: OrderSavedViewId) {

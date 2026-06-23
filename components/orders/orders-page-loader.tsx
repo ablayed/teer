@@ -28,6 +28,8 @@ type TransitionSuccess = Extract<TransitionResult, { ok: true }>;
 type Props = {
   activeView: OrderSavedViewId;
   canReassign: boolean;
+  dateFrom: string;
+  dateTo: string;
   drivers: DriverOption[];
   emptyValueLabel: string;
   initialHasMore: boolean;
@@ -38,6 +40,7 @@ type Props = {
   merchantName: string;
   reliabilityLabels: Record<ReliabilityTier, string>;
   searchQuery: string;
+  selectedShopId: string | null;
   onTransitionApplied?: (event: {
     nextOrder: OrderListItem;
     previousOrder: OrderListItem;
@@ -48,6 +51,8 @@ type Props = {
 export function OrdersPageLoader({
   activeView,
   canReassign,
+  dateFrom,
+  dateTo,
   drivers,
   emptyValueLabel,
   initialHasMore,
@@ -58,6 +63,7 @@ export function OrdersPageLoader({
   merchantName,
   reliabilityLabels,
   searchQuery,
+  selectedShopId,
   onTransitionApplied,
   whatsappMissingPhoneLabel,
 }: Props) {
@@ -82,7 +88,10 @@ export function OrdersPageLoader({
     startTransition(async () => {
       const result = await loadMoreOrdersAction({
         cursor: nextCursor,
+        dateFrom,
+        dateTo,
         search: searchQuery,
+        shopId: selectedShopId,
         view: activeView,
       });
       const data = result?.data;
