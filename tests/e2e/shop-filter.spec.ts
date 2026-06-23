@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
 
 // Phase 13 — le sélecteur boutique filtre Tableau/Finances ; il est masqué en
@@ -38,6 +39,7 @@ test.setTimeout(90_000);
 type AdminClient = SupabaseClient;
 
 function adminClient(): AdminClient {
+  assertLocalSupabase(supabaseUrl);
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
