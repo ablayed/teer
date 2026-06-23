@@ -3,6 +3,7 @@ import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions'
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
 
 function readLocalEnv(): Record<string, string> {
@@ -46,6 +47,7 @@ type AdminClient = SupabaseClient;
 type Role = 'owner' | 'manager' | 'agent';
 
 function adminClient(): AdminClient {
+  assertLocalSupabase(supabaseUrl);
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
