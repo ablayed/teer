@@ -11,10 +11,10 @@ import {
   loadMoreOrdersAction,
 } from '@/lib/actions/orders';
 import type { TransitionResult } from '@/lib/actions/transitions';
-import { matchesOrderSavedView } from '@/lib/domain/order-saved-views';
+import { matchesOrderSavedView, orderQueueDate } from '@/lib/domain/order-saved-views';
 import type { OrderSavedViewId } from '@/lib/domain/order-saved-views';
 import type { orderStatusLabels } from '@/lib/domain/order-state-machine';
-import { formatDateRelative } from '@/lib/format/date';
+import { formatDateDayKey, formatDateGroupLabel, formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatOrderAddress } from '@/lib/format/order-address';
 import { cn } from '@/lib/utils';
@@ -72,6 +72,25 @@ export function OrdersPageLoader({
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [reliabilityTiers, setReliabilityTiers] = useState(initialReliabilityTiers);
   const [isLoadingMore, startTransition] = useTransition();
+  const groupedOrders = orders.reduce<
+    Array<{ dayKey: string; label: string; orders: OrderListItem[] }>
+  >((groups, order) => {
+    const groupValue = orderQueueDate(order);
+    const dayKey = formatDateDayKey(groupValue);
+    const currentGroup = groups.at(-1);
+
+    if (!currentGroup || currentGroup.dayKey !== dayKey) {
+      groups.push({
+        dayKey,
+        label: formatDateGroupLabel(groupValue),
+        orders: [order],
+      });
+      return groups;
+    }
+
+    currentGroup.orders.push(order);
+    return groups;
+  }, []);
 
   useEffect(() => {
     setOrders(initialOrders);
@@ -169,81 +188,93 @@ export function OrdersPageLoader({
         />
       ) : null}
 
-      {orders.map((order) => (
-        <article
-          className="rounded-lg border border-border bg-surface p-4 shadow-1 transition-colors hover:bg-canvas/50"
-          key={order.id}
-        >
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <Link className="min-w-0 flex-1 space-y-3" href={`/commandes/${order.id}`} prefetch>
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="font-mono text-sm font-semibold text-muted">
-                  {order.order_number ?? emptyValueLabel}
-                </p>
-                <CodStatusBadge
-                  deliveryState={order.delivery_state}
-                  status={order.cod_status as keyof typeof orderStatusLabels}
-                />
-                <span className="text-sm text-muted">
-                  {codDisplayLabel(
-                    order.cod_status as keyof typeof orderStatusLabels,
-                    order.delivery_state,
-                  )}
-                </span>
-              </div>
+      {groupedOrders.map((group) => (
+        <div className="space-y-3" key={group.dayKey}>
+          <h2 className="px-1 text-sm font-semibold uppercase tracking-wide text-muted">
+            {group.label}
+          </h2>
+          {group.orders.map((order) => (
+            <article
+              className="rounded-lg border border-border bg-surface p-4 shadow-1 transition-colors hover:bg-canvas/50"
+              key={order.id}
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <Link className="min-w-0 flex-1 space-y-3" href={`/commandes/${order.id}`} prefetch>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="font-mono text-sm font-semibold text-muted">
+                      {order.order_number ?? emptyValueLabel}
+                    </p>
+                    <CodStatusBadge
+                      deliveryState={order.delivery_state}
+                      status={order.cod_status as keyof typeof orderStatusLabels}
+                    />
+                    <span className="text-sm text-muted">
+                      {codDisplayLabel(
+                        order.cod_status as keyof typeof orderStatusLabels,
+                        order.delivery_state,
+                      )}
+                    </span>
+                  </div>
 
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-base font-semibold">
-                    {order.customer?.full_name ?? emptyValueLabel}
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold">
+                        {order.customer?.full_name ?? emptyValueLabel}
+                      </p>
+                      <CustomerReliabilityBadge
+                        labels={reliabilityLabels}
+                        tier={
+                          order.customer_id ? (reliabilityTiers[order.customer_id] ?? null) : null
+                        }
+                      />
+                    </div>
+                    <p className="text-sm text-muted">
+                      {formatDateRelative(order.created_at_shopify ?? order.created_at)}
+                    </p>
+                  </div>
+                </Link>
+
+                <div className="flex flex-col items-start gap-3 md:items-end">
+                  <p className="text-lg font-semibold">
+                    {formatMoney(order.total_amount, order.currency)}
                   </p>
-                  <CustomerReliabilityBadge
-                    labels={reliabilityLabels}
-                    tier={order.customer_id ? (reliabilityTiers[order.customer_id] ?? null) : null}
+                  <OrderActionsMenu
+                    allowedActions={order.allowedActions}
+                    canEditAmounts={canReassign}
+                    deliveryState={order.delivery_state}
+                    drivers={drivers}
+                    onTransitionSuccess={handleTransitionSuccess}
+                    orderId={order.id}
+                    phone={order.customer?.phone ?? null}
+                    whatsappLabels={{
+                      confirm: 'WhatsApp',
+                      missingPhone: whatsappMissingPhoneLabel,
+                    }}
+                    whatsappUrl={buildWhatsAppConfirmationUrl({
+                      address: formatOrderAddress(order.shipping_address),
+                      currency: order.currency,
+                      customerFirstName: firstName(order.customer?.full_name),
+                      itemsSummary: order.items_summary,
+                      orderNumber: order.order_number,
+                      phone: order.customer?.phone ?? null,
+                      shopName: merchantName,
+                      totalAmount: order.total_amount,
+                    })}
                   />
+                  {canReassign && order.assigned_driver_id ? (
+                    <OrderDriverReassign
+                      compact
+                      currentDriverId={order.assigned_driver_id}
+                      deliveryState={order.delivery_state}
+                      drivers={drivers}
+                      orderId={order.id}
+                    />
+                  ) : null}
                 </div>
-                <p className="text-sm text-muted">
-                  {formatDateRelative(order.created_at_shopify ?? order.created_at)}
-                </p>
               </div>
-            </Link>
-
-            <div className="flex flex-col items-start gap-3 md:items-end">
-              <p className="text-lg font-semibold">
-                {formatMoney(order.total_amount, order.currency)}
-              </p>
-              <OrderActionsMenu
-                allowedActions={order.allowedActions}
-                canEditAmounts={canReassign}
-                deliveryState={order.delivery_state}
-                drivers={drivers}
-                onTransitionSuccess={handleTransitionSuccess}
-                orderId={order.id}
-                phone={order.customer?.phone ?? null}
-                whatsappLabels={{ confirm: 'WhatsApp', missingPhone: whatsappMissingPhoneLabel }}
-                whatsappUrl={buildWhatsAppConfirmationUrl({
-                  address: formatOrderAddress(order.shipping_address),
-                  currency: order.currency,
-                  customerFirstName: firstName(order.customer?.full_name),
-                  itemsSummary: order.items_summary,
-                  orderNumber: order.order_number,
-                  phone: order.customer?.phone ?? null,
-                  shopName: merchantName,
-                  totalAmount: order.total_amount,
-                })}
-              />
-              {canReassign && order.assigned_driver_id ? (
-                <OrderDriverReassign
-                  compact
-                  currentDriverId={order.assigned_driver_id}
-                  deliveryState={order.delivery_state}
-                  drivers={drivers}
-                  orderId={order.id}
-                />
-              ) : null}
-            </div>
-          </div>
-        </article>
+            </article>
+          ))}
+        </div>
       ))}
 
       {hasMore && nextCursor ? (

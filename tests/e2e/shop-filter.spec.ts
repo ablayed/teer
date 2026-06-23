@@ -271,4 +271,30 @@ test.describe('Phase 13 — filtre boutique', () => {
     await expect(page.getByText('Client Ancien A')).toHaveCount(0);
     await expect(page.getByText('Client Récent B')).toHaveCount(0);
   });
+
+  test("Commandes : le groupement par date ne duplique pas « Aujourd'hui » après Voir plus", async ({
+    page,
+  }) => {
+    const { admin, email, merchantAccountId } = await createOwnerFixture('orders-grouping');
+    const shopA = await createShop(admin, merchantAccountId, `og-${Date.now()}.myshopify.com`);
+
+    for (let index = 0; index < 26; index += 1) {
+      await seedOrder(admin, {
+        createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+        customerName: `Client Jour ${index}`,
+        merchantAccountId,
+        shopId: shopA,
+      });
+    }
+
+    await signIn(page, email, '/commandes');
+
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toHaveCount(1);
+    await expect(page.locator('article')).toHaveCount(25);
+
+    await page.getByRole('button', { name: 'Voir plus' }).click();
+
+    await expect(page.locator('article')).toHaveCount(26);
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toHaveCount(1);
+  });
 });
