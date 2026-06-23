@@ -15,7 +15,15 @@ import {
   updateDriverAction,
 } from '@/lib/actions/team';
 import { cn } from '@/lib/utils';
-import { MoreHorizontal, RefreshCw, Send, UserMinus } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  MessageCircle,
+  MoreHorizontal,
+  RefreshCw,
+  Send,
+  UserMinus,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
@@ -44,6 +52,14 @@ type TeamDriver = {
 
 type SettingsTeamProps = {
   currentRole: string;
+  orgName: string;
+};
+
+type InviteLink = {
+  url: string;
+  email: string;
+  role: InviteRole;
+  emailSent: boolean;
 };
 
 const roles = ['owner', 'manager', 'agent'] as const satisfies readonly Role[];
@@ -64,7 +80,7 @@ function daysUntil(date: string): number {
   return Math.max(0, Math.ceil((new Date(date).getTime() - Date.now()) / 86_400_000));
 }
 
-export function SettingsTeam({ currentRole }: SettingsTeamProps) {
+export function SettingsTeam({ currentRole, orgName }: SettingsTeamProps) {
   const t = useTranslations('settings.team');
   const canManage = currentRole === 'owner' || currentRole === 'manager';
   const listTeam = useAction(listTeamAction);
@@ -79,6 +95,8 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteRole, setInviteRole] = useState<InviteRole>('agent');
+  const [inviteLink, setInviteLink] = useState<InviteLink | null>(null);
+  const [copied, setCopied] = useState(false);
   const data = listTeam.result.data?.ok ? listTeam.result.data : null;
   const ownerCount = useMemo(
     () => data?.members.filter((member) => member.role === 'owner').length ?? 0,
@@ -135,11 +153,34 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
     if (result?.data?.ok) {
       form.reset();
       setInviteRole('agent');
+      setCopied(false);
+      setInviteLink({
+        url: result.data.inviteUrl,
+        email: result.data.email,
+        role: result.data.role,
+        emailSent: result.data.emailSent,
+      });
       refresh(t('notices.inviteSent'));
       return;
     }
 
     fail();
+  }
+
+  async function onCopyInviteLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      // Clipboard indisponible (permissions / contexte non sécurisé) : le lien
+      // reste sélectionnable dans le champ en lecture seule, pas d'échec bloquant.
+      setCopied(false);
+    }
+  }
+
+  function whatsappHref(url: string): string {
+    const message = t('invite.whatsappMessage', { org: orgName, url });
+    return `https://wa.me/?text=${encodeURIComponent(message)}`;
   }
 
   async function onCreateDriver(event: FormEvent<HTMLFormElement>) {
@@ -170,7 +211,21 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
 
   async function onResendInvite(invitationId: string) {
     const result = await resendInvite.executeAsync({ invitationId });
-    result?.data?.ok ? refresh(t('notices.inviteResent')) : fail();
+
+    if (result?.data?.ok) {
+      // « Renvoyer » régénère le token : on ré-affiche le lien frais pour partage.
+      setCopied(false);
+      setInviteLink({
+        url: result.data.inviteUrl,
+        email: result.data.email,
+        role: result.data.role,
+        emailSent: result.data.emailSent,
+      });
+      refresh(t('notices.inviteResent'));
+      return;
+    }
+
+    fail();
   }
 
   async function onRevokeInvite(invitationId: string) {
@@ -292,6 +347,52 @@ export function SettingsTeam({ currentRole }: SettingsTeamProps) {
             {t('invite.submit')}
           </Button>
         </form>
+
+        {inviteLink ? (
+          <div className="mt-4 space-y-3 rounded-md border border-accent/30 bg-canvas p-4">
+            <div>
+              <p className="font-medium text-text">{t('invite.linkTitle')}</p>
+              <p className="text-sm text-muted">{t('invite.linkHint')}</p>
+              {!inviteLink.emailSent ? (
+                <p className="mt-1 text-sm text-warning">{t('invite.emailFailedHint')}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="team-invite-link">{t('invite.linkLabel')}</Label>
+              <Input
+                aria-label={t('invite.linkLabel')}
+                id="team-invite-link"
+                onFocus={(event) => event.currentTarget.select()}
+                readOnly
+                value={inviteLink.url}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => onCopyInviteLink(inviteLink.url)}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                {copied ? (
+                  <Check aria-hidden="true" className="h-4 w-4" />
+                ) : (
+                  <Copy aria-hidden="true" className="h-4 w-4" />
+                )}
+                {copied ? t('invite.copied') : t('invite.copy')}
+              </Button>
+              <a
+                className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm font-medium text-text shadow-1 transition hover:border-accent"
+                href={whatsappHref(inviteLink.url)}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <MessageCircle aria-hidden="true" className="h-4 w-4" />
+                {t('invite.whatsapp')}
+              </a>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-lg border border-border bg-surface p-5 shadow-1">

@@ -1,16 +1,27 @@
 import { request } from '@playwright/test';
 
+// Toutes les routes LOURDES sont pré-compilées ici, AVANT que les specs démarrent,
+// pour qu'aucun test n'atterrisse sur une compilation on-demand `next dev` à froid
+// (cf. dette E2E : /tableau = 5440 modules, ~8-20s à compiler sous charge → timeouts
+// qui font flaky le test qui tombe dessus). On warm-up :
+//   • les pages publiques (/, /connexion) ;
+//   • les 10 routes (app) (toutes derrière l'auth → GET non authentifié = 307 vers
+//     /connexion, MAIS le 307 n'est émis qu'APRÈS compilation du segment côté serveur,
+//     donc le GET déclenche bien la compilation, c'est ce qu'on veut).
+// `/livraison` retiré : route inexistante (404) qui ne compilait rien d'utile.
 const WARM_UP_ROUTES = [
   '/',
   '/connexion',
   '/tableau',
-  '/livraison',
   '/commandes',
   '/produits',
   '/clients',
   '/finances',
   '/analyses',
   '/assistant',
+  '/livreurs',
+  '/boutiques',
+  '/parametres',
 ];
 
 async function sleep(ms: number) {
@@ -25,8 +36,11 @@ export default async function globalSetup() {
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        // On veut déclencher la compilation on-demand — le code HTTP importe peu.
-        await context.get(route, { timeout: 30_000 });
+        // On ATTEND la réponse complète : `get` ne résout qu'une fois la requête
+        // servie (suivi des redirections inclus), donc après la compilation
+        // on-demand du segment. Timeout 60s car un build à froid sous charge peut
+        // dépasser 20s (vu « GET /tableau 200 in 20356ms » dans les logs CI).
+        await context.get(route, { timeout: 60_000 });
         lastErr = undefined;
         break;
       } catch (err) {
