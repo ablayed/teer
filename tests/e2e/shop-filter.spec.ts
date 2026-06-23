@@ -297,4 +297,37 @@ test.describe('Phase 13 — filtre boutique', () => {
     await expect(page.locator('article')).toHaveCount(26);
     await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toHaveCount(1);
   });
+
+  test('Commandes : la recherche filtre localement avant la synchro URL debouncée', async ({
+    page,
+  }) => {
+    const { admin, email, merchantAccountId } = await createOwnerFixture('orders-search-local');
+    const shopA = await createShop(admin, merchantAccountId, `os-${Date.now()}.myshopify.com`);
+
+    await seedOrder(admin, {
+      createdAt: new Date().toISOString(),
+      customerName: 'Client Alpha Instant',
+      merchantAccountId,
+      shopId: shopA,
+    });
+    await seedOrder(admin, {
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+      customerName: 'Client Bravo Fond',
+      merchantAccountId,
+      shopId: shopA,
+    });
+
+    await signIn(page, email, '/commandes');
+
+    const searchBox = page.getByPlaceholder('Nom, telephone ou produit');
+    await searchBox.fill('Alpha');
+
+    expect(page.url()).not.toContain('q=alpha');
+    await expect(searchBox).toHaveValue('Alpha');
+    await expect(page.getByText('Client Alpha Instant')).toBeVisible();
+    await expect(page.getByText('Client Bravo Fond')).toHaveCount(0);
+
+    await page.waitForURL(/\/commandes\?.*q=alpha/i);
+    await expect(page.getByText('Client Alpha Instant')).toBeVisible();
+  });
 });
