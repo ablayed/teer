@@ -23,6 +23,8 @@ type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
 type OrdersWorkspaceProps = {
   activeView: OrderSavedViewId;
   canReassign: boolean;
+  dateFrom: string;
+  dateTo: string;
   drivers: ActiveDriverOption[];
   emptyValueLabel: string;
   initialHasMore: boolean;
@@ -32,6 +34,7 @@ type OrdersWorkspaceProps = {
   merchantName: string;
   reliabilityLabels: Record<ReliabilityTier, string>;
   searchQuery: string;
+  selectedShopId: string | null;
   views: OrderViewCount[];
   whatsappMissingPhoneLabel: string;
 };
@@ -39,6 +42,8 @@ type OrdersWorkspaceProps = {
 export function OrdersWorkspace({
   activeView,
   canReassign,
+  dateFrom,
+  dateTo,
   drivers,
   emptyValueLabel,
   initialHasMore,
@@ -48,6 +53,7 @@ export function OrdersWorkspace({
   merchantName,
   reliabilityLabels,
   searchQuery,
+  selectedShopId,
   views,
   whatsappMissingPhoneLabel,
 }: OrdersWorkspaceProps) {
@@ -107,6 +113,8 @@ export function OrdersWorkspace({
       <OrdersPageLoader
         activeView={displayedView}
         canReassign={canReassign}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
         drivers={driverOptions}
         emptyValueLabel={emptyValueLabel}
         initialHasMore={initialHasMore}
@@ -122,6 +130,7 @@ export function OrdersWorkspace({
         }}
         reliabilityLabels={reliabilityLabels}
         searchQuery={searchQuery}
+        selectedShopId={selectedShopId}
         whatsappMissingPhoneLabel={whatsappMissingPhoneLabel}
       />
     </div>

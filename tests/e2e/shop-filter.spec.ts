@@ -117,6 +117,48 @@ async function seedAppelerOrder(admin: AdminClient, merchantAccountId: string, s
   if (error) throw error;
 }
 
+async function seedOrder(
+  admin: AdminClient,
+  {
+    createdAt,
+    customerName,
+    merchantAccountId,
+    shopId,
+  }: {
+    createdAt: string;
+    customerName: string;
+    merchantAccountId: string;
+    shopId: string;
+  },
+) {
+  const { data: customer, error: customerError } = await admin
+    .from('customer')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      full_name: customerName,
+      phone: `+22177${Math.floor(Math.random() * 9000000 + 1000000)}`,
+    })
+    .select('id')
+    .single();
+  if (customerError || !customer) throw customerError ?? new Error('customer insert failed');
+
+  const { error } = await admin.from('orders').insert({
+    merchant_account_id: merchantAccountId,
+    shop_id: shopId,
+    customer_id: customer.id,
+    source: 'manual',
+    order_number: `SF-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    total_amount: 12000,
+    currency: 'XOF',
+    order_state: 'open',
+    call_state: 'to_call',
+    delivery_state: 'unassigned',
+    cash_state: 'not_due',
+    created_at: createdAt,
+  });
+  if (error) throw error;
+}
+
 async function createProduct(admin: AdminClient, merchantAccountId: string) {
   const { data } = await admin
     .from('product')
@@ -188,5 +230,45 @@ test.describe('Phase 13 — filtre boutique', () => {
     const shopSelect = page.getByRole('combobox', { name: 'Boutique' });
     await expect(shopSelect).toBeVisible();
     await expect(shopSelect.locator('option')).toContainText(['Sélectionner une boutique']);
+  });
+
+  test('Commandes : sélecteur boutique + période coexistent dans l URL et filtrent la liste', async ({
+    page,
+  }) => {
+    const { admin, email, merchantAccountId } = await createOwnerFixture('orders-filters');
+    const shopA = await createShop(admin, merchantAccountId, `oa-${Date.now()}.myshopify.com`);
+    const shopB = await createShop(admin, merchantAccountId, `ob-${Date.now()}.myshopify.com`);
+    await seedOrder(admin, {
+      createdAt: new Date().toISOString(),
+      customerName: 'Client Récent A',
+      merchantAccountId,
+      shopId: shopA,
+    });
+    await seedOrder(admin, {
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      customerName: 'Client Ancien A',
+      merchantAccountId,
+      shopId: shopA,
+    });
+    await seedOrder(admin, {
+      createdAt: new Date().toISOString(),
+      customerName: 'Client Récent B',
+      merchantAccountId,
+      shopId: shopB,
+    });
+
+    await signIn(page, email, '/commandes');
+
+    const selector = page.getByRole('navigation', { name: 'Filtrer les commandes par boutique' });
+    await expect(selector).toBeVisible();
+    await selector.getByRole('link', { name: /oa-.*\.myshopify\.com/ }).click();
+    await page.waitForURL(`**/commandes?**shop=${shopA}**`);
+
+    await page.getByRole('link', { name: "Aujourd'hui" }).click();
+    await page.waitForURL(`**/commandes?**shop=${shopA}**period=today**`);
+
+    await expect(page.getByText('Client Récent A')).toBeVisible();
+    await expect(page.getByText('Client Ancien A')).toHaveCount(0);
+    await expect(page.getByText('Client Récent B')).toHaveCount(0);
   });
 });

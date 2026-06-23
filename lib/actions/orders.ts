@@ -5,6 +5,8 @@ import { performTransitionForContext } from '@/lib/actions/transitions';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import {
   type OrderSavedViewId,
+  matchesOrderSavedView,
+  orderQueueDate,
   orderSavedViewIds,
   parseOrderSavedViewId,
 } from '@/lib/domain/order-saved-views';
@@ -24,6 +26,7 @@ import {
   callOutcomes,
   logCallInputSchema,
 } from '@/lib/orders/call-log-validation';
+import { filterOrdersBySearch } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
@@ -100,12 +103,15 @@ export type OrdersPageData = {
   orders: OrderListItem[];
   reliabilityTiers: Record<string, ReliabilityTier>;
   search: string;
+  totalCount: number;
   viewCounts: OrdersViewCounts;
 };
 
-type PaginatedOrderRpcRow =
-  Database['public']['Functions']['list_orders_paginated']['Returns'][number];
-type OrdersViewCountsRow = Database['public']['Functions']['orders_view_counts']['Returns'][number];
+type OrdersPageFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+  shopId?: string | null;
+};
 
 export type OrderTransitionTimelineEvent = {
   id: string;
@@ -201,43 +207,6 @@ function toCallOutcome(value: string): CallOutcome {
   return isCallOutcome(value) ? value : 'SANS_REPONSE';
 }
 
-function mapPaginatedOrderRow(order: PaginatedOrderRpcRow, role: TeamRole): OrderListItem {
-  const mapped: Omit<OrderListItem, 'allowedActions'> = {
-    id: order.id,
-    customer_id: order.customer_id,
-    order_number: order.order_number,
-    total_amount: order.total_amount,
-    currency: order.currency,
-    cod_status: order.cod_status,
-    assigned_driver_id: order.assigned_driver_id,
-    order_state: order.order_state,
-    call_state: order.call_state,
-    delivery_state: order.delivery_state,
-    cash_state: order.cash_state,
-    items_summary: order.items_summary,
-    shipping_address: order.shipping_address,
-    created_at: order.created_at,
-    created_at_shopify: order.created_at_shopify,
-    next_contact_at: order.next_contact_at,
-    scheduled_for: order.scheduled_for,
-    source: order.source,
-    sort_at: order.sort_at,
-    next_action_at: order.next_action_at,
-    customer:
-      order.customer_full_name || order.customer_phone
-        ? {
-            full_name: order.customer_full_name,
-            phone: order.customer_phone,
-          }
-        : null,
-  };
-
-  return {
-    ...mapped,
-    allowedActions: allowedActionsForOrderRow(mapped, role),
-  };
-}
-
 function buildNextCursor(
   orders: OrderListItem[],
   activeView: OrderSavedViewId,
@@ -265,20 +234,116 @@ function emptyOrdersViewCounts(): OrdersViewCounts {
   };
 }
 
-function mapOrdersViewCounts(row: OrdersViewCountsRow | null | undefined): OrdersViewCounts {
-  if (!row) {
-    return emptyOrdersViewCounts();
+function orderMatchesPeriod(
+  order: Pick<OrderListItem, 'created_at' | 'created_at_shopify'>,
+  from: string | undefined,
+  to: string | undefined,
+) {
+  if (!from || !to) {
+    return true;
   }
 
+  const referenceDate = new Date(orderQueueDate(order));
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+
+  if (
+    Number.isNaN(referenceDate.getTime()) ||
+    Number.isNaN(fromDate.getTime()) ||
+    Number.isNaN(toDate.getTime())
+  ) {
+    return true;
+  }
+
+  return referenceDate >= fromDate && referenceDate <= toDate;
+}
+
+function paginateOrders(
+  orders: OrderListItem[],
+  activeView: OrderSavedViewId,
+  cursor: OrderListCursor | null,
+) {
+  const sorted = [...orders].sort((left, right) => {
+    if (activeView === 'tentee-a-rappeler') {
+      const leftKey = left.next_action_at ?? '';
+      const rightKey = right.next_action_at ?? '';
+      const dateOrder = leftKey.localeCompare(rightKey);
+      return dateOrder !== 0 ? dateOrder : left.id.localeCompare(right.id);
+    }
+
+    const leftKey = left.sort_at ?? orderQueueDate(left);
+    const rightKey = right.sort_at ?? orderQueueDate(right);
+    const dateOrder = rightKey.localeCompare(leftKey);
+    return dateOrder !== 0 ? dateOrder : right.id.localeCompare(left.id);
+  });
+
+  const startIndex = cursor
+    ? sorted.findIndex((order) => {
+        const sort = activeView === 'tentee-a-rappeler' ? order.next_action_at : order.sort_at;
+        return order.id === cursor.id && sort === cursor.sort;
+      }) + 1
+    : 0;
+
+  const page = sorted.slice(Math.max(0, startIndex), Math.max(0, startIndex) + ORDERS_PAGE_SIZE);
+  const hasMore = Math.max(0, startIndex) + ORDERS_PAGE_SIZE < sorted.length;
+
   return {
-    toutes: row.toutes,
-    'a-appeler': row.a_appeler,
-    'tentee-a-rappeler': row.tentee_a_rappeler,
-    confirmee: row.confirmee,
-    'en-livraison': row.en_livraison,
-    valide: row.valide,
-    'annulees-retours': row.annulees_retours,
+    hasMore,
+    nextCursor: hasMore ? buildNextCursor(page, activeView) : null,
+    orders: page,
   };
+}
+
+async function listOrdersForPageData({
+  filters,
+  member,
+  supabase,
+}: {
+  filters: OrdersPageFilters;
+  member: CurrentMember;
+  supabase: SupabaseServerClient;
+}): Promise<OrderListItem[]> {
+  const baseQuery = () => {
+    let query = supabase
+      .from('orders')
+      .select(
+        'id, customer_id, order_number, total_amount, currency, cod_status, order_state, call_state, delivery_state, cash_state, assigned_driver_id, items_summary, shipping_address, created_at, created_at_shopify, next_contact_at, scheduled_for, source, sort_at, next_action_at, customer:customer_id(full_name, phone)',
+      )
+      .eq('merchant_account_id', member.merchantAccountId)
+      .order('sort_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: false });
+
+    if (filters.shopId) {
+      query = query.eq('shop_id', filters.shopId);
+    }
+
+    return query;
+  };
+
+  const rows: Array<Omit<OrderListItem, 'allowedActions'>> = [];
+  const batchSize = 500;
+
+  for (let offset = 0; ; offset += batchSize) {
+    const { data, error } = await baseQuery().range(offset, offset + batchSize - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const batch = (data ?? []) as Array<Omit<OrderListItem, 'allowedActions'>>;
+    rows.push(...batch);
+
+    if (batch.length < batchSize) {
+      break;
+    }
+  }
+
+  return rows
+    .filter((order) => orderMatchesPeriod(order, filters.dateFrom, filters.dateTo))
+    .map((order) => ({
+      ...order,
+      allowedActions: allowedActionsForOrderRow(order, member.role),
+    }));
 }
 
 function isReliabilityTier(value: string | null): value is ReliabilityTier {
@@ -320,51 +385,34 @@ async function getReliabilityTiersForOrders(
 async function fetchOrdersPageData({
   activeView,
   cursor,
+  filters,
   member,
   search,
   supabase,
 }: {
   activeView: OrderSavedViewId;
   cursor: OrderListCursor | null;
+  filters: OrdersPageFilters;
   member: CurrentMember;
   search: string;
   supabase: SupabaseServerClient;
 }): Promise<OrdersPageData> {
-  const [ordersResult, countsResult] = await Promise.all([
-    supabase.rpc('list_orders_paginated', {
-      p_cursor_id: cursor?.id ?? undefined,
-      p_cursor_sort: cursor?.sort ?? undefined,
-      p_limit: ORDERS_PAGE_SIZE + 1,
-      p_merchant_id: member.merchantAccountId,
-      p_search: search || undefined,
-      p_view: activeView,
-    }),
-    cursor
-      ? Promise.resolve({ data: null, error: null })
-      : supabase.rpc('orders_view_counts', {
-          p_merchant_id: member.merchantAccountId,
-          p_search: search || undefined,
-        }),
-  ]);
-
-  if (ordersResult.error) {
-    throw ordersResult.error;
-  }
-
-  if (countsResult.error) {
-    throw countsResult.error;
-  }
-
-  const rows = ordersResult.data ?? [];
-  const hasMore = rows.length > ORDERS_PAGE_SIZE;
-  const visibleRows = hasMore ? rows.slice(0, ORDERS_PAGE_SIZE) : rows;
-  const orders = visibleRows.map((order) => mapPaginatedOrderRow(order, member.role));
+  const scopedOrders = await listOrdersForPageData({ filters, member, supabase });
+  const filteredOrders = filterOrdersBySearch(scopedOrders, search);
+  const viewCounts = cursor
+    ? emptyOrdersViewCounts()
+    : orderSavedViewIds.reduce<OrdersViewCounts>((acc, viewId) => {
+        acc[viewId] = filteredOrders.filter((order) => matchesOrderSavedView(order, viewId)).length;
+        return acc;
+      }, emptyOrdersViewCounts());
+  const ordersForView = filteredOrders.filter((order) => matchesOrderSavedView(order, activeView));
+  const paginated = paginateOrders(ordersForView, activeView, cursor);
   const reliabilityTiers =
     activeView === 'a-appeler'
       ? await getReliabilityTiersForOrders(
           supabase,
           member.merchantAccountId,
-          orders
+          paginated.orders
             .map((order) => order.customer_id)
             .filter((customerId): customerId is string => Boolean(customerId)),
         )
@@ -372,12 +420,13 @@ async function fetchOrdersPageData({
 
   return {
     activeView,
-    hasMore,
-    nextCursor: hasMore ? buildNextCursor(orders, activeView) : null,
-    orders,
+    hasMore: paginated.hasMore,
+    nextCursor: paginated.nextCursor,
+    orders: paginated.orders,
     reliabilityTiers,
     search,
-    viewCounts: cursor ? emptyOrdersViewCounts() : mapOrdersViewCounts(countsResult.data?.[0]),
+    totalCount: cursor ? 0 : scopedOrders.length,
+    viewCounts,
   };
 }
 
@@ -549,11 +598,17 @@ export async function getOrders({
 
 export async function getOrdersPageData({
   cursor = null,
+  dateFrom,
+  dateTo,
   search = '',
+  shopId = null,
   view,
 }: {
   cursor?: OrderListCursor | null;
+  dateFrom?: string;
+  dateTo?: string;
   search?: string;
+  shopId?: string | null;
   view?: string;
 } = {}): Promise<OrdersPageData> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
@@ -567,6 +622,7 @@ export async function getOrdersPageData({
       orders: [],
       reliabilityTiers: {},
       search,
+      totalCount: 0,
       viewCounts: emptyOrdersViewCounts(),
     };
   }
@@ -574,6 +630,7 @@ export async function getOrdersPageData({
   return fetchOrdersPageData({
     activeView: parseOrderSavedViewId(view),
     cursor,
+    filters: { dateFrom, dateTo, shopId },
     member,
     search,
     supabase,
@@ -590,7 +647,10 @@ export const loadMoreOrdersAction = requireRole('owner', 'manager', 'agent')
           sort: z.string().trim().min(1),
         })
         .nullable(),
+      dateFrom: z.string().datetime().optional(),
+      dateTo: z.string().datetime().optional(),
       search: z.string().default(''),
+      shopId: z.string().uuid().nullable().optional(),
       view: z.enum(orderSavedViewIds).default('toutes'),
     }),
   )
@@ -598,6 +658,11 @@ export const loadMoreOrdersAction = requireRole('owner', 'manager', 'agent')
     const data = await fetchOrdersPageData({
       activeView: parsedInput.view,
       cursor: parsedInput.cursor,
+      filters: {
+        dateFrom: parsedInput.dateFrom,
+        dateTo: parsedInput.dateTo,
+        shopId: parsedInput.shopId ?? null,
+      },
       member: {
         merchantAccountId: ctx.member.merchantAccountId,
         role: ctx.member.role,

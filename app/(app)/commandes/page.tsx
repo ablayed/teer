@@ -2,6 +2,8 @@ import { NewOrderForm } from '@/components/orders/new-order-form';
 import { OrdersSearchInput } from '@/components/orders/orders-search-input';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
+import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
+import { PeriodControls } from '@/components/ui/period-controls';
 import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantAccount, getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getOrdersPageData } from '@/lib/actions/orders';
@@ -9,7 +11,8 @@ import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderSavedViews } from '@/lib/domain/order-saved-views';
 import { normalizeOrderSearch } from '@/lib/orders/search';
-import { listShopFilterOptions } from '@/lib/shops/shop-filter';
+import { resolvePeriodRange } from '@/lib/periods/date-range';
+import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { AlertCircle, ArrowRight, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -17,10 +20,14 @@ import Link from 'next/link';
 
 type CommandesPageProps = {
   searchParams: Promise<{
+    from?: string;
+    period?: string;
     q?: string;
+    shop?: string;
     vue?: string;
     sync_error?: string;
     synced?: string;
+    to?: string;
   }>;
 };
 
@@ -29,15 +36,6 @@ type SyncErrorCode = (typeof syncErrorCodes)[number];
 
 function isSyncErrorCode(value: string): value is SyncErrorCode {
   return syncErrorCodes.includes(value as SyncErrorCode);
-}
-
-// Compte total des commandes du marchand (toutes vues, hors recherche), scopé
-// par RLS. Sert uniquement à distinguer « compte vide » de « recherche sans
-// résultat » ; on l'évite quand la recherche est vide (viewCounts.toutes suffit).
-async function countAllOrders(): Promise<number> {
-  const supabase = await createSupabaseServerClient();
-  const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true });
-  return count ?? 0;
 }
 
 // Phase 11 : la réassignation inline dans la liste est réservée owner/manager
@@ -59,15 +57,33 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const clientsT = await getTranslations('clients');
   const params = await searchParams;
   const search = normalizeOrderSearch(params.q);
-  const [pageData, shopConnection, merchant, productCatalog, drivers, canReassign] =
-    await Promise.all([
-      getOrdersPageData({ search, view: params.vue }),
-      getShopConnection(),
-      getMerchantAccount(),
-      getProductCatalogPageData(),
-      getActiveDrivers(),
-      canReassignDrivers(),
-    ]);
+  const { activePeriod, from, to } = resolvePeriodRange({
+    allowedPresets: ['today', 'yesterday', '7j', '30j'],
+    defaultPreset: '30j',
+    from: params.from,
+    period: params.period,
+    to: params.to,
+  });
+  const [shopConnection, merchant, productCatalog, drivers, canReassign] = await Promise.all([
+    getShopConnection(),
+    getMerchantAccount(),
+    getProductCatalogPageData(),
+    getActiveDrivers(),
+    canReassignDrivers(),
+  ]);
+  const shops = merchant
+    ? await listShopFilterOptions(await createSupabaseServerClient(), merchant.id)
+    : [];
+  const selectedShopId = normalizeShopParam(params.shop, shops);
+  const [pageData] = await Promise.all([
+    getOrdersPageData({
+      dateFrom: from.toISOString(),
+      dateTo: to.toISOString(),
+      search,
+      shopId: selectedShopId,
+      view: params.vue,
+    }),
+  ]);
   const activeView = pageData.activeView;
   const productOptions = productCatalog.ok
     ? productCatalog.products
@@ -81,9 +97,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
 
   // Phase 13 : la création manuelle demande la boutique quand le marchand en a
   // plusieurs (sinon rattachement automatique à l'unique boutique).
-  const shopOptions = merchant
-    ? await listShopFilterOptions(await createSupabaseServerClient(), merchant.id)
-    : [];
+  const shopOptions = shops;
 
   const viewCounts = orderSavedViews.map((view) => ({
     id: view.id,
@@ -97,7 +111,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
     watch: clientsT('tiers.watch'),
   };
   const searchedTotal = pageData.viewCounts.toutes;
-  const totalOrders = search.length > 0 ? await countAllOrders() : searchedTotal;
+  const totalOrders = pageData.totalCount;
   const visibleCount = pageData.viewCounts[activeView];
   const syncedCount = params.synced ? Number.parseInt(params.synced, 10) : null;
   const syncError =
@@ -134,12 +148,59 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         </div>
       ) : null}
 
-      <OrdersSearchInput initialValue={search} />
+      <div className="flex flex-col gap-3">
+        <OrdersSearchInput initialValue={search} />
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <PeriodControls
+            activePeriod={activePeriod}
+            from={from}
+            labels={{
+              apply: t('periods.custom'),
+              from: t('periods.from'),
+              presets: {
+                today: t('periods.today'),
+                yesterday: t('periods.yesterday'),
+                '7j': t('periods.7j'),
+                '30j': t('periods.30j'),
+                '90j': t('periods.90j'),
+              },
+              to: t('periods.to'),
+            }}
+            pathname="/commandes"
+            presets={['today', 'yesterday', '7j', '30j']}
+            searchParams={{
+              period: params.period,
+              q: params.q,
+              shop: params.shop,
+              vue: params.vue,
+            }}
+            to={to}
+          />
+          <ShopFilterSelector
+            allLabel={t('shops.all')}
+            ariaLabel={t('shops.ariaLabel')}
+            label={t('shops.label')}
+            pathname="/commandes"
+            searchParams={{
+              from: params.from,
+              period: params.period,
+              q: params.q,
+              shop: params.shop,
+              to: params.to,
+              vue: params.vue,
+            }}
+            selectedShopId={selectedShopId}
+            shops={shops}
+          />
+        </div>
+      </div>
 
       {showWorkspace ? (
         <OrdersWorkspace
           activeView={activeView}
           canReassign={canReassign}
+          dateFrom={from.toISOString()}
+          dateTo={to.toISOString()}
           drivers={drivers}
           emptyValueLabel={t('table.emptyValue')}
           initialHasMore={pageData.hasMore}
@@ -149,6 +210,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
           merchantName={merchant?.name ?? 'Tëër'}
           reliabilityLabels={reliabilityLabels}
           searchQuery={search}
+          selectedShopId={selectedShopId}
           views={viewCounts}
           whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}
         />
