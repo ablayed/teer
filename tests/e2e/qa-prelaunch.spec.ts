@@ -359,23 +359,23 @@ async function driveToOutForDelivery(
   }
 }
 
+// Attente auto-retry (expect.poll) plutôt qu'un poll à durée fixe : retente avec
+// backoff jusqu'au timeout et émet un diff lisible à l'échec.
 async function waitForOrderStatus(
   admin: AdminClient,
   orderId: string,
   status: string,
-  timeoutMs = 15_000,
+  timeoutMs = 30_000,
 ) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const { data, error } = await admin
-      .from('orders')
-      .select('cod_status')
-      .eq('id', orderId)
-      .single();
-    if (!error && data?.cod_status === status) return;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error(`Statut ${status} non observe pour la commande ${orderId}.`);
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin.from('orders').select('cod_status').eq('id', orderId).single();
+        return data?.cod_status ?? null;
+      },
+      { timeout: timeoutMs, intervals: [250, 500, 1000] },
+    )
+    .toBe(status);
 }
 
 async function cleanupUsers(admin: AdminClient, userIds: string[]) {

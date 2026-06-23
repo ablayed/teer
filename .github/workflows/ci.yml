@@ -141,8 +141,36 @@ jobs:
       # La cible iphone-14 du playwright.config tourne sous webkit ; chromium seul faisait
       # échouer tous les scénarios iphone-14 (Executable doesn't exist). On installe les deux.
       - run: pnpm exec playwright install --with-deps chromium webkit
+      # Toute la suite tourne désormais sur un VRAI build de prod (`next build` +
+      # `next start` via E2E_PROD_BUILD=1), sur les 3 cibles. But : supprimer la
+      # compilation on-demand `next dev` qui rendait des routes lourdes flaky sous
+      # charge (analytics:456, orders-transitions:539…). Pattern repris de e2e-prod.yml.
+      - name: Bake test env into production build
+        run: |
+          {
+            echo "SUPABASE_URL=${SUPABASE_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
+            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
+            echo "RESEND_API_KEY=test-resend-api-key"
+            echo "NEXT_PUBLIC_DISABLE_UIR=1"
+          } > .env.production
+          cp .env.production .env.test
+      # NEXT_PUBLIC_DISABLE_UIR=1 inliné ICI dans le bundle middleware/edge → la CSP du
+      # build de test n'émet pas `upgrade-insecure-requests` (sinon WebKit/iphone-14
+      # blanchit sur http://localhost). En prod réelle ce flag est absent → UIR émis.
+      - name: Build production
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: test-resend-api-key
+          NEXT_PUBLIC_DISABLE_UIR: '1'
       - run: pnpm test:e2e
         env:
+          E2E_PROD_BUILD: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

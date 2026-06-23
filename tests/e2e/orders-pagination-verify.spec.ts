@@ -224,12 +224,14 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
       scheduled_for: null,
     });
   }
-  // 2 × à livrer aujourd'hui (assigned + scheduled today → pas confirmée)
+  // 2 × en cours de livraison (out_for_delivery + driver). Depuis 0062, seul
+  // out_for_delivery relève de la vue « En cours de livraison » (assigned reste en
+  // Programmer) : on seede donc le vrai état sorti-en-livraison pour peupler cette vue.
   for (let i = 0; i < 2; i++) {
     push({
       order_state: 'open',
       call_state: 'validated',
-      delivery_state: 'assigned',
+      delivery_state: 'out_for_delivery',
       cash_state: 'not_due',
       scheduled_for: todayIso,
       assigned_driver_id: seedDriverId,
@@ -295,9 +297,11 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     await expect(page.getByRole('button', { name: /^Toutes \(43\)$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^À appeler \(30\)$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Tentée \/ À rappeler \(2\)$/ })).toBeVisible();
-    // « Programmer » garde l'id confirmee (open ∧ validated ∧ delivery ∈ {unassigned,scheduled}).
+    // « Programmer » (id confirmee) : open ∧ validated ∧ delivery ∈ {unassigned, scheduled,
+    // assigned} → les 3 commandes confirmées non assignées.
     await expect(page.getByRole('button', { name: /^Programmer \(3\)$/ })).toBeVisible();
-    // delivery ∈ {scheduled,assigned,out_for_delivery} → les 2 commandes assignées.
+    // En cours de livraison = delivery = out_for_delivery SEUL (0062) → les 2 commandes
+    // sorties en livraison.
     await expect(page.getByRole('button', { name: /^En cours de livraison \(2\)$/ })).toBeVisible();
     // order_state=completed → les 2 commandes livrées/encaissées.
     await expect(page.getByRole('button', { name: /^Validé \(2\)$/ })).toBeVisible();
