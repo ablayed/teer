@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { assertLocalSupabase } from './helpers/assert-local-supabase';
 
 // Playwright charge .env.test dans process.env (cf. playwright.config). Le serveur dev verifie
 // l'HMAC avec process.env.SHOPIFY_API_SECRET ; on signe avec la meme valeur (?? '').
@@ -12,6 +13,7 @@ const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
 type AdminClient = SupabaseClient;
 
 function adminClient(): AdminClient {
+  assertLocalSupabase(supabaseUrl);
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
