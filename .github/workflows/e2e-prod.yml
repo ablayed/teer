@@ -74,10 +74,14 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
             echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
             echo "RESEND_API_KEY=test-resend-api-key"
+            echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
           cp .env.production .env.test
       # Build de PROD : les NEXT_PUBLIC_* (Supabase local) sont inlinés ici. C'est ce
       # build que `next start` (webServer Playwright en mode E2E_PROD_BUILD=1) servira.
+      # NEXT_PUBLIC_DISABLE_UIR=1 est inliné ICI dans le bundle middleware/edge → la CSP
+      # du build de test n'émet pas `upgrade-insecure-requests` (sinon WebKit blanchit sur
+      # http://localhost). En prod réelle ce flag est absent → UIR émis à l'identique.
       - name: Build production
         run: pnpm build
         env:
@@ -85,6 +89,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+          NEXT_PUBLIC_DISABLE_UIR: '1'
       # Specs PROD-ONLY : issue #3 (commande créée visible) + pagination keyset +
       # LOT PERF #4 (nav-perf : feedback tap / pending / squelette loading.tsx — le
       # prefetch et le Router Cache `staleTimes` ne s'exercent qu'en build de prod).
