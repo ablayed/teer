@@ -2,11 +2,16 @@
  * Non-régression issue #3 — commande manuelle invisible après création (PROD-ONLY).
  *
  * ⚠️ Ce bug ne se reproduit QUE sur un build de production (`next build && next start`),
- * jamais en `next dev`. La cause est le Router Cache CLIENT de Next.js (qui ne met en
- * cache les payloads RSC qu'en build de prod) : en venant d'une vue filtrée, l'entrée
- * « /commandes nu » mise en cache était périmée, et `router.replace('/commandes')`
- * la servait avant que `router.refresh()` ne l'invalide → la commande tout juste créée
- * restait invisible. Le correctif inverse l'ordre (refresh AVANT replace).
+ * jamais en `next dev`. Symptôme : en créant depuis une vue filtrée, la commande tout
+ * juste créée restait invisible (la vue filtrée périmée restait affichée).
+ *
+ * Historique : un 1er correctif client (router.refresh() AVANT router.replace()) a été
+ * remplacé car il restait racy en build de prod — trois navigations concurrentes (le
+ * refresh implicite de revalidatePath + router.refresh() + router.replace()), élargies
+ * par le router.replace du debounce de recherche → ~20 % d'échec sur chromium.
+ * Correctif actuel : redirection 100 % SERVEUR dans createManualOrderAction
+ * (redirect '/commandes?created=1', RedirectType.replace) — UNE seule navigation
+ * déterministe vers « Toutes » fraîche ; la bannière de succès est rendue via ?created=1.
  *
  * Conséquence pour la CI : le webServer Playwright tourne en `pnpm dev` (cf.
  * playwright.config.ts). Lancé contre le dev, CE TEST SERAIT VERT MÊME SUR LE CODE BUGUÉ
@@ -176,12 +181,19 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     await page.getByLabel('Prix unitaire (FCFA)').fill('14500');
     await page.getByRole('button', { name: 'Créer la commande' }).click();
 
+    // Le correctif (Paradigm A, PR #17) : après création, NewOrderForm notifie
+    // OrdersWorkspace qui relit getOrdersPageData(vue=toutes) côté serveur et réinjecte
+    // la liste FRAÎCHE dans son state — sans navigation ni router.refresh(). La bannière
+    // de succès et la bascule sur « Toutes » sont pilotées par le state client, donc
+    // indépendantes du Router Cache / RSC périmé (cause des ~20 % d'invisibilité).
     await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 10_000 });
 
-    // Le correctif (refresh AVANT replace) ramène sur « Toutes » avec un rendu frais :
-    // la commande tout juste créée doit apparaître vite. Sur l'ancien code (replace
-    // puis refresh), l'entrée cachée périmée était servie → ceci échouait.
-    await expect(page).toHaveURL(/\/commandes(\?.*)?$/);
+    // Vue « Toutes » fraîche : la commande tout juste créée est visible ET le compteur
+    // « Toutes » passe à (2). Sur le bug, la vue filtrée périmée restait affichée → la
+    // commande restait invisible et le compteur figé à (1).
+    await expect(page.getByRole('button', { name: /^Toutes \(2\)$/ })).toBeVisible({
+      timeout: 6_000,
+    });
     await expect(page.getByText('Awa Vue Filtree')).toBeVisible({ timeout: 6_000 });
   } finally {
     await admin.auth.admin.deleteUser(userId);

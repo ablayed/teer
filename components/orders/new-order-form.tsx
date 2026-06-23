@@ -1,5 +1,6 @@
 'use client';
 
+import { useOrdersBoard } from '@/components/orders/orders-board-context';
 import { createManualOrderAction } from '@/lib/actions/orders';
 import { createProductAction } from '@/lib/actions/products';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
@@ -73,6 +74,7 @@ function newLine(): OrderLine {
 }
 
 export function NewOrderForm({ products, shops }: NewOrderFormProps) {
+  const board = useOrdersBoard();
   const router = useRouter();
   const createOrder = useAction(createManualOrderAction);
   const createProduct = useAction(createProductAction);
@@ -115,7 +117,6 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
     if (!result) return;
 
     if (result.ok) {
-      setFeedback({ message: 'Commande créée.', kind: 'success' });
       setCustomerName('');
       setPhone('');
       setSource('manual');
@@ -123,21 +124,26 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
       setLines([newLine()]);
       setAddress('');
       setFieldErrors({});
+      // Bannière de succès portée par CE composant (toujours monté), donc visible même
+      // quand la liste (OrdersWorkspace) n'est pas montée (0 commande préalable). Rendue
+      // hors du dialogue → persiste après sa fermeture.
+      setFeedback({ message: 'Commande créée.', kind: 'success' });
       setIsOpen(false);
-      // On revient sur la vue « Toutes » (/commandes nu) car la commande créée
-      // (call_state=to_call) n'apparaît pas dans une vue filtrée (ex. « À livrer
-      // aujourd'hui »). ORDRE CRITIQUE (issue #3) : refresh() AVANT replace().
-      // refresh() invalide TOUT le Router Cache client ; la navigation qui suit
-      // refait alors un rendu serveur frais. Inversé (replace puis refresh), en
-      // build de prod la navigation servait l'entrée bare /commandes cachée et
-      // périmée → la commande tout juste créée restait invisible.
-      router.refresh();
-      router.replace('/commandes');
+      // Paradigm A (PR #17) : le workspace relit la liste FRAÎCHE côté serveur et la
+      // réinjecte dans son state (cf. orders-board-context). PAS de router.refresh()/
+      // replace() — leur re-render RSC à travers ce composant client était racé (~20 %
+      // de commandes invisibles en build prod). Fallback (workspace non monté = aucune
+      // commande préalable) : refresh serveur simple, sans risque de vue filtrée périmée
+      // puisqu'on est alors sur « Toutes » vide.
+      const handled = board?.notifyOrderCreated(result.orderId) ?? false;
+      if (!handled) {
+        router.refresh();
+      }
       return;
     }
 
     setFeedback({ message: result.message, kind: 'error' });
-  }, [createOrder.result.data, router]);
+  }, [createOrder.result.data, board, router]);
 
   useEffect(() => {
     if (createOrder.result.validationErrors) {
