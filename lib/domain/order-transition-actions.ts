@@ -134,7 +134,7 @@ type TransitionCatalogItem = {
 export const transitionCatalog: readonly TransitionCatalogItem[] = [
   {
     action: 'journaliser_appel',
-    label: 'Journaliser une tentative',
+    label: 'À rappeler',
     roles: ['owner', 'manager', 'agent'],
     target: 'TENTEE',
   },

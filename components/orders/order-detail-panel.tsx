@@ -14,11 +14,7 @@ import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
-import {
-  buildWhatsAppConfirmationUrl,
-  buildWhatsAppDispatchUrl,
-  firstName,
-} from '@/lib/whatsapp/link';
+import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
 import { ArrowLeft, MapPin, Pencil, ShoppingBag, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -155,16 +151,6 @@ export function OrderDetailPanel({
     shopName,
     totalAmount: order.total_amount,
   });
-  const dispatchWhatsAppUrl = buildWhatsAppDispatchUrl({
-    address: addressForWhatsApp,
-    currency: order.currency,
-    customerFirstName: order.customer?.full_name ?? null,
-    itemsSummary: order.items_summary,
-    orderNumber: order.order_number,
-    phone,
-    shopName,
-    totalAmount: order.total_amount,
-  });
   const isCancelled = order.order_state === 'cancelled';
   // Lot B : raisons d'annulation multiples (libellés FR), fallback legacy.
   const cancelReasonsDisplay = (order.cancel_reasons ?? [])
@@ -180,7 +166,6 @@ export function OrderDetailPanel({
       allowedActions={order.allowedActions}
       canEditAmounts={canEditAmounts}
       deliveryState={order.delivery_state}
-      dispatchWhatsAppUrl={dispatchWhatsAppUrl}
       drivers={drivers}
       orderId={order.id}
       phone={phone}
