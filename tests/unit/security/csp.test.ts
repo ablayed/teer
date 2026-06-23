@@ -1,5 +1,5 @@
 import { buildCspHeader, cspRegimeForPath } from '@/lib/security/csp';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('cspRegimeForPath', () => {
   it('classe les pages publiques prérendues en régime « static »', () => {
@@ -91,5 +91,32 @@ describe('buildCspHeader — régime static (pages publiques)', () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'self'");
+  });
+});
+
+describe('buildCspHeader — flag NEXT_PUBLIC_DISABLE_UIR (build de test E2E)', () => {
+  // buildCspHeader lit process.env.NEXT_PUBLIC_DISABLE_UIR à l'appel : on le pilote
+  // par cas via vi.stubEnv et on restaure tout en afterEach (pas de fuite).
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('NON-RÉGRESSION PROD : prod + flag absent → UIR PRÉSENT', () => {
+    vi.stubEnv('NEXT_PUBLIC_DISABLE_UIR', undefined);
+    const csp = buildCspHeader({ regime: 'app', isDev: false, nonce: 'N' });
+    expect(csp).toContain('upgrade-insecure-requests');
+  });
+
+  it("build de test : prod + NEXT_PUBLIC_DISABLE_UIR='1' → UIR ABSENT", () => {
+    vi.stubEnv('NEXT_PUBLIC_DISABLE_UIR', '1');
+    const csp = buildCspHeader({ regime: 'app', isDev: false, nonce: 'N' });
+    expect(csp).not.toContain('upgrade-insecure-requests');
+  });
+
+  it('dev : pas d’UIR, indépendamment du flag (comportement existant inchangé)', () => {
+    vi.stubEnv('NEXT_PUBLIC_DISABLE_UIR', undefined);
+    expect(buildCspHeader({ regime: 'app', isDev: true, nonce: 'N' })).not.toContain(
+      'upgrade-insecure-requests',
+    );
   });
 });
