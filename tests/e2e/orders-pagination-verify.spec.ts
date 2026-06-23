@@ -316,8 +316,8 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toHaveCount(1);
 
     // 4) Recherche par nom + produit (« alpha ») → la seule commande spéciale.
-    // La saisie déclenche un router.replace(?q=alpha) (debounce 180ms) : on attend
-    // la navigation avant d'affirmer le filtrage (re-render serveur + reset loader).
+    // Le filtrage local réagit avant la navigation, puis l'URL debouncée rattrape
+    // l'état courant et le serveur recharge le dataset global correspondant.
     const searchBox = page.getByPlaceholder('Nom, telephone ou produit');
     await searchBox.fill('alpha');
     await page.waitForURL(/[?&]q=alpha/);

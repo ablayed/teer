@@ -1,6 +1,7 @@
 'use client';
 
 import { OrdersPageLoader } from '@/components/orders/orders-page-loader';
+import { OrdersSearchInput } from '@/components/orders/orders-search-input';
 import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import type { ActiveDriverOption } from '@/lib/actions/drivers';
@@ -9,6 +10,7 @@ import {
   type OrderSavedViewId,
   applyOrderSavedViewCountTransition,
 } from '@/lib/domain/order-saved-views';
+import { normalizeOrderSearch } from '@/lib/orders/search';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 
@@ -39,6 +41,8 @@ type OrdersWorkspaceProps = {
   whatsappMissingPhoneLabel: string;
 };
 
+const SEARCH_DEBOUNCE_MS = 280;
+
 export function OrdersWorkspace({
   activeView,
   canReassign,
@@ -62,10 +66,12 @@ export function OrdersWorkspace({
   const searchParams = useSearchParams();
   const [pendingViewId, setPendingViewId] = useState<OrderSavedViewId | null>(null);
   const [displayedViews, setDisplayedViews] = useState(views);
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const [isTransitionPending, startTransition] = useTransition();
+  const [isSearchPending, startSearchTransition] = useTransition();
 
   const displayedView = pendingViewId ?? activeView;
-  const isBusy = isTransitionPending || pendingViewId !== null;
+  const isBusy = isTransitionPending || isSearchPending || pendingViewId !== null;
   const driverOptions: DriverOption[] = drivers.map((driver) => ({
     id: driver.id,
     fullName: driver.fullName,
@@ -80,6 +86,50 @@ export function OrdersWorkspace({
   useEffect(() => {
     setDisplayedViews(views);
   }, [views]);
+
+  useEffect(() => {
+    if (normalizeOrderSearch(searchQuery) === normalizeOrderSearch(localSearchQuery)) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    const isSearchFieldFocused =
+      activeElement instanceof HTMLInputElement && activeElement.type === 'search';
+
+    if (isSearchFieldFocused) {
+      return;
+    }
+
+    setLocalSearchQuery(searchQuery);
+  }, [localSearchQuery, searchQuery]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      const nextParams = new URLSearchParams(window.location.search);
+      // Guard idempotent : on compare les recherches NORMALISEES (trim + lowercase, comme
+      // le matching serveur). Si l'URL est deja equivalente a la saisie courante, aucun
+      // router.replace ne part. Sinon on pousse la recherche debouncée en transition.
+      const currentValue = normalizeOrderSearch(nextParams.get('q'));
+      const normalizedValue = normalizeOrderSearch(localSearchQuery);
+
+      if (normalizedValue === currentValue) {
+        return;
+      }
+
+      if (normalizedValue) {
+        nextParams.set('q', normalizedValue);
+      } else {
+        nextParams.delete('q');
+      }
+
+      const nextUrl = nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname;
+      startSearchTransition(() => {
+        router.replace(nextUrl, { scroll: false });
+      });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [localSearchQuery, pathname, router]);
 
   function handleSelect(viewId: OrderSavedViewId) {
     if (viewId === displayedView) {
@@ -103,6 +153,8 @@ export function OrdersWorkspace({
 
   return (
     <div className="space-y-4">
+      <OrdersSearchInput onValueChange={setLocalSearchQuery} value={localSearchQuery} />
+
       <OrdersViewChips
         activeView={displayedView}
         onSelect={handleSelect}
@@ -122,6 +174,7 @@ export function OrdersWorkspace({
         initialOrders={initialOrders}
         initialReliabilityTiers={initialReliabilityTiers}
         isTransitionPending={isBusy}
+        localSearchQuery={localSearchQuery}
         merchantName={merchantName}
         onTransitionApplied={({ nextOrder, previousOrder }) => {
           setDisplayedViews((currentViews) =>
@@ -129,8 +182,8 @@ export function OrdersWorkspace({
           );
         }}
         reliabilityLabels={reliabilityLabels}
-        searchQuery={searchQuery}
         selectedShopId={selectedShopId}
+        serverSearchQuery={searchQuery}
         whatsappMissingPhoneLabel={whatsappMissingPhoneLabel}
       />
     </div>

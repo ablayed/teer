@@ -1,5 +1,4 @@
 import { NewOrderForm } from '@/components/orders/new-order-form';
-import { OrdersSearchInput } from '@/components/orders/orders-search-input';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
@@ -149,7 +148,6 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
       ) : null}
 
       <div className="flex flex-col gap-3">
-        <OrdersSearchInput initialValue={search} />
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <PeriodControls
             activePeriod={activePeriod}

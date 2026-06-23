@@ -17,6 +17,7 @@ import type { orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { formatDateDayKey, formatDateGroupLabel, formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatOrderAddress } from '@/lib/format/order-address';
+import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
 import { cn } from '@/lib/utils';
 import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
 import Link from 'next/link';
@@ -37,10 +38,11 @@ type Props = {
   initialOrders: OrderListItem[];
   initialReliabilityTiers: Record<string, ReliabilityTier>;
   isTransitionPending: boolean;
+  localSearchQuery: string;
   merchantName: string;
   reliabilityLabels: Record<ReliabilityTier, string>;
-  searchQuery: string;
   selectedShopId: string | null;
+  serverSearchQuery: string;
   onTransitionApplied?: (event: {
     nextOrder: OrderListItem;
     previousOrder: OrderListItem;
@@ -60,10 +62,11 @@ export function OrdersPageLoader({
   initialOrders,
   initialReliabilityTiers,
   isTransitionPending,
+  localSearchQuery,
   merchantName,
   reliabilityLabels,
-  searchQuery,
   selectedShopId,
+  serverSearchQuery,
   onTransitionApplied,
   whatsappMissingPhoneLabel,
 }: Props) {
@@ -72,7 +75,10 @@ export function OrdersPageLoader({
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [reliabilityTiers, setReliabilityTiers] = useState(initialReliabilityTiers);
   const [isLoadingMore, startTransition] = useTransition();
-  const groupedOrders = orders.reduce<
+  const localSearchAhead =
+    normalizeOrderSearch(localSearchQuery) !== normalizeOrderSearch(serverSearchQuery);
+  const visibleOrders = filterOrdersBySearch(orders, localSearchQuery);
+  const groupedOrders = visibleOrders.reduce<
     Array<{ dayKey: string; label: string; orders: OrderListItem[] }>
   >((groups, order) => {
     const groupValue = orderQueueDate(order);
@@ -93,14 +99,18 @@ export function OrdersPageLoader({
   }, []);
 
   useEffect(() => {
+    if (localSearchAhead) {
+      return;
+    }
+
     setOrders(initialOrders);
     setHasMore(initialHasMore);
     setNextCursor(initialNextCursor);
     setReliabilityTiers(initialReliabilityTiers);
-  }, [initialHasMore, initialNextCursor, initialOrders, initialReliabilityTiers]);
+  }, [initialHasMore, initialNextCursor, initialOrders, initialReliabilityTiers, localSearchAhead]);
 
   function handleLoadMore() {
-    if (!nextCursor) {
+    if (!nextCursor || localSearchAhead) {
       return;
     }
 
@@ -109,7 +119,7 @@ export function OrdersPageLoader({
         cursor: nextCursor,
         dateFrom,
         dateTo,
-        search: searchQuery,
+        search: serverSearchQuery,
         shopId: selectedShopId,
         view: activeView,
       });
@@ -277,7 +287,7 @@ export function OrdersPageLoader({
         </div>
       ))}
 
-      {hasMore && nextCursor ? (
+      {!localSearchAhead && hasMore && nextCursor ? (
         <div className="flex justify-center pt-2">
           <button
             className="rounded-lg border border-border bg-surface px-6 py-3 text-sm font-medium text-text hover:bg-canvas disabled:opacity-60"
