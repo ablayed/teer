@@ -18,11 +18,7 @@ import { formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatOrderAddress } from '@/lib/format/order-address';
 import { cn } from '@/lib/utils';
-import {
-  buildWhatsAppConfirmationUrl,
-  buildWhatsAppDispatchUrl,
-  firstName,
-} from '@/lib/whatsapp/link';
+import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
 import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
 
@@ -211,16 +207,6 @@ export function OrdersPageLoader({
                 allowedActions={order.allowedActions}
                 canEditAmounts={canReassign}
                 deliveryState={order.delivery_state}
-                dispatchWhatsAppUrl={buildWhatsAppDispatchUrl({
-                  address: formatOrderAddress(order.shipping_address),
-                  currency: order.currency,
-                  customerFirstName: order.customer?.full_name ?? null,
-                  itemsSummary: order.items_summary,
-                  orderNumber: order.order_number,
-                  phone: order.customer?.phone ?? null,
-                  shopName: merchantName,
-                  totalAmount: order.total_amount,
-                })}
                 drivers={drivers}
                 onTransitionSuccess={handleTransitionSuccess}
                 orderId={order.id}

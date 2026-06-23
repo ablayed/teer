@@ -428,54 +428,45 @@ async function reserveStockForOrder({
   if (error) throw error;
 }
 
+// Attente auto-retry de l'état dérivé/dimensionnel en DB après une transition UI.
+// expect.poll (et non un poll à durée fixe) : retente jusqu'au timeout avec un
+// backoff, et émet un diff lisible à l'échec au lieu d'un throw opaque.
 async function waitForOrderStatus(
   admin: AdminClient,
   orderId: string,
   status: string,
-  timeoutMs = 15_000,
+  timeoutMs = 30_000,
 ) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    const { data, error } = await admin
-      .from('orders')
-      .select('cod_status')
-      .eq('id', orderId)
-      .single();
-
-    if (!error && data?.cod_status === status) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-
-  throw new Error(`Statut ${status} non observe pour la commande ${orderId}.`);
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin.from('orders').select('cod_status').eq('id', orderId).single();
+        return data?.cod_status ?? null;
+      },
+      { timeout: timeoutMs, intervals: [250, 500, 1000] },
+    )
+    .toBe(status);
 }
 
 async function waitForOrderDeliveryState(
   admin: AdminClient,
   orderId: string,
   deliveryState: string,
-  timeoutMs = 15_000,
+  timeoutMs = 30_000,
 ) {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    const { data, error } = await admin
-      .from('orders')
-      .select('delivery_state')
-      .eq('id', orderId)
-      .single();
-
-    if (!error && data?.delivery_state === deliveryState) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-
-  throw new Error(`delivery_state ${deliveryState} non observe pour la commande ${orderId}.`);
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('orders')
+          .select('delivery_state')
+          .eq('id', orderId)
+          .single();
+        return data?.delivery_state ?? null;
+      },
+      { timeout: timeoutMs, intervals: [250, 500, 1000] },
+    )
+    .toBe(deliveryState);
 }
 
 async function signIn(page: Page, email: string, redirectTo = '/tableau') {
@@ -1096,14 +1087,16 @@ test('un agent ne voit que les actions legales sur une commande a appeler', asyn
     await signIn(page, agent.email, `/commandes/${orderId}`);
 
     await openActionsMenu(page);
-    // Un agent sur A_APPELER : Programmer + journalisation d'appel sont légales.
+    // Un agent sur A_APPELER : Programmer + À rappeler sont légales.
     await expect(menuItem(page, 'Programmer la livraison')).toBeVisible();
-    await expect(menuItem(page, 'Journaliser un appel')).toBeVisible();
+    await expect(menuItem(page, 'À rappeler')).toBeVisible();
+    await expect(menuItem(page, 'Journaliser un appel')).toHaveCount(0);
     await expect(menuItem(page, 'Confirmer')).toHaveCount(0);
     await expect(menuItem(page, 'Assigner')).toHaveCount(0);
     await expect(menuItem(page, 'Marquer livree')).toHaveCount(0);
     await expect(menuItem(page, 'Annuler la commande')).toHaveCount(0);
     await expect(menuItem(page, 'Refuser')).toHaveCount(0);
+    await expect(menuItem(page, 'Refuser par le client')).toHaveCount(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
