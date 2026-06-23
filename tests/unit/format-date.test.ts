@@ -1,5 +1,6 @@
 import {
   formatDateAbsolute,
+  formatDateGroupLabel,
   formatDateRelative,
   formatDateTime,
   formatMonthYear,
@@ -54,6 +55,12 @@ describe('date formatters', () => {
 
   it('formats date and time', () => {
     expect(formatDateTime('2026-04-21T14:32:00Z')).toBe('21 avril 2026 à 14:32');
+  });
+
+  it('formats date groups as today, yesterday, then absolute date', () => {
+    expect(formatDateGroupLabel('2026-04-21T09:00:00Z')).toBe("Aujourd'hui");
+    expect(formatDateGroupLabel('2026-04-20T09:00:00Z')).toBe('Hier');
+    expect(formatDateGroupLabel('2026-04-10T09:00:00Z')).toBe('10 avril 2026');
   });
 
   it('formats month and year', () => {

@@ -307,11 +307,13 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     // 2) Page 1 = 25 cartes, ordre DESC (la plus récente VERIF-000 en tête).
     await expect(page.locator('article')).toHaveCount(25);
     await expect(page.locator('article').first()).toContainText('VERIF-000');
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toHaveCount(1);
 
     // 3) « Voir plus » charge la page suivante → 43 cartes, bouton disparaît.
     await page.getByRole('button', { name: 'Voir plus' }).click();
     await expect(page.locator('article')).toHaveCount(43);
     await expect(page.getByRole('button', { name: 'Voir plus' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toHaveCount(1);
 
     // 4) Recherche par nom + produit (« alpha ») → la seule commande spéciale.
     // La saisie déclenche un router.replace(?q=alpha) (debounce 180ms) : on attend

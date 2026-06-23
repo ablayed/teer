@@ -29,6 +29,13 @@ const monthYearFormatter = new Intl.DateTimeFormat('fr-FR', {
   year: 'numeric',
 });
 
+const dayKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  day: '2-digit',
+  month: '2-digit',
+  timeZone: DATE_TIME_ZONE,
+  year: 'numeric',
+});
+
 function toValidDate(value: Date | string): Date {
   const date = typeof value === 'string' ? new Date(value) : value;
 
@@ -45,6 +52,10 @@ function normalizeRelativeOutput(value: string): string {
 
 function formatRelative(value: number, unit: Intl.RelativeTimeFormatUnit): string {
   return normalizeRelativeOutput(relativeTimeFormatter.format(value, unit));
+}
+
+export function formatDateDayKey(value: Date | string): string {
+  return dayKeyFormatter.format(toValidDate(value));
 }
 
 export function formatDateAbsolute(value: Date | string): string {
@@ -83,6 +94,24 @@ export function formatDateRelative(value: Date | string): string {
   if (absMs <= 7 * DAY_MS) {
     const days = Math.round(absMs / DAY_MS);
     return formatRelative(diffMs < 0 ? -days : days, 'day');
+  }
+
+  return formatDateAbsolute(date);
+}
+
+export function formatDateGroupLabel(value: Date | string, now = new Date()): string {
+  const date = toValidDate(value);
+  const todayKey = formatDateDayKey(now);
+
+  if (formatDateDayKey(date) === todayKey) {
+    return "Aujourd'hui";
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (formatDateDayKey(date) === formatDateDayKey(yesterday)) {
+    return 'Hier';
   }
 
   return formatDateAbsolute(date);
