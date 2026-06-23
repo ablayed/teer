@@ -4,7 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { updateOrderAmountsAction } from '@/lib/actions/orders';
-import { dateTimeInputsToIso, isoToDateTimeInputs } from '@/lib/format/datetime-input';
+import {
+  dateTimeInputsToIso,
+  isoToDateTimeInputs,
+  normalizeHourInput,
+} from '@/lib/format/datetime-input';
 import { formatMoney } from '@/lib/format/fcfa';
 import { Pencil } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
@@ -48,7 +52,7 @@ export function OrderAmountsEditor({
   const [fee, setFee] = useState(deliveryFeeMinor);
   const initialDateTime = isoToDateTimeInputs(scheduledFor);
   const [date, setDate] = useState(initialDateTime.date);
-  const [time, setTime] = useState(initialDateTime.time);
+  const [time, setTime] = useState(normalizeHourInput(initialDateTime.time));
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
     null,
   );
@@ -201,7 +205,8 @@ export function OrderAmountsEditor({
                   <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
                   <Input
                     id={`${fieldId}-time`}
-                    onChange={(event) => setTime(event.target.value)}
+                    onChange={(event) => setTime(normalizeHourInput(event.target.value))}
+                    step={3600}
                     type="time"
                     value={time}
                   />
