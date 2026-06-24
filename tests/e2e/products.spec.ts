@@ -58,17 +58,23 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string) {
-  for (let i = 0; i < 20; i++) {
-    const { data } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (data?.merchant_account_id) return data.merchant_account_id as string;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error('merchant_account introuvable');
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 async function createOwnerFixture(label: string) {
@@ -105,7 +111,6 @@ async function signIn(page: Page, email: string, redirectTo = '/produits') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E produits');
@@ -175,7 +180,6 @@ test('page produits : recherche filtre par titre côté serveur', async ({ page 
     await page.getByPlaceholder('Rechercher par titre ou SKU…').fill('sac cuir');
     // Wait for debounce + navigation
     await page.waitForURL('**/produits?q=sac+cuir', { timeout: 10_000 });
-    await page.waitForLoadState('networkidle');
 
     await expect(page.getByRole('heading', { name: 'Sac cuir noir' })).toBeVisible({
       timeout: 10_000,
@@ -194,7 +198,6 @@ test('onglet Achats : visible pour owner, menu tab navigation présent', async (
     await expect(achatLink).toBeVisible({ timeout: 15_000 });
     await achatLink.click();
     await page.waitForURL('**/produits?tab=achats', { timeout: 10_000 });
-    await page.waitForLoadState('networkidle');
     // La barre d'onglets reste présente (retour Catalogue possible).
     await expect(page.getByRole('link', { name: 'Catalogue', exact: true })).toBeVisible({
       timeout: 10_000,
