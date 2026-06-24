@@ -280,6 +280,16 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, fullN
   return data.id as string;
 }
 
+async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
+  const { error } = await admin.from('shop').insert({
+    access_token_encrypted: 'enc',
+    merchant_account_id: merchantAccountId,
+    scopes: 'read_orders',
+    shop_domain: domain,
+  });
+  if (error) throw error;
+}
+
 // Confirmed order (call validated, delivery unassigned) carrying one matched
 // order_line, so a later dispatch posts a stock movement attributed to the driver.
 async function createConfirmedOrderWithLine(
@@ -1316,6 +1326,8 @@ test('programmer ne casse pas le rendu et survit au refresh', async ({ page }) =
     await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await expect(page.locator('body')).not.toBeEmpty();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
     await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
 
     await page.reload();
@@ -1343,6 +1355,7 @@ test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', 
   const fixture = await createOwnerFixture('manual-list');
   // Products must exist before page load (server-rendered props).
   await createProductInCatalog(fixture.admin, fixture.merchantAccountId, 'Sac Dakar E2E');
+  await createShop(fixture.admin, fixture.merchantAccountId, `manual-${Date.now()}.myshopify.com`);
 
   try {
     await signIn(page, fixture.email, '/commandes');
@@ -1384,6 +1397,11 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
     fixture.merchantAccountId,
     'Ceinture E2E',
     'CEIN-01',
+  );
+  await createShop(
+    fixture.admin,
+    fixture.merchantAccountId,
+    `manual-2-${Date.now()}.myshopify.com`,
   );
 
   try {

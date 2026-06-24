@@ -156,7 +156,6 @@ async function seedOrder(
     cash_state: 'not_due',
     created_at: createdAt,
     created_at_shopify: createdAt,
-    sort_at: createdAt,
   });
   if (error) throw error;
 }

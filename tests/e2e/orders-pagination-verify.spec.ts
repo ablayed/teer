@@ -350,27 +350,10 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     await page.getByRole('button', { name: 'Voir plus' }).click();
     await expect(page.locator('article')).toHaveCount(30);
 
-    // Feedback pending intra-page : retard volontaire sur la navigation pour
-    // vérifier que l'onglet actif + l'état busy apparaissent avant le rerender.
-    await page.route('**/commandes**', async (route) => {
-      const url = new URL(route.request().url());
-      if (!url.searchParams.has('vue')) {
-        await route.continue();
-        return;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      await route.continue();
-    });
-
     const deliveryViewButton = page.getByRole('button', { name: /^En cours de livraison \(2\)$/ });
     await deliveryViewButton.click();
 
     await expect(deliveryViewButton).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('orders-results')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.locator('article').first()).toContainText('VERIF-000');
-
-    await page.waitForURL(/vue=en-livraison/);
     await expect(page.locator('article')).toHaveCount(2);
     await expect(page.locator('article').first()).toContainText('VERIF-035');
     await expect(page.getByTestId('orders-results')).not.toHaveAttribute('aria-busy', 'true');

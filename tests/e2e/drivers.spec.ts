@@ -325,6 +325,20 @@ test('allouer un lot fait monter le stock en main du livreur', async ({ page }) 
 
     // Le mouvement est posté hors commande ; le stock en main remonte
     await expect(page.getByText('Lot alloué au livreur.')).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(
+        async () => {
+          const { data } = await fixture.admin
+            .from('stock_movement')
+            .select('movement_type, qty, driver_id')
+            .eq('merchant_account_id', fixture.merchantAccountId)
+            .eq('driver_id', driverId);
+          return (data ?? []).find((movement) => movement.movement_type === 'allocate_to_courier');
+        },
+        { timeout: 15_000 },
+      )
+      .toMatchObject({ driver_id: driverId, qty: -15 });
+    await page.reload();
     await expect(
       page.getByRole('row').filter({ hasText: 'Sac lot E2E' }).getByText('15'),
     ).toBeVisible({ timeout: 15_000 });
