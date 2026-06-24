@@ -159,7 +159,12 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   const today = new Date();
   today.setUTCHours(12, 0, 0, 0); // 12:00 UTC ≡ 12:00 Africa/Dakar (UTC+0)
   const todayIso = today.toISOString();
-  const base = Date.parse('2026-06-09T12:00:00.000Z');
+  // Ancre des created_at_shopify : AUJOURD'HUI à midi UTC (≡ midi Africa/Dakar, UTC+0),
+  // pas une date fixe. formatDateGroupLabel bucketise par jour Africa/Dakar (= jour UTC) ;
+  // une date codée en dur (ex. 2026-06-09) tombait hors de "aujourd'hui" → 0 en-tête
+  // « Aujourd'hui » (échec :314/:320). Midi + étalement vers le bas (−42 min) garde les 43
+  // commandes dans le même jour UTC quelle que soit l'heure du run.
+  const base = today.getTime();
 
   // Contrainte 0057 : les commandes assigned/out_for_delivery exigent un livreur.
   const { data: seedDriver, error: seedDriverError } = await admin
