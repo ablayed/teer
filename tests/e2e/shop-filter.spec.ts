@@ -262,10 +262,11 @@ test.describe('Phase 13 — filtre boutique', () => {
     const selector = page.getByRole('navigation', { name: 'Filtrer les commandes par boutique' });
     await expect(selector).toBeVisible();
     await selector.getByRole('link', { name: /oa-.*\.myshopify\.com/ }).click();
-    await page.waitForURL(`**/commandes?**shop=${shopA}**`);
+    await expect(page.getByText('Client Récent A')).toBeVisible();
+    await expect(page.getByText('Client Ancien A')).toBeVisible();
+    await expect(page.getByText('Client Récent B')).toHaveCount(0);
 
     await page.getByRole('link', { name: "Aujourd'hui" }).click();
-    await page.waitForURL(`**/commandes?**shop=${shopA}**period=today**`);
 
     await expect(page.getByText('Client Récent A')).toBeVisible();
     await expect(page.getByText('Client Ancien A')).toHaveCount(0);

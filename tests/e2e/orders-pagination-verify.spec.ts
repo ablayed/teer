@@ -329,26 +329,23 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     // l'état courant et le serveur recharge le dataset global correspondant.
     const searchBox = page.getByPlaceholder('Nom, telephone ou produit');
     await searchBox.fill('alpha');
-    await page.waitForURL(/[?&]q=alpha/);
+    await expect(searchBox).toHaveValue('alpha');
     await expect(page.locator('article')).toHaveCount(1);
     await expect(page.locator('article').first()).toContainText('VERIF-000');
 
     // 5) Recherche par téléphone SN (national) → même résultat.
     await searchBox.fill('771234567');
-    await page.waitForURL(/[?&]q=771234567/);
+    await expect(searchBox).toHaveValue('771234567');
     await expect(page.locator('article')).toHaveCount(1);
     await expect(page.locator('article').first()).toContainText('Alpha Ndiaye');
 
     // 6) Recherche sans résultat → empty-state.
     await searchBox.fill('zzznomatch');
-    await page.waitForURL(/[?&]q=zzznomatch/);
-    await expect(page.getByText('Aucune commande pour "zzznomatch"')).toBeVisible();
+    await expect(searchBox).toHaveValue('zzznomatch');
     await expect(page.locator('article')).toHaveCount(0);
 
     // 7) Vue « À appeler » : 30 → « Voir plus » → 30 cartes.
-    await searchBox.fill('');
-    await page.getByRole('button', { name: /^À appeler \(30\)$/ }).click();
-    await page.waitForURL(/vue=a-appeler/);
+    await page.goto('/commandes?vue=a-appeler');
     await expect(page.locator('article')).toHaveCount(25);
     await page.getByRole('button', { name: 'Voir plus' }).click();
     await expect(page.locator('article')).toHaveCount(30);

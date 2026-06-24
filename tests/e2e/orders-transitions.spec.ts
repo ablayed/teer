@@ -1007,26 +1007,26 @@ test('phase11 - la reassignation fonctionne aussi depuis la fiche commande', asy
     });
     await page.getByLabel('Nouveau livreur', { exact: true }).selectOption(driverBId);
     await page.getByRole('button', { name: 'Réassigner', exact: true }).click();
-    await expect(page.getByText('Livreur Detail B')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('status')).toContainText('Livreur réassigné.');
 
-    let reassignedDriverId: string | null = null;
-    let reassignedState: string | null = null;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const { data: reassigned, error: reassignedError } = await fixture.admin
-        .from('orders')
-        .select('assigned_driver_id, delivery_state')
-        .eq('id', orderId)
-        .single();
-      expect(reassignedError).toBeNull();
-      reassignedDriverId = reassigned?.assigned_driver_id ?? null;
-      reassignedState = reassigned?.delivery_state ?? null;
-      if (reassignedDriverId === driverBId) {
-        break;
-      }
-      await page.waitForTimeout(250);
-    }
-    expect(reassignedState).toBe('assigned');
-    expect(reassignedDriverId).toBe(driverBId);
+    await expect
+      .poll(
+        async () => {
+          const { data: reassigned, error: reassignedError } = await fixture.admin
+            .from('orders')
+            .select('assigned_driver_id, delivery_state')
+            .eq('id', orderId)
+            .single();
+          expect(reassignedError).toBeNull();
+          return {
+            driverId: reassigned?.assigned_driver_id ?? null,
+            state: reassigned?.delivery_state ?? null,
+          };
+        },
+        { timeout: 15_000 },
+      )
+      .toEqual({ driverId: driverBId, state: 'assigned' });
+    await expect(page.getByText('Affecté à Livreur Detail B')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

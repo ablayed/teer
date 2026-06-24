@@ -146,14 +146,20 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     await page.locator('#f-ordered-at').fill('2026-06-01');
 
     // Transport unique (Lot C : un seul frais).
-    await page.locator('#f-transport').fill('20000');
+    const transportInput = page.locator('#f-transport');
+    await transportInput.pressSequentially('20000');
+    await expect(transportInput).toHaveValue('20000');
 
     // Sélectionner le produit dans la première ligne.
     await page.locator('select').last().selectOption({ label: 'Sac cuir E2E (SAC-E2E)' });
 
     // Quantité et prix d'achat global de la ligne (Lot C : prix global, pas unitaire).
-    await page.getByPlaceholder('Qté').fill('10');
-    await page.getByPlaceholder('Prix total').fill('80000');
+    const quantityInput = page.getByPlaceholder('Qté');
+    await quantityInput.pressSequentially('10');
+    await expect(quantityInput).toHaveValue('10');
+    const priceInput = page.getByPlaceholder('Prix total');
+    await priceInput.pressSequentially('80000');
+    await expect(priceInput).toHaveValue('80000');
 
     // Créer le lot.
     await page.getByRole('button', { name: 'Créer le lot' }).click();
