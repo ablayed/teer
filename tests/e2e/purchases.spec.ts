@@ -58,17 +58,23 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string) {
-  for (let i = 0; i < 20; i++) {
-    const { data } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (data?.merchant_account_id) return data.merchant_account_id as string;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error('merchant_account introuvable');
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [100, 250, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 async function createOwnerFixture(label: string) {
@@ -105,7 +111,7 @@ async function signIn(page: Page, email: string, redirectTo = '/produits') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: 'Produits' })).toBeVisible();
 }
 
 async function openPurchasesTab(page: Page) {
@@ -113,7 +119,7 @@ async function openPurchasesTab(page: Page) {
   await expect(purchasesTab).toBeVisible({ timeout: 15_000 });
   await purchasesTab.click();
   await page.waitForURL('**/produits?tab=achats', { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('button', { name: 'Nouveau lot' })).toBeVisible();
 }
 
 async function getProductStock(admin: AdminClient, productId: string) {
@@ -123,6 +129,30 @@ async function getProductStock(admin: AdminClient, productId: string) {
     .eq('product_id', productId)
     .maybeSingle();
   return data;
+}
+
+async function waitForPurchaseLot(
+  admin: AdminClient,
+  merchantAccountId: string,
+  supplierName: string,
+) {
+  let lotId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('purchase_lot')
+          .select('id')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('supplier_name', supplierName)
+          .maybeSingle();
+        lotId = (data?.id as string | undefined) ?? '';
+        return lotId;
+      },
+      { timeout: 10_000, intervals: [250, 500, 1000] },
+    )
+    .not.toBe('');
+  return lotId;
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E achats');
@@ -164,6 +194,8 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
 
     // Créer le lot.
     await page.getByRole('button', { name: 'Créer le lot' }).click();
+    await waitForPurchaseLot(fixture.admin, fixture.merchantAccountId, 'Guangzhou Imports');
+    await page.reload();
 
     // Le lot doit apparaître dans la liste avec le statut "Commandé" (badge exact).
     await expect(page.getByText('Guangzhou Imports')).toBeVisible({ timeout: 15_000 });

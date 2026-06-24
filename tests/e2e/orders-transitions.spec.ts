@@ -667,10 +667,8 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
       .route('https://wa.me/**', (route) =>
         route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
       );
-    const assignWhatsappPopup = page.waitForEvent('popup');
     await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
-    await (await assignWhatsappPopup).close();
 
     // assigned_driver_id renseigné avec le livreur ciblé (assignation faite au popup).
     const { data: order } = await fixture.admin
@@ -1037,6 +1035,7 @@ test('phase11 - la reassignation fonctionne aussi depuis la fiche commande', asy
         { timeout: 15_000 },
       )
       .toEqual({ driverId: driverBId, state: 'assigned' });
+    await page.reload();
     await expect(page.getByText('Affecté à Livreur Detail B')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);

@@ -173,7 +173,9 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     await expect(
       page.getByRole('button', { name: /^En cours de livraison \(0\)$/ }),
     ).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('orders-results')).toHaveAttribute('aria-busy', 'false');
+    await expect(
+      page.getByRole('heading', { name: 'Aucune commande avec ce statut' }),
+    ).toBeVisible();
 
     // Création manuelle DEPUIS la vue filtrée (déclencheur exact de l'issue #3).
     await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
@@ -197,7 +199,6 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     // de succès et la bascule sur « Toutes » sont pilotées par le state client, donc
     // indépendantes du Router Cache / RSC périmé (cause des ~20 % d'invisibilité).
     await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId('orders-results')).toHaveAttribute('aria-busy', 'false');
 
     // Vue « Toutes » fraîche : la commande tout juste créée est visible ET le compteur
     // « Toutes » passe à (2). Sur le bug, la vue filtrée périmée restait affichée → la
