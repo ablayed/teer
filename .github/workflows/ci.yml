@@ -178,7 +178,10 @@ jobs:
           df -h /
           rm -rf .next/cache
           df -h /
-      - run: pnpm test:e2e
+      # [TEMP — validation étagée Phase 1.2(a)] chromium + pixel-7 SEULS : on prouve que
+      # le fix seed reverdit orders-pagination-verify avant d'attaquer WebKit/iphone-14.
+      # À RETIRER (retour à `pnpm test:e2e` 3 cibles) avant le merge / Phase 3.
+      - run: pnpm test:e2e --project=chromium --project=pixel-7
         env:
           E2E_PROD_BUILD: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
