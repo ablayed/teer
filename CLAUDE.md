@@ -2,9 +2,11 @@
 
 > `AGENTS.md` mirrors this file. If they diverge, this file wins.
 
-**Latest applied migration: `0074`** (prod; RPC filet invitation par email confirmées; types régénérés après push de schéma).
+**Latest applied migration: `0075`** (prod + local; table `feedback`, RLS FORCE INSERT tenant-scoped SELECT owner-only).
 
 **Dernières features en prod (main) :** invitation collaborateur (#26) · garde-fou anti-prod seeds E2E `assertLocalSupabase` (#29) · **commandes : filtre période + boutique, groupement par date, recherche instantanée, dropdown actions (#30)**. La création manuelle de commande utilise **Paradigm A** (cf. gotcha « Données serveur post-mutation ») : lecture serveur + injection state, jamais `router.refresh()`/navigation.
+
+**Vague 3 — Support & Onboarding (branche `infra/e2e-build-prod`, en attente de merge) :** page `/assistant` renommée « Aide » (HelpCircle nav) · FAQ searchable 50 entrées 10 catégories filtrage rôle (agent/manager/owner) · articulation FAQ → assistant (CTA 0-résultats) · WhatsApp/email support conditionnels (`NEXT_PUBLIC_SUPPORT_WHATSAPP` / `NEXT_PUBLIC_SUPPORT_EMAIL` optionnels sans défaut) · feedback table `0075` + `submitFeedbackAction` + Resend best-effort · checklist onboarding 5 étapes sur `/tableau` (localStorage dismiss, owner/manager uniquement).
 
 ## Commands
 
