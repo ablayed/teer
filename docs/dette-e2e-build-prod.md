@@ -1,48 +1,77 @@
-# Dette E2E — bascule `test-e2e` dev → build-prod 3 cibles
+# Dette E2E - bascule `test-e2e` dev -> build-prod
 
-> **Statut : EN ATTENTE.** Travail prêt sur la branche `infra/e2e-build-prod` (commit `02c60de`). À reprendre après les vagues feature commandes.
+> Statut : point d'arret propre du lot `infra/e2e-build-prod`.
+> Branche : `infra/e2e-build-prod`.
+> Dernier etat fonctionnel connu : stage (a) chromium + pixel-7 presque vert, residus UI bornes.
 
 ## Objectif
 
-Faire tourner le job CI `test-e2e` (`.github/workflows/ci.yml`) sur un **vrai build de prod**
-(`next build` + `next start` via `E2E_PROD_BUILD=1`) au lieu de `pnpm dev`, sur les **3 cibles**
-(chromium + pixel-7 + iphone-14).
+Faire tourner le job CI `test-e2e` sur un vrai build de production (`next build` puis `next start`)
+au lieu de `pnpm dev`, sur les 3 cibles Playwright (`chromium`, `pixel-7`, `iphone-14`).
 
-**Pourquoi :** en `next dev`, la compilation **on-demand** des routes lourdes sous charge CI rend
-des specs flaky (analytics, orders-transitions…). Un build de prod précompile tout → supprime
-cette classe de flake à la racine. Pattern déjà éprouvé dans `e2e-prod.yml`.
+Le but est de supprimer la classe de flake causee par la compilation Next.js `dev` a la demande sous
+charge CI. En build-prod, les routes sont precompilees avant les specs : plus de cold-compile pendant
+un test.
 
-## Mécanisme prouvé (le point délicat)
+## Acquis deja prouves
 
-`upgrade-insecure-requests` (UIR) dans la CSP **blanchit WebKit/iphone-14 sur `http://localhost`**
-(Chromium exempte le loopback, WebKit non). En build de prod servi en HTTP local, ça casserait
-toutes les specs iphone-14.
+- Base locale realignee sur `origin/main`.
+- Tag rollback `pre-e2e-prod-switch` pose sur `e9e50355540da8c9c23b44eeed492ace223cf228`.
+- PR #32 (`wip/socle-uir`) mergee : `NEXT_PUBLIC_DISABLE_UIR=1` neutralise seulement
+  `upgrade-insecure-requests` pour le build de test.
+- Preuve CSP faite au curl : UIR present sans flag, absent avec `NEXT_PUBLIC_DISABLE_UIR=1`, reste de
+  la CSP identique.
+- `infra/e2e-build-prod` rebase sur `origin/main`.
+- `.github/workflows/ci.yml` bascule `test-e2e` vers build-prod :
+  `supabase start`, `supabase db reset --local`, bake `.env.production` / `.env.test`, `pnpm build`
+  avec `NEXT_PUBLIC_DISABLE_UIR=1`, purge de `.next/cache`, puis Playwright via `next start`.
+- `tests/e2e/qa-prelaunch.spec.ts` : poll DB converti en `expect.poll`.
+- `tests/e2e/orders-pagination-verify.spec.ts` :
+  - seed chips aligne sur la semantique migrations 0061/0062 (`assigned` dans `Programmer`) ;
+  - time-bomb date supprimee : seed relatif a `today.getTime()` ;
+  - fuseau seed/test confirme identique (`Africa/Dakar`).
 
-**Solution :** le flag `NEXT_PUBLIC_DISABLE_UIR=1`, inliné **au build** dans le bundle
-middleware/edge (`lib/security/csp.ts`), fait que la CSP du build de test **n'émet pas** UIR.
-En prod réelle ce flag est absent → UIR émis normalement. **CSP prod intacte vérifiée au curl.**
-(Le socle de ce flag — `csp.ts` + `e2e-prod.yml` — vit sur `wip/socle-uir`, commits `b53a220`+`fbf8069`.)
+## Etat CI actuel
 
-## Contenu de `infra/e2e-build-prod` (commit `02c60de`)
+Le workflow porte encore volontairement le marqueur temporaire de validation stage (a) :
 
-- `.github/workflows/ci.yml` : job `test-e2e` → étapes « Bake test env » + « Build production »
-  (`NEXT_PUBLIC_DISABLE_UIR=1`) + `E2E_PROD_BUILD=1`.
-- `tests/e2e/qa-prelaunch.spec.ts` : `waitForOrderStatus` converti en `expect.poll` (auto-retry).
-- `tests/e2e/orders-pagination-verify.spec.ts` : fix seed `assigned`→`out_for_delivery`
-  (sémantique 0062 : « En cours de livraison » = `out_for_delivery` SEUL) → reverdit `e2e-prod:299`.
+```bash
+pnpm test:e2e --project=chromium --project=pixel-7
+```
 
-## Reste à faire
+Ce mode doit rester tant que les flakes UI residuels ne sont pas corriges et que stage (a) n'a pas donne
+2 runs verts consecutifs.
 
-1. Rebaser `infra/e2e-build-prod` sur `main` à jour, **après** intégration du socle UIR (`wip/socle-uir`)
-   — la bascule `ci.yml` dépend du flag `NEXT_PUBLIC_DISABLE_UIR` de `csp.ts` (sinon WebKit blanchit).
-2. Pousser, mesurer la **CI 3 cibles réelle** (premier vrai verdict build-prod, jamais mesuré en CI).
-3. Durcir les flakes UI résiduels révélés par le build-prod (audit `fill()` → `pressSequentially`
-   sur les `<input>` numériques contrôlés sous WebKit ; cf. dette E2E (c) dans `CLAUDE.md`).
-4. Une fois `test-e2e` build-prod stable sur 3 cibles : retirer `e2e-prod.yml` (devenu redondant).
+## Residus exacts a reprendre
 
-## Où vit le travail (sauvegardes)
+### Flakes UI observes en stage (a)
 
-- Branche **`infra/e2e-build-prod`** (`02c60de`) — ce lot.
-- Branche **`wip/socle-uir`** (`fbf8069`) — flag UIR (`csp.ts`) + bake `e2e-prod.yml`. **Prérequis** de la bascule.
-- Tag **`backup/tangled-stack-2026-06-23`** (`131f7b1`) — pile entremêlée d'origine (filet complet).
-- Le garde-fou `assertLocalSupabase` est **déjà sur `main`** (PR #29) — ne pas le réintroduire.
+| Spec | Ligne | Cible observee | Signature | Hypothese a verifier par trace |
+| --- | ---: | --- | --- | --- |
+| `tests/e2e/orders-pagination-verify.spec.ts` | 344 | chromium/pixel-7 stage (a) | `page.waitForURL(/[?&]q=zzznomatch/)` pend jusqu'a 90s | attente URL debounce fragile ; attendre l'effet observable `Aucune commande pour "zzznomatch"` et `article` count 0 |
+| `tests/e2e/shop-filter.spec.ts` | 268 | `pixel-7` | `page.waitForURL(...period=today...)` pend, chromium passe | attente URL fragile ou tap mobile manque ; verifier le click target dans la trace, puis attendre la liste filtree |
+
+### Stock de durcissement encore present
+
+- `networkidle` dans les helpers `signIn` et quelques tests : a supprimer au profit d'un element post-login
+  ou de l'effet attendu.
+- `waitForTimeout` / `setTimeout` fixes : a convertir en assertions web-first, `expect.poll` ou `toPass`
+  selon le cas.
+- Helpers `signIn` dupliques : a remplacer par un projet `setup` + `storageState`.
+- `fill()` sur inputs numeriques controles : remplacer seulement les cas sensibles par
+  `pressSequentially()` + garde `toHaveValue` avant submit.
+
+## Critere de reprise
+
+1. Tirer d'abord les traces des deux flakes UI connus avant de coder.
+2. Corriger les waits d'URL fragiles par attente de l'effet observable, sans timeout artificiel ni sleep.
+3. Garder stage (a) `chromium` + `pixel-7` jusqu'a 2 runs CI consecutifs verts.
+4. Ensuite seulement lancer `iphone-14` seul, puis les 3 cibles ensemble en sharding par projet.
+5. Ne supprimer `e2e-prod.yml` et le warm-up `globalSetup` qu'apres validation humaine explicite.
+
+## Ne pas toucher
+
+- `assertLocalSupabase`.
+- La CSP de production hors flag de test deja merge.
+- Le tag `backup/tangled-stack-2026-06-23`.
+- `stash@{0}` ("heure de livraison").
