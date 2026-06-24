@@ -17,14 +17,63 @@
     "livreurs": "Livreurs",
     "analyses": "Analyses",
     "finances": "Finances",
-    "assistant": "Assistant",
+    "assistant": "Aide",
     "boutiques": "Boutiques",
     "parametres": "Paramètres",
     "signOut": "Se déconnecter"
   },
   "assistant": {
-    "title": "Assistant",
-    "subtitle": "Pose tes questions sur l’activité. Lecture seule : je rapporte uniquement des données enregistrées."
+    "title": "Aide",
+    "subtitle": "FAQ, assistant IA et contact support.",
+    "tab": {
+      "faq": "FAQ",
+      "chat": "Assistant",
+      "contact": "Contact"
+    },
+    "faq": {
+      "searchPlaceholder": "Rechercher dans la FAQ…",
+      "noResults": "Aucune entrée trouvée pour « {query} ».",
+      "noResultsCta": "Poser la question à l’assistant",
+      "allCategories": "Toutes"
+    },
+    "contact": {
+      "title": "Contacter le support",
+      "whatsapp": "WhatsApp support",
+      "email": "Email support",
+      "reportBug": "Signaler un problème"
+    },
+    "feedback": {
+      "title": "Signaler un problème",
+      "categoryLabel": "Catégorie",
+      "categories": {
+        "bug": "Bug / erreur",
+        "suggestion": "Suggestion",
+        "question": "Question",
+        "autre": "Autre"
+      },
+      "messageLabel": "Description",
+      "messagePlaceholder": "Décris le problème ou ta suggestion…",
+      "submit": "Envoyer",
+      "submitting": "Envoi…",
+      "successTitle": "Merci !",
+      "successBody": "Ton retour a bien été enregistré.",
+      "errorBody": "Une erreur est survenue. Réessaie.",
+      "close": "Fermer"
+    }
+  },
+  "support": {
+    "categories": {
+      "compte-equipe": "Compte & équipe",
+      "commandes-appels": "Commandes & appels",
+      "livraison-livreurs": "Livraison & livreurs",
+      "encaissement-cash": "Encaissement & cash",
+      "retours-annulations": "Retours & annulations",
+      "stock-produits": "Stock & produits",
+      "shopify-boutiques": "Shopify & boutiques",
+      "finances": "Finances",
+      "securite-donnees": "Sécurité & données",
+      "facturation": "Facturation"
+    }
   },
   "marketing": {
     "nav": {
@@ -369,6 +418,19 @@
       "update_failed": "La mise à jour du profil a échoué. Réessayez.",
       "audit_failed": "La mise à jour a réussi, mais le journal d’audit n’a pas pu être écrit.",
       "generic": "Une erreur est survenue. Réessayez."
+    },
+    "checklist": {
+      "title": "Activez votre premier COD",
+      "progress": "{done} / {total} étapes complètes",
+      "dismiss": "Masquer",
+      "action": "Configurer →",
+      "steps": {
+        "onboarded": "Compte configuré",
+        "shopify": "Boutique Shopify connectée",
+        "first-order": "Première commande reçue",
+        "first-delivery": "Première livraison réussie",
+        "first-cash": "Premier encaissement enregistré"
+      }
     }
   },
   "settings": {

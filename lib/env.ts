@@ -7,6 +7,10 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_HOST: z.string().url().optional().or(z.literal('')),
   NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  // Support contact — optionnels : si absents, les boutons correspondants sont masqués.
+  // Aucun domaine par défaut — le développeur renseigne ces vars dans Vercel sans redéployer.
+  NEXT_PUBLIC_SUPPORT_WHATSAPP: z.string().optional(),
+  NEXT_PUBLIC_SUPPORT_EMAIL: z.string().optional(),
 });
 
 const serverEnvSchema = z.object({
@@ -46,6 +50,8 @@ const rawPublicEnv = {
   NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
   NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || undefined,
+  NEXT_PUBLIC_SUPPORT_WHATSAPP: process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP,
+  NEXT_PUBLIC_SUPPORT_EMAIL: process.env.NEXT_PUBLIC_SUPPORT_EMAIL,
 };
 
 export const publicEnv = publicEnvSchema.parse(rawPublicEnv);
