@@ -288,12 +288,9 @@ test("Feedback : le dialog s'ouvre, on peut soumettre et recevoir un toast succ�
 
 test('Checklist : visible pour un owner sans commandes', async ({ page }) => {
   const fixture = await createOwnerFixture('aide-checklist');
-  // Ne pas ajouter de commandes → checklist incomplète → doit s'afficher
-  // Supprimer onboarded_at pour que l'étape "Compte configuré" soit aussi incomplète
-  await fixture.admin
-    .from('merchant_account')
-    .update({ onboarded_at: null })
-    .eq('id', fixture.merchantAccountId);
+  // Le fresh owner n'a pas de commandes/livraisons/encaissements → steps 2-4 incomplètes → checklist visible.
+  // Ne pas mettre onboarded_at=null : cela déclenche un redirect middleware vers /onboarding
+  // qui empêche d'atteindre /tableau.
 
   try {
     await signIn(page, fixture.email, '/tableau');
