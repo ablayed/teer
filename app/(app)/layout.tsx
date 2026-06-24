@@ -1,5 +1,6 @@
 import { AnalyticsProvider } from '@/components/analytics-provider';
 import { AppShell } from '@/components/app-shell/app-shell';
+import { IdleTimeout } from '@/components/auth/idle-timeout';
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
@@ -61,10 +62,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/onboarding');
   }
 
+  const idleTimeoutMs = Number(process.env.IDLE_TIMEOUT_MS) || 7_200_000;
+  const idleWarningMs = Number(process.env.IDLE_WARNING_MS) || 120_000;
+
   return (
     <NextIntlClientProvider messages={messages}>
       <AnalyticsProvider />
       <ServiceWorkerRegister />
+      <IdleTimeout timeoutMs={idleTimeoutMs} warningMs={idleWarningMs} />
       <AppShell currentRole={member?.role ?? null}>{children}</AppShell>
     </NextIntlClientProvider>
   );

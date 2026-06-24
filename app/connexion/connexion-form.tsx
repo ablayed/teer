@@ -42,6 +42,7 @@ export function ConnexionForm() {
   const searchParams = useSearchParams();
   const mode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
   const redirectTo = searchParams.get('redirectTo') ?? undefined;
+  const reason = searchParams.get('reason');
   const [clientError, setClientError] = useState<string | null>(null);
   const [verificationSent, setVerificationSent] = useState(false);
   const [password, setPassword] = useState('');
@@ -170,6 +171,12 @@ export function ConnexionForm() {
       <div className="mb-8 flex justify-center">
         <Wordmark size="md" />
       </div>
+
+      {reason === 'idle' ? (
+        <p className="mb-6 rounded-lg border border-border bg-canvas p-3 text-sm text-muted">
+          {t('session_expired_idle')}
+        </p>
+      ) : null}
 
       <div className="mb-6 grid grid-cols-2 gap-2 rounded-lg bg-canvas p-1">
         {tabs.map((tab) => (
