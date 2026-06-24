@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
 import messages from '@/messages/fr.json';
-import { type Page, expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
@@ -496,6 +496,12 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.waitForURL(`**${redirectTo}`);
 }
 
+async function typeControlledNumber(input: Locator, value: string) {
+  await input.click({ clickCount: 3 });
+  await input.pressSequentially(value);
+  await expect(input).toHaveValue(value);
+}
+
 // Les actions de commande vivent desormais dans un dropdown unique « Actions »
 // (liste + detail). Les entrees sont des role="menuitem".
 function menuItem(page: Page, name: string) {
@@ -834,14 +840,10 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     });
 
     const totalInput = page.getByLabel('Total', { exact: true });
-    await totalInput.click();
-    await page.keyboard.press('Control+A');
-    await page.keyboard.type('25000');
+    await typeControlledNumber(totalInput, '25000');
 
     const deliveryFeeInput = page.getByLabel('Frais de livraison', { exact: true });
-    await deliveryFeeInput.fill('');
-    await expect(deliveryFeeInput).toHaveValue('');
-    await deliveryFeeInput.type('1500');
+    await typeControlledNumber(deliveryFeeInput, '1500');
     await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
     await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
     // « Envoyer au livreur (WhatsApp) » sauvegarde, passe en cours de livraison ET ouvre
@@ -1371,8 +1373,8 @@ test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', 
     // select nth(0)=Source, nth(1)=first product line.
     await page.getByPlaceholder('Rechercher titre ou SKU').fill('Sac Dakar');
     await page.locator('select').nth(1).selectOption({ label: 'Sac Dakar E2E' });
-    await page.getByLabel('Quantité').fill('1');
-    await page.getByLabel('Prix unitaire (FCFA)').fill('14500');
+    await typeControlledNumber(page.getByLabel('Quantité'), '1');
+    await typeControlledNumber(page.getByLabel('Prix unitaire (FCFA)'), '14500');
 
     await page.getByRole('button', { name: 'Créer la commande' }).click();
 
@@ -1417,8 +1419,8 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
     // Ligne 1 : Sac cuir
     await page.getByPlaceholder('Rechercher titre ou SKU').first().fill('Sac');
     await page.locator('select').nth(1).selectOption({ label: 'Sac cuir E2E (SAC-01)' });
-    await page.getByLabel('Quantité').first().fill('2');
-    await page.getByLabel('Prix unitaire (FCFA)').first().fill('10000');
+    await typeControlledNumber(page.getByLabel('Quantité').first(), '2');
+    await typeControlledNumber(page.getByLabel('Prix unitaire (FCFA)').first(), '10000');
 
     // Ajouter ligne 2
     await page.getByRole('button', { name: '+ Ajouter une ligne' }).click();
@@ -1426,8 +1428,8 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
     // Ligne 2 : Ceinture — nth(1) car la première search box contient encore 'Sac'
     await page.getByPlaceholder('Rechercher titre ou SKU').nth(1).fill('Cein');
     await page.locator('select').nth(2).selectOption({ label: 'Ceinture E2E (CEIN-01)' });
-    await page.getByLabel('Quantité').nth(1).fill('3');
-    await page.getByLabel('Prix unitaire (FCFA)').nth(1).fill('8000');
+    await typeControlledNumber(page.getByLabel('Quantité').nth(1), '3');
+    await typeControlledNumber(page.getByLabel('Prix unitaire (FCFA)').nth(1), '8000');
 
     await page.getByRole('button', { name: 'Créer la commande' }).click();
 

@@ -320,7 +320,10 @@ test("ajout d'une dépense → apparaît dans la liste et réduit le résultat",
     await page.getByRole('button', { name: messages.finance.expense.add }).click();
 
     // Remplir — montant et date
-    await page.locator('#expense-amount').fill('25000');
+    const expenseAmountInput = page.locator('#expense-amount');
+    await expenseAmountInput.click({ clickCount: 3 });
+    await expenseAmountInput.pressSequentially('25000');
+    await expect(expenseAmountInput).toHaveValue('25000');
     await page.locator('#expense-date').fill('2026-06-01');
 
     // Enregistrer
@@ -555,12 +558,14 @@ test('vue produit : coût manquant éditable in-cell + card à définition au ta
       .locator(`button[aria-label="${messages.finance.products.table.editPurchase}"]:visible`)
       .first()
       .click();
-    await page
+    const unitCostInput = page
       .locator(
         `input[aria-label="${messages.finance.products.table.purchaseUnitPlaceholder}"]:visible`,
       )
-      .first()
-      .fill('2000');
+      .first();
+    await unitCostInput.click({ clickCount: 3 });
+    await unitCostInput.pressSequentially('2000');
+    await expect(unitCostInput).toHaveValue('2000');
     await page
       .locator('button:visible')
       .filter({ hasText: messages.finance.products.table.save })

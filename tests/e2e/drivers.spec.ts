@@ -326,7 +326,10 @@ test('allouer un lot fait monter le stock en main du livreur', async ({ page }) 
     await page.locator('select').filter({ hasText: 'Sac lot E2E' }).selectOption({
       label: 'Sac lot E2E',
     });
-    await page.getByPlaceholder('10').fill('15');
+    const allocationQtyInput = page.getByPlaceholder('10');
+    await allocationQtyInput.click({ clickCount: 3 });
+    await allocationQtyInput.pressSequentially('15');
+    await expect(allocationQtyInput).toHaveValue('15');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
 
     // Le mouvement est posté hors commande ; le stock en main remonte
@@ -389,7 +392,10 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     ).toBeVisible({ timeout: 15_000 });
 
     // Enregistrer une remise globale de 12 000
-    await page.getByPlaceholder('0').fill('12000');
+    const settlementInput = page.getByPlaceholder('0');
+    await settlementInput.click({ clickCount: 3 });
+    await settlementInput.pressSequentially('12000');
+    await expect(settlementInput).toHaveValue('12000');
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
@@ -438,7 +444,10 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
   // donc il DÉCROÎT à chaque remise (100 000 → 50 000 → 0). On attend le rendu
   // exact (toHaveText ancré) pour ne pas matcher un « 0 » contenu dans « 50 000 ».
   const remit = async (amount: string, expectedCashOnHandMinor: number) => {
-    await page.getByPlaceholder('0').fill(amount);
+    const settlementInput = page.getByPlaceholder('0');
+    await settlementInput.click({ clickCount: 3 });
+    await settlementInput.pressSequentially(amount);
+    await expect(settlementInput).toHaveValue(amount);
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
     const grouped = String(expectedCashOnHandMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
