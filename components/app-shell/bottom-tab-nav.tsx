@@ -4,6 +4,7 @@ import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
 import { cn } from '@/lib/utils';
 import {
   ChartColumnIncreasing,
+  HelpCircle,
   LayoutDashboard,
   type LucideIcon,
   MoreHorizontal,
@@ -11,7 +12,6 @@ import {
   ReceiptText,
   Settings,
   ShoppingBag,
-  Sparkles,
   Store,
   Truck,
 } from 'lucide-react';
@@ -47,7 +47,7 @@ const primaryItems: BottomTabItem[] = [
 ];
 
 const overflowItems: BottomTabItem[] = [
-  { href: '/assistant', icon: Sparkles, labelKey: 'assistant' },
+  { href: '/assistant', icon: HelpCircle, labelKey: 'assistant' },
   {
     href: '/analyses',
     icon: ChartColumnIncreasing,
