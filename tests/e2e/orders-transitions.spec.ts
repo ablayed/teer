@@ -584,6 +584,8 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     expect(whatsappPopup.url()).toContain('wa.me/221770000000');
     await whatsappPopup.close();
 
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+    await page.reload();
     await openActionsMenu(page);
     await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 

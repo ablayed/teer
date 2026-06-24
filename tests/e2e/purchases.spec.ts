@@ -155,6 +155,18 @@ async function waitForPurchaseLot(
   return lotId;
 }
 
+async function waitForPurchaseLotStatus(admin: AdminClient, lotId: string, status: string) {
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin.from('purchase_lot').select('status').eq('id', lotId).single();
+        return data?.status ?? null;
+      },
+      { timeout: 10_000, intervals: [250, 500, 1000] },
+    )
+    .toBe(status);
+}
+
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E achats');
 
 test('chemin nominal : créer lot → marquer reçu → stock mis à jour', async ({ page }) => {
@@ -194,7 +206,11 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
 
     // Créer le lot.
     await page.getByRole('button', { name: 'Créer le lot' }).click();
-    await waitForPurchaseLot(fixture.admin, fixture.merchantAccountId, 'Guangzhou Imports');
+    const lotId = await waitForPurchaseLot(
+      fixture.admin,
+      fixture.merchantAccountId,
+      'Guangzhou Imports',
+    );
     await page.reload();
 
     // Le lot doit apparaître dans la liste avec le statut "Commandé" (badge exact).
@@ -204,6 +220,8 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     // Marquer le lot reçu (bouton toujours disponible en statut "Commandé").
     await page.getByRole('button', { name: 'Marquer reçu' }).click();
     await expect(page.getByText('Lot reçu. Stock mis à jour.')).toBeVisible({ timeout: 15_000 });
+    await waitForPurchaseLotStatus(fixture.admin, lotId, 'received');
+    await page.reload();
 
     // Vérifier que le statut est passé à "Reçu" (badge exact, pas "Reçu le …").
     await expect(page.getByText('Reçu', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -258,9 +276,17 @@ test('nouveau lot : créer un produit maison à la volée', async ({ page }) => 
 
     await page.locator('#f-supplier').fill('Fournisseur produit volée');
     await page.locator('#f-ordered-at').fill('2026-06-01');
-    await page.getByPlaceholder('Qté').fill('3');
-    await page.getByPlaceholder('Prix total').fill('15000');
+    const quantityInput = page.getByPlaceholder('Qté');
+    await quantityInput.press('ControlOrMeta+A');
+    await quantityInput.pressSequentially('3');
+    await expect(quantityInput).toHaveValue('3');
+    const priceInput = page.getByPlaceholder('Prix total');
+    await priceInput.press('ControlOrMeta+A');
+    await priceInput.pressSequentially('15000');
+    await expect(priceInput).toHaveValue('15000');
     await page.getByRole('button', { name: 'Créer le lot' }).click();
+    await waitForPurchaseLot(fixture.admin, fixture.merchantAccountId, 'Fournisseur produit volée');
+    await page.reload();
 
     await expect(page.getByText('Fournisseur produit volée')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(productTitle)).toBeVisible({ timeout: 10_000 });
