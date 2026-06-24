@@ -6,6 +6,36 @@ function pad(value: number): string {
   return `${value}`.padStart(2, '0');
 }
 
+function buildLocalDateTimeInputs(date: Date): { date: string; time: string } {
+  return {
+    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    time: `${pad(date.getHours())}:00`,
+  };
+}
+
+export function normalizeHourInput(time: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) {
+    return '';
+  }
+  const hour = Number(match[1]);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    return '';
+  }
+  return `${pad(hour)}:00`;
+}
+
+export function nextWholeHourInputs(now = new Date()): { date: string; time: string } {
+  const rounded = new Date(now);
+  rounded.setSeconds(0, 0);
+  if (rounded.getMinutes() > 0) {
+    rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+  } else {
+    rounded.setMinutes(0, 0, 0);
+  }
+  return buildLocalDateTimeInputs(rounded);
+}
+
 export function isoToDateTimeInputs(iso: string | null): { date: string; time: string } {
   if (!iso) {
     return { date: '', time: '' };
@@ -14,15 +44,13 @@ export function isoToDateTimeInputs(iso: string | null): { date: string; time: s
   if (Number.isNaN(parsed.getTime())) {
     return { date: '', time: '' };
   }
-  return {
-    date: `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`,
-    time: `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`,
-  };
+  return buildLocalDateTimeInputs(parsed);
 }
 
 export function dateTimeInputsToIso(date: string, time: string): string | null {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  const timeMatch = /^(\d{2}):(\d{2})$/.exec(time);
+  const normalizedTime = normalizeHourInput(time);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(normalizedTime);
   if (!dateMatch || !timeMatch) {
     return null;
   }

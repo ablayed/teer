@@ -1,7 +1,6 @@
 'use client';
 
 import { AssignmentDetailsDialog } from '@/components/orders/assignment-details-dialog';
-import { CallLogDialog } from '@/components/orders/call-log-dialog';
 import {
   type DriverOption,
   type PayloadDialogAction,
@@ -28,7 +27,6 @@ type OrderActionsMenuProps = {
   autoOpenAssignment?: boolean;
   canEditAmounts?: boolean;
   deliveryState: string | null;
-  dispatchWhatsAppUrl: string | null;
   drivers: DriverOption[];
   onTransitionSuccess?: (result: Extract<TransitionResult, { ok: true }>) => void;
   orderId: string;
@@ -37,38 +35,25 @@ type OrderActionsMenuProps = {
   whatsappUrl: string | null;
 };
 
-// Actions de transition qui ouvrent un dialog (saisie) avant de s'executer.
+// Actions de transition qui ouvrent un dialog (saisie) avant de s'exécuter.
 function isPayloadDialogAction(action: TransitionAction): action is PayloadDialogAction {
   return action === 'assigner' || action === 'programmer' || action === 'annuler';
 }
 
-// Libelles unifies (memes que l'ancien detail) — l'ordre d'affichage du menu.
+// Ordre d'affichage du menu.
 const transitionMenuOrder: TransitionAction[] = [
+  'programmer',
+  'annuler',
+  'refuser',
+  'journaliser_appel',
   'confirmer',
   'deconfirmer',
-  'programmer',
   'assigner',
   'demarrer_livraison',
   'livrer',
   'mark_returned',
-  'refuser',
-  'annuler',
   'desannuler',
 ];
-
-const transitionLabels: Record<TransitionAction, string> = {
-  journaliser_appel: 'Journaliser un appel',
-  confirmer: 'Confirmer',
-  programmer: 'Programmer la livraison',
-  assigner: 'Assigner',
-  demarrer_livraison: 'Démarrer la livraison',
-  livrer: 'Marquer livree',
-  mark_returned: 'Marquer retournée',
-  refuser: 'Refuser',
-  annuler: 'Annuler la commande',
-  deconfirmer: 'Déconfirmer',
-  desannuler: 'Désannuler',
-};
 
 const destructiveActions = new Set<TransitionAction>(['annuler', 'mark_returned', 'refuser']);
 
@@ -77,7 +62,6 @@ export function OrderActionsMenu({
   autoOpenAssignment = false,
   canEditAmounts = false,
   deliveryState,
-  dispatchWhatsAppUrl,
   drivers,
   onTransitionSuccess,
   orderId,
@@ -93,7 +77,6 @@ export function OrderActionsMenu({
   const [maxHeight, setMaxHeight] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
-  const [callDialogOpen, setCallDialogOpen] = useState(false);
   // Phase 11.1 : popup d'assignation (détails/prix) ; ouvert après « Assigner »
   // (ref armé au moment de la confirmation du dialog livreur) ou à l'ouverture
   // d'une commande déjà assignée (autoOpenAssignment).
@@ -105,6 +88,7 @@ export function OrderActionsMenu({
 
   // Phase 11 : « programmer » supplante « confirmer » dans le dropdown.
   const visibleActions = visibleAllowedActions(allowedActions);
+  const isCallQueue = visibleActions.includes('journaliser_appel');
   const transitionEntries = transitionMenuOrder
     .filter((action) => visibleActions.includes(action))
     // Phase 13.1 (point 3) — nettoyage dropdown, UI SEULEMENT (les actions restent
@@ -117,11 +101,7 @@ export function OrderActionsMenu({
       }
       return true;
     });
-  const canLogCall = visibleActions.includes('journaliser_appel');
-  const canDispatch =
-    Boolean(dispatchWhatsAppUrl) &&
-    (deliveryState === 'assigned' || deliveryState === 'out_for_delivery');
-  const hasMenu = transitionEntries.length > 0 || canLogCall || canDispatch;
+  const hasMenu = transitionEntries.length > 0;
   const canCall = phone !== null;
 
   useEffect(() => {
@@ -258,6 +238,39 @@ export function OrderActionsMenu({
     setPendingDriverId(null);
   }
 
+  function getTransitionLabel(action: TransitionAction): string {
+    if (action === 'journaliser_appel') {
+      return 'À rappeler';
+    }
+
+    if (action === 'refuser' && isCallQueue) {
+      return 'Refuser par le client';
+    }
+
+    switch (action) {
+      case 'confirmer':
+        return 'Confirmer';
+      case 'programmer':
+        return 'Programmer la livraison';
+      case 'assigner':
+        return 'Assigner';
+      case 'demarrer_livraison':
+        return 'Démarrer la livraison';
+      case 'livrer':
+        return 'Marquer livree';
+      case 'mark_returned':
+        return 'Marquer retournée';
+      case 'refuser':
+        return 'Refuser';
+      case 'annuler':
+        return 'Annuler la commande';
+      case 'deconfirmer':
+        return 'Déconfirmer';
+      case 'desannuler':
+        return 'Désannuler';
+    }
+  }
+
   if (!hasMenu && !canCall && !whatsappUrl && !assignmentOpen) {
     return null;
   }
@@ -320,36 +333,9 @@ export function OrderActionsMenu({
                     role="menuitem"
                     type="button"
                   >
-                    {transitionLabels[action]}
+                    {getTransitionLabel(action)}
                   </button>
                 ))}
-
-                {canLogCall ? (
-                  <button
-                    className="flex min-h-11 w-full items-center px-4 text-left text-sm font-medium text-text hover:bg-canvas"
-                    onClick={() => {
-                      setOpen(false);
-                      setCallDialogOpen(true);
-                    }}
-                    role="menuitem"
-                    type="button"
-                  >
-                    {transitionLabels.journaliser_appel}
-                  </button>
-                ) : null}
-
-                {canDispatch && dispatchWhatsAppUrl ? (
-                  <a
-                    className="flex min-h-11 w-full items-center px-4 text-left text-sm font-medium text-text hover:bg-canvas"
-                    href={dispatchWhatsAppUrl}
-                    onClick={() => setOpen(false)}
-                    rel="noreferrer"
-                    role="menuitem"
-                    target="_blank"
-                  >
-                    Envoyer au livreur (WhatsApp)
-                  </a>
-                ) : null}
               </div>
             ) : null}
           </div>
@@ -366,10 +352,6 @@ export function OrderActionsMenu({
           onCancel={() => setPendingAction(null)}
           onConfirm={handleDialogConfirm}
         />
-      ) : null}
-
-      {callDialogOpen ? (
-        <CallLogDialog onClose={() => setCallDialogOpen(false)} orderId={orderId} />
       ) : null}
 
       {assignmentOpen ? (

@@ -8,6 +8,11 @@ import {
   cancelReasonLabels,
   cancelReasonValues,
 } from '@/lib/domain/order-transition-actions';
+import {
+  dateTimeInputsToIso,
+  nextWholeHourInputs,
+  normalizeHourInput,
+} from '@/lib/format/datetime-input';
 import { useEffect, useId, useState } from 'react';
 
 export type DriverOption = { id: string; fullName: string };
@@ -30,37 +35,6 @@ type TransitionDialogProps = {
   onConfirm: (payload: TransitionPayload) => void;
 };
 
-function todayInputValue(): string {
-  const now = new Date();
-  const month = `${now.getMonth() + 1}`.padStart(2, '0');
-  const day = `${now.getDate()}`.padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-// Phase 11 : la programmation porte une date ET une heure de livraison. On
-// combine le <input type="date"> (YYYY-MM-DD) et le <input type="time"> (HH:MM)
-// en un instant local → ISO. L'heure réelle choisie reste sur le bon jour
-// calendaire local (la vue « À livrer aujourd'hui » compare scheduled_for::date).
-function dateTimeInputToIso(dateValue: string, timeValue: string): string | null {
-  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
-  const timeMatch = /^(\d{2}):(\d{2})$/.exec(timeValue);
-  if (!dateMatch || !timeMatch) {
-    return null;
-  }
-
-  const [, year, month, day] = dateMatch;
-  const [, hour, minute] = timeMatch;
-  const date = new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    0,
-  );
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 const dialogTitles: Record<PayloadDialogAction, string> = {
   assigner: 'Assigner à un livreur',
   programmer: 'Programmer la livraison',
@@ -75,9 +49,10 @@ export function TransitionDialog({
   onConfirm,
 }: TransitionDialogProps) {
   const fieldId = useId();
+  const defaultSchedule = nextWholeHourInputs();
   const [driverId, setDriverId] = useState('');
-  const [date, setDate] = useState(todayInputValue);
-  const [time, setTime] = useState('12:00');
+  const [date, setDate] = useState(defaultSchedule.date);
+  const [time, setTime] = useState(defaultSchedule.time);
   const [reasons, setReasons] = useState<Set<CancelReason>>(new Set());
   const [note, setNote] = useState('');
 
@@ -113,7 +88,7 @@ export function TransitionDialog({
     ? Boolean(driverId)
     : isCancel
       ? reasons.size > 0
-      : Boolean(dateTimeInputToIso(date, time));
+      : Boolean(dateTimeInputsToIso(date, time));
 
   function handleConfirm() {
     if (isAssign) {
@@ -135,7 +110,7 @@ export function TransitionDialog({
       return;
     }
 
-    const scheduledFor = dateTimeInputToIso(date, time);
+    const scheduledFor = dateTimeInputsToIso(date, time);
     if (!scheduledFor) {
       return;
     }
@@ -214,7 +189,7 @@ export function TransitionDialog({
             ) : null}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor={fieldId}>Date de livraison</Label>
               <Input
@@ -228,7 +203,8 @@ export function TransitionDialog({
               <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
               <Input
                 id={`${fieldId}-time`}
-                onChange={(event) => setTime(event.target.value)}
+                onChange={(event) => setTime(normalizeHourInput(event.target.value))}
+                step={3600}
                 type="time"
                 value={time}
               />

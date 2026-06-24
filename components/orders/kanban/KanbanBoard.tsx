@@ -58,7 +58,7 @@ const toneClasses: Record<KanbanColumnView['tone'], string> = {
 };
 
 const actionLabels: Record<TransitionAction, string> = {
-  journaliser_appel: 'Journaliser une tentative',
+  journaliser_appel: 'À rappeler',
   confirmer: 'Confirmer',
   programmer: 'Programmer la livraison',
   assigner: 'Assigner',

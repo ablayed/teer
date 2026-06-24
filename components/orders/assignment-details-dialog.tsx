@@ -5,7 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getOrderAmountsForAssignmentAction, updateOrderAmountsAction } from '@/lib/actions/orders';
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
-import { dateTimeInputsToIso, isoToDateTimeInputs } from '@/lib/format/datetime-input';
+import {
+  dateTimeInputsToIso,
+  isoToDateTimeInputs,
+  nextWholeHourInputs,
+  normalizeHourInput,
+} from '@/lib/format/datetime-input';
 import { formatMoney } from '@/lib/format/fcfa';
 import { buildWhatsAppDispatchUrlForDriver, firstName } from '@/lib/whatsapp/link';
 import { useAction } from 'next-safe-action/hooks';
@@ -89,9 +94,9 @@ export function AssignmentDetailsDialog({
       setSavedScheduledFor(d.scheduledFor);
       setTotal(d.totalAmount);
       setFeeInput(String(d.deliveryFeeMinor));
-      const dt = isoToDateTimeInputs(d.scheduledFor);
+      const dt = d.scheduledFor ? isoToDateTimeInputs(d.scheduledFor) : nextWholeHourInputs();
       setDate(dt.date);
-      setTime(dt.time);
+      setTime(normalizeHourInput(dt.time));
       setLoaded(true);
     })();
     return () => {
@@ -287,7 +292,8 @@ export function AssignmentDetailsDialog({
                 <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
                 <Input
                   id={`${fieldId}-time`}
-                  onChange={(event) => setTime(event.target.value)}
+                  onChange={(event) => setTime(normalizeHourInput(event.target.value))}
+                  step={3600}
                   type="time"
                   value={time}
                 />
