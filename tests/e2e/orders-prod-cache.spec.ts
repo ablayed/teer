@@ -77,7 +77,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: 'Commandes' })).toBeVisible();
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E commandes');
@@ -106,20 +106,21 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
   await grantCurrentConsents(admin, userId);
 
   let merchantAccountId = '';
-  for (let i = 0; i < 40; i++) {
-    const { data } = await admin
-      .from('merchant_account')
-      .select('id')
-      .eq('owner_user_id', userId)
-      .maybeSingle();
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_account')
+          .select('id')
+          .eq('owner_user_id', userId)
+          .maybeSingle();
 
-    if (data) {
-      merchantAccountId = data.id;
-      break;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
+        merchantAccountId = data?.id ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [100, 250, 500] },
+    )
+    .not.toBe('');
 
   await admin
     .from('merchant_account')
@@ -169,7 +170,10 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
 
     // On part vers une vue filtrée : l'entrée « /commandes » nu reste en cache, périmée.
     await page.getByRole('button', { name: /^En cours de livraison \(/ }).click();
-    await page.waitForURL(/vue=en-livraison/);
+    await expect(
+      page.getByRole('button', { name: /^En cours de livraison \(0\)$/ }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('orders-results')).toHaveAttribute('aria-busy', 'false');
 
     // Création manuelle DEPUIS la vue filtrée (déclencheur exact de l'issue #3).
     await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
@@ -177,8 +181,14 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     await page.getByLabel('Téléphone').fill('+221 77 111 22 33');
     await page.getByPlaceholder('Rechercher titre ou SKU').fill('Sac Prod Cache');
     await page.locator('select').nth(1).selectOption({ label: 'Sac Prod Cache' });
-    await page.getByLabel('Quantité').fill('1');
-    await page.getByLabel('Prix unitaire (FCFA)').fill('14500');
+    const quantityInput = page.getByLabel('Quantité');
+    await quantityInput.press('ControlOrMeta+A');
+    await quantityInput.pressSequentially('1');
+    await expect(quantityInput).toHaveValue('1');
+    const priceInput = page.getByLabel('Prix unitaire (FCFA)');
+    await priceInput.press('ControlOrMeta+A');
+    await priceInput.pressSequentially('14500');
+    await expect(priceInput).toHaveValue('14500');
     await page.getByRole('button', { name: 'Créer la commande' }).click();
 
     // Le correctif (Paradigm A, PR #17) : après création, NewOrderForm notifie
@@ -187,13 +197,15 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     // de succès et la bascule sur « Toutes » sont pilotées par le state client, donc
     // indépendantes du Router Cache / RSC périmé (cause des ~20 % d'invisibilité).
     await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('orders-results')).toHaveAttribute('aria-busy', 'false');
 
     // Vue « Toutes » fraîche : la commande tout juste créée est visible ET le compteur
     // « Toutes » passe à (2). Sur le bug, la vue filtrée périmée restait affichée → la
     // commande restait invisible et le compteur figé à (1).
-    await expect(page.getByRole('button', { name: /^Toutes \(2\)$/ })).toBeVisible({
-      timeout: 6_000,
-    });
+    await expect(page.getByRole('button', { name: /^Toutes \(2\)$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await expect(page.getByText('Awa Vue Filtree')).toBeVisible({ timeout: 6_000 });
   } finally {
     await admin.auth.admin.deleteUser(userId);

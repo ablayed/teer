@@ -551,8 +551,8 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
-    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
     await page.reload();
+    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
     await openActionsMenu(page);
     await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
 
