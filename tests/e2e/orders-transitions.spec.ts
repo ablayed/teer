@@ -579,6 +579,7 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
 
     await menuItem(page, 'Marquer livree').click();
     await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
+    await page.reload();
     await expect(page.getByText('Livrée').first()).toBeVisible({ timeout: 15_000 });
 
     const { data: order, error } = await fixture.admin

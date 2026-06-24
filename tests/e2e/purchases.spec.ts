@@ -147,6 +147,7 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
 
     // Transport unique (Lot C : un seul frais).
     const transportInput = page.locator('#f-transport');
+    await transportInput.press('ControlOrMeta+A');
     await transportInput.pressSequentially('20000');
     await expect(transportInput).toHaveValue('20000');
 
@@ -180,14 +181,18 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     // transportTotal = 20_000
     // landedTotalValue = 80_000 + 20_000 = 100_000
     // landedUnitCost = floor(100_000 / 10) = 10_000
-    let stock = await getProductStock(fixture.admin, productId);
-    for (let retry = 0; retry < 10 && !stock; retry++) {
-      await new Promise((r) => setTimeout(r, 300));
-      stock = await getProductStock(fixture.admin, productId);
-    }
-
-    expect(stock?.qty_on_hand).toBe(10);
-    expect(stock?.unit_cost).toBe(10_000);
+    await expect
+      .poll(
+        async () => {
+          const stock = await getProductStock(fixture.admin, productId);
+          return {
+            qtyOnHand: stock?.qty_on_hand ?? null,
+            unitCost: stock?.unit_cost ?? null,
+          };
+        },
+        { timeout: 10_000 },
+      )
+      .toEqual({ qtyOnHand: 10, unitCost: 10_000 });
 
     // Détail coût atterri — ouvrir le panel et vérifier le récapitulatif.
     await page.getByText('Détail du coût atterri').click();
