@@ -110,7 +110,14 @@ export function buildCspHeader({ regime, isDev, nonce }: BuildCspOptions): strin
   // inexistant → page blanche → tous les sélecteurs E2E expirent (Chromium, lui,
   // exempte le loopback). En prod c'est redondant avec HSTS preload (same-origin déjà
   // https) ; on le garde par défense en profondeur côté serveur https.
-  if (!isDev) {
+  //
+  // Retiré AUSSI en build de test E2E (`NEXT_PUBLIC_DISABLE_UIR='1'`) : un build de
+  // prod servi sur `http://localhost` (next start) émettrait sinon l'UIR et blanchirait
+  // WebKit. Le flag est un `NEXT_PUBLIC_*` inliné au `next build` → conforme à la
+  // doctrine edge-safe de ce module (jamais de secret/`lib/env`). En prod réelle, le
+  // flag est absent → l'UIR reste émis à l'identique.
+  const disableUir = process.env.NEXT_PUBLIC_DISABLE_UIR === '1';
+  if (!isDev && !disableUir) {
     directives.push(['upgrade-insecure-requests', '']);
   }
 
