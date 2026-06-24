@@ -168,6 +168,16 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
           NEXT_PUBLIC_DISABLE_UIR: '1'
+      # Hygiène disque avant `next start` : le cache de build webpack/SWC (`.next/cache`)
+      # n'est PAS utilisé au runtime par `next start` (qui sert depuis `.next/server` et
+      # `.next/static`). On le purge pour rendre de la place sur un runner partagé avec les
+      # images docker de `supabase start` + le `.next` de prod. NE JAMAIS `rm -rf .next` :
+      # `next start` en a besoin. Les `df -h` encadrants mesurent la marge réelle (1er run).
+      - name: Free disk before e2e (drop next build cache)
+        run: |
+          df -h /
+          rm -rf .next/cache
+          df -h /
       - run: pnpm test:e2e
         env:
           E2E_PROD_BUILD: '1'
