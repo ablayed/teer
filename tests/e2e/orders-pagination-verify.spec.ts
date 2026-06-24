@@ -112,20 +112,20 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   await grantCurrentConsents(admin, userId);
 
   let merchantAccountId = '';
-  for (let i = 0; i < 40; i++) {
-    const { data } = await admin
-      .from('merchant_account')
-      .select('id')
-      .eq('owner_user_id', userId)
-      .maybeSingle();
-
-    if (data) {
-      merchantAccountId = data.id;
-      break;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_account')
+          .select('id')
+          .eq('owner_user_id', userId)
+          .maybeSingle();
+        merchantAccountId = data?.id ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 15_000, intervals: [250, 500, 1000] },
+    )
+    .not.toBe('');
 
   await admin
     .from('merchant_account')
