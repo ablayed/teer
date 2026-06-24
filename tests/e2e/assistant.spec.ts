@@ -143,13 +143,13 @@ test('owner : onglet Assistant, FAQ marge + résultat net et suggestion marge', 
       timeout: 15_000,
     });
 
-    // Onglet chat (par défaut) : suggestion finance réservée à l'owner.
-    await expect(page.getByText(SUGGESTION_MARGE)).toBeVisible({ timeout: 15_000 });
-
-    // Onglet FAQ : l'entrée marge/résultat net est visible pour l'owner.
-    await page.getByRole('tab', { name: 'FAQ' }).click();
+    // Onglet FAQ actif par défaut : l'entrée marge/résultat net est visible pour l'owner.
     await expect(page.getByText(FAQ_MARGE)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(FAQ_CA)).toBeVisible({ timeout: 15_000 });
+
+    // Onglet Assistant : suggestion finance réservée à l'owner.
+    await page.getByRole('tab', { name: messages.assistant.tab.chat }).click();
+    await expect(page.getByText(SUGGESTION_MARGE)).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
