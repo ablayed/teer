@@ -4,6 +4,8 @@
 
 **Latest applied migration: `0074`** (prod; RPC filet invitation par email confirmées; types régénérés après push de schéma).
 
+**Dernières features en prod (main) :** invitation collaborateur (#26) · garde-fou anti-prod seeds E2E `assertLocalSupabase` (#29) · **commandes : filtre période + boutique, groupement par date, recherche instantanée, dropdown actions (#30)**. La création manuelle de commande utilise **Paradigm A** (cf. gotcha « Données serveur post-mutation ») : lecture serveur + injection state, jamais `router.refresh()`/navigation.
+
 ## Commands
 
 ```bash
@@ -84,7 +86,7 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 ## Dette E2E ouverte
 
-**(a) Cause racine non résolue — compilation on-demand next dev en CI.** Le warm-up pré-compile les routes statiques mais Next.js dev évince son cache sous pression mémoire et recompile pendant les specs. Les routes dynamiques `/commandes/[id]`, `/api/rapport`, `/api/shopify/webhooks` ne sont pas warm-upées. Le vrai fix : généraliser `next build + next start` (pattern de `e2e-prod.yml`) à tout le job CI — **MAIS** ça rouvre le piège UIR/WebKit (`upgrade-insecure-requests` casse WebKit sur `http://localhost` → blank page). Lot dédié à planifier avec désactivation UIR en mode test.
+**(a) Cause racine non résolue — compilation on-demand next dev en CI.** Le warm-up pré-compile les routes statiques mais Next.js dev évince son cache sous pression mémoire et recompile pendant les specs. Les routes dynamiques `/commandes/[id]`, `/api/rapport`, `/api/shopify/webhooks` ne sont pas warm-upées. Le vrai fix : généraliser `next build + next start` (pattern de `e2e-prod.yml`) à tout le job CI — **MAIS** ça rouvre le piège UIR/WebKit (`upgrade-insecure-requests` casse WebKit sur `http://localhost` → blank page). **CE FIX EST DÉJÀ CONSTRUIT, rangé pour reprise** : branche `infra/e2e-build-prod` (bascule `ci.yml` build-prod 3 cibles + `NEXT_PUBLIC_DISABLE_UIR=1` baké qui neutralise UIR en test + fix seed pagination 0062 + `expect.poll`), note `docs/dette-e2e-build-prod.md`, filet `backup/tangled-stack-2026-06-23` + `wip/socle-uir`. À rebaser sur main (après `wip/socle-uir`) puis pousser. **Symptôme de cette dette au merge #30** : `test-e2e` rouge sur des specs **migrantes** (invitation/drivers/analytics/products/qa-prelaunch, et `orders-transitions:532`/`:607` — transitions, pas la feature) avec durées 1.0–1.5 min = timeouts de compil à froid ; non rattrapés de façon fiable par `retries:1` sous charge.
 
 **(b) `qa-prelaunch versement` — résolu PR stabilisation-e2e-flaky.** Cause : `fill()` sur spinbutton React contrôlé ne déclenche pas `onChange` sous WebKit iphone-14 → formulaire soumis avec 0. `cash_collectable_minor = 50000` prouvé correct en DB (assertion ligne 830 passe) — ce n'est PAS un bug applicatif. Fix : `click({clickCount:3}) + pressSequentially()` + guard `toHaveValue()` avant submit.
 
