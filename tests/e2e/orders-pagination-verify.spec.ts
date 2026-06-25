@@ -174,14 +174,18 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   }
 
   const today = new Date();
-  today.setUTCHours(12, 0, 0, 0); // 12:00 UTC ≡ 12:00 Africa/Dakar (UTC+0)
-  const todayIso = today.toISOString();
-  // Ancre des created_at_shopify : AUJOURD'HUI à midi UTC (≡ midi Africa/Dakar, UTC+0),
-  // pas une date fixe. formatDateGroupLabel bucketise par jour Africa/Dakar (= jour UTC) ;
-  // une date codée en dur (ex. 2026-06-09) tombait hors de "aujourd'hui" → 0 en-tête
-  // « Aujourd'hui » (échec :314/:320). Midi + étalement vers le bas (−42 min) garde les 43
-  // commandes dans le même jour UTC quelle que soit l'heure du run.
-  const base = today.getTime();
+  const todayStart = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
+  const newestOrderTime = Math.max(Date.now() - 1_000, todayStart);
+  const orderSpacingMs = Math.max(
+    1,
+    Math.min(60_000, Math.floor((newestOrderTime - todayStart) / 44)),
+  );
+  const todayIso = new Date(newestOrderTime).toISOString();
+  const base = newestOrderTime;
 
   // Contrainte 0057 : les commandes assigned/out_for_delivery exigent un livreur.
   const { data: seedDriver, error: seedDriverError } = await admin
@@ -305,7 +309,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     cash_state: s.cash_state,
     scheduled_for: s.scheduled_for,
     assigned_driver_id: s.assigned_driver_id ?? null,
-    created_at_shopify: new Date(base - s.index * 60_000).toISOString(),
+    created_at_shopify: new Date(base - s.index * orderSpacingMs).toISOString(),
   }));
 
   const { error: insertError } = await admin.from('orders').insert(rows);
