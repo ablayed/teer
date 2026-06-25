@@ -1,5 +1,6 @@
 'use client';
 
+import { SettingsSecurity } from '@/components/settings/settings-security';
 import { SettingsShops } from '@/components/settings/settings-shops';
 import { SettingsTeam } from '@/components/settings/settings-team';
 import { SignOutButton } from '@/components/sign-out-button';
@@ -14,7 +15,7 @@ import { useRouter } from 'next/navigation';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 
 type CountryCode = 'SN' | 'CI' | 'BJ' | 'TG' | 'BF' | 'ML';
-type SettingsTab = 'profile' | 'team' | 'shops' | 'billing';
+type SettingsTab = 'profile' | 'team' | 'shops' | 'security' | 'billing';
 type SettingsErrorCode =
   | 'invalid_whatsapp'
   | 'merchant_not_found'
@@ -35,6 +36,7 @@ const settingsTabs = [
   'profile',
   'team',
   'shops',
+  'security',
   'billing',
 ] as const satisfies readonly SettingsTab[];
 const settingsErrorCodes = [
@@ -216,7 +218,6 @@ export function SettingsProfile({
               <div className="space-y-2">
                 <Label htmlFor="settings-email">{t('profile.fields.email')}</Label>
                 <Input id="settings-email" readOnly value={email} />
-                <p className="text-sm text-muted">{t('profile.emailNote')}</p>
               </div>
 
               <div className="space-y-2">
@@ -270,6 +271,14 @@ export function SettingsProfile({
           role="tabpanel"
         >
           <SettingsShops currentRole={currentRole} />
+        </section>
+      ) : activeTab === 'security' ? (
+        <section
+          aria-labelledby="settings-tab-security"
+          id="settings-panel-security"
+          role="tabpanel"
+        >
+          <SettingsSecurity currentEmail={email} />
         </section>
       ) : (
         <section

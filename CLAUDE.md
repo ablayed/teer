@@ -6,7 +6,9 @@
 
 **Dernières features en prod (main) :** invitation collaborateur (#26) · garde-fou anti-prod seeds E2E `assertLocalSupabase` (#29) · **commandes : filtre période + boutique, groupement par date, recherche instantanée, dropdown actions (#30)**. La création manuelle de commande utilise **Paradigm A** (cf. gotcha « Données serveur post-mutation ») : lecture serveur + injection state, jamais `router.refresh()`/navigation.
 
-**Vague 3 — Support & Onboarding (branche `infra/e2e-build-prod`, en attente de merge) :** page `/assistant` renommée « Aide » (HelpCircle nav) · FAQ searchable 50 entrées 10 catégories filtrage rôle (agent/manager/owner) · articulation FAQ → assistant (CTA 0-résultats) · WhatsApp/email support conditionnels (`NEXT_PUBLIC_SUPPORT_WHATSAPP` / `NEXT_PUBLIC_SUPPORT_EMAIL` optionnels sans défaut) · feedback table `0075` + `submitFeedbackAction` + Resend best-effort · checklist onboarding 5 étapes sur `/tableau` (localStorage dismiss, owner/manager uniquement).
+**Vague 3 — Support & Onboarding (mergée #35) :** page `/assistant` renommée « Aide » (HelpCircle nav) · FAQ searchable 50 entrées 10 catégories filtrage rôle (agent/manager/owner) · articulation FAQ → assistant (CTA 0-résultats) · WhatsApp/email support conditionnels (`NEXT_PUBLIC_SUPPORT_WHATSAPP` / `NEXT_PUBLIC_SUPPORT_EMAIL` optionnels sans défaut) · feedback table `0075` + `submitFeedbackAction` + Resend best-effort · checklist onboarding 5 étapes sur `/tableau` (localStorage dismiss, owner/manager uniquement).
+
+**Vague 1 self-service compte (branche feat/vague1-securite) :** onglet Sécurité dans `/parametres` — changement mot de passe (réauth applicative `signInWithPassword` + `updateUser`), changement email (double confirmation Supabase `double_confirm_changes=true`), déconnexion automatique après 2h d'inactivité (modal d'avertissement 2 min avant). Zéro migration SQL. Env : `IDLE_TIMEOUT_MS` / `IDLE_WARNING_MS` (défaut 7 200 000 / 120 000 ms ; debug hook `window.__teerIdleDebug.triggerWarning()` en non-prod pour E2E).
 
 ## Commands
 

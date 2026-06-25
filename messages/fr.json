@@ -247,7 +247,8 @@
       "hasLower": "Une lettre minuscule",
       "hasDigit": "Un chiffre",
       "hasSpecial": "Un caractère spécial (!@#$%^&* etc.)"
-    }
+    },
+    "session_expired_idle": "Vous avez été déconnecté(e) pour inactivité."
   },
   "legalReaccept": {
     "eyebrow": "Action requise",
@@ -305,59 +306,59 @@
   "tableau": {
     "title": "Tableau",
     "greeting": "Bonjour {name}",
-    "subtitle": "{count, plural, =0 {Tout est \u00e0 jour.} one {# commande en attente d'appel.} other {# commandes en attente d'appel.}}",
+    "subtitle": "{count, plural, =0 {Tout est à jour.} one {# commande en attente d'appel.} other {# commandes en attente d'appel.}}",
     "shops": {
       "label": "Boutique",
       "ariaLabel": "Filtrer le tableau par boutique",
       "all": "Toutes"
     },
     "kpi": {
-      "a_appeler": "\u00c0 appeler",
-      "ca_collecte": "CA collect\u00e9 (7 j)",
-      "ca_collecte_def": "Le chiffre d'affaires : l'argent des commandes livr\u00e9es et encaiss\u00e9es sur les 7 derniers jours.",
-      "ca_collecte_formula": "CA collect\u00e9 = somme des montants des commandes encaiss\u00e9es (7 derniers jours)",
+      "a_appeler": "À appeler",
+      "ca_collecte": "CA collecté (7 j)",
+      "ca_collecte_def": "Le chiffre d'affaires : l'argent des commandes livrées et encaissées sur les 7 derniers jours.",
+      "ca_collecte_formula": "CA collecté = somme des montants des commandes encaissées (7 derniers jours)",
       "ca_attente": "CA à livrer",
       "ca_attente_def": "Le chiffre d'affaires attendu : l'argent des commandes confirmées pas encore livrées.",
       "ca_attente_formula": "CA à livrer = somme des montants des commandes en attente de livraison",
       "taux_confirmation": "Taux confirmation",
       "taux_livraison": "Taux livraison",
       "delta_hier": "vs hier",
-      "unavailable": "Donn\u00e9es indisponibles"
+      "unavailable": "Données indisponibles"
     },
     "actions": {
-      "title": "\u00c0 faire maintenant",
+      "title": "À faire maintenant",
       "voir_tout": "Voir toute la file",
-      "empty": "Tout est \u00e0 jour",
+      "empty": "Tout est à jour",
       "call": "Appeler"
     },
     "refresh": {
-      "label": "Actualis\u00e9 \u00e0 {time}"
+      "label": "Actualisé à {time}"
     },
     "revenue": {
-      "title": "CA collect\u00e9 sur 30 jours",
-      "empty": "Aucune livraison encaiss\u00e9e sur les 30 derniers jours."
+      "title": "CA collecté sur 30 jours",
+      "empty": "Aucune livraison encaissée sur les 30 derniers jours."
     },
     "blocks": {
       "topProducts": {
         "title": "Produits les plus vendus",
         "empty": "Aucun produit vendu pour le moment.",
-        "units": "unit\u00e9s"
+        "units": "unités"
       },
       "shopPerformance": {
         "title": "Performance par boutique",
-        "empty": "Aucune boutique connect\u00e9e.",
-        "connected": "Connect\u00e9e",
-        "warning": "\u00c0 v\u00e9rifier",
+        "empty": "Aucune boutique connectée.",
+        "connected": "Connectée",
+        "warning": "À vérifier",
         "orders": "commandes"
       },
       "codBreakdown": {
-        "title": "R\u00e9partition COD",
-        "definition": "COD = paiement \u00e0 la livraison. La r\u00e9partition de vos commandes par \u00e9tape : \u00e0 appeler, confirm\u00e9e, programm\u00e9e, en livraison, livr\u00e9e, refus\u00e9e, annul\u00e9e.",
-        "empty": "Aucune commande \u00e0 afficher."
+        "title": "Répartition COD",
+        "definition": "COD = paiement à la livraison. La répartition de vos commandes par étape : à appeler, confirmée, programmée, en livraison, livrée, refusée, annulée.",
+        "empty": "Aucune commande à afficher."
       },
       "recentActivity": {
-        "title": "Activit\u00e9 r\u00e9cente",
-        "empty": "Aucune transition r\u00e9cente.",
+        "title": "Activité récente",
+        "empty": "Aucune transition récente.",
         "initial": "Initial",
         "orderFallback": "Commande"
       },
@@ -366,15 +367,15 @@
         "empty": "Aucune alerte. Tout va bien.",
         "lateCalls": {
           "title": "Appels en retard",
-          "value": "{count, plural, one {# commande \u00e0 appeler depuis plus de 24 h} other {# commandes \u00e0 appeler depuis plus de 24 h}}"
+          "value": "{count, plural, one {# commande à appeler depuis plus de 24 h} other {# commandes à appeler depuis plus de 24 h}}"
         },
         "shops": {
-          "title": "Boutiques \u00e0 v\u00e9rifier",
+          "title": "Boutiques à vérifier",
           "value": "{count, plural, one {# boutique hors connexion} other {# boutiques hors connexion}}"
         },
         "tokens": {
           "title": "Connexion Shopify",
-          "value": "{count, plural, one {# jeton expire bient\u00f4t} other {# jetons expirent bient\u00f4t}}"
+          "value": "{count, plural, one {# jeton expire bientôt} other {# jetons expirent bientôt}}"
         }
       }
     }
@@ -440,7 +441,8 @@
       "profile": "Profil",
       "team": "Équipe",
       "shops": "Boutiques",
-      "billing": "Facturation"
+      "billing": "Facturation",
+      "security": "Sécurité"
     },
     "placeholder": "Bientôt disponible.",
     "profile": {
@@ -579,6 +581,46 @@
       "update_failed": "La mise à jour du profil a échoué. Réessayez.",
       "audit_failed": "La mise à jour a réussi, mais le journal d’audit n’a pas pu être écrit.",
       "generic": "Une erreur est survenue. Réessayez."
+    },
+    "security": {
+      "title": "Sécurité du compte",
+      "password": {
+        "title": "Changer le mot de passe",
+        "currentLabel": "Mot de passe actuel",
+        "newLabel": "Nouveau mot de passe",
+        "confirmLabel": "Confirmer le nouveau mot de passe",
+        "showPassword": "Afficher",
+        "hidePassword": "Masquer",
+        "save": "Mettre à jour le mot de passe",
+        "criteriaHint": "Au moins 10 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.",
+        "success": "Mot de passe mis à jour.",
+        "errors": {
+          "wrong_current": "Le mot de passe actuel est incorrect.",
+          "mismatch": "Les mots de passe ne correspondent pas.",
+          "same_as_current": "Le nouveau mot de passe doit être différent de l'actuel.",
+          "update_failed": "La mise à jour a échoué. Réessayez.",
+          "generic": "Une erreur est survenue. Réessayez."
+        }
+      },
+      "email": {
+        "title": "Changer l'adresse e-mail",
+        "currentLabel": "Adresse e-mail actuelle",
+        "newLabel": "Nouvelle adresse e-mail",
+        "passwordLabel": "Mot de passe actuel (pour confirmer)",
+        "save": "Envoyer la demande de changement",
+        "success": "Un e-mail de confirmation a été envoyé à votre ancienne ET à votre nouvelle adresse. Le changement prend effet une fois les deux confirmés.",
+        "errors": {
+          "same_email": "La nouvelle adresse est identique à l'actuelle.",
+          "wrong_current": "Mot de passe incorrect.",
+          "update_failed": "La mise à jour a échoué. Réessayez.",
+          "generic": "Une erreur est survenue. Réessayez."
+        }
+      }
+    },
+    "idle": {
+      "warningTitle": "Déconnexion imminente",
+      "warningBody": "Vous allez être déconnecté(e) dans {seconds} secondes faute d'activité.",
+      "stayConnected": "Rester connecté(e)"
     }
   },
   "shops": {
