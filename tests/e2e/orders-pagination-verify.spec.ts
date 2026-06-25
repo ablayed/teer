@@ -22,7 +22,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
-import { type Page, expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
@@ -73,6 +73,17 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
   await expect(page.locator('main#main')).toBeVisible({ timeout: 15_000 });
+}
+
+async function selectOrdersView(page: Page, viewButton: Locator, view: string) {
+  await expect(async () => {
+    await viewButton.click();
+    await expect(page).toHaveURL(new RegExp(`/commandes\\?(?=[^#]*\\bvue=${view}(?:&|$))`, 'u'), {
+      timeout: 1_500,
+    });
+  }).toPass({ intervals: [250, 500, 1_000], timeout: 10_000 });
+
+  await expect(page.getByTestId('orders-results')).not.toHaveAttribute('aria-busy', 'true');
 }
 
 type OrderSeed = {
@@ -370,12 +381,11 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     await expect(page.locator('article')).toHaveCount(30);
 
     const deliveryViewButton = page.getByRole('button', { name: /^En cours de livraison \(2\)$/ });
-    await deliveryViewButton.click();
+    await selectOrdersView(page, deliveryViewButton, 'en-livraison');
 
     await expect(deliveryViewButton).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('article')).toHaveCount(2);
     await expect(page.locator('article').first()).toContainText('VERIF-035');
-    await expect(page.getByTestId('orders-results')).not.toHaveAttribute('aria-busy', 'true');
   } finally {
     await admin.auth.admin.deleteUser(userId);
   }
