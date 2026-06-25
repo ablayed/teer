@@ -50,7 +50,7 @@ export default async function globalSetup() {
     }
     if (lastErr) {
       // Non-fatal : un warm-up raté vaut mieux qu'un warm-up absent.
-      console.warn(`[warm-up] ${route} échoué après 3 tentatives :`, lastErr);
+      process.stderr.write(`[warm-up] ${route} echoue apres 3 tentatives : ${String(lastErr)}\n`);
     }
   }
 
