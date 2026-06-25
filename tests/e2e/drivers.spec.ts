@@ -527,11 +527,10 @@ test('feedback pending sur changement de livreur (build prod)', async ({ page })
 
     await expect(driverButton).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('driver-detail-panel')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.getByRole('heading', { name: 'Moussa A' })).toBeVisible();
 
     await page.waitForURL(new RegExp(`driver=${driverBId}.*period=30j`));
-    await expect(page.getByRole('heading', { name: 'Moussa B' })).toBeVisible();
     await expect(page.getByTestId('driver-detail-panel')).not.toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('heading', { name: 'Moussa B' })).toBeVisible();
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

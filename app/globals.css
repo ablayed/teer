@@ -222,6 +222,23 @@ input[type="button"] {
   background-size: 56px 56px;
 }
 
+@keyframes auth-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .auth-step-enter {
+    animation: auth-step-in 220ms ease-out both;
+  }
+}
+
 @keyframes dashboard-shimmer {
   from {
     background-position: 120% 0;

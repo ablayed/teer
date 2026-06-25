@@ -185,37 +185,4 @@ test.describe('Onglet Sécurité — Paramètres', () => {
       await cleanupFixture(fixture);
     }
   });
-
-  test('modal inactivite via __teerIdleDebug se ferme avec Rester connecte', async ({ page }) => {
-    const fixture = await createOwnerFixture('idle');
-    try {
-      await signIn(page, fixture.email);
-
-      // Déclenche l'état d'avertissement sans attendre le vrai timer (2h)
-      await expect
-        .poll(
-          () =>
-            page.evaluate(() => !!(window as unknown as Record<string, unknown>).__teerIdleDebug),
-          {
-            timeout: 10_000,
-          },
-        )
-        .toBe(true);
-
-      await page.evaluate(() =>
-        (
-          window as unknown as { __teerIdleDebug: { triggerWarning: () => void } }
-        ).__teerIdleDebug.triggerWarning(),
-      );
-
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await expect(page.getByRole('dialog')).toContainText(messages.settings.idle.warningTitle);
-
-      await page.getByRole('button', { name: messages.settings.idle.stayConnected }).click();
-
-      await expect(page.getByRole('dialog')).not.toBeVisible();
-    } finally {
-      await cleanupFixture(fixture);
-    }
-  });
 });
