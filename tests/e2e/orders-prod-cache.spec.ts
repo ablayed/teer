@@ -80,6 +80,24 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await expect(page.getByRole('heading', { name: 'Commandes' })).toBeVisible();
 }
 
+async function selectDeliveryView(page: Page) {
+  const deliveryView = page.getByRole('button', { name: /^En cours de livraison \(/ });
+
+  await expect(async () => {
+    await deliveryView.click();
+    await expect(page).toHaveURL(/\/commandes\?(?=[^#]*\bvue=en-livraison(?:&|$))/u, {
+      timeout: 1_500,
+    });
+  }).toPass({ intervals: [250, 500, 1_000], timeout: 10_000 });
+
+  await expect(page.getByRole('button', { name: /^En cours de livraison \(0\)$/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByText('Client Seed')).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Aucune commande avec ce statut' })).toBeVisible();
+}
+
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E commandes');
 test.skip(
   !isProdBuildRun,
@@ -185,14 +203,7 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     await expect(page.getByText('Client Seed')).toBeVisible();
 
     // On part vers une vue filtrée : l'entrée « /commandes » nu reste en cache, périmée.
-    await page.getByRole('button', { name: /^En cours de livraison \(/ }).click();
-    await expect(
-      page.getByRole('button', { name: /^En cours de livraison \(0\)$/ }),
-    ).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('article')).toHaveCount(0);
-    await expect(
-      page.getByRole('heading', { name: 'Aucune commande avec ce statut' }),
-    ).toBeVisible();
+    await selectDeliveryView(page);
 
     // Création manuelle DEPUIS la vue filtrée (déclencheur exact de l'issue #3).
     await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();

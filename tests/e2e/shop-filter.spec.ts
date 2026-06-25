@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
-import { type Page, expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
@@ -184,6 +184,13 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.waitForURL(`**${redirectTo.split('?')[0]}**`);
 }
 
+async function clickFilterUntilUrl(page: Page, getLink: () => Locator, url: RegExp) {
+  await expect(async () => {
+    await getLink().click();
+    await expect(page).toHaveURL(url, { timeout: 1_500 });
+  }).toPass({ intervals: [250, 500, 1_000], timeout: 10_000 });
+}
+
 test.describe('Phase 13 — filtre boutique', () => {
   test.skip(!hasSupabaseAdmin, 'SUPABASE service role requis pour seeder les fixtures');
 
@@ -206,9 +213,16 @@ test.describe('Phase 13 — filtre boutique', () => {
     await expect(selector.getByRole('link', { name: domainA })).toBeVisible();
 
     // Filtrer sur la boutique A → l'URL porte ?shop=<id>.
-    await selector.getByRole('link', { name: domainA }).click();
-    await page.waitForURL(`**/tableau?**shop=${shopA}**`);
-    expect(page.url()).toContain(`shop=${shopA}`);
+    await clickFilterUntilUrl(
+      page,
+      () => selector.getByRole('link', { name: domainA }),
+      new RegExp(`/tableau\\?.*shop=${shopA}`),
+    );
+    await expect(page).toHaveURL(new RegExp(`/tableau\\?.*shop=${shopA}`));
+    await expect(selector.getByRole('link', { name: domainA })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
   });
 
   test('mono-boutique : aucun sélecteur boutique', async ({ page }) => {
@@ -268,22 +282,24 @@ test.describe('Phase 13 — filtre boutique', () => {
 
     const selector = page.getByRole('navigation', { name: 'Filtrer les commandes par boutique' });
     await expect(selector).toBeVisible();
-    await selector.getByRole('link', { name: /oa-.*\.myshopify\.com/ }).click();
+    await clickFilterUntilUrl(
+      page,
+      () => selector.getByRole('link', { name: /oa-.*\.myshopify\.com/ }),
+      new RegExp(`/commandes\\?.*shop=${shopA}`),
+    );
+    await expect(page).toHaveURL(new RegExp(`/commandes\\?.*shop=${shopA}`));
+    await expect(page.getByRole('button', { name: 'Toutes (2)' })).toBeVisible();
     await expect(page.getByText('Client Récent A')).toBeVisible();
     await expect(page.getByText('Client Ancien A')).toBeVisible();
     await expect(page.getByText('Client Récent B')).toHaveCount(0);
 
-    await page.getByRole('link', { name: "Aujourd'hui" }).click();
-
-    await expect(page).toHaveURL(/\/commandes\?.*period=today/);
-    process.stdout.write(
-      `[rsc-stale-probe] after-navigation ancien-count=${await page.getByText('Client Ancien A').count()} url=${page.url()}\n`,
+    await clickFilterUntilUrl(
+      page,
+      () => page.getByRole('link', { name: "Aujourd'hui" }),
+      new RegExp(`/commandes\\?.*shop=${shopA}.*period=today`),
     );
-    await page.reload();
-    process.stdout.write(
-      `[rsc-stale-probe] after-reload ancien-count=${await page.getByText('Client Ancien A').count()} url=${page.url()}\n`,
-    );
-
+    await expect(page).toHaveURL(new RegExp(`/commandes\\?.*shop=${shopA}.*period=today`));
+    await expect(page.getByRole('button', { name: 'Toutes (1)' })).toBeVisible();
     await expect(page.getByText('Client Récent A')).toBeVisible();
     await expect(page.getByText('Client Ancien A')).toHaveCount(0);
     await expect(page.getByText('Client Récent B')).toHaveCount(0);
@@ -346,5 +362,6 @@ test.describe('Phase 13 — filtre boutique', () => {
 
     await page.waitForURL(/\/commandes\?.*q=alpha/i);
     await expect(page.getByText('Client Alpha Instant')).toBeVisible();
+    await expect(page.getByText('Client Bravo Fond')).toHaveCount(0);
   });
 });
