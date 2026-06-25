@@ -132,6 +132,23 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     .update({ name: 'Tëër E2E pagination', onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
 
+  const { data: shop, error: shopError } = await admin
+    .from('shop')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_domain: `pagination-${Date.now()}.myshopify.com`,
+      access_token_encrypted: 'enc',
+      scopes: 'read_orders',
+    })
+    .select('id')
+    .single();
+
+  if (shopError || !shop) {
+    throw shopError ?? new Error('Boutique seed non créée');
+  }
+
+  const shopId = shop.id as string;
+
   // Client spécial recherchable (nom + téléphone SN) + client générique pour le volume.
   const { data: special, error: specialError } = await admin
     .from('customer')
@@ -275,6 +292,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
 
   const rows = seeds.map((s) => ({
     merchant_account_id: merchantAccountId,
+    shop_id: shopId,
     customer_id: s.customer_id,
     order_number: `VERIF-${String(s.index).padStart(3, '0')}`,
     total_amount: 10000,
