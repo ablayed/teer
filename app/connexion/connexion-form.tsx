@@ -1,10 +1,10 @@
 'use client';
 
+import { BrandPanel } from '@/components/auth/brand-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PasswordField } from '@/components/ui/password-field';
-import { Wordmark } from '@/components/wordmark';
 import { signInAction, signUpAction } from '@/lib/actions/auth';
 import type { AuthErrorCode } from '@/lib/actions/auth-errors';
 import { checkPasswordStrength } from '@/lib/format/password';
@@ -35,32 +35,6 @@ const authErrorCodes = [
 
 function isAuthErrorCode(errorCode: string): errorCode is AuthErrorCode {
   return (authErrorCodes as readonly string[]).includes(errorCode);
-}
-
-// Brand panel: compact strip on mobile, full-height panel on desktop
-function BrandPanel() {
-  const t = useTranslations('auth');
-  return (
-    <div className="relative flex flex-shrink-0 items-center bg-canvas px-7 py-7 md:w-[44%] md:flex-col md:items-start md:justify-between md:px-14 md:py-16">
-      <div aria-hidden="true" className="absolute inset-0 bg-grid opacity-60" />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(ellipse 90% 80% at 10% 10%, rgba(238,130,67,0.14) 0%, transparent 65%)',
-        }}
-      />
-      <div className="relative z-10">
-        <Wordmark className="text-3xl md:text-6xl" size="md" />
-      </div>
-      <p className="relative z-10 mt-auto hidden font-display-italic text-xl leading-8 text-accent-deep md:block">
-        {t('brand.tagline_line1')}
-        <br />
-        {t('brand.tagline_line2')}
-      </p>
-    </div>
-  );
 }
 
 export function ConnexionForm() {

@@ -413,8 +413,8 @@
     "ariaLabel": "Configuration de la boutique",
     "stepIndicator": "Étape {step} sur 2",
     "step1": {
-      "title": "Bienvenue sur Tëër",
-      "subtitle": "Configurons votre boutique en 30 secondes"
+      "title": "Votre boutique",
+      "subtitle": "Configurons votre espace en quelques secondes."
     },
     "step2": {
       "title": "Presque fini"
@@ -435,9 +435,19 @@
       "BF": "Burkina Faso",
       "ML": "Mali"
     },
+    "stepSaved": "Enregistré",
+    "reassurance": "Vous pourrez tout modifier plus tard dans les paramètres.",
+    "ariaWelcome": "Bienvenue sur Tëër",
+    "welcome": {
+      "title": "Bienvenue, {name} !",
+      "subtitle": "Votre espace Tëër est prêt. Commencez par connecter votre boutique Shopify.",
+      "checklist": "Un guide pas à pas vous attend sur le tableau de bord.",
+      "cta": "Accéder à mon tableau de bord"
+    },
     "actions": {
       "continue": "Continuer",
       "finish": "Terminer",
+      "finish_loading": "Création en cours…",
       "back": "Retour"
     },
     "errors": {
