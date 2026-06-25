@@ -293,6 +293,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   const rows = seeds.map((s) => ({
     merchant_account_id: merchantAccountId,
     shop_id: shopId,
+    source: 'manual',
     customer_id: s.customer_id,
     order_number: `VERIF-${String(s.index).padStart(3, '0')}`,
     total_amount: 10000,

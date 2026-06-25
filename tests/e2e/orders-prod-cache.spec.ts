@@ -132,6 +132,20 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     unit_cost: 0,
     is_active: true,
   });
+  const { data: shop, error: shopError } = await admin
+    .from('shop')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_domain: `prodcache-${Date.now()}.myshopify.com`,
+      access_token_encrypted: 'enc',
+      scopes: 'read_orders',
+    })
+    .select('id')
+    .single();
+
+  if (shopError || !shop) {
+    throw shopError ?? new Error('Boutique seed non creee');
+  }
 
   // Une commande pré-existante : la vue « Toutes » initiale (donc l'entrée mise en cache)
   // n'est PAS vide — on prouve que c'est bien la fraîcheur du cache, pas un rendu vide.
@@ -151,6 +165,8 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
 
   await admin.from('orders').insert({
     merchant_account_id: merchantAccountId,
+    shop_id: shop.id,
+    source: 'manual',
     customer_id: customer.id,
     order_number: `SEED-${Date.now()}`,
     total_amount: 9999,
@@ -173,6 +189,7 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     await expect(
       page.getByRole('button', { name: /^En cours de livraison \(0\)$/ }),
     ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('article')).toHaveCount(0);
     await expect(
       page.getByRole('heading', { name: 'Aucune commande avec ce statut' }),
     ).toBeVisible();
