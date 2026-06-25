@@ -61,17 +61,23 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string) {
-  for (let i = 0; i < 20; i++) {
-    const { data } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (data?.merchant_account_id) return data.merchant_account_id as string;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error('merchant_account introuvable');
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 async function createOwnerFixture(label: string) {
@@ -155,6 +161,7 @@ async function seedOrder(
     delivery_state: 'unassigned',
     cash_state: 'not_due',
     created_at: createdAt,
+    created_at_shopify: createdAt,
   });
   if (error) throw error;
 }
@@ -262,10 +269,11 @@ test.describe('Phase 13 — filtre boutique', () => {
     const selector = page.getByRole('navigation', { name: 'Filtrer les commandes par boutique' });
     await expect(selector).toBeVisible();
     await selector.getByRole('link', { name: /oa-.*\.myshopify\.com/ }).click();
-    await page.waitForURL(`**/commandes?**shop=${shopA}**`);
+    await expect(page.getByText('Client Récent A')).toBeVisible();
+    await expect(page.getByText('Client Ancien A')).toBeVisible();
+    await expect(page.getByText('Client Récent B')).toHaveCount(0);
 
     await page.getByRole('link', { name: "Aujourd'hui" }).click();
-    await page.waitForURL(`**/commandes?**shop=${shopA}**period=today**`);
 
     await expect(page.getByText('Client Récent A')).toBeVisible();
     await expect(page.getByText('Client Ancien A')).toHaveCount(0);

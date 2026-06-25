@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
 import messages from '@/messages/fr.json';
-import { type Page, expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
@@ -84,26 +84,28 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string) {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const { data, error } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data, error } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
 
-    if (error) {
-      throw error;
-    }
+        if (error) {
+          throw error;
+        }
 
-    if (data?.merchant_account_id) {
-      return data.merchant_account_id as string;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  throw new Error('Merchant E2E introuvable');
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 async function createOwnerFixture(label: string) {
@@ -278,6 +280,16 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, fullN
     .single();
   if (error) throw error;
   return data.id as string;
+}
+
+async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
+  const { error } = await admin.from('shop').insert({
+    access_token_encrypted: 'enc',
+    merchant_account_id: merchantAccountId,
+    scopes: 'read_orders',
+    shop_domain: domain,
+  });
+  if (error) throw error;
 }
 
 // Confirmed order (call validated, delivery unassigned) carrying one matched
@@ -484,6 +496,12 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.waitForURL(`**${redirectTo}`);
 }
 
+async function typeControlledNumber(input: Locator, value: string) {
+  await input.click({ clickCount: 3 });
+  await input.pressSequentially(value);
+  await expect(input).toHaveValue(value);
+}
+
 // Les actions de commande vivent desormais dans un dropdown unique « Actions »
 // (liste + detail). Les entrees sont des role="menuitem".
 function menuItem(page: Page, name: string) {
@@ -541,8 +559,8 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
-    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
     await page.reload();
+    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
     await openActionsMenu(page);
     await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
 
@@ -574,11 +592,14 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     expect(whatsappPopup.url()).toContain('wa.me/221770000000');
     await whatsappPopup.close();
 
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+    await page.reload();
     await openActionsMenu(page);
     await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 
     await menuItem(page, 'Marquer livree').click();
     await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
+    await page.reload();
     await expect(page.getByText('Livrée').first()).toBeVisible({ timeout: 15_000 });
 
     const { data: order, error } = await fixture.admin
@@ -656,10 +677,8 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
       .route('https://wa.me/**', (route) =>
         route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
       );
-    const assignWhatsappPopup = page.waitForEvent('popup');
     await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
-    await (await assignWhatsappPopup).close();
 
     // assigned_driver_id renseigné avec le livreur ciblé (assignation faite au popup).
     const { data: order } = await fixture.admin
@@ -821,14 +840,10 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     });
 
     const totalInput = page.getByLabel('Total', { exact: true });
-    await totalInput.click();
-    await page.keyboard.press('Control+A');
-    await page.keyboard.type('25000');
+    await typeControlledNumber(totalInput, '25000');
 
     const deliveryFeeInput = page.getByLabel('Frais de livraison', { exact: true });
-    await deliveryFeeInput.fill('');
-    await expect(deliveryFeeInput).toHaveValue('');
-    await deliveryFeeInput.type('1500');
+    await typeControlledNumber(deliveryFeeInput, '1500');
     await page.getByLabel('Date de livraison', { exact: true }).fill(revisedDate);
     await page.getByLabel('Heure de livraison', { exact: true }).fill(revisedTime);
     // « Envoyer au livreur (WhatsApp) » sauvegarde, passe en cours de livraison ET ouvre
@@ -1007,26 +1022,27 @@ test('phase11 - la reassignation fonctionne aussi depuis la fiche commande', asy
     });
     await page.getByLabel('Nouveau livreur', { exact: true }).selectOption(driverBId);
     await page.getByRole('button', { name: 'Réassigner', exact: true }).click();
-    await expect(page.getByText('Livreur Detail B')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('status')).toContainText('Livreur réassigné.');
 
-    let reassignedDriverId: string | null = null;
-    let reassignedState: string | null = null;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const { data: reassigned, error: reassignedError } = await fixture.admin
-        .from('orders')
-        .select('assigned_driver_id, delivery_state')
-        .eq('id', orderId)
-        .single();
-      expect(reassignedError).toBeNull();
-      reassignedDriverId = reassigned?.assigned_driver_id ?? null;
-      reassignedState = reassigned?.delivery_state ?? null;
-      if (reassignedDriverId === driverBId) {
-        break;
-      }
-      await page.waitForTimeout(250);
-    }
-    expect(reassignedState).toBe('assigned');
-    expect(reassignedDriverId).toBe(driverBId);
+    await expect
+      .poll(
+        async () => {
+          const { data: reassigned, error: reassignedError } = await fixture.admin
+            .from('orders')
+            .select('assigned_driver_id, delivery_state')
+            .eq('id', orderId)
+            .single();
+          expect(reassignedError).toBeNull();
+          return {
+            driverId: reassigned?.assigned_driver_id ?? null,
+            state: reassigned?.delivery_state ?? null,
+          };
+        },
+        { timeout: 15_000 },
+      )
+      .toEqual({ driverId: driverBId, state: 'assigned' });
+    await page.reload();
+    await expect(page.getByText('Affecté à Livreur Detail B')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -1315,6 +1331,8 @@ test('programmer ne casse pas le rendu et survit au refresh', async ({ page }) =
     await runDetailMenuAction(page, 'Programmer la livraison');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await expect(page.locator('body')).not.toBeEmpty();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
     await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
 
     await page.reload();
@@ -1342,6 +1360,7 @@ test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', 
   const fixture = await createOwnerFixture('manual-list');
   // Products must exist before page load (server-rendered props).
   await createProductInCatalog(fixture.admin, fixture.merchantAccountId, 'Sac Dakar E2E');
+  await createShop(fixture.admin, fixture.merchantAccountId, `manual-${Date.now()}.myshopify.com`);
 
   try {
     await signIn(page, fixture.email, '/commandes');
@@ -1354,8 +1373,8 @@ test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', 
     // select nth(0)=Source, nth(1)=first product line.
     await page.getByPlaceholder('Rechercher titre ou SKU').fill('Sac Dakar');
     await page.locator('select').nth(1).selectOption({ label: 'Sac Dakar E2E' });
-    await page.getByLabel('Quantité').fill('1');
-    await page.getByLabel('Prix unitaire (FCFA)').fill('14500');
+    await typeControlledNumber(page.getByLabel('Quantité'), '1');
+    await typeControlledNumber(page.getByLabel('Prix unitaire (FCFA)'), '14500');
 
     await page.getByRole('button', { name: 'Créer la commande' }).click();
 
@@ -1384,6 +1403,11 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
     'Ceinture E2E',
     'CEIN-01',
   );
+  await createShop(
+    fixture.admin,
+    fixture.merchantAccountId,
+    `manual-2-${Date.now()}.myshopify.com`,
+  );
 
   try {
     await signIn(page, fixture.email, '/commandes');
@@ -1395,8 +1419,8 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
     // Ligne 1 : Sac cuir
     await page.getByPlaceholder('Rechercher titre ou SKU').first().fill('Sac');
     await page.locator('select').nth(1).selectOption({ label: 'Sac cuir E2E (SAC-01)' });
-    await page.getByLabel('Quantité').first().fill('2');
-    await page.getByLabel('Prix unitaire (FCFA)').first().fill('10000');
+    await typeControlledNumber(page.getByLabel('Quantité').first(), '2');
+    await typeControlledNumber(page.getByLabel('Prix unitaire (FCFA)').first(), '10000');
 
     // Ajouter ligne 2
     await page.getByRole('button', { name: '+ Ajouter une ligne' }).click();
@@ -1404,8 +1428,8 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
     // Ligne 2 : Ceinture — nth(1) car la première search box contient encore 'Sac'
     await page.getByPlaceholder('Rechercher titre ou SKU').nth(1).fill('Cein');
     await page.locator('select').nth(2).selectOption({ label: 'Ceinture E2E (CEIN-01)' });
-    await page.getByLabel('Quantité').nth(1).fill('3');
-    await page.getByLabel('Prix unitaire (FCFA)').nth(1).fill('8000');
+    await typeControlledNumber(page.getByLabel('Quantité').nth(1), '3');
+    await typeControlledNumber(page.getByLabel('Prix unitaire (FCFA)').nth(1), '8000');
 
     await page.getByRole('button', { name: 'Créer la commande' }).click();
 

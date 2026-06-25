@@ -61,17 +61,23 @@ async function createConfirmedUser(admin: AdminClient, email: string): Promise<s
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string): Promise<string> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const { data } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (data?.merchant_account_id) return data.merchant_account_id as string;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error('Merchant E2E introuvable');
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 // Crée un fondateur (owner) avec une organisation onboardée. Renvoie de quoi

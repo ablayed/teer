@@ -31,20 +31,21 @@ async function createMerchant(
   if (error || !data.user) throw error ?? new Error('user not created');
   const userId = data.user.id;
   let merchantAccountId = '';
-  for (let i = 0; i < 20; i += 1) {
-    const { data: member } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (member?.merchant_account_id) {
-      merchantAccountId = member.merchant_account_id as string;
-      break;
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  if (!merchantAccountId) throw new Error('merchant_account introuvable');
+  await expect
+    .poll(
+      async () => {
+        const { data: member } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (member?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
   return { userId, merchantAccountId };
 }
 
@@ -89,23 +90,37 @@ async function postWebhook(
   });
 }
 
-async function waitForOrder(admin: AdminClient, merchantAccountId: string, shopifyOrderId: string) {
-  for (let i = 0; i < 30; i += 1) {
-    const { data } = await admin
-      .from('orders')
-      .select('id, delivery_state, shopify_fulfillment_status')
-      .eq('merchant_account_id', merchantAccountId)
-      .eq('shopify_order_id', shopifyOrderId)
-      .maybeSingle();
-    if (data)
-      return data as {
-        id: string;
-        delivery_state: string;
-        shopify_fulfillment_status: string | null;
-      };
-    await new Promise((r) => setTimeout(r, 300));
+type WebhookOrder = {
+  id: string;
+  delivery_state: string;
+  shopify_fulfillment_status: string | null;
+};
+
+async function waitForOrder(
+  admin: AdminClient,
+  merchantAccountId: string,
+  shopifyOrderId: string,
+): Promise<WebhookOrder> {
+  let order: WebhookOrder | null = null;
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('orders')
+          .select('id, delivery_state, shopify_fulfillment_status')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('shopify_order_id', shopifyOrderId)
+          .maybeSingle();
+        order = data as typeof order;
+        return order?.id ?? '';
+      },
+      { timeout: 15_000, intervals: [300, 500, 1000] },
+    )
+    .not.toBe('');
+  if (!order) {
+    throw new Error(`Commande Shopify ${shopifyOrderId} introuvable`);
   }
-  return null;
+  return order;
 }
 
 test.setTimeout(90_000);
@@ -172,15 +187,21 @@ test('webhook orders/create crée la commande ; rejeu (même webhook-id) → pas
       triggeredAt: '2026-06-01T09:00:01Z',
     });
     expect(res2.status()).toBe(200);
-    await new Promise((r) => setTimeout(r, 1_500));
 
     // Un seul effet #1 : aucune commande en double.
-    const { count } = await admin
-      .from('orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('merchant_account_id', merchantAccountId)
-      .eq('shopify_order_id', shopifyOrderId);
-    expect(count).toBe(1);
+    await expect
+      .poll(
+        async () => {
+          const { count } = await admin
+            .from('orders')
+            .select('id', { count: 'exact', head: true })
+            .eq('merchant_account_id', merchantAccountId)
+            .eq('shopify_order_id', shopifyOrderId);
+          return count;
+        },
+        { timeout: 10_000, intervals: [300, 500, 1000] },
+      )
+      .toBe(1);
 
     // Un seul effet #2 : le registre de dédup (webhook_event) ne contient qu'UNE ligne pour ce
     // webhook-id, malgré les deux POST → la dédup par X-Shopify-Webhook-Id a bien rejeté le rejeu.
@@ -258,27 +279,26 @@ test("webhook orders/fulfilled n'altère pas delivery_state (miroir de canal uni
     });
 
     // Eventuel: le miroir passe a fulfilled SANS toucher delivery_state.
-    let mirrored = false;
-    for (let i = 0; i < 30; i += 1) {
-      const { data } = await admin
-        .from('orders')
-        .select('delivery_state, shopify_fulfillment_status')
-        .eq('merchant_account_id', merchantAccountId)
-        .eq('shopify_order_id', shopifyOrderId)
-        .maybeSingle();
-      const row = data as {
-        delivery_state: string;
-        shopify_fulfillment_status: string | null;
-      } | null;
-      // delivery_state ne doit JAMAIS bouger, quel que soit l'instant.
-      expect(row?.delivery_state).toBe('unassigned');
-      if (row?.shopify_fulfillment_status === 'fulfilled') {
-        mirrored = true;
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 300));
-    }
-    expect(mirrored).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from('orders')
+            .select('delivery_state, shopify_fulfillment_status')
+            .eq('merchant_account_id', merchantAccountId)
+            .eq('shopify_order_id', shopifyOrderId)
+            .maybeSingle();
+          const row = data as {
+            delivery_state: string;
+            shopify_fulfillment_status: string | null;
+          } | null;
+          // delivery_state ne doit JAMAIS bouger, quel que soit l'instant.
+          expect(row?.delivery_state).toBe('unassigned');
+          return row?.shopify_fulfillment_status ?? null;
+        },
+        { timeout: 15_000, intervals: [300, 500, 1000] },
+      )
+      .toBe('fulfilled');
   } finally {
     await admin.auth.admin.deleteUser(userId);
   }

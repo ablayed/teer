@@ -37,11 +37,14 @@ function loadEnvFile(path: string) {
 loadEnvFile('.env.test.local');
 loadEnvFile('.env.test');
 
+const isCI = !!process.env.CI;
+
 export default defineConfig({
   testDir: 'tests/e2e',
   globalSetup: './tests/e2e/global-setup.ts',
-  retries: 1,
-  reporter: 'list',
+  fullyParallel: false,
+  retries: isCI ? 1 : 0,
+  reporter: isCI ? 'blob' : 'list',
   workers: 1,
   expect: { timeout: 10_000 },
   use: {

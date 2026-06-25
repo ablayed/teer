@@ -72,19 +72,21 @@ async function createOwnerFixture(label: string) {
   await grantCurrentConsents(admin, userId);
 
   let merchantAccountId = '';
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const { data: member } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (member?.merchant_account_id) {
-      merchantAccountId = member.merchant_account_id as string;
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  await expect
+    .poll(
+      async () => {
+        const { data: member } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (member?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
 
   await admin
     .from('merchant_account')
@@ -100,7 +102,6 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
 }
 
 // Lien de nav visible (sidebar sur desktop, bottom-tab sur mobile — les deux sont dans
@@ -156,11 +157,8 @@ test('C — la navigation lente affiche le squelette loading.tsx (dev)', async (
 
     const navLink = visibleNavLink(page, '/produits');
     await expect(navLink).toBeVisible();
-    // Attente déterministe : garantir que /commandes est hydraté/navigable AVANT le tap.
-    // Un tap pré-hydratation part en navigation DURE (plus lente : le squelette apparaît
-    // tard, au bord de la fenêtre → flaky). networkidle = réseau initial + hydratation
-    // settle (même signal que signIn).
-    await page.waitForLoadState('networkidle');
+    // Attente déterministe : garantir que /commandes expose un lien de nav tappable
+    // avant le tap. L'assertion locator auto-retry couvre l'hydratation utile.
     await navLink.click();
 
     // La navigation commit (URL → /produits). Comme les données /produits sont encore

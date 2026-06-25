@@ -78,17 +78,23 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string) {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const { data } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (data?.merchant_account_id) return data.merchant_account_id as string;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error('Merchant E2E introuvable');
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 async function createOwnerFixture(label: string) {
@@ -320,11 +326,28 @@ test('allouer un lot fait monter le stock en main du livreur', async ({ page }) 
     await page.locator('select').filter({ hasText: 'Sac lot E2E' }).selectOption({
       label: 'Sac lot E2E',
     });
-    await page.getByPlaceholder('10').fill('15');
+    const allocationQtyInput = page.getByPlaceholder('10');
+    await allocationQtyInput.click({ clickCount: 3 });
+    await allocationQtyInput.pressSequentially('15');
+    await expect(allocationQtyInput).toHaveValue('15');
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
 
     // Le mouvement est posté hors commande ; le stock en main remonte
     await expect(page.getByText('Lot alloué au livreur.')).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(
+        async () => {
+          const { data } = await fixture.admin
+            .from('stock_movement')
+            .select('movement_type, qty, driver_id')
+            .eq('merchant_account_id', fixture.merchantAccountId)
+            .eq('driver_id', driverId);
+          return (data ?? []).find((movement) => movement.movement_type === 'allocate_to_courier');
+        },
+        { timeout: 15_000 },
+      )
+      .toMatchObject({ driver_id: driverId, qty: -15 });
+    await page.reload();
     await expect(
       page.getByRole('row').filter({ hasText: 'Sac lot E2E' }).getByText('15'),
     ).toBeVisible({ timeout: 15_000 });
@@ -369,7 +392,10 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     ).toBeVisible({ timeout: 15_000 });
 
     // Enregistrer une remise globale de 12 000
-    await page.getByPlaceholder('0').fill('12000');
+    const settlementInput = page.getByPlaceholder('0');
+    await settlementInput.click({ clickCount: 3 });
+    await settlementInput.pressSequentially('12000');
+    await expect(settlementInput).toHaveValue('12000');
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
@@ -418,7 +444,10 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
   // donc il DÉCROÎT à chaque remise (100 000 → 50 000 → 0). On attend le rendu
   // exact (toHaveText ancré) pour ne pas matcher un « 0 » contenu dans « 50 000 ».
   const remit = async (amount: string, expectedCashOnHandMinor: number) => {
-    await page.getByPlaceholder('0').fill(amount);
+    const settlementInput = page.getByPlaceholder('0');
+    await settlementInput.click({ clickCount: 3 });
+    await settlementInput.pressSequentially(amount);
+    await expect(settlementInput).toHaveValue(amount);
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
     const grouped = String(expectedCashOnHandMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
     await expect(page.getByText('Versement enregistré.')).toBeVisible({

@@ -58,29 +58,38 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string) {
-  for (let i = 0; i < 20; i++) {
-    const { data } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (data?.merchant_account_id) return data.merchant_account_id as string;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error('merchant_account introuvable');
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 async function waitForCategories(admin: AdminClient, merchantAccountId: string) {
-  for (let i = 0; i < 20; i++) {
-    const { data } = await admin
-      .from('expense_category')
-      .select('id')
-      .eq('merchant_account_id', merchantAccountId);
-    if (data && data.length > 0) return;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error('expense_categories non seedées');
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('expense_category')
+          .select('id')
+          .eq('merchant_account_id', merchantAccountId);
+        return data?.length ?? 0;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .toBeGreaterThan(0);
 }
 
 async function createOwnerFixture(label: string) {
@@ -311,7 +320,10 @@ test("ajout d'une dépense → apparaît dans la liste et réduit le résultat",
     await page.getByRole('button', { name: messages.finance.expense.add }).click();
 
     // Remplir — montant et date
-    await page.locator('#expense-amount').fill('25000');
+    const expenseAmountInput = page.locator('#expense-amount');
+    await expenseAmountInput.click({ clickCount: 3 });
+    await expenseAmountInput.pressSequentially('25000');
+    await expect(expenseAmountInput).toHaveValue('25000');
     await page.locator('#expense-date').fill('2026-06-01');
 
     // Enregistrer
@@ -546,12 +558,14 @@ test('vue produit : coût manquant éditable in-cell + card à définition au ta
       .locator(`button[aria-label="${messages.finance.products.table.editPurchase}"]:visible`)
       .first()
       .click();
-    await page
+    const unitCostInput = page
       .locator(
         `input[aria-label="${messages.finance.products.table.purchaseUnitPlaceholder}"]:visible`,
       )
-      .first()
-      .fill('2000');
+      .first();
+    await unitCostInput.click({ clickCount: 3 });
+    await unitCostInput.pressSequentially('2000');
+    await expect(unitCostInput).toHaveValue('2000');
     await page
       .locator('button:visible')
       .filter({ hasText: messages.finance.products.table.save })

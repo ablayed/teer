@@ -58,17 +58,23 @@ async function createConfirmedUser(admin: AdminClient, email: string) {
 }
 
 async function waitForMerchant(admin: AdminClient, userId: string) {
-  for (let i = 0; i < 20; i++) {
-    const { data } = await admin
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
-    if (data?.merchant_account_id) return data.merchant_account_id as string;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error('merchant_account introuvable');
+  let merchantAccountId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_member')
+          .select('merchant_account_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+        merchantAccountId = (data?.merchant_account_id as string | undefined) ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 10_000, intervals: [100, 250, 500] },
+    )
+    .not.toBe('');
+  return merchantAccountId;
 }
 
 async function createOwnerFixture(label: string) {
@@ -105,7 +111,7 @@ async function signIn(page: Page, email: string, redirectTo = '/produits') {
   await page.getByLabel(messages.auth.password_label).fill(password);
   await page.getByRole('button', { name: messages.auth.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
-  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: 'Produits' })).toBeVisible();
 }
 
 async function openPurchasesTab(page: Page) {
@@ -113,7 +119,7 @@ async function openPurchasesTab(page: Page) {
   await expect(purchasesTab).toBeVisible({ timeout: 15_000 });
   await purchasesTab.click();
   await page.waitForURL('**/produits?tab=achats', { timeout: 10_000 });
-  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('button', { name: 'Nouveau lot' })).toBeVisible();
 }
 
 async function getProductStock(admin: AdminClient, productId: string) {
@@ -123,6 +129,42 @@ async function getProductStock(admin: AdminClient, productId: string) {
     .eq('product_id', productId)
     .maybeSingle();
   return data;
+}
+
+async function waitForPurchaseLot(
+  admin: AdminClient,
+  merchantAccountId: string,
+  supplierName: string,
+) {
+  let lotId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('purchase_lot')
+          .select('id')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('supplier_name', supplierName)
+          .maybeSingle();
+        lotId = (data?.id as string | undefined) ?? '';
+        return lotId;
+      },
+      { timeout: 10_000, intervals: [250, 500, 1000] },
+    )
+    .not.toBe('');
+  return lotId;
+}
+
+async function waitForPurchaseLotStatus(admin: AdminClient, lotId: string, status: string) {
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin.from('purchase_lot').select('status').eq('id', lotId).single();
+        return data?.status ?? null;
+      },
+      { timeout: 10_000, intervals: [250, 500, 1000] },
+    )
+    .toBe(status);
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E achats');
@@ -146,17 +188,30 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     await page.locator('#f-ordered-at').fill('2026-06-01');
 
     // Transport unique (Lot C : un seul frais).
-    await page.locator('#f-transport').fill('20000');
+    const transportInput = page.locator('#f-transport');
+    await transportInput.press('ControlOrMeta+A');
+    await transportInput.pressSequentially('20000');
+    await expect(transportInput).toHaveValue('20000');
 
     // Sélectionner le produit dans la première ligne.
     await page.locator('select').last().selectOption({ label: 'Sac cuir E2E (SAC-E2E)' });
 
     // Quantité et prix d'achat global de la ligne (Lot C : prix global, pas unitaire).
-    await page.getByPlaceholder('Qté').fill('10');
-    await page.getByPlaceholder('Prix total').fill('80000');
+    const quantityInput = page.getByPlaceholder('Qté');
+    await quantityInput.pressSequentially('10');
+    await expect(quantityInput).toHaveValue('10');
+    const priceInput = page.getByPlaceholder('Prix total');
+    await priceInput.pressSequentially('80000');
+    await expect(priceInput).toHaveValue('80000');
 
     // Créer le lot.
     await page.getByRole('button', { name: 'Créer le lot' }).click();
+    const lotId = await waitForPurchaseLot(
+      fixture.admin,
+      fixture.merchantAccountId,
+      'Guangzhou Imports',
+    );
+    await page.reload();
 
     // Le lot doit apparaître dans la liste avec le statut "Commandé" (badge exact).
     await expect(page.getByText('Guangzhou Imports')).toBeVisible({ timeout: 15_000 });
@@ -165,6 +220,8 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     // Marquer le lot reçu (bouton toujours disponible en statut "Commandé").
     await page.getByRole('button', { name: 'Marquer reçu' }).click();
     await expect(page.getByText('Lot reçu. Stock mis à jour.')).toBeVisible({ timeout: 15_000 });
+    await waitForPurchaseLotStatus(fixture.admin, lotId, 'received');
+    await page.reload();
 
     // Vérifier que le statut est passé à "Reçu" (badge exact, pas "Reçu le …").
     await expect(page.getByText('Reçu', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -174,14 +231,18 @@ test('chemin nominal : créer lot → marquer reçu → stock mis à jour', asyn
     // transportTotal = 20_000
     // landedTotalValue = 80_000 + 20_000 = 100_000
     // landedUnitCost = floor(100_000 / 10) = 10_000
-    let stock = await getProductStock(fixture.admin, productId);
-    for (let retry = 0; retry < 10 && !stock; retry++) {
-      await new Promise((r) => setTimeout(r, 300));
-      stock = await getProductStock(fixture.admin, productId);
-    }
-
-    expect(stock?.qty_on_hand).toBe(10);
-    expect(stock?.unit_cost).toBe(10_000);
+    await expect
+      .poll(
+        async () => {
+          const stock = await getProductStock(fixture.admin, productId);
+          return {
+            qtyOnHand: stock?.qty_on_hand ?? null,
+            unitCost: stock?.unit_cost ?? null,
+          };
+        },
+        { timeout: 10_000 },
+      )
+      .toEqual({ qtyOnHand: 10, unitCost: 10_000 });
 
     // Détail coût atterri — ouvrir le panel et vérifier le récapitulatif.
     await page.getByText('Détail du coût atterri').click();
@@ -215,9 +276,17 @@ test('nouveau lot : créer un produit maison à la volée', async ({ page }) => 
 
     await page.locator('#f-supplier').fill('Fournisseur produit volée');
     await page.locator('#f-ordered-at').fill('2026-06-01');
-    await page.getByPlaceholder('Qté').fill('3');
-    await page.getByPlaceholder('Prix total').fill('15000');
+    const quantityInput = page.getByPlaceholder('Qté');
+    await quantityInput.press('ControlOrMeta+A');
+    await quantityInput.pressSequentially('3');
+    await expect(quantityInput).toHaveValue('3');
+    const priceInput = page.getByPlaceholder('Prix total');
+    await priceInput.press('ControlOrMeta+A');
+    await priceInput.pressSequentially('15000');
+    await expect(priceInput).toHaveValue('15000');
     await page.getByRole('button', { name: 'Créer le lot' }).click();
+    await waitForPurchaseLot(fixture.admin, fixture.merchantAccountId, 'Fournisseur produit volée');
+    await page.reload();
 
     await expect(page.getByText('Fournisseur produit volée')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(productTitle)).toBeVisible({ timeout: 10_000 });

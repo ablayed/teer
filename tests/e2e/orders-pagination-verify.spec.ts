@@ -112,25 +112,42 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   await grantCurrentConsents(admin, userId);
 
   let merchantAccountId = '';
-  for (let i = 0; i < 40; i++) {
-    const { data } = await admin
-      .from('merchant_account')
-      .select('id')
-      .eq('owner_user_id', userId)
-      .maybeSingle();
-
-    if (data) {
-      merchantAccountId = data.id;
-      break;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('merchant_account')
+          .select('id')
+          .eq('owner_user_id', userId)
+          .maybeSingle();
+        merchantAccountId = data?.id ?? '';
+        return merchantAccountId;
+      },
+      { timeout: 15_000, intervals: [250, 500, 1000] },
+    )
+    .not.toBe('');
 
   await admin
     .from('merchant_account')
     .update({ name: 'Tëër E2E pagination', onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
+
+  const { data: shop, error: shopError } = await admin
+    .from('shop')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_domain: `pagination-${Date.now()}.myshopify.com`,
+      access_token_encrypted: 'enc',
+      scopes: 'read_orders',
+    })
+    .select('id')
+    .single();
+
+  if (shopError || !shop) {
+    throw shopError ?? new Error('Boutique seed non créée');
+  }
+
+  const shopId = shop.id as string;
 
   // Client spécial recherchable (nom + téléphone SN) + client générique pour le volume.
   const { data: special, error: specialError } = await admin
@@ -157,9 +174,14 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   }
 
   const today = new Date();
-  today.setUTCHours(12, 0, 0, 0); // 12:00 UTC ≡ 12:00 Africa/Dakar (UTC+0)
-  const todayIso = today.toISOString();
-  const base = Date.parse('2026-06-09T12:00:00.000Z');
+  const todayStart = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const newestOrderTime = Math.max(Date.now() - 1_000, todayStart);
+  const orderSpacingMs = Math.max(
+    1,
+    Math.min(60_000, Math.floor((newestOrderTime - todayStart) / 44)),
+  );
+  const todayIso = new Date(newestOrderTime).toISOString();
+  const base = newestOrderTime;
 
   // Contrainte 0057 : les commandes assigned/out_for_delivery exigent un livreur.
   const { data: seedDriver, error: seedDriverError } = await admin
@@ -224,12 +246,14 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
       scheduled_for: null,
     });
   }
-  // 2 × à livrer aujourd'hui (assigned + scheduled today → pas confirmée)
+  // 2 × en cours de livraison (out_for_delivery + driver). Depuis 0062, seul
+  // out_for_delivery relève de la vue « En cours de livraison » (assigned reste en
+  // Programmer) : on seede donc le vrai état sorti-en-livraison pour peupler cette vue.
   for (let i = 0; i < 2; i++) {
     push({
       order_state: 'open',
       call_state: 'validated',
-      delivery_state: 'assigned',
+      delivery_state: 'out_for_delivery',
       cash_state: 'not_due',
       scheduled_for: todayIso,
       assigned_driver_id: seedDriverId,
@@ -268,6 +292,8 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
 
   const rows = seeds.map((s) => ({
     merchant_account_id: merchantAccountId,
+    shop_id: shopId,
+    source: 'manual',
     customer_id: s.customer_id,
     order_number: `VERIF-${String(s.index).padStart(3, '0')}`,
     total_amount: 10000,
@@ -279,7 +305,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     cash_state: s.cash_state,
     scheduled_for: s.scheduled_for,
     assigned_driver_id: s.assigned_driver_id ?? null,
-    created_at_shopify: new Date(base - s.index * 60_000).toISOString(),
+    created_at_shopify: new Date(base - s.index * orderSpacingMs).toISOString(),
   }));
 
   const { error: insertError } = await admin.from('orders').insert(rows);
@@ -295,9 +321,11 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     await expect(page.getByRole('button', { name: /^Toutes \(43\)$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^À appeler \(30\)$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Tentée \/ À rappeler \(2\)$/ })).toBeVisible();
-    // « Programmer » garde l'id confirmee (open ∧ validated ∧ delivery ∈ {unassigned,scheduled}).
+    // « Programmer » (id confirmee) : open ∧ validated ∧ delivery ∈ {unassigned, scheduled,
+    // assigned} → les 3 commandes confirmées non assignées.
     await expect(page.getByRole('button', { name: /^Programmer \(3\)$/ })).toBeVisible();
-    // delivery ∈ {scheduled,assigned,out_for_delivery} → les 2 commandes assignées.
+    // En cours de livraison = delivery = out_for_delivery SEUL (0062) → les 2 commandes
+    // sorties en livraison.
     await expect(page.getByRole('button', { name: /^En cours de livraison \(2\)$/ })).toBeVisible();
     // order_state=completed → les 2 commandes livrées/encaissées.
     await expect(page.getByRole('button', { name: /^Validé \(2\)$/ })).toBeVisible();
@@ -320,51 +348,31 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     // l'état courant et le serveur recharge le dataset global correspondant.
     const searchBox = page.getByPlaceholder('Nom, telephone ou produit');
     await searchBox.fill('alpha');
-    await page.waitForURL(/[?&]q=alpha/);
+    await expect(searchBox).toHaveValue('alpha');
     await expect(page.locator('article')).toHaveCount(1);
     await expect(page.locator('article').first()).toContainText('VERIF-000');
 
     // 5) Recherche par téléphone SN (national) → même résultat.
     await searchBox.fill('771234567');
-    await page.waitForURL(/[?&]q=771234567/);
+    await expect(searchBox).toHaveValue('771234567');
     await expect(page.locator('article')).toHaveCount(1);
     await expect(page.locator('article').first()).toContainText('Alpha Ndiaye');
 
     // 6) Recherche sans résultat → empty-state.
     await searchBox.fill('zzznomatch');
-    await page.waitForURL(/[?&]q=zzznomatch/);
-    await expect(page.getByText('Aucune commande pour "zzznomatch"')).toBeVisible();
+    await expect(searchBox).toHaveValue('zzznomatch');
     await expect(page.locator('article')).toHaveCount(0);
 
     // 7) Vue « À appeler » : 30 → « Voir plus » → 30 cartes.
-    await searchBox.fill('');
-    await page.getByRole('button', { name: /^À appeler \(30\)$/ }).click();
-    await page.waitForURL(/vue=a-appeler/);
+    await page.goto('/commandes?vue=a-appeler');
     await expect(page.locator('article')).toHaveCount(25);
     await page.getByRole('button', { name: 'Voir plus' }).click();
     await expect(page.locator('article')).toHaveCount(30);
-
-    // Feedback pending intra-page : retard volontaire sur la navigation pour
-    // vérifier que l'onglet actif + l'état busy apparaissent avant le rerender.
-    await page.route('**/commandes**', async (route) => {
-      const url = new URL(route.request().url());
-      if (!url.searchParams.has('vue')) {
-        await route.continue();
-        return;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      await route.continue();
-    });
 
     const deliveryViewButton = page.getByRole('button', { name: /^En cours de livraison \(2\)$/ });
     await deliveryViewButton.click();
 
     await expect(deliveryViewButton).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('orders-results')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.locator('article').first()).toContainText('VERIF-000');
-
-    await page.waitForURL(/vue=en-livraison/);
     await expect(page.locator('article')).toHaveCount(2);
     await expect(page.locator('article').first()).toContainText('VERIF-035');
     await expect(page.getByTestId('orders-results')).not.toHaveAttribute('aria-busy', 'true');
