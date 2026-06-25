@@ -1,73 +1,100 @@
 # Dette E2E - bascule `test-e2e` dev -> build-prod
 
-> Statut : point d'arret propre du lot `infra/e2e-build-prod`.
-> Branche : `infra/e2e-build-prod`.
-> Dernier etat fonctionnel connu : stage (a) chromium + pixel-7 presque vert, residus UI bornes.
+> Statut : lot build-prod complet pour son perimetre.
+> Branche de revue : `infra/e2e-build-prod`.
+> Dernier SHA valide : `6cbdabd`.
 
-## Objectif
+## Objectif du lot
 
 Faire tourner le job CI `test-e2e` sur un vrai build de production (`next build` puis `next start`)
-au lieu de `pnpm dev`, sur les 3 cibles Playwright (`chromium`, `pixel-7`, `iphone-14`).
+au lieu de `pnpm dev`, sur les trois cibles Playwright :
 
-Le but est de supprimer la classe de flake causee par la compilation Next.js `dev` a la demande sous
-charge CI. En build-prod, les routes sont precompilees avant les specs : plus de cold-compile pendant
+- `chromium`
+- `pixel-7`
+- `iphone-14` (WebKit)
+
+Le but etait de supprimer la classe de flakiness causee par la compilation Next.js `dev` a la demande
+sous charge CI. En build-prod, les routes sont compilees avant les specs : plus de cold-compile pendant
 un test.
 
-## Acquis deja prouves
+## Ce qui est ferme
 
-- Base locale realignee sur `origin/main`.
-- Tag rollback `pre-e2e-prod-switch` pose sur `e9e50355540da8c9c23b44eeed492ace223cf228`.
-- PR #32 (`wip/socle-uir`) mergee : `NEXT_PUBLIC_DISABLE_UIR=1` neutralise seulement
-  `upgrade-insecure-requests` pour le build de test.
-- Preuve CSP faite au curl : UIR present sans flag, absent avec `NEXT_PUBLIC_DISABLE_UIR=1`, reste de
-  la CSP identique.
-- `infra/e2e-build-prod` rebase sur `origin/main`.
-- `.github/workflows/ci.yml` bascule `test-e2e` vers build-prod :
-  `supabase start`, `supabase db reset --local`, bake `.env.production` / `.env.test`, `pnpm build`
-  avec `NEXT_PUBLIC_DISABLE_UIR=1`, purge de `.next/cache`, puis Playwright via `next start`.
-- `tests/e2e/qa-prelaunch.spec.ts` : poll DB converti en `expect.poll`.
-- `tests/e2e/orders-pagination-verify.spec.ts` :
-  - seed chips aligne sur la semantique migrations 0061/0062 (`assigned` dans `Programmer`) ;
-  - time-bomb date supprimee : seed relatif a `today.getTime()` ;
-  - fuseau seed/test confirme identique (`Africa/Dakar`).
+- `test-e2e` passe en build-prod : `supabase start`, `supabase db reset --local`, bake
+  `.env.production` / `.env.test`, `pnpm build`, purge de `.next/cache`, puis Playwright sert via
+  `next start`.
+- `NEXT_PUBLIC_DISABLE_UIR=1` est injecte avant `next build`, donc bake dans le bundle middleware/edge
+  de test.
+- La CSP de production reste inchangee hors build de test : `upgrade-insecure-requests` reste present
+  sans flag et absent uniquement avec `NEXT_PUBLIC_DISABLE_UIR=1`.
+- Les trois cibles E2E tournent en shards separes via matrix par projet, `fail-fast: false`.
+- Les rapports Playwright CI sont emis en `blob` puis fusionnes en rapport HTML unique.
+- `workers: 1`, `fullyParallel: false`, `trace: on-first-retry` et `retries: 1` restent en transition
+  jusqu'a la preuve statistique.
+- Les waits `networkidle` ont ete supprimes des specs E2E.
+- Les sleeps de polling ont ete convertis en `expect.poll`.
+- Les `fill()` numeriques controles identifies ont ete remplaces par `pressSequentially()` avec garde
+  `toHaveValue()` avant soumission.
+- Les flakes UI observes en validation stage (a) ont ete corriges a la source :
+  - `orders-pagination-verify` : attente de l'effet observable plutot que `waitForURL` debounce ;
+  - `shop-filter` : attente de la liste filtree plutot que l'URL fragile.
 
-## Etat CI actuel
+## Validation CI
 
-Le workflow porte encore volontairement le marqueur temporaire de validation stage (a) :
+Dernier run CI sharde vert :
+
+- Run : `28130690556`
+- SHA : `6cbdabd`
+- `test-e2e (chromium)` : vert
+- `test-e2e (pixel-7)` : vert
+- `test-e2e (iphone-14)` : vert
+- `merge-e2e-reports` : vert
+
+Validations intermediaires importantes :
+
+- Stage (a) `chromium + pixel-7` : deux runs consecutifs verts avant WebKit.
+- Stage (b) `iphone-14` seul : vert, preuve que le flag UIR est bake avant `next build`.
+- Sharding trois cibles : vert avec rapport HTML fusionne.
+
+## Hors scope explicite
+
+### Auth `storageState`
+
+La suppression des 13 helpers `signIn` est sortie de ce lot.
+
+Raison : ces helpers ne sont pas une duplication simple. Ils creent des utilisateurs distincts a roles
+variables et tenants differents pour tester l'isolation, les permissions et les invitations. Un
+`storageState` global detruirait cette couverture.
+
+Dette separee : `docs/dette-auth-storageState.md`.
+
+### Retrait des filets
+
+Ne pas retirer dans cette PR :
+
+- `.github/workflows/e2e-prod.yml`
+- `tests/e2e/global-setup.ts` et son warm-up
+- `retries: 1`
+- `trace: on-first-retry`
+
+Ces retraits attendent le merge, le protocole zero-flake et la validation humaine de la decision B.
+
+## Protocole zero-flake
+
+Le workflow manuel `.github/workflows/e2e-zero-flake.yml` est ajoute au repo. Il execute une cible avec :
 
 ```bash
-pnpm test:e2e --project=chromium --project=pixel-7
+pnpm exec playwright test --project=<cible> --repeat-each=<25|50> --retries=0 --fail-on-flaky-tests --workers=1
 ```
 
-Ce mode doit rester tant que les flakes UI residuels ne sont pas corriges et que stage (a) n'a pas donne
-2 runs verts consecutifs.
+Limite GitHub Actions : un nouveau `workflow_dispatch` n'est declenchable depuis l'UI qu'une fois le
+workflow present sur la branche par defaut. Il sera donc utilisable apres merge sur `main`.
 
-## Residus exacts a reprendre
+Critere de sortie post-merge :
 
-### Flakes UI observes en stage (a)
-
-| Spec | Ligne | Cible observee | Signature | Hypothese a verifier par trace |
-| --- | ---: | --- | --- | --- |
-| `tests/e2e/orders-pagination-verify.spec.ts` | 344 | chromium/pixel-7 stage (a) | `page.waitForURL(/[?&]q=zzznomatch/)` pend jusqu'a 90s | attente URL debounce fragile ; attendre l'effet observable `Aucune commande pour "zzznomatch"` et `article` count 0 |
-| `tests/e2e/shop-filter.spec.ts` | 268 | `pixel-7` | `page.waitForURL(...period=today...)` pend, chromium passe | attente URL fragile ou tap mobile manque ; verifier le click target dans la trace, puis attendre la liste filtree |
-
-### Stock de durcissement encore present
-
-- `networkidle` dans les helpers `signIn` et quelques tests : a supprimer au profit d'un element post-login
-  ou de l'effet attendu.
-- `waitForTimeout` / `setTimeout` fixes : a convertir en assertions web-first, `expect.poll` ou `toPass`
-  selon le cas.
-- Helpers `signIn` dupliques : a remplacer par un projet `setup` + `storageState`.
-- `fill()` sur inputs numeriques controles : remplacer seulement les cas sensibles par
-  `pressSequentially()` + garde `toHaveValue` avant submit.
-
-## Critere de reprise
-
-1. Tirer d'abord les traces des deux flakes UI connus avant de coder.
-2. Corriger les waits d'URL fragiles par attente de l'effet observable, sans timeout artificiel ni sleep.
-3. Garder stage (a) `chromium` + `pixel-7` jusqu'a 2 runs CI consecutifs verts.
-4. Ensuite seulement lancer `iphone-14` seul, puis les 3 cibles ensemble en sharding par projet.
-5. Ne supprimer `e2e-prod.yml` et le warm-up `globalSetup` qu'apres validation humaine explicite.
+- repeat-each 25 vert sur `chromium`, `pixel-7`, `iphone-14` ;
+- repeat-each 50 vert sur les specs historiquement instables si necessaire ;
+- 20+ runs CI verts consecutifs sans `passed-on-retry` ;
+- ensuite seulement : `retries: 0`, trace `retain-on-failure`, retrait de `e2e-prod.yml` et du warm-up.
 
 ## Ne pas toucher
 
