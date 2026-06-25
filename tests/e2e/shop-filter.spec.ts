@@ -275,6 +275,15 @@ test.describe('Phase 13 — filtre boutique', () => {
 
     await page.getByRole('link', { name: "Aujourd'hui" }).click();
 
+    await expect(page).toHaveURL(/\/commandes\?.*period=today/);
+    process.stdout.write(
+      `[rsc-stale-probe] after-navigation ancien-count=${await page.getByText('Client Ancien A').count()} url=${page.url()}\n`,
+    );
+    await page.reload();
+    process.stdout.write(
+      `[rsc-stale-probe] after-reload ancien-count=${await page.getByText('Client Ancien A').count()} url=${page.url()}\n`,
+    );
+
     await expect(page.getByText('Client Récent A')).toBeVisible();
     await expect(page.getByText('Client Ancien A')).toHaveCount(0);
     await expect(page.getByText('Client Récent B')).toHaveCount(0);
