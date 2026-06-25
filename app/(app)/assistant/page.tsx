@@ -1,5 +1,6 @@
 import { AssistantView } from '@/components/assistant/assistant-view';
 import type { IaConversationSummary } from '@/lib/actions/assistant';
+import { publicEnv } from '@/lib/env';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
 import { getTranslations } from 'next-intl/server';
@@ -47,7 +48,12 @@ export default async function AssistantPage() {
         <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
         <p className="text-muted">{t('subtitle')}</p>
       </header>
-      <AssistantView initialConversations={initialConversations} role={role} />
+      <AssistantView
+        initialConversations={initialConversations}
+        role={role}
+        supportWhatsApp={publicEnv.NEXT_PUBLIC_SUPPORT_WHATSAPP}
+        supportEmail={publicEnv.NEXT_PUBLIC_SUPPORT_EMAIL}
+      />
     </main>
   );
 }

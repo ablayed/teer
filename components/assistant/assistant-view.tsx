@@ -5,19 +5,24 @@ import {
   createConversationAction,
   getConversationMessagesAction,
 } from '@/lib/actions/assistant';
-import { faqForRole } from '@/lib/ia/faq';
+import { submitFeedbackAction } from '@/lib/actions/feedback';
+import { type FAQCategory, FAQ_CATEGORY_KEYS, faqForRole } from '@/lib/support/faq';
+import { searchFAQ } from '@/lib/support/search';
 import type { TeamRole } from '@/lib/team/permissions';
 import { cn } from '@/lib/utils';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { Loader2, MessageCircle, Plus, Send, Sparkles } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { HelpCircle, Loader2, MessageCircle, Phone, Plus, Send, Sparkles } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useAction } from 'next-safe-action/hooks';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
-type Tab = 'chat' | 'faq';
+type Tab = 'faq' | 'chat' | 'contact';
+type FeedbackStatus = 'idle' | 'submitting' | 'success' | 'error';
 
 const SUGGESTIONS: Record<TeamRole, string[]> = {
   agent: [
-    'Combien de commandes à appeler aujourd’hui ?',
+    "Combien de commandes à appeler aujourd'hui ?",
     'Quels produits sont en stock bas ?',
     'Répartition des statuts des commandes ce mois-ci',
   ],
@@ -27,9 +32,9 @@ const SUGGESTIONS: Record<TeamRole, string[]> = {
     'Performance des livreurs ce mois-ci',
   ],
   owner: [
-    'Quel chiffre d’affaires encaissé sur 30 jours ?',
+    "Quel chiffre d'affaires encaissé sur 30 jours ?",
     'Quelle marge brute ce mois-ci ?',
-    'Quel est le taux d’annulation sur 30 jours ?',
+    "Quel est le taux d'annulation sur 30 jours ?",
   ],
 };
 
@@ -55,11 +60,16 @@ function toUiMessage(row: { id: string; role: string; content: string }): UIMess
 export function AssistantView({
   role,
   initialConversations,
+  supportWhatsApp,
+  supportEmail,
 }: {
   role: TeamRole;
   initialConversations: IaConversationSummary[];
+  supportWhatsApp: string | undefined;
+  supportEmail: string | undefined;
 }) {
-  const [tab, setTab] = useState<Tab>('chat');
+  const t = useTranslations('assistant');
+  const [tab, setTab] = useState<Tab>('faq');
   const [conversations, setConversations] = useState(initialConversations);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -78,8 +88,6 @@ export function AssistantView({
   );
 
   const { messages, sendMessage, setMessages, status, error } = useChat({ transport });
-
-  const faqEntries = useMemo(() => faqForRole(role), [role]);
   const busy = status === 'submitted' || status === 'streaming';
 
   async function startNewConversation() {
@@ -99,17 +107,13 @@ export function AssistantView({
 
   async function submit(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || busy || creating) {
-      return;
-    }
+    if (!trimmed || busy || creating) return;
     let id = activeId;
     if (!id) {
       setCreating(true);
       const res = await createConversationAction();
       setCreating(false);
-      if (!res?.data?.ok) {
-        return;
-      }
+      if (!res?.data?.ok) return;
       id = res.data.conversationId;
       const createdId = id;
       setActiveId(createdId);
@@ -123,40 +127,45 @@ export function AssistantView({
     void sendMessage({ text: trimmed });
   }
 
+  function switchToChat(prefill?: string) {
+    setTab('chat');
+    if (prefill) setInput(prefill);
+  }
+
+  const tabs: { key: Tab; label: string; icon: typeof Sparkles }[] = [
+    { key: 'faq', label: t('tab.faq'), icon: MessageCircle },
+    { key: 'chat', label: t('tab.chat'), icon: Sparkles },
+    { key: 'contact', label: t('tab.contact'), icon: Phone },
+  ];
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-      <div className="flex items-center gap-2" role="tablist" aria-label="Assistant et FAQ">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'chat'}
-          onClick={() => setTab('chat')}
-          className={cn(
-            'flex h-11 items-center gap-2 rounded-md px-4 font-medium transition',
-            tab === 'chat' ? 'bg-accent text-accent-ink' : 'bg-surface text-muted hover:text-text',
-          )}
-        >
-          <Sparkles aria-hidden="true" className="size-4" />
-          Assistant
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'faq'}
-          onClick={() => setTab('faq')}
-          className={cn(
-            'flex h-11 items-center gap-2 rounded-md px-4 font-medium transition',
-            tab === 'faq' ? 'bg-accent text-accent-ink' : 'bg-surface text-muted hover:text-text',
-          )}
-        >
-          <MessageCircle aria-hidden="true" className="size-4" />
-          FAQ
-        </button>
+      <div
+        className="flex items-center gap-2 overflow-x-auto pb-1"
+        role="tablist"
+        aria-label={t('title')}
+      >
+        {tabs.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              'flex h-11 shrink-0 items-center gap-2 rounded-md px-4 font-medium transition',
+              tab === key ? 'bg-accent text-accent-ink' : 'bg-surface text-muted hover:text-text',
+            )}
+          >
+            <Icon aria-hidden="true" className="size-4" />
+            {label}
+          </button>
+        ))}
       </div>
 
       {tab === 'faq' ? (
-        <FaqPanel entries={faqEntries} />
-      ) : (
+        <FaqPanel role={role} onAskAssistant={switchToChat} />
+      ) : tab === 'chat' ? (
         <ChatPanel
           activeId={activeId}
           busy={busy}
@@ -171,26 +180,123 @@ export function AssistantView({
           onSubmit={submit}
           role={role}
         />
+      ) : (
+        <ContactPanel supportWhatsApp={supportWhatsApp} supportEmail={supportEmail} />
       )}
     </div>
   );
 }
 
-function FaqPanel({ entries }: { entries: ReturnType<typeof faqForRole> }) {
+// ─── FAQ PANEL ───────────────────────────────────────────────────────────────
+
+function FaqPanel({
+  role,
+  onAskAssistant,
+}: {
+  role: TeamRole;
+  onAskAssistant: (prefill?: string) => void;
+}) {
+  const t = useTranslations('assistant');
+  const tSupport = useTranslations('support');
+  const [query, setQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<FAQCategory | null>(null);
+
+  const allItems = useMemo(() => faqForRole(role), [role]);
+
+  const displayItems = useMemo(() => {
+    if (query.trim()) {
+      return searchFAQ(query, role);
+    }
+    if (activeCategory) {
+      return allItems.filter((item) => item.category === activeCategory);
+    }
+    return allItems;
+  }, [query, role, activeCategory, allItems]);
+
+  const hasResults = displayItems.length > 0;
+  const isSearching = query.trim().length > 0;
+
+  function handleSearch(value: string) {
+    setQuery(value);
+    if (value.trim()) setActiveCategory(null);
+  }
+
   return (
-    <div className="flex flex-col gap-2">
-      {entries.map((entry) => (
-        <details
-          key={entry.id}
-          className="rounded-md border border-border bg-surface px-4 py-3 [&_summary]:cursor-pointer"
-        >
-          <summary className="font-medium text-text">{entry.question}</summary>
-          <p className="mt-2 text-muted text-sm leading-relaxed">{entry.answer}</p>
-        </details>
-      ))}
+    <div className="flex flex-col gap-3">
+      {/* Barre de recherche */}
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => handleSearch(e.target.value)}
+        placeholder={t('faq.searchPlaceholder')}
+        className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text outline-none focus:border-accent"
+        aria-label={t('faq.searchPlaceholder')}
+      />
+
+      {/* Pills catégories (masquées pendant une recherche) */}
+      {!isSearching ? (
+        <fieldset className="flex flex-wrap gap-2 border-0 p-0">
+          <legend className="sr-only">Filtrer par catégorie</legend>
+          <button
+            type="button"
+            onClick={() => setActiveCategory(null)}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs font-medium transition',
+              activeCategory === null
+                ? 'border-accent bg-accent text-accent-ink'
+                : 'border-border bg-surface text-muted hover:text-text',
+            )}
+          >
+            {t('faq.allCategories')}
+          </button>
+          {FAQ_CATEGORY_KEYS.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs font-medium transition',
+                activeCategory === cat
+                  ? 'border-accent bg-accent text-accent-ink'
+                  : 'border-border bg-surface text-muted hover:text-text',
+              )}
+            >
+              {tSupport(`categories.${cat}`)}
+            </button>
+          ))}
+        </fieldset>
+      ) : null}
+
+      {/* Résultats */}
+      {hasResults ? (
+        <div className="flex flex-col gap-2">
+          {displayItems.map((item) => (
+            <details
+              key={item.id}
+              className="rounded-md border border-border bg-surface px-4 py-3 [&_summary]:cursor-pointer"
+            >
+              <summary className="font-medium text-text">{item.question}</summary>
+              <p className="mt-2 text-muted text-sm leading-relaxed">{item.answer}</p>
+            </details>
+          ))}
+        </div>
+      ) : isSearching ? (
+        <div className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4 text-sm">
+          <p className="text-muted">{t('faq.noResults', { query })}</p>
+          <button
+            type="button"
+            onClick={() => onAskAssistant(query)}
+            className="self-start rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition hover:bg-accent-hover"
+          >
+            {t('faq.noResultsCta')}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
+
+// ─── CHAT PANEL (inchangé) ───────────────────────────────────────────────────
 
 function ChatPanel({
   activeId,
@@ -294,7 +400,7 @@ function ChatPanel({
         {showThinking ? (
           <div className="flex items-center gap-2 self-start text-muted text-sm">
             <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            L’assistant réfléchit…
+            L'assistant réfléchit…
           </div>
         ) : null}
 
@@ -337,4 +443,197 @@ function ChatPanel({
       </form>
     </div>
   );
+}
+
+// ─── CONTACT PANEL ───────────────────────────────────────────────────────────
+
+function ContactPanel({
+  supportWhatsApp,
+  supportEmail,
+}: {
+  supportWhatsApp: string | undefined;
+  supportEmail: string | undefined;
+}) {
+  const t = useTranslations('assistant');
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-base font-semibold text-text">{t('contact.title')}</p>
+      <div className="flex flex-col gap-3">
+        {supportWhatsApp ? (
+          <a
+            href={`https://wa.me/${supportWhatsApp.replace(/\D/g, '')}?text=${encodeURIComponent('Bonjour, j’ai besoin d’aide avec Tëër…')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
+          >
+            <HelpCircle aria-hidden="true" className="size-5 shrink-0 text-accent" />
+            {t('contact.whatsapp')}
+          </a>
+        ) : null}
+
+        {supportEmail ? (
+          <a
+            href={`mailto:${supportEmail}`}
+            className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
+          >
+            <MessageCircle aria-hidden="true" className="size-5 shrink-0 text-accent" />
+            {t('contact.email')}
+          </a>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
+        >
+          <Phone aria-hidden="true" className="size-5 shrink-0 text-accent" />
+          {t('contact.reportBug')}
+        </button>
+      </div>
+
+      {dialogOpen ? <FeedbackDialog onClose={() => setDialogOpen(false)} /> : null}
+    </div>
+  );
+}
+
+// ─── FEEDBACK DIALOG ─────────────────────────────────────────────────────────
+
+const FEEDBACK_CATEGORIES = ['bug', 'suggestion', 'question', 'autre'] as const;
+type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
+
+function FeedbackDialog({ onClose }: { onClose: () => void }) {
+  const t = useTranslations('assistant');
+  const fieldId = useId();
+  const [category, setCategory] = useState<FeedbackCategory>('bug');
+  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState<FeedbackStatus>('idle');
+  const submitFeedback = useAction(submitFeedbackAction);
+
+  async function handleSubmit() {
+    if (message.trim().length < 5 || status === 'submitting') return;
+    setStatus('submitting');
+
+    const pageContext = typeof window !== 'undefined' ? window.location.pathname : undefined;
+    const userAgent =
+      typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 500) : undefined;
+
+    const res = await submitFeedback.executeAsync({
+      category,
+      message: message.trim(),
+      pageContext,
+      userAgent,
+    });
+
+    if (res?.data?.ok) {
+      setStatus('success');
+    } else {
+      setStatus('error');
+    }
+  }
+
+  // Fermeture Escape
+  usePressEscape(onClose);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
+      <dialog
+        aria-label={t('feedback.title')}
+        aria-modal="true"
+        className="m-0 w-full max-w-sm space-y-4 rounded-lg border border-border bg-surface p-5 text-text shadow-2"
+        open
+      >
+        <h2 className="text-lg font-semibold">{t('feedback.title')}</h2>
+
+        {status === 'success' ? (
+          <div className="space-y-3">
+            <p className="font-medium text-success">{t('feedback.successTitle')}</p>
+            <p className="text-muted text-sm">{t('feedback.successBody')}</p>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition hover:bg-accent-hover"
+              >
+                {t('feedback.close')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <label htmlFor={`${fieldId}-category`} className="block text-sm font-medium">
+                {t('feedback.categoryLabel')}
+              </label>
+              <select
+                id={`${fieldId}-category`}
+                value={category}
+                onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
+                className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text outline-none focus:border-accent"
+              >
+                {FEEDBACK_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {t(`feedback.categories.${cat}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor={`${fieldId}-message`} className="block text-sm font-medium">
+                {t('feedback.messageLabel')}
+              </label>
+              <textarea
+                id={`${fieldId}-message`}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder={t('feedback.messagePlaceholder')}
+                maxLength={2000}
+                rows={4}
+                className="w-full resize-none rounded-md border border-border bg-surface p-3 text-sm text-text outline-none focus:border-accent"
+              />
+              <p className="text-right text-xs text-muted">{message.length}/2000</p>
+            </div>
+
+            {status === 'error' ? (
+              <p className="text-sm font-medium text-danger" role="alert">
+                {t('feedback.errorBody')}
+              </p>
+            ) : null}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:bg-canvas"
+              >
+                {t('feedback.close')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={message.trim().length < 5 || status === 'submitting'}
+                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition hover:bg-accent-hover disabled:opacity-50"
+              >
+                {status === 'submitting' ? t('feedback.submitting') : t('feedback.submit')}
+              </button>
+            </div>
+          </>
+        )}
+      </dialog>
+    </div>
+  );
+}
+
+// ─── HOOK UTILITAIRE ─────────────────────────────────────────────────────────
+
+function usePressEscape(onClose: () => void) {
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
 }

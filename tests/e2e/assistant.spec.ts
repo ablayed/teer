@@ -112,7 +112,7 @@ async function signIn(page: Page, email: string, redirectTo = '/assistant') {
 
 // Repères textuels (extraits de lib/ia/faq.ts) — role-aware.
 const FAQ_MARGE = 'marge brute et le résultat net'; // minRole owner
-const FAQ_CA = 'est-il calculé'; // minRole manager
+const FAQ_CA = "d'affaires est-il calculé"; // minRole manager — substring unique au titre de l'entrée CA
 const FAQ_COD = 'commande COD'; // minRole agent (tous)
 const SUGGESTION_MARGE = 'marge brute ce mois'; // suggestion owner
 
@@ -143,13 +143,13 @@ test('owner : onglet Assistant, FAQ marge + résultat net et suggestion marge', 
       timeout: 15_000,
     });
 
-    // Onglet chat (par défaut) : suggestion finance réservée à l'owner.
-    await expect(page.getByText(SUGGESTION_MARGE)).toBeVisible({ timeout: 15_000 });
-
-    // Onglet FAQ : l'entrée marge/résultat net est visible pour l'owner.
-    await page.getByRole('tab', { name: 'FAQ' }).click();
+    // Onglet FAQ actif par défaut : l'entrée marge/résultat net est visible pour l'owner.
     await expect(page.getByText(FAQ_MARGE)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(FAQ_CA)).toBeVisible({ timeout: 15_000 });
+
+    // Onglet Assistant : suggestion finance réservée à l'owner.
+    await page.getByRole('tab', { name: messages.assistant.tab.chat }).click();
+    await expect(page.getByText(SUGGESTION_MARGE)).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -206,6 +206,8 @@ test('conversation persistée : visible dans l’historique au chargement', asyn
       title,
     });
     await signIn(page, fixture.email, '/assistant');
+    // Le tab FAQ est actif par défaut ; l'historique est dans le tab Assistant.
+    await page.getByRole('tab', { name: messages.assistant.tab.chat }).click();
     await expect(page.getByRole('button', { name: title })).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);

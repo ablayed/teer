@@ -6,6 +6,7 @@ import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
 import { TopProducts } from '@/components/dashboard/TopProducts';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
+import { ActivationChecklist } from '@/components/onboarding/activation-checklist';
 import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { Card } from '@/components/ui/card';
@@ -453,6 +454,9 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
             shops={shops}
           />
         </header>
+
+        {/* Checklist d'activation — client component, se masque seul quand 100% ou dismissed */}
+        <ActivationChecklist />
 
         <Suspense fallback={<KpiStripSkeleton />} key={`kpi-${shopKey}`}>
           <KpiStrip shopId={selectedShopId} />

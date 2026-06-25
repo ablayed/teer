@@ -471,6 +471,47 @@ export type Database = {
           },
         ];
       };
+      feedback: {
+        Row: {
+          actor_user_id: string | null;
+          category: string;
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          message: string;
+          page_context: string | null;
+          user_agent: string | null;
+        };
+        Insert: {
+          actor_user_id?: string | null;
+          category: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          message: string;
+          page_context?: string | null;
+          user_agent?: string | null;
+        };
+        Update: {
+          actor_user_id?: string | null;
+          category?: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          message?: string;
+          page_context?: string | null;
+          user_agent?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'feedback_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       ia_conversation: {
         Row: {
           created_at: string;
