@@ -138,7 +138,9 @@ test.describe('Onglet Sécurité — Paramètres', () => {
 
       await page.getByRole('button', { name: messages.settings.security.password.save }).click();
 
-      await expect(page.getByRole('alert')).toContainText(
+      // Cibler uniquement le <p role="alert"> — le route-announcer Next.js est
+      // un <div role="alert"> toujours présent et causerait un strict-mode violation.
+      await expect(page.locator('p[role="alert"]')).toContainText(
         messages.settings.security.password.errors.wrong_current,
       );
     } finally {
