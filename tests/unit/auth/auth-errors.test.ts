@@ -1,4 +1,5 @@
-import { mapSupabaseAuthError } from '@/lib/actions/auth-errors';
+import { AUTH_ERROR_CODES, mapSupabaseAuthError } from '@/lib/actions/auth-errors';
+import messages from '@/messages/fr.json';
 import { describe, expect, it } from 'vitest';
 
 describe('mapSupabaseAuthError', () => {
@@ -54,5 +55,42 @@ describe('mapSupabaseAuthError', () => {
 
   it('falls back to unknown for empty error', () => {
     expect(mapSupabaseAuthError({})).toBe('unknown');
+  });
+
+  it('maps "rate limit" in message to rate_limited', () => {
+    expect(mapSupabaseAuthError({ message: 'rate limit exceeded' })).toBe('rate_limited');
+  });
+
+  it('maps "too many requests" in message to rate_limited', () => {
+    expect(mapSupabaseAuthError({ message: 'too many requests' })).toBe('rate_limited');
+  });
+
+  it('maps "for security purposes" in message to rate_limited', () => {
+    expect(
+      mapSupabaseAuthError({
+        message: 'For security purposes, you can only request this after 60 seconds.',
+      }),
+    ).toBe('rate_limited');
+  });
+
+  it('maps "password should be at least" in message to weak_password', () => {
+    expect(mapSupabaseAuthError({ message: 'password should be at least 6 characters' })).toBe(
+      'weak_password',
+    );
+  });
+
+  it('maps "already registered" in message to email_already_registered', () => {
+    expect(mapSupabaseAuthError({ message: 'already registered' })).toBe(
+      'email_already_registered',
+    );
+  });
+});
+
+describe('AuthErrorCode i18n coverage', () => {
+  it('every AuthErrorCode has a corresponding key in auth.errors', () => {
+    const authErrors = messages.auth.errors as Record<string, string>;
+    for (const code of Object.keys(AUTH_ERROR_CODES)) {
+      expect(authErrors, `auth.errors.${code} is missing from fr.json`).toHaveProperty(code);
+    }
   });
 });

@@ -30,6 +30,32 @@ describe('PasswordField toggle logic', () => {
   });
 });
 
+// strengthScore mirrors the component computation: count of valid criteria (0–5).
+describe('strengthScore (0–5)', () => {
+  function strengthScore(pwd: string): number {
+    const r = checkPasswordStrength(pwd);
+    return (['minLength', 'hasUpper', 'hasLower', 'hasDigit', 'hasSpecial'] as const).filter(
+      (k) => r[k],
+    ).length;
+  }
+
+  it('returns 0 for empty password', () => {
+    expect(strengthScore('')).toBe(0);
+  });
+
+  it('returns 3 for lowercase + digit + length only', () => {
+    expect(strengthScore('lowercaseonly1')).toBe(3);
+  });
+
+  it('returns 4 when missing special char', () => {
+    expect(strengthScore('Password12')).toBe(4);
+  });
+
+  it('returns 5 for a fully valid password', () => {
+    expect(strengthScore('TeerSecure1#')).toBe(5);
+  });
+});
+
 // Surface: checkPasswordStrength is reused as-is — no custom logic added.
 describe('checkPasswordStrength surface (reused)', () => {
   it('counts all criteria for a strong password', () => {
