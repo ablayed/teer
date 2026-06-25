@@ -8,6 +8,8 @@
 
 **Vague 3 — Support & Onboarding (mergée #35) :** page `/assistant` renommée « Aide » (HelpCircle nav) · FAQ searchable 50 entrées 10 catégories filtrage rôle (agent/manager/owner) · articulation FAQ → assistant (CTA 0-résultats) · WhatsApp/email support conditionnels (`NEXT_PUBLIC_SUPPORT_WHATSAPP` / `NEXT_PUBLIC_SUPPORT_EMAIL` optionnels sans défaut) · feedback table `0075` + `submitFeedbackAction` + Resend best-effort · checklist onboarding 5 étapes sur `/tableau` (localStorage dismiss, owner/manager uniquement).
 
+**Milestone 2 — Refonte auth (mergée #38) :** split-screen `BrandPanel` partagé (connexion + onboarding) · `PasswordField` reveal/masquer · indicateur force MDP 0–5 critères · onglets Connexion/Inscription dans `/connexion?mode=` · bandeau idle `?reason=idle` (`<output role=status>`) · `role="alert"` sur toutes les erreurs · vidage MDP après échec sign-in · onboarding redesign : barre de progression, `auth-step-enter` CSS, confirmation étape 1, écran bienvenue Peak-End · navigation post-onboarding via `router.push('/tableau')` (Router Cache vide → déterministe). E2E auth à écrire dès merge PR #37 — cf. `docs/dette-e2e-auth.md`.
+
 **Vague 1 self-service compte (branche feat/vague1-securite) :** onglet Sécurité dans `/parametres` — changement mot de passe (réauth applicative `signInWithPassword` + `updateUser`), changement email (double confirmation Supabase `double_confirm_changes=true`), déconnexion automatique après 2h d'inactivité (modal d'avertissement 2 min avant). Zéro migration SQL. Env : `IDLE_TIMEOUT_MS` / `IDLE_WARNING_MS` (défaut 7 200 000 / 120 000 ms ; debug hook `window.__teerIdleDebug.triggerWarning()` en non-prod pour E2E).
 
 ## Commands
