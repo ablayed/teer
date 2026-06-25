@@ -174,11 +174,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
   }
 
   const today = new Date();
-  const todayStart = Date.UTC(
-    today.getUTCFullYear(),
-    today.getUTCMonth(),
-    today.getUTCDate(),
-  );
+  const todayStart = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   const newestOrderTime = Math.max(Date.now() - 1_000, todayStart);
   const orderSpacingMs = Math.max(
     1,
