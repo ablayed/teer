@@ -79,8 +79,8 @@ export function IdleTimeout({ timeoutMs, warningMs }: IdleTimeoutProps) {
       }
     }, 1_000);
 
-    // Debug hook for E2E tests — never ships active in production
-    if (process.env.NODE_ENV !== 'production') {
+    // Debug hook for E2E tests — never ships active in normal production builds.
+    if (process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_E2E === '1') {
       (window as unknown as Record<string, unknown>).__teerIdleDebug = {
         triggerWarning: () => setShowWarning(true),
       };

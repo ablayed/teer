@@ -74,6 +74,7 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
             echo "RESEND_API_KEY=test-resend-api-key"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
+            echo "NEXT_PUBLIC_E2E=1"
           } > .env.production
           cp .env.production .env.test
       - name: Build production
@@ -84,6 +85,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
           NEXT_PUBLIC_DISABLE_UIR: '1'
+          NEXT_PUBLIC_E2E: '1'
       - name: Free disk before e2e
         run: rm -rf .next/cache
       - name: Repeat target without retries

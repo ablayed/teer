@@ -166,6 +166,7 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
             echo "RESEND_API_KEY=test-resend-api-key"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
+            echo "NEXT_PUBLIC_E2E=1"
           } > .env.production
           cp .env.production .env.test
       # NEXT_PUBLIC_DISABLE_UIR=1 inliné ICI dans le bundle middleware/edge → la CSP du
@@ -179,6 +180,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
           NEXT_PUBLIC_DISABLE_UIR: '1'
+          NEXT_PUBLIC_E2E: '1'
       # Hygiène disque avant `next start` : le cache de build webpack/SWC (`.next/cache`)
       # n'est PAS utilisé au runtime par `next start` (qui sert depuis `.next/server` et
       # `.next/static`). On le purge pour rendre de la place sur un runner partagé avec les
