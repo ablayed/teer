@@ -9,7 +9,6 @@ import { cn } from '@/lib/utils';
 import { CheckCircle2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
-import { useRouter } from 'next/navigation';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 
 type CountryCode = 'SN' | 'CI' | 'BJ' | 'TG' | 'BF' | 'ML';
@@ -34,7 +33,6 @@ function isOnboardingErrorCode(errorCode: string): errorCode is OnboardingErrorC
 
 export function OnboardingFlow() {
   const t = useTranslations('onboarding');
-  const router = useRouter();
   const completeOnboarding = useAction(completeOnboardingAction);
 
   const [step, setStep] = useState<Step>(1);
@@ -123,8 +121,9 @@ export function OnboardingFlow() {
             <Button
               className="min-h-12 w-full"
               onClick={() => {
-                router.push('/tableau');
-                router.refresh();
+                // Hard navigation bypasses the Router Cache entirely — guarantees
+                // (app)/layout.tsx reads fresh onboarded_at on first entry.
+                window.location.href = '/tableau';
               }}
               type="button"
             >
