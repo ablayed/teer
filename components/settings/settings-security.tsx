@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PasswordField } from '@/components/ui/password-field';
 import { changeEmailAction, changePasswordAction } from '@/lib/actions/account';
 import { checkPasswordStrength } from '@/lib/format/password';
-import { Eye, EyeOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import { type FormEvent, useEffect, useState } from 'react';
@@ -64,9 +64,6 @@ export function SettingsSecurity({ currentEmail }: { currentEmail: string }) {
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [pwdClientError, setPwdClientError] = useState<string | null>(null);
   const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
 
@@ -74,7 +71,6 @@ export function SettingsSecurity({ currentEmail }: { currentEmail: string }) {
   const changeEmail = useAction(changeEmailAction);
   const [newEmail, setNewEmail] = useState('');
   const [emailPwd, setEmailPwd] = useState('');
-  const [showEmailPwd, setShowEmailPwd] = useState(false);
   const [emailClientError, setEmailClientError] = useState<string | null>(null);
   const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
 
@@ -178,81 +174,42 @@ export function SettingsSecurity({ currentEmail }: { currentEmail: string }) {
         <form className="space-y-4" onSubmit={onPasswordSubmit}>
           <div className="space-y-2">
             <Label htmlFor="sec-current-pwd">{t('security.password.currentLabel')}</Label>
-            <div className="relative">
-              <Input
-                autoComplete="current-password"
-                id="sec-current-pwd"
-                onChange={(e) => setCurrentPwd(e.target.value)}
-                required
-                type={showCurrent ? 'text' : 'password'}
-                value={currentPwd}
-              />
-              <button
-                aria-label={
-                  showCurrent
-                    ? t('security.password.hidePassword')
-                    : t('security.password.showPassword')
-                }
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted"
-                onClick={() => setShowCurrent((v) => !v)}
-                type="button"
-              >
-                {showCurrent ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <PasswordField
+              autoComplete="current-password"
+              hideLabel={t('security.password.hidePassword')}
+              id="sec-current-pwd"
+              onChange={(e) => setCurrentPwd(e.target.value)}
+              required
+              showLabel={t('security.password.showPassword')}
+              value={currentPwd}
+            />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="sec-new-pwd">{t('security.password.newLabel')}</Label>
-            <div className="relative">
-              <Input
-                autoComplete="new-password"
-                id="sec-new-pwd"
-                onChange={(e) => setNewPwd(e.target.value)}
-                required
-                type={showNew ? 'text' : 'password'}
-                value={newPwd}
-              />
-              <button
-                aria-label={
-                  showNew
-                    ? t('security.password.hidePassword')
-                    : t('security.password.showPassword')
-                }
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted"
-                onClick={() => setShowNew((v) => !v)}
-                type="button"
-              >
-                {showNew ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <PasswordField
+              autoComplete="new-password"
+              hideLabel={t('security.password.hidePassword')}
+              id="sec-new-pwd"
+              onChange={(e) => setNewPwd(e.target.value)}
+              required
+              showLabel={t('security.password.showPassword')}
+              value={newPwd}
+            />
             <p className="text-xs text-muted">{t('security.password.criteriaHint')}</p>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="sec-confirm-pwd">{t('security.password.confirmLabel')}</Label>
-            <div className="relative">
-              <Input
-                autoComplete="new-password"
-                id="sec-confirm-pwd"
-                onChange={(e) => setConfirmPwd(e.target.value)}
-                required
-                type={showConfirm ? 'text' : 'password'}
-                value={confirmPwd}
-              />
-              <button
-                aria-label={
-                  showConfirm
-                    ? t('security.password.hidePassword')
-                    : t('security.password.showPassword')
-                }
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted"
-                onClick={() => setShowConfirm((v) => !v)}
-                type="button"
-              >
-                {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <PasswordField
+              autoComplete="new-password"
+              hideLabel={t('security.password.hidePassword')}
+              id="sec-confirm-pwd"
+              onChange={(e) => setConfirmPwd(e.target.value)}
+              required
+              showLabel={t('security.password.showPassword')}
+              value={confirmPwd}
+            />
           </div>
 
           {pwdSuccess ? (
@@ -296,28 +253,15 @@ export function SettingsSecurity({ currentEmail }: { currentEmail: string }) {
 
           <div className="space-y-2">
             <Label htmlFor="sec-email-pwd">{t('security.email.passwordLabel')}</Label>
-            <div className="relative">
-              <Input
-                autoComplete="current-password"
-                id="sec-email-pwd"
-                onChange={(e) => setEmailPwd(e.target.value)}
-                required
-                type={showEmailPwd ? 'text' : 'password'}
-                value={emailPwd}
-              />
-              <button
-                aria-label={
-                  showEmailPwd
-                    ? t('security.password.hidePassword')
-                    : t('security.password.showPassword')
-                }
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted"
-                onClick={() => setShowEmailPwd((v) => !v)}
-                type="button"
-              >
-                {showEmailPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <PasswordField
+              autoComplete="current-password"
+              hideLabel={t('security.password.hidePassword')}
+              id="sec-email-pwd"
+              onChange={(e) => setEmailPwd(e.target.value)}
+              required
+              showLabel={t('security.password.showPassword')}
+              value={emailPwd}
+            />
           </div>
 
           {emailSuccess ? (

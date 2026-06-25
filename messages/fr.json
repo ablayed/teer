@@ -226,6 +226,36 @@
     "submit": "Continuer",
     "form_label": "Formulaire de connexion",
     "verify_email": "Vérifiez votre email pour activer votre compte.",
+    "session_expired_idle": "Vous avez été déconnecté après une période d'inactivité, pour votre sécurité.",
+    "common": {
+      "show_password": "Afficher le mot de passe",
+      "hide_password": "Masquer le mot de passe"
+    },
+    "signin": {
+      "title": "Bon retour.",
+      "subtitle": "Connectez-vous à votre espace Tëër.",
+      "submit": "Se connecter",
+      "submit_loading": "Connexion en cours…"
+    },
+    "signup": {
+      "title": "Commençons.",
+      "subtitle": "Créez votre espace Tëër gratuitement.",
+      "submit": "Créer mon compte",
+      "submit_loading": "Création en cours…",
+      "verify_title": "Vérifiez votre boîte mail",
+      "verify_body": "Nous avons envoyé un lien de confirmation à {email}. Cliquez dessus pour activer votre compte.",
+      "verify_spam": "Vous ne le trouvez pas ? Vérifiez vos spams ou courriers indésirables.",
+      "verify_resend": "Renvoyer l'email",
+      "verify_resend_loading": "Envoi…",
+      "verify_resend_success": "Email renvoyé.",
+      "verify_resend_cooldown": "Renvoyer dans {seconds}s",
+      "verify_resend_error": "L'envoi a échoué. Réessayez.",
+      "verify_aria": "Confirmation d'inscription"
+    },
+    "brand": {
+      "tagline_line1": "Recevez. Confirmez.",
+      "tagline_line2": "Livrez. Encaissez."
+    },
     "errors": {
       "invalid_email": "Adresse e-mail invalide.",
       "weak_password": "Le mot de passe doit contenir au moins 10 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.",
@@ -233,10 +263,10 @@
       "legal_documents_unavailable": "Les documents légaux ne sont pas disponibles pour le moment. Réessayez dans quelques instants.",
       "consent_record_failed": "L'inscription a échoué car l'enregistrement du consentement n'a pas pu être confirmé. Réessayez.",
       "confirmation_email_failed": "L'email de confirmation n'a pas pu être envoyé. Réessayez.",
-      "invalid_credentials": "E-mail ou mot de passe incorrect.",
+      "invalid_credentials": "Email ou mot de passe incorrect. Vérifiez et réessayez.",
       "email_already_registered": "Cette adresse e-mail est déjà inscrite. Connectez-vous ou utilisez une autre adresse.",
-      "rate_limited": "Trop de tentatives. Patientez quelques minutes avant de réessayer.",
-      "email_not_confirmed": "Votre email n'a pas encore été confirmé. Vérifiez votre boîte de réception.",
+      "rate_limited": "Trop de tentatives. Patientez quelques minutes.",
+      "email_not_confirmed": "Votre compte n'est pas encore activé. Vérifiez votre boîte mail.",
       "unknown": "Une erreur est survenue. Réessayez dans quelques instants.",
       "generic": "Une erreur est survenue. Réessayez."
     },
@@ -247,8 +277,7 @@
       "hasLower": "Une lettre minuscule",
       "hasDigit": "Un chiffre",
       "hasSpecial": "Un caractère spécial (!@#$%^&* etc.)"
-    },
-    "session_expired_idle": "Vous avez été déconnecté(e) pour inactivité."
+    }
   },
   "legalReaccept": {
     "eyebrow": "Action requise",
