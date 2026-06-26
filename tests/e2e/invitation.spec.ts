@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+﻿import { existsSync, readFileSync } from 'node:fs';
 import { generateInvitationToken, hashInvitationToken } from '@/lib/team/invitation-token';
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
@@ -124,7 +124,7 @@ async function fillLogin(page: Page, email: string) {
   await emailInput.pressSequentially(email);
   await passwordInput.click();
   await passwordInput.pressSequentially(password);
-  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.getByRole('button', { name: messages.auth.signin.submit }).click();
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E invitation');

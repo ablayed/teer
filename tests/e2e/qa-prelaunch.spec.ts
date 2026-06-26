@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
 import { formatMoney } from '@/lib/format/fcfa';
@@ -390,9 +390,9 @@ async function cleanupUsers(admin: AdminClient, userIds: string[]) {
 
 async function signIn(page: Page, email: string, redirectTo: string) {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
-  await page.getByLabel(messages.auth.email_label).fill(email);
-  await page.getByLabel(messages.auth.password_label).fill(password);
-  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
+  await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
+  await page.getByRole('button', { name: messages.auth.signin.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
 }
 

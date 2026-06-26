@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Vérification manuelle Phase 9 — /commandes en pagination keyset (PROD BUILD).
  *
  * `app/(app)/commandes/page.tsx` a été reconstruit (couche présentation perdue
@@ -68,9 +68,9 @@ function adminClient() {
 
 async function signIn(page: Page, email: string, redirectTo: string) {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
-  await page.getByLabel(messages.auth.email_label).fill(email);
-  await page.getByLabel(messages.auth.password_label).fill(password);
-  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
+  await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
+  await page.getByRole('button', { name: messages.auth.signin.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
   await expect(page.locator('main#main')).toBeVisible({ timeout: 15_000 });
 }

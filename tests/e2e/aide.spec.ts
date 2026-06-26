@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+﻿import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -110,9 +110,9 @@ async function cleanupUsers(admin: AdminClient, userIds: string[]) {
 
 async function signIn(page: Page, email: string, redirectTo = '/assistant') {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
-  await page.getByLabel(messages.auth.email_label).fill(email);
-  await page.getByLabel(messages.auth.password_label).fill(password);
-  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
+  await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
+  await page.getByRole('button', { name: messages.auth.signin.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
 }
 

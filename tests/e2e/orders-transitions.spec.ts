@@ -490,9 +490,9 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
       : `/connexion?redirectTo=${encodeURIComponent(redirectTo)}`;
 
   await page.goto(targetUrl);
-  await page.getByLabel(messages.auth.email_label).fill(email);
-  await page.getByLabel(messages.auth.password_label).fill(password);
-  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
+  await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
+  await page.getByRole('button', { name: messages.auth.signin.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
 }
 
@@ -523,6 +523,21 @@ async function runRowMenuAction(page: Page, rowText: string, name: string) {
   const row = page.locator('article').filter({ hasText: rowText });
   await row.getByRole('button', { name: 'Actions' }).click();
   await menuItem(page, name).click();
+}
+
+async function openOrderDetailSheet(page: Page, orderId: string, customerName: string) {
+  const detailDialog = page.getByRole('dialog');
+  await page.locator(`a[href="/commandes/${orderId}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`/commandes/${orderId}$`, 'u'));
+  // Attend un élément intérieur au dialog : intercepting routes Next.js peuvent être lentes
+  // sous charge CI — le heading est le signal fiable que le panel est hydraté.
+  await expect(detailDialog.getByRole('heading', { name: customerName, exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(detailDialog.getByRole('button', { name: 'Fermer', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  return detailDialog;
 }
 
 function savedViewButton(page: Page, label: string) {
@@ -582,12 +597,12 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
       exact: true,
     });
     await expect(startButton).toBeVisible({ timeout: 15_000 });
-    const whatsappPopupPromise = page.waitForEvent('popup');
-    await startButton.click();
+    // Attendre que le bouton soit activable (dialog peut être en « Chargement… » avec bouton disabled).
+    await expect(startButton).toBeEnabled({ timeout: 15_000 });
+    const [whatsappPopup] = await Promise.all([page.waitForEvent('popup'), startButton.click()]);
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
 
     // C5 : l'onglet WhatsApp cible le numéro du LIVREUR (+221 77 000 00 00 → 221770000000).
-    const whatsappPopup = await whatsappPopupPromise;
     await whatsappPopup.waitForURL(/wa\.me\/221770000000/, { timeout: 15_000 });
     expect(whatsappPopup.url()).toContain('wa.me/221770000000');
     await whatsappPopup.close();
@@ -853,12 +868,16 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
       .route('https://wa.me/**', (route) =>
         route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
       );
-    const whatsappPopupPromise = page.waitForEvent('popup');
-    await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
+    const sendButton = page.getByRole('button', {
+      name: 'Envoyer au livreur (WhatsApp)',
+      exact: true,
+    });
+    // Attendre que le bouton soit activable avant d'armer l'écouteur popup.
+    await expect(sendButton).toBeEnabled({ timeout: 15_000 });
+    const [whatsappPopup] = await Promise.all([page.waitForEvent('popup'), sendButton.click()]);
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
 
     // C5 : le message d'expédition cible le livreur et porte le total édité (25 000).
-    const whatsappPopup = await whatsappPopupPromise;
     await whatsappPopup.waitForURL(/wa\.me\/221770000000/, { timeout: 15_000 });
     expect(decodeURIComponent(whatsappPopup.url())).toContain('25 000 F CFA');
     await whatsappPopup.close();
@@ -1532,16 +1551,13 @@ test('fermer le detail conserve la vue et la recherche d origine', async ({ page
     await expect(page).toHaveURL(preservedViewUrl);
     await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
 
-    await page.locator(`a[href="/commandes/${orderId}"]`).click();
-    await page.waitForURL(`**/commandes/${orderId}`);
-    await expect(page.getByRole('button', { name: 'Fermer', exact: true })).toBeVisible({
-      timeout: 15_000,
-    });
+    const detailDialog = await openOrderDetailSheet(page, orderId, 'Client Detail Preserve');
 
     // Geste central : fermer le détail (router.back) → retour dans la vue filtrée AVEC la
     // recherche (vérifié manuellement : .../commandes?q=client+detail+preserve&vue=confirmee).
-    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
-    await page.waitForURL(preservedViewUrl, { timeout: 20_000 });
+    await detailDialog.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await expect(page).toHaveURL(preservedViewUrl, { timeout: 20_000 });
+    await expect(detailDialog).toHaveCount(0);
     await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('heading', { name: 'Client Detail Preserve' })).toHaveCount(0);
   } finally {

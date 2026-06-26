@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Non-régression issue #3 — commande manuelle invisible après création (PROD-ONLY).
  *
  * ⚠️ Ce bug ne se reproduit QUE sur un build de production (`next build && next start`),
@@ -73,9 +73,9 @@ function adminClient() {
 
 async function signIn(page: Page, email: string, redirectTo: string) {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
-  await page.getByLabel(messages.auth.email_label).fill(email);
-  await page.getByLabel(messages.auth.password_label).fill(password);
-  await page.getByRole('button', { name: messages.auth.submit }).click();
+  await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
+  await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
+  await page.getByRole('button', { name: messages.auth.signin.submit }).click();
   await page.waitForURL(`**${redirectTo}`);
   await expect(page.getByRole('heading', { name: 'Commandes' })).toBeVisible();
 }
