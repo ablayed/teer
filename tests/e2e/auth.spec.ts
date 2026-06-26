@@ -10,7 +10,7 @@ test('signup flow shows email verification message', async ({ page }) => {
   // Phase 10 : la case de consentement légal est obligatoire au signup (le bouton « Continuer »
   // reste désactivé tant qu'elle n'est pas cochée). On la coche comme un vrai utilisateur.
   await page.locator('#acceptedLegal').check();
-  await page.getByRole('button', { name: messages.auth.signin.submit }).click();
+  await page.getByRole('button', { name: messages.auth.signup.submit }).click();
   await expect(
     page.getByText(messages.auth.verify_email).or(page.getByText(messages.auth.errors.unknown)),
   ).toBeVisible({ timeout: 20_000 });

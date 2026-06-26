@@ -117,8 +117,8 @@ async function createInvitation(
 }
 
 async function fillLogin(page: Page, email: string) {
-  const emailInput = page.getByLabel(messages.auth.email_label);
-  const passwordInput = page.getByLabel(messages.auth.password_label);
+  const emailInput = page.getByLabel(messages.auth.email_label, { exact: true });
+  const passwordInput = page.getByLabel(messages.auth.password_label, { exact: true });
   await expect(emailInput).toBeVisible({ timeout: 30_000 });
   await emailInput.click();
   await emailInput.pressSequentially(email);
