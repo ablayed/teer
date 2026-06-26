@@ -527,16 +527,14 @@ async function runRowMenuAction(page: Page, rowText: string, name: string) {
 
 async function openOrderDetailSheet(page: Page, orderId: string, customerName: string) {
   const detailDialog = page.getByRole('dialog');
+  const detailHeading = detailDialog.getByRole('heading', { name: customerName, exact: true });
+  const closeButton = detailDialog.getByRole('button', { name: 'Fermer', exact: true });
   await page.locator(`a[href="/commandes/${orderId}"]`).click();
   await expect(page).toHaveURL(new RegExp(`/commandes/${orderId}$`, 'u'));
   // Attend un élément intérieur au dialog : intercepting routes Next.js peuvent être lentes
   // sous charge CI — le heading est le signal fiable que le panel est hydraté.
-  await expect(detailDialog.getByRole('heading', { name: customerName, exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(detailDialog.getByRole('button', { name: 'Fermer', exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(detailHeading).toBeVisible({ timeout: 15_000 });
+  await expect(closeButton).toBeVisible({ timeout: 15_000 });
   return detailDialog;
 }
 
