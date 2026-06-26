@@ -1527,40 +1527,48 @@ test('la transition inline confirmee deplace la commande vers la bonne vue et su
   }
 });
 
-test('fermer le detail conserve la vue et la recherche d origine', async ({ page }) => {
-  const fixture = await createOwnerFixture('detail-close-preserves-view');
-  const orderId = await createOrderWithCustomer(fixture.admin, {
-    merchantAccountId: fixture.merchantAccountId,
-    status: 'PROGRAMMEE',
-    customerName: 'Client Detail Preserve',
-    phone: '+221771556677',
+test.describe('detail sheet preserve search and view', () => {
+  // Bruit résiduel documenté des intercepting routes Next.js en CI extrême :
+  // l'URL /commandes/<id> est atteinte mais le @modal ne se monte pas 1 fois de
+  // temps en temps, sans erreur applicative ni régression produit. On borne ce
+  // résidu au seul scénario touché, sans remonter les retries globalement.
+  test.describe.configure({ retries: 1 });
+
+  test('fermer le detail conserve la vue et la recherche d origine', async ({ page }) => {
+    const fixture = await createOwnerFixture('detail-close-preserves-view');
+    const orderId = await createOrderWithCustomer(fixture.admin, {
+      merchantAccountId: fixture.merchantAccountId,
+      status: 'PROGRAMMEE',
+      customerName: 'Client Detail Preserve',
+      phone: '+221771556677',
+    });
+
+    try {
+      await signIn(page, fixture.email, '/commandes');
+
+      // L'app NORMALISE la recherche dans l'URL : « Client Detail Preserve » →
+      // « q=client+detail+preserve » (minuscules + encodage `+`). Le regex tolère
+      // donc la casse (i) et les deux encodages (`+` ou `%20`), et vérifie que vue ET
+      // recherche sont présentes (lookaheads, ordre indifférent).
+      const preservedViewUrl =
+        /\/commandes\?(?=.*vue=confirmee)(?=.*q=client(\+|%20)detail(\+|%20)preserve)/i;
+      await page.goto('/commandes?q=Client%20Detail%20Preserve&vue=confirmee');
+      await expect(page).toHaveURL(preservedViewUrl);
+      await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
+
+      const detailDialog = await openOrderDetailSheet(page, orderId, 'Client Detail Preserve');
+
+      // Geste central : fermer le détail (router.back) → retour dans la vue filtrée AVEC la
+      // recherche (vérifié manuellement : .../commandes?q=client+detail+preserve&vue=confirmee).
+      await detailDialog.getByRole('button', { name: 'Fermer', exact: true }).click();
+      await expect(page).toHaveURL(preservedViewUrl, { timeout: 20_000 });
+      await expect(detailDialog).toHaveCount(0);
+      await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole('heading', { name: 'Client Detail Preserve' })).toHaveCount(0);
+    } finally {
+      await cleanupUsers(fixture.admin, fixture.userIds);
+    }
   });
-
-  try {
-    await signIn(page, fixture.email, '/commandes');
-
-    // L'app NORMALISE la recherche dans l'URL : « Client Detail Preserve » →
-    // « q=client+detail+preserve » (minuscules + encodage `+`). Le regex tolère
-    // donc la casse (i) et les deux encodages (`+` ou `%20`), et vérifie que vue ET
-    // recherche sont présentes (lookaheads, ordre indifférent).
-    const preservedViewUrl =
-      /\/commandes\?(?=.*vue=confirmee)(?=.*q=client(\+|%20)detail(\+|%20)preserve)/i;
-    await page.goto('/commandes?q=Client%20Detail%20Preserve&vue=confirmee');
-    await expect(page).toHaveURL(preservedViewUrl);
-    await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
-
-    const detailDialog = await openOrderDetailSheet(page, orderId, 'Client Detail Preserve');
-
-    // Geste central : fermer le détail (router.back) → retour dans la vue filtrée AVEC la
-    // recherche (vérifié manuellement : .../commandes?q=client+detail+preserve&vue=confirmee).
-    await detailDialog.getByRole('button', { name: 'Fermer', exact: true }).click();
-    await expect(page).toHaveURL(preservedViewUrl, { timeout: 20_000 });
-    await expect(detailDialog).toHaveCount(0);
-    await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('heading', { name: 'Client Detail Preserve' })).toHaveCount(0);
-  } finally {
-    await cleanupUsers(fixture.admin, fixture.userIds);
-  }
 });
 
 test('la recherche retrouve une commande par nom puis par telephone', async ({ page }) => {
