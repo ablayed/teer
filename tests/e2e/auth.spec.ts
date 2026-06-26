@@ -3,7 +3,9 @@ import { expect, test } from '@playwright/test';
 
 test('signup flow shows email verification message', async ({ page }) => {
   await page.goto('/connexion?mode=signup');
-  await page.getByLabel(messages.auth.email_label, { exact: true }).fill(`e2e+${Date.now()}@example.com`);
+  await page
+    .getByLabel(messages.auth.email_label, { exact: true })
+    .fill(`e2e+${Date.now()}@example.com`);
   await page.locator('input[name="password"]').fill('Mot-de-passe-e2e-2026!');
   // Phase 10 : la case de consentement légal est obligatoire au signup (le bouton « Continuer »
   // reste désactivé tant qu'elle n'est pas cochée). On la coche comme un vrai utilisateur.
