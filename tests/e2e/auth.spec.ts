@@ -12,6 +12,8 @@ test('signup flow shows email verification message', async ({ page }) => {
   await page.locator('#acceptedLegal').check();
   await page.getByRole('button', { name: messages.auth.signup.submit }).click();
   await expect(
-    page.getByText(messages.auth.verify_email).or(page.getByText(messages.auth.errors.unknown)),
+    page
+      .getByText(messages.auth.signup.verify_title)
+      .or(page.getByText(messages.auth.errors.unknown)),
   ).toBeVisible({ timeout: 20_000 });
 });
