@@ -92,7 +92,7 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 ## Dette E2E residuelle
 
-**(a) Lot build-prod cloture.** La preuve finale `3 x 25` sur `chromium`, `pixel-7` et `iphone-14` a valide la decision B sur `main` (`913763c`), puis le workflow `e2e-prod.yml` et le warm-up `globalSetup` ont ete retires en cleanup post-validation. Ne pas reintroduire ces filets sans nouvelle preuve CI documentee.
+**(a) Lot build-prod cloture.** La preuve finale `3 x 25` sur `chromium`, `pixel-7` et `iphone-14` a valide la decision B sur `main`, puis le workflow `e2e-prod.yml` et le warm-up `globalSetup` ont ete retires en cleanup post-validation merge sur `main` (`e45e6b1`). Ne pas reintroduire ces filets sans nouvelle preuve CI documentee.
 
 **(b) `qa-prelaunch versement` — résolu PR stabilisation-e2e-flaky.** Cause : `fill()` sur spinbutton React contrôlé ne déclenche pas `onChange` sous WebKit iphone-14 → formulaire soumis avec 0. `cash_collectable_minor = 50000` prouvé correct en DB (assertion ligne 830 passe) — ce n'est PAS un bug applicatif. Fix : `click({clickCount:3}) + pressSequentially()` + guard `toHaveValue()` avant submit.
 

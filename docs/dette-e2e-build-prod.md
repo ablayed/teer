@@ -3,7 +3,7 @@
 > Statut : lot termine le 2026-06-28 apres validation finale Decision B.
 > Branche de revue initiale : `infra/e2e-build-prod`.
 > Branche de cleanup post-validation : `cleanup/e2e-retire-post-validation`.
-> Dernier SHA valide sur `main` avant cleanup : `913763c`.
+> SHA final du lot sur `main` : `e45e6b1`.
 
 ## Objectif du lot
 
@@ -55,7 +55,7 @@ Validation finale zero-flake sur `main` :
 - Workflow : `.github/workflows/e2e-zero-flake.yml`
 - Parametres : `repeat-each=25`, `retries=0`, `workers=1`, `fail-on-flaky-tests`
 - Cibles : `chromium`, `pixel-7`, `iphone-14`
-- Resultat : 3 x 25 vert, aucune cible en echec
+- Resultat : 3 x 25 vert, aucune cible en echec ; cleanup merge ensuite sur `main` via `e45e6b1`
 
 Validations intermediaires importantes :
 
