@@ -41,7 +41,6 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: false,
   retries: isCI ? 1 : 0,
   reporter: isCI ? 'blob' : 'list',
