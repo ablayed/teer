@@ -2,6 +2,10 @@
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { SearchInput } from '@/components/ui/search-input';
+import { ResourceRowSkeleton } from '@/components/ui/skeleton';
 import {
   type CustomerDetail,
   type CustomerListItem,
@@ -23,7 +27,6 @@ import {
   MessageCircle,
   Phone,
   Repeat,
-  Search,
   X,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -489,7 +492,7 @@ export function ClientsWorkspace() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       listCustomers.execute({ search, sortByRisk });
-    }, 180);
+    }, 280);
 
     return () => window.clearTimeout(timeoutId);
   }, [listCustomers.execute, search, sortByRisk]);
@@ -523,38 +526,32 @@ export function ClientsWorkspace() {
 
   return (
     <main className="space-y-6" id="main">
-      <div className="space-y-2">
-        <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
-        <p className="max-w-2xl text-muted">{t('subtitle')}</p>
-      </div>
-
-      <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-          <label className="relative block">
-            <span className="sr-only">{t('search.label')}</span>
-            <Search
-              aria-hidden="true"
-              className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted"
-            />
-            <input
-              className="min-h-11 w-full rounded-lg border border-border bg-surface pr-3 pl-9 text-sm text-text outline-none focus:border-accent"
-              onChange={(event) => setSearch(event.target.value)}
+      <PageHeader
+        search={
+          <div className="space-y-2">
+            <SearchInput
+              ariaLabel={t('search.label')}
+              clearLabel={t('search.clear')}
+              onValueChange={setSearch}
               placeholder={t('search.placeholder')}
-              type="search"
+              syncUrl={false}
               value={search}
             />
-          </label>
-          <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium">
-            <input
-              checked={sortByRisk}
-              className="size-4 accent-accent"
-              onChange={(event) => setSortByRisk(event.target.checked)}
-              type="checkbox"
-            />
-            {t('search.sortByRisk')}
-          </label>
-        </div>
-      </section>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <input
+                checked={sortByRisk}
+                className="size-4 accent-accent"
+                onChange={(event) => setSortByRisk(event.target.checked)}
+                type="checkbox"
+              />
+              {t('search.sortByRisk')}
+            </label>
+          </div>
+        }
+        size="display"
+        subtitle={t('subtitle')}
+        title={t('title')}
+      />
 
       {feedback ? (
         <output className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-subtle p-3 text-sm font-medium text-danger">
@@ -570,21 +567,14 @@ export function ClientsWorkspace() {
       ) : null}
 
       {loading ? (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
           {skeletonIds.map((skeletonId) => (
-            <div
-              className="h-40 animate-pulse rounded-lg border border-border bg-surface shadow-1"
-              key={skeletonId}
-            />
+            <ResourceRowSkeleton key={skeletonId} />
           ))}
         </div>
       ) : null}
 
-      {empty ? (
-        <section className="rounded-lg border border-border bg-surface p-6 text-center shadow-1">
-          <p className="text-sm text-muted">{t('empty')}</p>
-        </section>
-      ) : null}
+      {empty ? <EmptyState title={t('empty')} /> : null}
 
       {!loading && customers.length > 0 ? (
         <motion.div

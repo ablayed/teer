@@ -725,6 +725,7 @@
     "search": {
       "label": "Rechercher un client",
       "placeholder": "Nom ou téléphone",
+      "clear": "Effacer la recherche",
       "sortByRisk": "Risques en haut"
     },
     "list": {
@@ -774,6 +775,7 @@
       "call": "Appeler",
       "whatsapp": "WhatsApp",
       "orders": "Voir commandes",
+      "more": "Plus d'actions",
       "requestConfirmation": "Demander confirmation",
       "deposit": "Demander un acompte",
       "depositSoon": "Disponible bientôt",

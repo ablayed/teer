@@ -1,9 +1,10 @@
+'use client';
+
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import type * as React from 'react';
 
-type ResourceRowProps = {
-  href?: string;
+type ResourceRowBase = {
   leading?: React.ReactNode;
   title: React.ReactNode;
   meta?: React.ReactNode;
@@ -13,8 +14,14 @@ type ResourceRowProps = {
   className?: string;
 };
 
+type ResourceRowWithHref = ResourceRowBase & { href: string; onActivate?: never };
+type ResourceRowWithActivate = ResourceRowBase & { href?: never; onActivate?: () => void };
+
+export type ResourceRowProps = ResourceRowWithHref | ResourceRowWithActivate;
+
 export function ResourceRow({
   href,
+  onActivate,
   leading,
   title,
   meta,
@@ -35,6 +42,9 @@ export function ResourceRow({
     </span>
   );
 
+  const linkClasses =
+    'flex min-w-0 flex-1 items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-surface';
+
   return (
     <div
       className={cn(
@@ -44,12 +54,13 @@ export function ResourceRow({
       )}
     >
       {href ? (
-        <Link
-          className="flex min-w-0 flex-1 items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-surface"
-          href={href}
-        >
+        <Link className={linkClasses} href={href}>
           {mainContent}
         </Link>
+      ) : onActivate ? (
+        <button className={cn(linkClasses, 'text-left')} onClick={onActivate} type="button">
+          {mainContent}
+        </button>
       ) : (
         mainContent
       )}
