@@ -1,11 +1,14 @@
 'use client';
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import { ResourceRow } from '@/components/ui/resource-row';
 import { SearchInput } from '@/components/ui/search-input';
 import { ResourceRowSkeleton } from '@/components/ui/skeleton';
+import { StatusBadge, type StatusTone } from '@/components/ui/status-badge';
 import {
   type CustomerDetail,
   type CustomerListItem,
@@ -25,13 +28,17 @@ import {
   Ban,
   MapPin,
   MessageCircle,
+  MoreHorizontal,
+  Package,
   Phone,
   Repeat,
+  User,
   X,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 type Feedback = {
@@ -39,12 +46,6 @@ type Feedback = {
   tone: 'error' | 'success';
 };
 
-const tierStyles: Record<ReliabilityTier, string> = {
-  new: 'border-border bg-canvas text-muted',
-  reliable: 'border-success bg-success text-white',
-  watch: 'border-accent bg-accent text-accent-ink',
-  risk: 'border-danger bg-danger text-white',
-};
 const skeletonIds = [
   'client-skeleton-a',
   'client-skeleton-b',
@@ -61,6 +62,25 @@ function isOrderStatus(value: string): value is OrderStatus {
 function customerName(customer: Pick<CustomerListItem, 'fullName'>, fallback: string) {
   return customer.fullName || fallback;
 }
+
+function tierToTone(tier: ReliabilityTier): StatusTone {
+  const map: Record<ReliabilityTier, StatusTone> = {
+    new: 'neutral',
+    reliable: 'success',
+    watch: 'warning',
+    risk: 'danger',
+  };
+  return map[tier];
+}
+
+// ── Composants utilisés dans CustomerSheet (intacte) ───────────────────────
+
+const tierStyles: Record<ReliabilityTier, string> = {
+  new: 'border-border bg-canvas text-muted',
+  reliable: 'border-success bg-success text-white',
+  watch: 'border-accent bg-accent text-accent-ink',
+  risk: 'border-danger bg-danger text-white',
+};
 
 function TierBadge({
   isProvisional,
@@ -124,7 +144,37 @@ function CustomerBadges({
   );
 }
 
-function CustomerCard({
+// ── Meta inline de la ligne client ─────────────────────────────────────────
+// Container queries : téléphone + refuseur toujours visibles (si conteneur ≥ 22rem) ;
+// nb commandes · montant livré · récurrent uniquement en conteneur large (desktop, ≥ 26rem).
+
+function ClientMeta({ customer }: { customer: CustomerListItem }) {
+  const t = useTranslations('clients');
+
+  return (
+    <>
+      {customer.phone ? formatPhoneSN(customer.phone) : t('fallbackPhone')}
+      {customer.isRefuser ? (
+        <span className="font-medium text-danger"> · {t('badges.refuser')}</span>
+      ) : null}
+      <span className="@min-[26rem]/row:inline hidden">
+        {' · '}
+        {customer.orderCount} {t('list.orders').toLowerCase()}
+      </span>
+      <span className="@min-[26rem]/row:inline hidden">
+        {' · '}
+        {formatMoney(customer.deliveredLifetime)}
+      </span>
+      {customer.isRecurring ? (
+        <span className="@min-[26rem]/row:inline hidden"> · {t('badges.recurring')}</span>
+      ) : null}
+    </>
+  );
+}
+
+// ── Ligne client (ResourceRow) ──────────────────────────────────────────────
+
+function ClientRow({
   customer,
   onSelect,
 }: {
@@ -132,44 +182,85 @@ function CustomerCard({
   onSelect: (customerId: string) => void;
 }) {
   const t = useTranslations('clients');
+  const router = useRouter();
+  const phone = customer.phone;
+  const name = customerName(customer, t('fallbackName'));
+
+  const tierLabel = customer.isProvisional
+    ? `${t(`tiers.${customer.tier}`)} *`
+    : t(`tiers.${customer.tier}`);
+
+  const overflowItems: ActionSheetItem[] = [
+    ...(phone
+      ? [
+          {
+            key: 'call',
+            label: t('actions.call'),
+            icon: <Phone className="size-4" />,
+            onSelect: () => {
+              window.location.href = `tel:${phone.replace(/\s/g, '')}`;
+            },
+          } satisfies ActionSheetItem,
+        ]
+      : []),
+    {
+      key: 'sheet',
+      label: t('sheet.title'),
+      icon: <User className="size-4" />,
+      onSelect: () => onSelect(customer.customerId),
+    },
+    {
+      key: 'orders',
+      label: t('actions.orders'),
+      icon: <Package className="size-4" />,
+      onSelect: () => router.push('/commandes'),
+    },
+  ];
 
   return (
-    <button
-      className="group w-full rounded-lg border border-border bg-surface p-4 text-left shadow-1 transition hover:-translate-y-0.5 hover:shadow-2 focus:outline-none focus:ring-2 focus:ring-accent"
-      onClick={() => onSelect(customer.customerId)}
-      type="button"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{customerName(customer, t('fallbackName'))}</p>
-          <p className="mt-1 text-sm text-muted">
-            {customer.phone ? formatPhoneSN(customer.phone) : t('fallbackPhone')}
-          </p>
-          <div className="mt-2">
-            <CustomerBadges customer={customer} />
-          </div>
-        </div>
-        <TierBadge isProvisional={customer.isProvisional} tier={customer.tier} />
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-        <div>
-          <p className="text-xs text-muted">{t('list.score')}</p>
-          <ScoreValue customer={customer} />
-        </div>
-        <div>
-          <p className="text-xs text-muted">{t('list.delivered')}</p>
-          <p className="font-mono font-semibold tabular-nums">
-            {formatMoney(customer.deliveredLifetime)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-muted">{t('list.orders')}</p>
-          <p className="font-mono font-semibold tabular-nums">{customer.orderCount}</p>
-        </div>
-      </div>
-    </button>
+    <ResourceRow
+      meta={<ClientMeta customer={customer} />}
+      onActivate={() => onSelect(customer.customerId)}
+      overflow={
+        <ActionSheet
+          align="end"
+          items={overflowItems}
+          title={name}
+          trigger={
+            <button
+              aria-label={`${t('actions.more')} — ${name}`}
+              className="inline-flex size-11 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              type="button"
+            >
+              <MoreHorizontal aria-hidden="true" className="size-4" />
+            </button>
+          }
+        />
+      }
+      primaryAction={
+        phone ? (
+          <a
+            aria-label={`${t('actions.whatsapp')} — ${name}`}
+            className="inline-flex size-11 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={toWhatsAppLink(phone)}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <MessageCircle aria-hidden="true" className="size-4" />
+          </a>
+        ) : null
+      }
+      status={
+        <span title={customer.isProvisional ? t('score.provisional') : undefined}>
+          <StatusBadge label={tierLabel} tone={tierToTone(customer.tier)} />
+        </span>
+      }
+      title={name}
+    />
   );
 }
+
+// ── Fiche client (intacte — migration vers DetailPanel = ticket séparé) ─────
 
 function DetailActionBar({
   customer,
@@ -474,6 +565,8 @@ function CustomerSheet({
   );
 }
 
+// ── Workspace principal ─────────────────────────────────────────────────────
+
 export function ClientsWorkspace() {
   const t = useTranslations('clients');
   const reduceMotion = useReducedMotion();
@@ -578,16 +671,11 @@ export function ClientsWorkspace() {
 
       {!loading && customers.length > 0 ? (
         <motion.div
-          className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
+          className="overflow-hidden rounded-lg border border-border bg-surface"
           {...motionProps}
-          variants={{
-            visible: { transition: { staggerChildren: reduceMotion ? 0 : 0.04 } },
-          }}
         >
           {customers.map((customer) => (
-            <motion.div key={customer.customerId} {...motionProps}>
-              <CustomerCard customer={customer} onSelect={selectCustomer} />
-            </motion.div>
+            <ClientRow customer={customer} key={customer.customerId} onSelect={selectCustomer} />
           ))}
         </motion.div>
       ) : null}
