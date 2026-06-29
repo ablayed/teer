@@ -40,12 +40,21 @@ loadEnvFile('.env.test');
 const isCI = !!process.env.CI;
 
 export default defineConfig({
-  testDir: 'tests/e2e',
+  testDir: 'tests',
   fullyParallel: false,
   retries: isCI ? 1 : 0,
   reporter: isCI ? 'blob' : 'list',
   workers: 1,
-  expect: { timeout: 10_000 },
+  snapshotPathTemplate:
+    '{testDir}/__screenshots__/{testFilePath}/{arg}-{projectName}-{platform}{ext}',
+  expect: {
+    timeout: 10_000,
+    toHaveScreenshot: {
+      animations: 'disabled',
+      caret: 'hide',
+      maxDiffPixelRatio: 0.01,
+    },
+  },
   use: {
     baseURL: process.env.E2E_URL ?? 'http://localhost:3000',
     locale: 'fr-FR',
