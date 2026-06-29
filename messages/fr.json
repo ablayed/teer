@@ -1278,6 +1278,7 @@
       "success": "Statut COD mis à jour."
     },
     "actions": {
+      "menuTitle": "Actions",
       "nouvelle": "Remettre en nouvelle",
       "confirmee": "Confirmer",
       "assignee": "Assigner",
