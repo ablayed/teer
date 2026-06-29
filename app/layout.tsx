@@ -50,6 +50,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   themeColor: '#F4F3ED',
   colorScheme: 'light',
+  // Requis pour que `env(safe-area-inset-*)` soit non nul (notch / home indicator iOS).
+  // Sans `cover`, les safe-areas déjà câblées (app-shell, bottom nav) valent 0.
+  viewportFit: 'cover',
 };
 
 // Le root layout reste 100 % Server Component, sans provider client : la landing
