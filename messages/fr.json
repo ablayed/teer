@@ -1212,6 +1212,13 @@
       "filteredTitle": "Aucune commande avec ce statut",
       "filteredDescription": "Essayez un autre filtre ou synchronisez vos commandes."
     },
+    "search": {
+      "placeholder": "Nom, telephone ou produit",
+      "ariaLabel": "Rechercher une commande",
+      "clear": "Effacer la recherche",
+      "emptyTitle": "Aucune commande pour « {query} »",
+      "emptyDescription": "Essayez un autre nom, numéro de téléphone ou produit."
+    },
     "messages": {
       "synced": "{count, plural, =0 {Aucune commande synchronisée} one {# commande synchronisée} other {# commandes synchronisées}}"
     },
