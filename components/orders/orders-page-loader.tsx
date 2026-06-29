@@ -20,6 +20,7 @@ import { formatOrderAddress } from '@/lib/format/order-address';
 import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
 
@@ -66,14 +67,25 @@ export function OrdersPageLoader({
   serverSearchQuery,
   onTransitionApplied,
 }: Props) {
+  const t = useTranslations('orders');
   const [orders, setOrders] = useState(initialOrders);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [reliabilityTiers, setReliabilityTiers] = useState(initialReliabilityTiers);
   const [isLoadingMore, startTransition] = useTransition();
-  const localSearchAhead =
-    normalizeOrderSearch(localSearchQuery) !== normalizeOrderSearch(serverSearchQuery);
+  const normalizedSearch = normalizeOrderSearch(localSearchQuery);
+  const localSearchAhead = normalizedSearch !== normalizeOrderSearch(serverSearchQuery);
   const visibleOrders = filterOrdersBySearch(orders, localSearchQuery);
+  // État vide géré côté client : la synchro d'URL étant shallow (history.replaceState), le
+  // RSC ne re-rend plus l'état vide serveur lors d'une recherche en page. On l'affiche donc
+  // ici, mais SEULEMENT une fois le refetch serveur retombé (pas pendant que la saisie
+  // devance le refetch, ni pendant le pending) — sinon on annoncerait « aucun résultat »
+  // alors qu'une commande au-delà de la page 1 peut encore arriver.
+  const showSearchEmpty =
+    normalizedSearch.length > 0 &&
+    !localSearchAhead &&
+    !isTransitionPending &&
+    visibleOrders.length === 0;
   const groupedOrders = visibleOrders.reduce<
     Array<{ dayKey: string; label: string; orders: OrderListItem[] }>
   >((groups, order) => {
@@ -275,6 +287,15 @@ export function OrdersPageLoader({
           ))}
         </div>
       ))}
+
+      {showSearchEmpty ? (
+        <div className="rounded-lg border border-border bg-surface p-6 text-center shadow-1">
+          <h2 className="text-base font-semibold">
+            {t('search.emptyTitle', { query: localSearchQuery.trim() })}
+          </h2>
+          <p className="mt-1 text-sm text-muted">{t('search.emptyDescription')}</p>
+        </div>
+      ) : null}
 
       {!localSearchAhead && hasMore && nextCursor ? (
         <div className="flex justify-center pt-2">

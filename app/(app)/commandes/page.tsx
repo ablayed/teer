@@ -118,8 +118,10 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
     params.sync_error && isSyncErrorCode(params.sync_error) ? params.sync_error : null;
   const showNoShop = totalOrders === 0 && !shopConnection;
   const showNoOrdersWithShop = totalOrders === 0 && shopConnection;
-  const showSearchEmpty = totalOrders > 0 && searchedTotal === 0 && search.length > 0;
-  const showFilteredEmpty = searchedTotal > 0 && visibleCount === 0;
+  // L'état vide « aucun résultat pour la recherche » est désormais géré côté client par
+  // OrdersPageLoader : la recherche met l'URL à jour en shallow (history.replaceState), donc
+  // ce RSC ne se re-rend pas par recherche. On ne garde ici que les états non liés à `?q=`.
+  const showFilteredEmpty = searchedTotal > 0 && visibleCount === 0 && search.length === 0;
   const showWorkspace = totalOrders > 0;
 
   return (
@@ -209,13 +211,18 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             initialOrders={pageData.orders}
             initialReliabilityTiers={pageData.reliabilityTiers}
             reliabilityLabels={reliabilityLabels}
+            searchLabels={{
+              ariaLabel: t('search.ariaLabel'),
+              clear: t('search.clear'),
+              placeholder: t('search.placeholder'),
+            }}
             searchQuery={search}
             selectedShopId={selectedShopId}
             views={viewCounts}
           />
         ) : null}
 
-        {showNoShop || showNoOrdersWithShop || showSearchEmpty || showFilteredEmpty ? (
+        {showNoShop || showNoOrdersWithShop || showFilteredEmpty ? (
           <section className="rounded-lg border border-border bg-surface p-6 shadow-1">
             <div className="flex max-w-2xl flex-col gap-4 sm:flex-row sm:items-start">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-canvas text-accent">
@@ -227,18 +234,14 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
                     ? t('empty.noShopTitle')
                     : showNoOrdersWithShop
                       ? t('empty.withShopTitle')
-                      : showSearchEmpty
-                        ? `Aucune commande pour "${params.q?.trim() ?? ''}"`
-                        : t('empty.filteredTitle')}
+                      : t('empty.filteredTitle')}
                 </h2>
                 <p className="text-sm leading-6 text-muted">
                   {showNoShop
                     ? t('empty.noShopDescription')
                     : showNoOrdersWithShop
                       ? t('empty.withShopDescription')
-                      : showSearchEmpty
-                        ? 'Essayez un autre nom, numero de telephone ou produit.'
-                        : t('empty.filteredDescription')}
+                      : t('empty.filteredDescription')}
                 </p>
                 {showNoShop ? (
                   <Link
