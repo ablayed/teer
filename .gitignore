@@ -26,3 +26,5 @@ supabase/.branches/_current_branch
 __pycache__/
 *.pyc
 *.pyo
+
+# Dossier privé Next.js (non-routable) — dead code post-migration dev/
