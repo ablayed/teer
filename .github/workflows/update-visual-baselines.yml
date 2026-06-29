@@ -12,6 +12,10 @@ on:
           - primitives
           - sections
           - all
+      test_filter:
+        description: "Filtre Playwright --grep (ex. clients). Vide = comportement scope habituel. Ne jamais utiliser scope=sections pour un seul écran."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -85,7 +89,12 @@ jobs:
         id: generate
         continue-on-error: true
         run: |
-          if [ "${{ github.event.inputs.scope }}" = "primitives" ]; then
+          FILTER='${{ github.event.inputs.test_filter }}'
+          if [ -n "$FILTER" ]; then
+            # Ciblage d'un ou plusieurs tests par nom (ex. clients).
+            # Opère uniquement sur la spec sections ; les baselines des autres écrans sont préservées.
+            pnpm exec playwright test tests/visual/sections.visual.spec.ts --grep "$FILTER" --update-snapshots --retries=0
+          elif [ "${{ github.event.inputs.scope }}" = "primitives" ]; then
             pnpm exec playwright test tests/visual/primitives.visual.spec.ts --update-snapshots --retries=0
           elif [ "${{ github.event.inputs.scope }}" = "sections" ]; then
             pnpm exec playwright test tests/visual/sections.visual.spec.ts --update-snapshots --retries=0
