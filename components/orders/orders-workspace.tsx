@@ -10,6 +10,8 @@ import { type OrderListCursor, type OrderListItem, getOrdersPageData } from '@/l
 import {
   type OrderSavedViewId,
   applyOrderSavedViewCountTransition,
+  matchesOrderSavedView,
+  orderSavedViewIds,
 } from '@/lib/domain/order-saved-views';
 import { normalizeOrderSearch } from '@/lib/orders/search';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -36,6 +38,27 @@ type SearchLabels = {
   clear: string;
   placeholder: string;
 };
+
+// Applique le delta d'une transition aux compteurs d'une surcouche (Record), comme
+// applyOrderSavedViewCountTransition le fait pour displayedViews. Sans ça, une mutation
+// dans des résultats de recherche/création laisserait les chips figés sur les compteurs
+// gelés au moment du refetch (la surcouche masque displayedViews dans effectiveViews).
+function patchOverlayViewCounts(
+  counts: Record<OrderSavedViewId, number>,
+  previousOrder: OrderListItem,
+  nextOrder: OrderListItem,
+): Record<OrderSavedViewId, number> {
+  const next = { ...counts };
+  for (const viewId of orderSavedViewIds) {
+    const delta =
+      Number(matchesOrderSavedView(nextOrder, viewId)) -
+      Number(matchesOrderSavedView(previousOrder, viewId));
+    if (delta !== 0) {
+      next[viewId] = Math.max(0, next[viewId] + delta);
+    }
+  }
+  return next;
+}
 
 type OrdersWorkspaceProps = {
   activePeriod: string;
@@ -308,6 +331,24 @@ export function OrdersWorkspace({
         onTransitionApplied={({ nextOrder, previousOrder }) => {
           setDisplayedViews((currentViews) =>
             applyOrderSavedViewCountTransition(currentViews, previousOrder, nextOrder),
+          );
+          // Une surcouche (recherche/création) masque displayedViews dans effectiveViews :
+          // on lui applique le MÊME delta pour que les chips restent frais après mutation.
+          setSearchResult((current) =>
+            current
+              ? {
+                  ...current,
+                  viewCounts: patchOverlayViewCounts(current.viewCounts, previousOrder, nextOrder),
+                }
+              : current,
+          );
+          setInjectedView((current) =>
+            current
+              ? {
+                  ...current,
+                  viewCounts: patchOverlayViewCounts(current.viewCounts, previousOrder, nextOrder),
+                }
+              : current,
           );
         }}
         reliabilityLabels={reliabilityLabels}
