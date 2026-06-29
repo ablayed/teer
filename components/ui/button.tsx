@@ -8,7 +8,9 @@ const buttonVariants = cva(
     variants: {
       size: {
         default: 'h-11 px-5',
-        sm: 'h-9 px-3 text-sm',
+        // Cible tactile ≥ 44px (Apple HIG / WCAG 2.5.8) : compact en largeur (px-3, text-sm)
+        // mais hauteur de zone tactile portée à 44px via min-h-11.
+        sm: 'min-h-11 px-3 text-sm',
       },
       variant: {
         primary: 'bg-accent text-accent-ink hover:bg-accent-hover',
