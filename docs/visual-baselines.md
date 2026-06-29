@@ -28,7 +28,7 @@ Pendant une migration écran par écran, il ne faut **jamais** utiliser `scope=s
 Utiliser à la place le champ **`test_filter`** :
 
 1. `Actions → update-visual-baselines → Run workflow`
-2. Laisser `scope` sur sa valeur par défaut (`primitives`)
+2. Mettre `scope` sur **`sections`** (par convention — `test_filter` prend priorité sur `scope`, mais `sections` est le choix sémantiquement correct)
 3. Renseigner `test_filter` avec le nom exact du test, ex. `clients`
 4. Lancer
 
@@ -49,8 +49,8 @@ Cela exécute uniquement `sections.visual.spec.ts --grep "clients"` sur les 3 pr
 
 ### Règle d'or
 
-> Ne jamais utiliser `scope=sections` (ni `scope=all`) pour rebaser un seul écran.
-> Toujours utiliser `test_filter=<nom>` pour un rebase ciblé.
+> Ne jamais utiliser `scope=sections` **sans** `test_filter` pour rebaser un seul écran.
+> Toujours renseigner `test_filter=<nom>` + `scope=sections` pour un rebase ciblé.
 
 ## Vérification avant rebase
 

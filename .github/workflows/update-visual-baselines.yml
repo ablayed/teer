@@ -13,7 +13,7 @@ on:
           - sections
           - all
       test_filter:
-        description: "Filtre Playwright --grep (ex. clients). Vide = comportement scope habituel. Ne jamais utiliser scope=sections pour un seul écran."
+        description: "Filtre Playwright --grep (ex. clients). Vide = comportement scope habituel. Si renseigné, mettre scope=sections par convention (test_filter prend priorité)."
         required: false
         default: ""
 
