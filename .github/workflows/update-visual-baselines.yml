@@ -2,6 +2,16 @@ name: update-visual-baselines
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 'Baselines à régénérer (primitives = page démo uniquement, sections = 6 écrans, all = tout)'
+        required: false
+        default: 'primitives'
+        type: choice
+        options:
+          - primitives
+          - sections
+          - all
 
 permissions:
   contents: write
@@ -74,10 +84,18 @@ jobs:
       - name: Generate Linux baselines
         id: generate
         continue-on-error: true
-        run: pnpm exec playwright test tests/visual --update-snapshots --retries=0
+        run: |
+          if [ "${{ github.event.inputs.scope }}" = "primitives" ]; then
+            pnpm exec playwright test tests/visual/primitives.visual.spec.ts --update-snapshots --retries=0
+          elif [ "${{ github.event.inputs.scope }}" = "sections" ]; then
+            pnpm exec playwright test tests/visual/sections.visual.spec.ts --update-snapshots --retries=0
+          else
+            pnpm exec playwright test tests/visual --update-snapshots --retries=0
+          fi
         env:
           TZ: Africa/Dakar
           E2E_PROD_BUILD: '1'
+          ENABLE_PRIMITIVES_DEMO: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

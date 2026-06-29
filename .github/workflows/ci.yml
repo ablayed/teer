@@ -287,6 +287,7 @@ jobs:
       - run: pnpm test:visual:desktop
         env:
           E2E_PROD_BUILD: '1'
+          ENABLE_PRIMITIVES_DEMO: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -381,6 +382,7 @@ jobs:
       - run: pnpm test:visual:mobile
         env:
           E2E_PROD_BUILD: '1'
+          ENABLE_PRIMITIVES_DEMO: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

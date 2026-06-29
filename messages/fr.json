@@ -1328,6 +1328,16 @@
       "livree": "Livrée",
       "annulee": "Annulée",
       "retournee": "Retournée"
+    },
+    "codStatus": {
+      "A_APPELER": "À appeler",
+      "TENTEE": "Tentée",
+      "CONFIRMEE": "Confirmée",
+      "PROGRAMMEE": "Programmée",
+      "EN_LIVRAISON": "En livraison",
+      "LIVREE": "Livrée",
+      "REFUSEE": "Refusée",
+      "ANNULEE": "Annulée"
     }
   },
   "whatsapp": {
