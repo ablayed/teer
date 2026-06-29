@@ -23,8 +23,33 @@
 
   --success: #0e7c3a;
   --success-subtle: rgba(14, 124, 58, 0.1);
+  --warning: #b45309;
+  --warning-foreground: #111111;
+  --info: var(--accent);
+  --info-foreground: var(--accent-ink);
   --danger: #b42318;
   --danger-subtle: rgba(180, 35, 24, 0.1);
+  /*
+   * Tokens de statut COD — ajout additif uniquement.
+   * Ne pas utiliser dans les composants pendant la Phase 1 Socle.
+   * Mapping statut COD -> token :
+   *   A_APPELER    -> --status-a-appeler
+   *   TENTEE       -> --status-tentee
+   *   CONFIRMEE    -> --status-confirmee
+   *   PROGRAMMEE   -> --status-programmee
+   *   EN_LIVRAISON -> --status-en-livraison
+   *   LIVREE       -> --status-livree
+   *   REFUSEE      -> --status-refusee
+   *   ANNULEE      -> --status-annulee
+   */
+  --status-a-appeler: var(--muted);
+  --status-tentee: var(--warning);
+  --status-confirmee: var(--info);
+  --status-programmee: var(--info);
+  --status-en-livraison: var(--info);
+  --status-livree: var(--success);
+  --status-refusee: var(--danger);
+  --status-annulee: var(--danger);
 
   --ring: var(--accent);
 
@@ -62,11 +87,22 @@
   --color-accent-ink: var(--accent-ink);
   --color-accent-fg: var(--accent-fg);
   --color-accent-subtle: var(--accent-subtle);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-success: var(--success);
   --color-success-subtle: var(--success-subtle);
-  --color-warning: #b45309;
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-danger: var(--danger);
   --color-danger-subtle: var(--danger-subtle);
+  --color-status-a-appeler: var(--status-a-appeler);
+  --color-status-tentee: var(--status-tentee);
+  --color-status-confirmee: var(--status-confirmee);
+  --color-status-programmee: var(--status-programmee);
+  --color-status-en-livraison: var(--status-en-livraison);
+  --color-status-livree: var(--status-livree);
+  --color-status-refusee: var(--status-refusee);
+  --color-status-annulee: var(--status-annulee);
   --color-ring: var(--ring);
 
   --font-sans: "Geist", system-ui, sans-serif;
