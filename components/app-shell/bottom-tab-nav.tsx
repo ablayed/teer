@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Store,
   Truck,
+  Users,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
@@ -23,6 +24,7 @@ import { useState } from 'react';
 type BottomTabKey =
   | 'tableau'
   | 'commandes'
+  | 'clients'
   | 'produits'
   | 'livreurs'
   | 'analyses'
@@ -42,11 +44,12 @@ type BottomTabItem = {
 const primaryItems: BottomTabItem[] = [
   { href: '/tableau', icon: LayoutDashboard, labelKey: 'tableau' },
   { href: '/commandes', icon: ShoppingBag, labelKey: 'commandes' },
+  { href: '/clients', icon: Users, labelKey: 'clients' },
   { href: '/produits', icon: Package, labelKey: 'produits' },
-  { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
 ];
 
 const overflowItems: BottomTabItem[] = [
+  { href: '/livreurs', icon: Truck, labelKey: 'livreurs', ownerManagerOnly: true },
   { href: '/assistant', icon: HelpCircle, labelKey: 'assistant' },
   {
     href: '/analyses',
