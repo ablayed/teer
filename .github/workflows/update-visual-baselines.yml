@@ -16,6 +16,10 @@ on:
         description: "Filtre Playwright --grep (ex. clients). Vide = comportement scope habituel. Si renseigné, mettre scope=sections par convention (test_filter prend priorité)."
         required: false
         default: ""
+      projects:
+        description: "Projets Playwright à cibler, séparés par espace (ex. 'pixel-7 iphone-14' pour mobile uniquement). Vide = tous les projets (chromium + pixel-7 + iphone-14)."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -90,16 +94,21 @@ jobs:
         continue-on-error: true
         run: |
           FILTER='${{ github.event.inputs.test_filter }}'
+          PROJECTS='${{ github.event.inputs.projects }}'
+          PROJECT_FLAGS=""
+          for p in $PROJECTS; do
+            PROJECT_FLAGS="$PROJECT_FLAGS --project=$p"
+          done
           if [ -n "$FILTER" ]; then
             # Ciblage d'un ou plusieurs tests par nom (ex. clients).
             # Opère uniquement sur la spec sections ; les baselines des autres écrans sont préservées.
-            pnpm exec playwright test tests/visual/sections.visual.spec.ts --grep "$FILTER" --update-snapshots --retries=0
+            pnpm exec playwright test tests/visual/sections.visual.spec.ts --grep "$FILTER" --update-snapshots --retries=0 $PROJECT_FLAGS
           elif [ "${{ github.event.inputs.scope }}" = "primitives" ]; then
-            pnpm exec playwright test tests/visual/primitives.visual.spec.ts --update-snapshots --retries=0
+            pnpm exec playwright test tests/visual/primitives.visual.spec.ts --update-snapshots --retries=0 $PROJECT_FLAGS
           elif [ "${{ github.event.inputs.scope }}" = "sections" ]; then
-            pnpm exec playwright test tests/visual/sections.visual.spec.ts --update-snapshots --retries=0
+            pnpm exec playwright test tests/visual/sections.visual.spec.ts --update-snapshots --retries=0 $PROJECT_FLAGS
           else
-            pnpm exec playwright test tests/visual --update-snapshots --retries=0
+            pnpm exec playwright test tests/visual --update-snapshots --retries=0 $PROJECT_FLAGS
           fi
         env:
           TZ: Africa/Dakar

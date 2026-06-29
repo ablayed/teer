@@ -152,13 +152,15 @@ test('fiche client enrichie : badge récurrent + adresse + stats Shopify', async
 
   await signIn(page, email, '/clients');
 
-  // Recherche puis présence de la carte + badge « Client récurrent ».
+  // Recherche puis présence dans la liste.
   await page.getByPlaceholder(messages.clients.search.placeholder).fill(fullName);
   await expect(page.getByText(fullName).first()).toBeVisible();
-  await expect(page.getByText(messages.clients.badges.recurring).first()).toBeVisible();
 
-  // Ouvre la fiche : adresse flexible + stat commandes Shopify.
+  // Ouvre la fiche : badge récurrent, adresse flexible, stat commandes Shopify.
+  // Le badge « récurrent » est masqué dans la ligne liste sur mobile (@min-[26rem]/row:hidden)
+  // mais toujours visible dans la fiche client (CustomerBadges).
   await page.getByText(fullName).first().click();
+  await expect(page.getByText(messages.clients.badges.recurring).first()).toBeVisible();
   await expect(page.getByText('Cité Keur Gorgui, près de la mosquée')).toBeVisible();
   await expect(page.getByText(messages.clients.stats.shopifyOrders)).toBeVisible();
 });

@@ -34,6 +34,18 @@ Utiliser à la place le champ **`test_filter`** :
 
 Cela exécute uniquement `sections.visual.spec.ts --grep "clients"` sur les 3 projets (`chromium`, `pixel-7`, `iphone-14`), et ne touche pas aux 5 autres baselines.
 
+### Rebase mobile uniquement (sans chromium/desktop)
+
+Pour régénérer toutes les sections mobiles sans toucher aux baselines chromium (desktop) :
+
+1. `Actions → update-visual-baselines → Run workflow`
+2. `scope` : `sections`
+3. `test_filter` : laisser vide (toutes les sections)
+4. `projects` : **`pixel-7 iphone-14`**
+5. Lancer
+
+Cela exécute `sections.visual.spec.ts --project=pixel-7 --project=iphone-14` — le desktop est intouché.
+
 ### Valeurs valides de `test_filter` (noms de tests de `sections.visual.spec.ts`)
 
 | Valeur | Baseline(s) régénérée(s) |
