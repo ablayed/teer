@@ -67,7 +67,7 @@ export function AssignmentDetailsDialog({
   const [savedFee, setSavedFee] = useState(0);
   const [savedScheduledFor, setSavedScheduledFor] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [feeInput, setFeeInput] = useState('0');
+  const [feeInput, setFeeInput] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export function AssignmentDetailsDialog({
       setSavedFee(d.deliveryFeeMinor);
       setSavedScheduledFor(d.scheduledFor);
       setTotal(d.totalAmount);
-      setFeeInput(String(d.deliveryFeeMinor));
+      setFeeInput(d.deliveryFeeMinor > 0 ? String(d.deliveryFeeMinor) : '');
       const dt = d.scheduledFor ? isoToDateTimeInputs(d.scheduledFor) : nextWholeHourInputs();
       setDate(dt.date);
       setTime(normalizeHourInput(dt.time));
@@ -137,11 +137,11 @@ export function AssignmentDetailsDialog({
     );
   }, [loaded, total, t, orderNumber, customerPhone, items, deliveryAddress]);
 
-  const parsedFee = feeInput === '' ? Number.NaN : Number(feeInput);
+  const parsedFee = feeInput === '' ? 0 : Number(feeInput);
   const fee = Number.isFinite(parsedFee) ? parsedFee : 0;
   const netMinor = Math.max(total - fee, 0);
   const totalValid = Number.isFinite(total) && total >= 0;
-  const feeValid = feeInput !== '' && Number.isFinite(parsedFee) && parsedFee >= 0;
+  const feeValid = Number.isFinite(parsedFee) && parsedFee >= 0;
   const canConfirm = loaded && totalValid && feeValid && !isExecuting;
 
   // « Envoyer au livreur (WhatsApp) » : un clic = save montants (si modifiés) → assigner
@@ -274,6 +274,7 @@ export function AssignmentDetailsDialog({
                 inputMode="numeric"
                 min={0}
                 onChange={(event) => setFeeInput(event.target.value)}
+                placeholder="Frais de livraison"
                 type="number"
                 value={feeInput}
               />

@@ -871,6 +871,12 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
       timeout: 15_000,
     });
 
+    await expect(page.getByLabel('Frais de livraison', { exact: true })).toHaveValue('');
+    await expect(page.getByLabel('Frais de livraison', { exact: true })).toHaveAttribute(
+      'placeholder',
+      'Frais de livraison',
+    );
+
     const totalInput = page.getByLabel('Total', { exact: true });
     await typeControlledNumber(totalInput, '25000');
 
