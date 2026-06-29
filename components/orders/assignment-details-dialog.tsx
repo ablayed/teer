@@ -58,6 +58,8 @@ export function AssignmentDetailsDialog({
   const [loaded, setLoaded] = useState(false);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string | null>(null);
+  const [customerPhone, setCustomerPhone] = useState<string | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState<string | null>(null);
   const [currency, setCurrency] = useState<string | null>(null);
   const [driverMessage, setDriverMessage] = useState('');
   const [items, setItems] = useState<{ title: string; quantity: number; price: number }[]>([]);
@@ -90,6 +92,8 @@ export function AssignmentDetailsDialog({
       const d = result.data.data;
       setOrderNumber(d.orderNumber);
       setCustomerName(d.customerName);
+      setCustomerPhone(d.customerPhone);
+      setDeliveryAddress(d.deliveryAddress);
       setCurrency(d.currency);
       setItems(d.items);
       setSavedTotal(d.totalAmount);
@@ -100,23 +104,13 @@ export function AssignmentDetailsDialog({
       const dt = d.scheduledFor ? isoToDateTimeInputs(d.scheduledFor) : nextWholeHourInputs();
       setDate(dt.date);
       setTime(normalizeHourInput(dt.time));
-      // Build driver message from loaded data directly (not state — React batches updates).
-      setDriverMessage(
-        t('livreur', {
-          numeroCommande: safeText(d.orderNumber),
-          telephone: safeText(d.customerPhone),
-          produits: formatProduits(parseItemsSummaryForWhatsapp(d.items)),
-          adresse: safeText(d.deliveryAddress),
-          total: formatMoneyForWhatsApp(d.totalAmount),
-        }),
-      );
       setLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-    // orderId/driverIdToAssign stables pour la durée de vie du popup ; executeAsync et t mémoïsés.
-  }, [orderId, driverIdToAssign, fetchDetails.executeAsync, t]);
+    // orderId/driverIdToAssign stables pour la durée de vie du popup ; executeAsync mémoïsé.
+  }, [orderId, driverIdToAssign, fetchDetails.executeAsync]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -127,6 +121,21 @@ export function AssignmentDetailsDialog({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isExecuting, onClose]);
+
+  // Reconstruit le message quand le total édité change — la valeur courante doit
+  // toujours être reflétée dans l'URL WhatsApp finale.
+  useEffect(() => {
+    if (!loaded) return;
+    setDriverMessage(
+      t('livreur', {
+        numeroCommande: safeText(orderNumber),
+        telephone: safeText(customerPhone),
+        produits: formatProduits(items.map((i) => ({ nom: i.title, quantite: i.quantity }))),
+        adresse: safeText(deliveryAddress),
+        total: formatMoneyForWhatsApp(total),
+      }),
+    );
+  }, [loaded, total, t, orderNumber, customerPhone, items, deliveryAddress]);
 
   const parsedFee = feeInput === '' ? Number.NaN : Number(feeInput);
   const fee = Number.isFinite(parsedFee) ? parsedFee : 0;
