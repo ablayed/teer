@@ -35,12 +35,10 @@ type OrdersWorkspaceProps = {
   initialNextCursor: OrderListCursor | null;
   initialOrders: OrderListItem[];
   initialReliabilityTiers: Record<string, ReliabilityTier>;
-  merchantName: string;
   reliabilityLabels: Record<ReliabilityTier, string>;
   searchQuery: string;
   selectedShopId: string | null;
   views: OrderViewCount[];
-  whatsappMissingPhoneLabel: string;
 };
 
 const SEARCH_DEBOUNCE_MS = 280;
@@ -57,12 +55,10 @@ export function OrdersWorkspace({
   initialNextCursor,
   initialOrders,
   initialReliabilityTiers,
-  merchantName,
   reliabilityLabels,
   searchQuery,
   selectedShopId,
   views,
-  whatsappMissingPhoneLabel,
 }: OrdersWorkspaceProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -266,7 +262,6 @@ export function OrdersWorkspace({
         initialReliabilityTiers={effectiveReliability}
         isTransitionPending={isBusy}
         localSearchQuery={localSearchQuery}
-        merchantName={merchantName}
         onTransitionApplied={({ nextOrder, previousOrder }) => {
           setDisplayedViews((currentViews) =>
             applyOrderSavedViewCountTransition(currentViews, previousOrder, nextOrder),
@@ -275,7 +270,6 @@ export function OrdersWorkspace({
         reliabilityLabels={reliabilityLabels}
         selectedShopId={selectedShopId}
         serverSearchQuery={searchQuery}
-        whatsappMissingPhoneLabel={whatsappMissingPhoneLabel}
       />
     </div>
   );

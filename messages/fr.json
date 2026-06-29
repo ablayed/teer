@@ -1322,6 +1322,15 @@
       "retournee": "Retournée"
     }
   },
+  "whatsapp": {
+    "composeTitle": "Préparer le message WhatsApp",
+    "composeHint": "Le message ne sera pas envoyé automatiquement. En ouvrant WhatsApp, vous choisirez vous-même le destinataire (contact ou groupe), puis vous appuierez sur Envoyer.",
+    "openWhatsapp": "Ouvrir WhatsApp",
+    "messageClient": "Message client",
+    "messageLivreur": "Message livreur",
+    "clientConfirmation": "Bonjour 😊\nMerci pour la confirmation de votre commande {numeroCommande}\n{produits}\n{total}\n\nNous pouvons vous livrer immédiatement à {adresse}\n\n👉 Si vous souhaitez être livré(e) immédiatement, répondez simplement par : « OK »\n\nNous restons disponibles pour toute précision concernant l'adresse ou les horaires 🚚✨",
+    "livreur": "{numeroCommande}\n{telephone}\n{produits}\n{adresse}\n{total}"
+  },
   "placeholders": {
     "commandes": "Bientôt disponible (semaine 5).",
     "generic": "Bientôt disponible."

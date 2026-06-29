@@ -7,14 +7,15 @@ import {
   TransitionDialog,
   type TransitionPayload,
 } from '@/components/orders/transition-dialog';
-import { WhatsAppConfirmButton } from '@/components/orders/whatsapp-confirm-button';
 import { Button } from '@/components/ui/button';
+import { WhatsappComposeSheet } from '@/components/whatsapp/whatsapp-compose-sheet';
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
 import {
   type TransitionAction,
   visibleAllowedActions,
 } from '@/lib/domain/order-transition-actions';
 import { cn } from '@/lib/utils';
+import type { WhatsappOrderData } from '@/lib/whatsapp/format';
 import { ChevronDown, Phone } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -31,8 +32,7 @@ type OrderActionsMenuProps = {
   onTransitionSuccess?: (result: Extract<TransitionResult, { ok: true }>) => void;
   orderId: string;
   phone: string | null;
-  whatsappLabels: { confirm: string; missingPhone: string };
-  whatsappUrl: string | null;
+  whatsappOrderData: WhatsappOrderData;
 };
 
 // Actions de transition qui ouvrent un dialog (saisie) avant de s'exécuter.
@@ -66,8 +66,7 @@ export function OrderActionsMenu({
   onTransitionSuccess,
   orderId,
   phone,
-  whatsappLabels,
-  whatsappUrl,
+  whatsappOrderData,
 }: OrderActionsMenuProps) {
   const router = useRouter();
   const transition = useAction(performTransition);
@@ -271,7 +270,7 @@ export function OrderActionsMenu({
     }
   }
 
-  if (!hasMenu && !canCall && !whatsappUrl && !assignmentOpen) {
+  if (!hasMenu && !canCall && !assignmentOpen) {
     return null;
   }
 
@@ -288,13 +287,18 @@ export function OrderActionsMenu({
           </a>
         ) : null}
 
-        {canCall || whatsappUrl ? (
-          <WhatsAppConfirmButton
-            disabledLabel={whatsappLabels.missingPhone}
-            label={whatsappLabels.confirm}
-            url={whatsappUrl}
-          />
-        ) : null}
+        <WhatsappComposeSheet
+          order={whatsappOrderData}
+          template="clientConfirmation"
+          trigger={
+            <button
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text hover:bg-canvas"
+              type="button"
+            >
+              Message client
+            </button>
+          }
+        />
 
         {hasMenu ? (
           <div className="relative" ref={containerRef}>

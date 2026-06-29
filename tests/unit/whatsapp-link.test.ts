@@ -1,21 +1,6 @@
-import {
-  buildWhatsAppConfirmationMessage,
-  buildWhatsAppConfirmationUrl,
-  buildWhatsAppDispatchUrlForDriver,
-  normalizeWhatsAppSenegalPhone,
-} from '@/lib/whatsapp/link';
+import { buildWhatsappShareUrl, formatProduits, safeText } from '@/lib/whatsapp/format';
+import { normalizeWhatsAppSenegalPhone } from '@/lib/whatsapp/link';
 import { describe, expect, it } from 'vitest';
-
-const order = {
-  address: 'Dakar Plateau',
-  currency: 'XOF',
-  customerFirstName: 'Moussa',
-  itemsSummary: [{ price: 12500, quantity: 1, title: 'Écouteurs' }],
-  orderNumber: '1007',
-  phone: '+221 77 123 45 67',
-  shopName: 'Boutique Tëër',
-  totalAmount: 12500,
-};
 
 describe('normalizeWhatsAppSenegalPhone', () => {
   it.each([
@@ -32,47 +17,55 @@ describe('normalizeWhatsAppSenegalPhone', () => {
   });
 });
 
-describe('buildWhatsAppConfirmationUrl', () => {
-  it('encode les accents, les sauts de ligne et garde F CFA sans U+202F', () => {
-    const url = buildWhatsAppConfirmationUrl(order);
-
-    expect(url).not.toBeNull();
-    expect(url).toContain('https://wa.me/221771234567?text=');
-    expect(url).toContain('%C3%89couteurs');
-    expect(url).toContain('%0A');
-    expect(url).toContain('12%20500%20F%20CFA');
-    expect(url).not.toContain('%E2%80%AF');
+describe('buildWhatsappShareUrl', () => {
+  it('utilise api.whatsapp.com/send sans phone=', () => {
+    const url = buildWhatsappShareUrl('Bonjour test');
+    expect(url).toContain('https://api.whatsapp.com/send');
+    expect(url).not.toContain('wa.me');
+    expect(url).not.toContain('phone=');
   });
 
-  it('contient le numéro de commande, le total et la question de confirmation', () => {
-    const message = buildWhatsAppConfirmationMessage(order);
+  it('encode le texte dans le paramètre text=', () => {
+    const url = buildWhatsappShareUrl('Commande #1007\nTotal : 12 500 F CFA');
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get('text')).toBe('Commande #1007\nTotal : 12 500 F CFA');
+  });
 
-    expect(message).toContain('commande n°1007');
-    expect(message).toContain('12 500 F CFA');
-    expect(message).toContain('Souhaitez-vous confirmer la livraison à Dakar Plateau ?');
+  it('encode correctement les emojis et accents', () => {
+    const url = buildWhatsappShareUrl('Bonjour 😊\nMerci');
+    expect(url).toContain(encodeURIComponent('Bonjour 😊\nMerci'));
+  });
+
+  it('ne contient pas de paramètre phone même pour un message livreur avec téléphone dans le corps', () => {
+    const url = buildWhatsappShareUrl('+221 77 123 45 67\nDakar Plateau');
+    const parsed = new URL(url);
+    expect(parsed.searchParams.has('phone')).toBe(false);
   });
 });
 
-describe('buildWhatsAppDispatchUrlForDriver (C5)', () => {
-  it('cible le numéro du LIVREUR (pas le client) avec le message d’expédition', () => {
-    // phone = client (ligne « Tél » du message) ; le destinataire wa.me = le livreur.
-    const url = buildWhatsAppDispatchUrlForDriver(order, '78 555 11 22');
+describe('safeText', () => {
+  it('retourne — pour null', () => expect(safeText(null)).toBe('—'));
+  it('retourne — pour undefined', () => expect(safeText(undefined)).toBe('—'));
+  it('retourne — pour chaîne vide', () => expect(safeText('')).toBe('—'));
+  it('retourne — pour chaîne avec espaces uniquement', () => expect(safeText('   ')).toBe('—'));
+  it('retourne la valeur trimée sinon', () => expect(safeText('  Dakar  ')).toBe('Dakar'));
+});
 
-    expect(url).not.toBeNull();
-    expect(url).toContain('https://wa.me/221785551122?text=');
-    // Le téléphone CLIENT apparaît dans le corps du message, pas comme destinataire.
-    expect(url).toContain(encodeURIComponent('Tél : +221 77 123 45 67'));
-    expect(url).toContain(encodeURIComponent('Total à encaisser'));
+describe('formatProduits', () => {
+  it('retourne — pour liste vide', () => {
+    expect(formatProduits([])).toBe('—');
   });
 
-  it('reflète le total édité passé en argument', () => {
-    const url = buildWhatsAppDispatchUrlForDriver({ ...order, totalAmount: 30000 }, '781112233');
-    expect(url).toContain(encodeURIComponent('30 000 F CFA'));
+  it('retourne — pour null', () => {
+    expect(formatProduits(null)).toBe('—');
   });
 
-  it('renvoie null si le livreur n’a pas de numéro mobile valide (fallback)', () => {
-    expect(buildWhatsAppDispatchUrlForDriver(order, null)).toBeNull();
-    expect(buildWhatsAppDispatchUrlForDriver(order, '')).toBeNull();
-    expect(buildWhatsAppDispatchUrlForDriver(order, '33 123 45 67')).toBeNull(); // fixe, pas mobile
+  it('formate les articles avec quantité×', () => {
+    const result = formatProduits([
+      { nom: 'Écouteurs', quantite: 2 },
+      { nom: 'Câble USB', quantite: 1 },
+    ]);
+    expect(result).toContain('2x Écouteurs');
+    expect(result).toContain('1x Câble USB');
   });
 });

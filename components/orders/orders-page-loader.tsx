@@ -19,7 +19,7 @@ import { formatMoney } from '@/lib/format/fcfa';
 import { formatOrderAddress } from '@/lib/format/order-address';
 import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
 import { cn } from '@/lib/utils';
-import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
+import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
 import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
 
@@ -39,7 +39,6 @@ type Props = {
   initialReliabilityTiers: Record<string, ReliabilityTier>;
   isTransitionPending: boolean;
   localSearchQuery: string;
-  merchantName: string;
   reliabilityLabels: Record<ReliabilityTier, string>;
   selectedShopId: string | null;
   serverSearchQuery: string;
@@ -47,7 +46,6 @@ type Props = {
     nextOrder: OrderListItem;
     previousOrder: OrderListItem;
   }) => void;
-  whatsappMissingPhoneLabel: string;
 };
 
 export function OrdersPageLoader({
@@ -63,12 +61,10 @@ export function OrdersPageLoader({
   initialReliabilityTiers,
   isTransitionPending,
   localSearchQuery,
-  merchantName,
   reliabilityLabels,
   selectedShopId,
   serverSearchQuery,
   onTransitionApplied,
-  whatsappMissingPhoneLabel,
 }: Props) {
   const [orders, setOrders] = useState(initialOrders);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -256,20 +252,13 @@ export function OrdersPageLoader({
                     onTransitionSuccess={handleTransitionSuccess}
                     orderId={order.id}
                     phone={order.customer?.phone ?? null}
-                    whatsappLabels={{
-                      confirm: 'WhatsApp',
-                      missingPhone: whatsappMissingPhoneLabel,
+                    whatsappOrderData={{
+                      numeroCommande: order.order_number,
+                      telephone: order.customer?.phone ?? null,
+                      adresse: formatOrderAddress(order.shipping_address),
+                      total: order.total_amount,
+                      items: parseItemsSummaryForWhatsapp(order.items_summary),
                     }}
-                    whatsappUrl={buildWhatsAppConfirmationUrl({
-                      address: formatOrderAddress(order.shipping_address),
-                      currency: order.currency,
-                      customerFirstName: firstName(order.customer?.full_name),
-                      itemsSummary: order.items_summary,
-                      orderNumber: order.order_number,
-                      phone: order.customer?.phone ?? null,
-                      shopName: merchantName,
-                      totalAmount: order.total_amount,
-                    })}
                   />
                   {canReassign && order.assigned_driver_id ? (
                     <OrderDriverReassign

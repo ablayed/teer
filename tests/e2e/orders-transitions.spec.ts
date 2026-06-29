@@ -606,7 +606,7 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await waitForOrderDeliveryState(fixture.admin, orderId, 'scheduled');
     await page
       .context()
-      .route('https://wa.me/**', (route) =>
+      .route('https://api.whatsapp.com/**', (route) =>
         route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
       );
     const startButton = page.getByRole('button', {
@@ -619,9 +619,9 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     const [whatsappPopup] = await Promise.all([page.waitForEvent('popup'), startButton.click()]);
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
 
-    // C5 : l'onglet WhatsApp cible le numéro du LIVREUR (+221 77 000 00 00 → 221770000000).
-    await whatsappPopup.waitForURL(/wa\.me\/221770000000/, { timeout: 15_000 });
-    expect(whatsappPopup.url()).toContain('wa.me/221770000000');
+    // C5 : l'onglet WhatsApp ouvre le composeur sans destinataire pré-rempli (api.whatsapp.com/send).
+    await whatsappPopup.waitForURL(/api\.whatsapp\.com\/send/, { timeout: 15_000 });
+    expect(whatsappPopup.url()).toContain('api.whatsapp.com/send');
     await whatsappPopup.close();
 
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
@@ -706,7 +706,7 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
     await page
       .context()
-      .route('https://wa.me/**', (route) =>
+      .route('https://api.whatsapp.com/**', (route) =>
         route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
       );
     await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
@@ -882,7 +882,7 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     // WhatsApp avec le message reflétant le TOTAL ÉDITÉ (C5). Réseau wa.me neutralisé.
     await page
       .context()
-      .route('https://wa.me/**', (route) =>
+      .route('https://api.whatsapp.com/**', (route) =>
         route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
       );
     const sendButton = page.getByRole('button', {
@@ -894,8 +894,8 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     const [whatsappPopup] = await Promise.all([page.waitForEvent('popup'), sendButton.click()]);
     await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
 
-    // C5 : le message d'expédition cible le livreur et porte le total édité (25 000).
-    await whatsappPopup.waitForURL(/wa\.me\/221770000000/, { timeout: 15_000 });
+    // C5 : le message d'expédition porte le total édité (25 000), sans destinataire pré-rempli.
+    await whatsappPopup.waitForURL(/api\.whatsapp\.com\/send/, { timeout: 15_000 });
     expect(decodeURIComponent(whatsappPopup.url())).toContain('25 000 F CFA');
     await whatsappPopup.close();
 
@@ -973,12 +973,12 @@ test('phase11 - la reassignation depuis Programmer et l agent n a pas les contro
     // qui assigne réellement (assigner + demarrer_livraison → out_for_delivery).
     await waitForOrderDeliveryState(fixture.admin, orderId, 'scheduled');
 
-    // Neutralise wa.me et on NE consomme PAS l'event popup (source de flakiness WebKit) :
+    // Neutralise api.whatsapp.com et on NE consomme PAS l'event popup (source de flakiness WebKit) :
     // l'assignation (assigner + demarrer_livraison) se fait côté serveur quel que soit
     // le sort de la fenêtre WhatsApp → on s'aligne sur l'état DB.
     await page
       .context()
-      .route('https://wa.me/**', (route) =>
+      .route('https://api.whatsapp.com/**', (route) =>
         route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
       );
     await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();

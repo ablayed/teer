@@ -208,12 +208,10 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             initialNextCursor={pageData.nextCursor}
             initialOrders={pageData.orders}
             initialReliabilityTiers={pageData.reliabilityTiers}
-            merchantName={merchant?.name ?? 'Tëër'}
             reliabilityLabels={reliabilityLabels}
             searchQuery={search}
             selectedShopId={selectedShopId}
             views={viewCounts}
-            whatsappMissingPhoneLabel={t('whatsapp.missingPhone')}
           />
         ) : null}
 

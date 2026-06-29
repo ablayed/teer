@@ -1,10 +1,9 @@
 import { OrderDetailPanel } from '@/components/orders/order-detail-panel';
 import { OrderSideSheet } from '@/components/orders/order-side-sheet';
 import { getActiveDrivers } from '@/lib/actions/drivers';
-import { getMerchantAccount, getMerchantMemberForUser } from '@/lib/actions/merchant';
+import { getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getOrderById } from '@/lib/actions/orders';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 
 type OrderDetailScreenProps = {
@@ -13,34 +12,20 @@ type OrderDetailScreenProps = {
 };
 
 export async function OrderDetailScreen({ mode, orderId }: OrderDetailScreenProps) {
-  const [order, merchant, drivers, role] = await Promise.all([
+  const [order, drivers, role] = await Promise.all([
     getOrderById(orderId),
-    getMerchantAccount(),
     getActiveDrivers(),
     getCurrentRole(),
   ]);
   // Phase 11 : seuls owner/manager éditent les montants (total + frais de livraison).
   const canEditAmounts = role === 'owner' || role === 'manager';
-  const t = await getTranslations('orders');
-  const whatsappLabels = {
-    confirm: t('whatsapp.confirm'),
-    missingPhone: t('whatsapp.missingPhone'),
-  };
 
   if (!order) {
     notFound();
   }
 
   if (mode === 'sheet') {
-    return (
-      <OrderSideSheet
-        canEditAmounts={canEditAmounts}
-        drivers={drivers}
-        order={order}
-        shopName={merchant?.name ?? 'Tëër'}
-        whatsappLabels={whatsappLabels}
-      />
-    );
+    return <OrderSideSheet canEditAmounts={canEditAmounts} drivers={drivers} order={order} />;
   }
 
   return (
@@ -50,8 +35,6 @@ export async function OrderDetailScreen({ mode, orderId }: OrderDetailScreenProp
         drivers={drivers}
         mode="page"
         order={order}
-        shopName={merchant?.name ?? 'Tëër'}
-        whatsappLabels={whatsappLabels}
       />
     </main>
   );

@@ -12,7 +12,14 @@ import {
   normalizeHourInput,
 } from '@/lib/format/datetime-input';
 import { formatMoney } from '@/lib/format/fcfa';
-import { buildWhatsAppDispatchUrlForDriver, firstName } from '@/lib/whatsapp/link';
+import {
+  buildWhatsappShareUrl,
+  formatMoneyForWhatsApp,
+  formatProduits,
+  parseItemsSummaryForWhatsapp,
+  safeText,
+} from '@/lib/whatsapp/format';
+import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import { useEffect, useId, useState } from 'react';
 
@@ -42,6 +49,7 @@ export function AssignmentDetailsDialog({
   onConfirmed,
   orderId,
 }: AssignmentDetailsDialogProps) {
+  const t = useTranslations('whatsapp');
   const fieldId = useId();
   const fetchDetails = useAction(getOrderAmountsForAssignmentAction);
   const update = useAction(updateOrderAmountsAction);
@@ -50,10 +58,8 @@ export function AssignmentDetailsDialog({
   const [loaded, setLoaded] = useState(false);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string | null>(null);
-  const [customerPhone, setCustomerPhone] = useState<string | null>(null);
-  const [deliveryAddress, setDeliveryAddress] = useState<string | null>(null);
-  const [driverPhone, setDriverPhone] = useState<string | null>(null);
   const [currency, setCurrency] = useState<string | null>(null);
+  const [driverMessage, setDriverMessage] = useState('');
   const [items, setItems] = useState<{ title: string; quantity: number; price: number }[]>([]);
   const [savedTotal, setSavedTotal] = useState(0);
   const [savedFee, setSavedFee] = useState(0);
@@ -84,9 +90,6 @@ export function AssignmentDetailsDialog({
       const d = result.data.data;
       setOrderNumber(d.orderNumber);
       setCustomerName(d.customerName);
-      setCustomerPhone(d.customerPhone);
-      setDeliveryAddress(d.deliveryAddress);
-      setDriverPhone(d.driverPhone);
       setCurrency(d.currency);
       setItems(d.items);
       setSavedTotal(d.totalAmount);
@@ -97,13 +100,23 @@ export function AssignmentDetailsDialog({
       const dt = d.scheduledFor ? isoToDateTimeInputs(d.scheduledFor) : nextWholeHourInputs();
       setDate(dt.date);
       setTime(normalizeHourInput(dt.time));
+      // Build driver message from loaded data directly (not state — React batches updates).
+      setDriverMessage(
+        t('livreur', {
+          numeroCommande: safeText(d.orderNumber),
+          telephone: safeText(d.customerPhone),
+          produits: formatProduits(parseItemsSummaryForWhatsapp(d.items)),
+          adresse: safeText(d.deliveryAddress),
+          total: formatMoneyForWhatsApp(d.totalAmount),
+        }),
+      );
       setLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-    // orderId/driverIdToAssign stables pour la durée de vie du popup ; executeAsync mémoïsé.
-  }, [orderId, driverIdToAssign, fetchDetails.executeAsync]);
+    // orderId/driverIdToAssign stables pour la durée de vie du popup ; executeAsync et t mémoïsés.
+  }, [orderId, driverIdToAssign, fetchDetails.executeAsync, t]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -122,29 +135,10 @@ export function AssignmentDetailsDialog({
   const feeValid = feeInput !== '' && Number.isFinite(parsedFee) && parsedFee >= 0;
   const canConfirm = loaded && totalValid && feeValid && !isExecuting;
 
-  // Message d'expédition pré-rempli vers le livreur, construit à partir de l'état LIVE
-  // (total édité reflété). Null si le livreur n'a pas de numéro mobile valide → fallback.
-  function buildDriverWhatsAppUrl(roundedTotal: number): string | null {
-    return buildWhatsAppDispatchUrlForDriver(
-      {
-        orderNumber,
-        customerFirstName: firstName(customerName),
-        phone: customerPhone,
-        address: deliveryAddress,
-        itemsSummary: items.map((item) => ({ title: item.title, quantity: item.quantity })),
-        totalAmount: roundedTotal,
-        currency,
-        shopName: '',
-      },
-      driverPhone,
-    );
-  }
-
   // « Envoyer au livreur (WhatsApp) » : un clic = save montants (si modifiés) → assigner
   // (+driver, dispatch) si le livreur n'est pas encore assigné → demarrer_livraison →
-  // ouverture WhatsApp vers le livreur. L'onglet WhatsApp est PRÉ-OUVERT dans le geste
-  // (sinon les navigateurs bloquent window.open après un await). C'est SEULEMENT ici que
-  // la commande est assignée : « Annuler » ne déclenche rien et laisse scheduled.
+  // ouverture WhatsApp. L'onglet est PRÉ-OUVERT synchrone (sinon Safari bloque window.open
+  // après un await). C'est SEULEMENT ici que la commande est assignée.
   async function handleConfirm() {
     if (!canConfirm) {
       return;
@@ -154,8 +148,9 @@ export function AssignmentDetailsDialog({
     const roundedTotal = Math.round(total);
     const roundedFee = Math.round(fee);
     const scheduledForIso = dateTimeInputsToIso(date, time);
-    const whatsappUrl = buildDriverWhatsAppUrl(roundedTotal);
-    const whatsappWindow = whatsappUrl ? window.open('', '_blank') : null;
+    // Pré-ouverture synchrone obligatoire avant tout await (popup-blocker Safari).
+    const whatsappUrl = buildWhatsappShareUrl(driverMessage);
+    const whatsappWindow = window.open('', '_blank');
 
     const amountsChanged =
       roundedTotal !== savedTotal ||
@@ -206,11 +201,8 @@ export function AssignmentDetailsDialog({
       return;
     }
 
-    // Livraison démarrée : ouvre WhatsApp vers le livreur (ou rien si pas de numéro).
-    if (whatsappWindow && whatsappUrl) {
+    if (whatsappWindow) {
       whatsappWindow.location.href = whatsappUrl;
-    } else {
-      whatsappWindow?.close();
     }
 
     onConfirmed(started.data);
@@ -306,6 +298,16 @@ export function AssignmentDetailsDialog({
                 {formatMoney(netMinor, currency)}
               </span>
             </p>
+
+            <div className="space-y-2">
+              <Label htmlFor={`${fieldId}-driver-msg`}>Message livreur (WhatsApp)</Label>
+              <textarea
+                className="w-full min-h-[160px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                id={`${fieldId}-driver-msg`}
+                onChange={(e) => setDriverMessage(e.target.value)}
+                value={driverMessage}
+              />
+            </div>
           </>
         )}
 

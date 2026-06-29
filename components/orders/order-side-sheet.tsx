@@ -11,11 +11,6 @@ type OrderSideSheetProps = {
   canEditAmounts: boolean;
   drivers: DriverOption[];
   order: OrderDetail;
-  shopName: string;
-  whatsappLabels: {
-    confirm: string;
-    missingPhone: string;
-  };
 };
 
 const sheetTransition = {
@@ -23,13 +18,7 @@ const sheetTransition = {
   ease: [0.22, 1, 0.36, 1],
 } as const;
 
-export function OrderSideSheet({
-  canEditAmounts,
-  drivers,
-  order,
-  shopName,
-  whatsappLabels,
-}: OrderSideSheetProps) {
+export function OrderSideSheet({ canEditAmounts, drivers, order }: OrderSideSheetProps) {
   const router = useRouter();
 
   const close = useCallback(() => {
@@ -77,8 +66,6 @@ export function OrderSideSheet({
             mode="sheet"
             onClose={close}
             order={order}
-            shopName={shopName}
-            whatsappLabels={whatsappLabels}
           />
         </motion.dialog>
       </motion.div>

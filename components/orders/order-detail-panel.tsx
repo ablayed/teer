@@ -14,7 +14,7 @@ import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
-import { buildWhatsAppConfirmationUrl, firstName } from '@/lib/whatsapp/link';
+import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
 import { ArrowLeft, MapPin, Pencil, ShoppingBag, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -27,11 +27,6 @@ type OrderDetailPanelProps = {
   mode: 'page' | 'sheet';
   onClose?: () => void;
   order: OrderDetail;
-  shopName: string;
-  whatsappLabels: {
-    confirm: string;
-    missingPhone: string;
-  };
 };
 
 type ShippingAddress = {
@@ -125,8 +120,6 @@ export function OrderDetailPanel({
   mode,
   onClose,
   order,
-  shopName,
-  whatsappLabels,
 }: OrderDetailPanelProps) {
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const emptyValue = 'Non renseigne';
@@ -139,18 +132,13 @@ export function OrderDetailPanel({
     .filter(Boolean)
     .join(', ');
   const formattedDeliveryAddress = formatAddress(shippingAddress, emptyValue);
-  const addressForWhatsApp =
-    formattedDeliveryAddress === emptyValue ? null : formattedDeliveryAddress;
-  const whatsappUrl = buildWhatsAppConfirmationUrl({
-    address: addressForWhatsApp,
-    currency: order.currency,
-    customerFirstName: firstName(order.customer?.full_name),
-    itemsSummary: order.items_summary,
-    orderNumber: order.order_number,
-    phone,
-    shopName,
-    totalAmount: order.total_amount,
-  });
+  const whatsappOrderData: WhatsappOrderData = {
+    numeroCommande: order.order_number,
+    telephone: phone,
+    adresse: formattedDeliveryAddress === emptyValue ? null : formattedDeliveryAddress,
+    total: order.total_amount,
+    items: parseItemsSummaryForWhatsapp(order.items_summary),
+  };
   const isCancelled = order.order_state === 'cancelled';
   // Lot B : raisons d'annulation multiples (libellés FR), fallback legacy.
   const cancelReasonsDisplay = (order.cancel_reasons ?? [])
@@ -169,8 +157,7 @@ export function OrderDetailPanel({
       drivers={drivers}
       orderId={order.id}
       phone={phone}
-      whatsappLabels={whatsappLabels}
-      whatsappUrl={whatsappUrl}
+      whatsappOrderData={whatsappOrderData}
     />
   );
 
