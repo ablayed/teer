@@ -9,6 +9,7 @@ dist
 coverage
 playwright-report
 test-results
+# Les snapshots Playwright Windows ne doivent jamais être versionnés.
 *-win32.png
 .tmp/
 .worktrees/
