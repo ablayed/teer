@@ -71,9 +71,12 @@ jobs:
           NEXT_PUBLIC_DISABLE_UIR: '1'
       - name: Free disk before visual tests
         run: rm -rf .next/cache
-      - name: Update Linux visual baselines
-        run: pnpm exec playwright test tests/visual --update-snapshots
+      - name: Generate Linux baselines
+        id: generate
+        continue-on-error: true
+        run: pnpm exec playwright test tests/visual --update-snapshots --retries=0
         env:
+          TZ: Africa/Dakar
           E2E_PROD_BUILD: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
@@ -81,13 +84,14 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
       - name: Commit generated baselines
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -z "$(git status --short -- tests/__screenshots__)" ]; then
+          git add -- 'tests/__screenshots__/**/*-linux.png'
+          if git diff --staged --quiet; then
             echo "No baseline changes to commit."
             exit 0
           fi
-          git add tests/__screenshots__
-          git commit -m "chore(test): update linux visual baselines"
+          git commit -m "chore(test): baselines visuelles Linux (bootstrap auto)"
           git push origin HEAD:${GITHUB_REF_NAME}

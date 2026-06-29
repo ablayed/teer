@@ -42,7 +42,11 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
 
     try {
       await seedOrdersVisualData(fixture);
-      await signInToRoute(page, fixture.email, '/commandes');
+      await signInToRoute(
+        page,
+        fixture.email,
+        '/commandes?from=2026-01-01&to=2026-01-31',
+      );
       await expect(page.getByTestId('orders-results')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('Mamadou Fall').first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('orders-results')).not.toHaveAttribute('aria-busy', 'true');
