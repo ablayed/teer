@@ -224,7 +224,7 @@ export function OrdersPageLoader({
                     <span className="font-mono">{order.order_number ?? emptyValueLabel}</span>
                     <span aria-hidden="true">·</span>
                     <span>{formatDateRelative(order.created_at_shopify ?? order.created_at)}</span>
-                    <span className="@min-[30rem]/row:inline hidden" data-testid="order-row-amount">
+                    <span className="@min-[22rem]/row:inline hidden" data-testid="order-row-amount">
                       <span aria-hidden="true" className="mr-1.5">
                         ·
                       </span>
@@ -271,10 +271,8 @@ export function OrdersPageLoader({
                   />
                 }
                 title={
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate" data-testid="order-row-title">
-                      {order.customer?.full_name ?? emptyValueLabel}
-                    </span>
+                  <span className="flex min-w-0 items-center gap-1.5" data-testid="order-row-title">
+                    <span className="truncate">{order.customer?.full_name ?? emptyValueLabel}</span>
                     <CustomerReliabilityBadge
                       labels={reliabilityLabels}
                       tier={
