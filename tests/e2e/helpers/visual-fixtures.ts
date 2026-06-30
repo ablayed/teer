@@ -40,7 +40,9 @@ type OrderSeed = {
   itemsSummary: Array<{ price: number; quantity: number; title: string }>;
   orderNumber: string;
   paymentChannelAtDelivery?: 'ESPECES' | 'WAVE' | 'ORANGE_MONEY' | 'FREE_MONEY' | 'INCONNU';
+  returnedAt?: string | null;
   scheduledFor?: string | null;
+  source?: string;
   status: OrderStatus;
   totalAmount: number;
 };
@@ -181,6 +183,8 @@ export async function createOrder(fixture: VisualFixture, seed: OrderSeed): Prom
       payment_channel_at_delivery: seed.paymentChannelAtDelivery ?? null,
       cash_collectable_minor: seed.cashCollectableMinor ?? null,
       delivery_fee_minor: seed.deliveryFeeMinor ?? 0,
+      returned_at: seed.returnedAt ?? null,
+      ...(seed.source ? { source: seed.source } : {}),
       items_summary: seed.itemsSummary,
       shipping_address: {
         address1: seed.address1,
@@ -521,4 +525,194 @@ export async function seedDashboardVisualData(fixture: VisualFixture): Promise<v
     status: 'PROGRAMMEE',
     totalAmount: 27500,
   });
+}
+
+// Plage de période FIGÉE pour Finances + Analyses : on la passe explicitement dans
+// l'URL (?from=…&to=…) — comme la baseline commandes-liste — pour que le serveur RSC
+// calcule la fenêtre sur des dates fixes au lieu du `now` réel du runner (page.clock
+// ne fige que l'horloge navigateur). Toutes les dates de seed tombent dedans.
+export const visualPeriodFrom = '2026-01-01';
+export const visualPeriodTo = '2026-01-31';
+
+// Finances (owner) : commandes LIVRÉES + encaissées (cash_collected_at figé janvier
+// 2026) avec produit costé + mouvement `sold` → CA / marge / profit non nuls et charts
+// tracés (revenue/funnel/boutiques). AUCUN livreur assigné → carte « cash chez les
+// livreurs » à 0 (déterministe, zéro settlement comme demandé).
+export async function seedFinanceVisualData(fixture: VisualFixture): Promise<void> {
+  const userId = fixture.userIds[0];
+
+  const { data: product, error: productError } = await fixture.admin
+    .from('product')
+    .insert({
+      merchant_account_id: fixture.merchantAccountId,
+      sku: 'FIN-WAX-001',
+      title: 'Ensemble wax indigo',
+      unit_cost: 9000,
+      is_active: true,
+    })
+    .select('id')
+    .single();
+
+  if (productError || !product) {
+    throw productError ?? new Error('seedFinanceVisualData: product insert returned no row');
+  }
+
+  const productId = product.id as string;
+
+  await fixture.admin.from('product_stock').upsert(
+    {
+      product_id: productId,
+      merchant_account_id: fixture.merchantAccountId,
+      qty_on_hand: 40,
+      unit_cost: 9000,
+    },
+    { onConflict: 'product_id' },
+  );
+
+  const collectedOrders = [
+    { collectedAt: '2026-01-12T10:00:00.000Z', number: 'FIN-VIS-001', quantity: 2, total: 24000 },
+    { collectedAt: '2026-01-20T10:00:00.000Z', number: 'FIN-VIS-002', quantity: 1, total: 18000 },
+  ];
+
+  let movementIndex = 0;
+
+  for (const seed of collectedOrders) {
+    movementIndex += 1;
+
+    const { data: order, error: orderError } = await fixture.admin
+      .from('orders')
+      .insert({
+        merchant_account_id: fixture.merchantAccountId,
+        source: 'shopify',
+        order_number: seed.number,
+        total_amount: seed.total,
+        currency: 'XOF',
+        items_summary: [
+          {
+            price: seed.total / seed.quantity,
+            quantity: seed.quantity,
+            title: 'Ensemble wax indigo',
+          },
+        ],
+        order_state: 'completed',
+        call_state: 'validated',
+        delivery_state: 'delivered',
+        cash_state: 'collected',
+        cash_collected_at: seed.collectedAt,
+        created_at: seed.collectedAt,
+        payment_channel_at_delivery: 'ESPECES',
+      })
+      .select('id')
+      .single();
+
+    if (orderError || !order) {
+      throw orderError ?? new Error('seedFinanceVisualData: order insert returned no row');
+    }
+
+    const orderId = order.id as string;
+
+    await fixture.admin.from('order_line').insert({
+      merchant_account_id: fixture.merchantAccountId,
+      order_id: orderId,
+      product_id: productId,
+      raw_title: 'Ensemble wax indigo',
+      qty: seed.quantity,
+      match_status: 'matched',
+    });
+
+    await fixture.admin.from('stock_movement').insert({
+      merchant_account_id: fixture.merchantAccountId,
+      product_id: productId,
+      order_id: orderId,
+      movement_type: 'sold',
+      qty: seed.quantity,
+      unit_cost: 9000,
+      idempotency_key: `finance-visual-sold-${movementIndex}`,
+      created_by: userId,
+    });
+  }
+}
+
+// Analyses (owner/manager) : commandes créées en janvier 2026 aux issues variées
+// (livrée / refusée-RTO / annulée) sur deux canaux → scorecard, cartes de synthèse,
+// pertes par produit / zone / livreur et raisons peuplés. `trends` est bâti sur la
+// fenêtre de jours (Jan 1–31) donc toujours non vide → graphes tracés.
+export async function seedAnalyticsVisualData(fixture: VisualFixture): Promise<void> {
+  const createdAt = '2026-01-15T10:00:00.000Z';
+
+  const driverId = await createDriver(fixture, {
+    fullName: 'Moussa Ndiaye',
+    phone: '+221770009988',
+  });
+  const productId = await createProduct(fixture, {
+    sku: 'WAX-001',
+    title: 'Ensemble wax indigo',
+    unitCost: 9000,
+  });
+  const awaId = await createCustomer(fixture, {
+    address1: 'Liberté 6',
+    fullName: 'Awa Diop',
+    phone: '+221771112233',
+  });
+  const ousmaneId = await createCustomer(fixture, {
+    address1: 'Rufisque',
+    city: 'Rufisque',
+    fullName: 'Ousmane Kane',
+    phone: '+221774445566',
+  });
+  const ndeyeId = await createCustomer(fixture, {
+    address1: 'Yoff Virage',
+    fullName: 'Ndeye Sow',
+    phone: '+221770110022',
+  });
+
+  const deliveredId = await createOrder(fixture, {
+    address1: 'Liberté 6',
+    assignedDriverId: driverId,
+    cashCollectableMinor: 28000,
+    createdAt,
+    customerId: awaId,
+    deliveryFeeMinor: 2500,
+    itemsSummary: [{ price: 28000, quantity: 1, title: 'Ensemble wax indigo' }],
+    orderNumber: 'ANA-VIS-001',
+    paymentChannelAtDelivery: 'ESPECES',
+    source: 'shopify',
+    status: 'LIVREE',
+    totalAmount: 28000,
+  });
+  const refusedId = await createOrder(fixture, {
+    address1: 'Rufisque',
+    assignedDriverId: driverId,
+    cancelReason: 'refused',
+    createdAt,
+    customerId: ousmaneId,
+    itemsSummary: [{ price: 16000, quantity: 1, title: 'Ensemble wax indigo' }],
+    orderNumber: 'ANA-VIS-002',
+    source: 'shopify',
+    status: 'REFUSEE',
+    totalAmount: 16000,
+  });
+  await createOrder(fixture, {
+    address1: 'Yoff Virage',
+    cancelReason: 'cancelled',
+    createdAt,
+    customerId: ndeyeId,
+    itemsSummary: [{ price: 14000, quantity: 1, title: 'Ensemble wax indigo' }],
+    orderNumber: 'ANA-VIS-003',
+    source: 'manual',
+    status: 'ANNULEE',
+    totalAmount: 14000,
+  });
+
+  // Lignes produit (jointure order_line ↔ produit) pour peupler « Refus par produit ».
+  for (const orderId of [deliveredId, refusedId]) {
+    await fixture.admin.from('order_line').insert({
+      merchant_account_id: fixture.merchantAccountId,
+      order_id: orderId,
+      product_id: productId,
+      raw_title: 'Ensemble wax indigo',
+      qty: 1,
+      match_status: 'matched',
+    });
+  }
 }
