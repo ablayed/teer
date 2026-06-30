@@ -155,6 +155,43 @@ body {
   outline-offset: 2px;
 }
 
+/* Mobile bottom dock — hauteur RÉSERVÉE, source unique partagée entre le dock
+   flottant (components/app-shell/bottom-tab-nav.tsx) et la zone de défilement
+   (components/app-shell/app-shell.tsx). Modifier ici suffit : les deux
+   consommateurs suivent → on ne réintroduit pas le bug pixel-7 « élément du bas
+   sous la nav, clic intercepté ». Réservé = hauteur barre + offset flottant +
+   safe-area, soit l'espace à laisser libre au-dessus du contenu. */
+.app-shell {
+  --bottom-nav-height: 60px;
+  --bottom-nav-gap: 8px;
+  --mobile-nav-reserved-height: calc(
+    var(--bottom-nav-height) +
+    var(--bottom-nav-gap) +
+    env(safe-area-inset-bottom)
+  );
+}
+
+/* Apparition du menu « Plus » : transform/opacity courtes (≤150ms), sans lib. */
+@keyframes mobile-more-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.mobile-more-menu-enter {
+  animation: mobile-more-menu-in 150ms var(--ease-standard);
+  transform-origin: bottom center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-more-menu-enter {
+    animation: none;
+  }
+}
+
 /* Portée marketing : encre chaude + gris chauds, sans toucher l'app.
    Les utilitaires text-text / text-muted résolvent var(--text)/var(--muted)
    au point d'usage → l'override en cascade suffit. */

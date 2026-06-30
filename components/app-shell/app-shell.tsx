@@ -28,7 +28,7 @@ export async function AppShell({
         bug réel reproduit sur pixel-7 (clic « Ajouter une dépense » intercepté par la nav).
         Desktop (md+) : pas de bottom-nav (md:hidden) → défilement document classique.
       */}
-      <div className="h-[calc(100dvh-64px-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain px-4 pt-6 pb-6 md:ml-[280px] md:h-auto md:min-h-dvh md:overflow-visible md:px-8 md:pt-10 md:pb-8">
+      <div className="h-[calc(100dvh_-_var(--mobile-nav-reserved-height))] overflow-y-auto overscroll-contain px-4 pt-6 pb-6 md:ml-[280px] md:h-auto md:min-h-dvh md:overflow-visible md:px-8 md:pt-10 md:pb-8">
         {children}
       </div>
       <BottomTabNav currentRole={currentRole} />
