@@ -3,7 +3,10 @@
 import { CodStatusListBadge } from '@/components/orders/cod-status-list-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
-import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
+import {
+  OrderDriverReassign,
+  REASSIGNABLE_STATES,
+} from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ResourceRow } from '@/components/ui/resource-row';
@@ -235,34 +238,23 @@ export function OrdersPageLoader({
                   </span>
                 }
                 overflow={
-                  <div className="flex items-center gap-1">
-                    <OrderActionsMenu
-                      allowedActions={order.allowedActions}
-                      canEditAmounts={canReassign}
-                      compact
-                      deliveryState={order.delivery_state}
-                      drivers={drivers}
-                      onTransitionSuccess={handleTransitionSuccess}
-                      orderId={order.id}
-                      phone={order.customer?.phone ?? null}
-                      whatsappOrderData={{
-                        numeroCommande: order.order_number,
-                        telephone: order.customer?.phone ?? null,
-                        adresse: formatOrderAddress(order.shipping_address),
-                        total: order.total_amount,
-                        items: parseItemsSummaryForWhatsapp(order.items_summary),
-                      }}
-                    />
-                    {canReassign && order.assigned_driver_id ? (
-                      <OrderDriverReassign
-                        compact
-                        currentDriverId={order.assigned_driver_id}
-                        deliveryState={order.delivery_state}
-                        drivers={drivers}
-                        orderId={order.id}
-                      />
-                    ) : null}
-                  </div>
+                  <OrderActionsMenu
+                    allowedActions={order.allowedActions}
+                    canEditAmounts={canReassign}
+                    compact
+                    deliveryState={order.delivery_state}
+                    drivers={drivers}
+                    onTransitionSuccess={handleTransitionSuccess}
+                    orderId={order.id}
+                    phone={order.customer?.phone ?? null}
+                    whatsappOrderData={{
+                      numeroCommande: order.order_number,
+                      telephone: order.customer?.phone ?? null,
+                      adresse: formatOrderAddress(order.shipping_address),
+                      total: order.total_amount,
+                      items: parseItemsSummaryForWhatsapp(order.items_summary),
+                    }}
+                  />
                 }
                 status={
                   <CodStatusListBadge
@@ -282,6 +274,24 @@ export function OrdersPageLoader({
                   </span>
                 }
               />
+              {/* La réassignation livreur vit sur sa PROPRE ligne sous la commande : */}
+              {/* injectée inline dans `overflow`, sa largeur (« Affecté à … / Changer */}
+              {/* le livreur ») écrasait la colonne titre `flex-1 min-w-0` à 0 px sur */}
+              {/* mobile (titre non `:visible`). Le slot overflow ne porte plus que le */}
+              {/* menu d'actions compact. */}
+              {canReassign &&
+              order.assigned_driver_id &&
+              REASSIGNABLE_STATES.includes(order.delivery_state ?? '') ? (
+                <div className="border-t border-border px-3 py-2">
+                  <OrderDriverReassign
+                    compact
+                    currentDriverId={order.assigned_driver_id}
+                    deliveryState={order.delivery_state}
+                    drivers={drivers}
+                    orderId={order.id}
+                  />
+                </div>
+              ) : null}
             </article>
           ))}
         </div>

@@ -19,7 +19,7 @@ type OrderDriverReassignProps = {
 
 // États où une réassignation est permise (jamais après livraison / clôture).
 // Miroir de la garde SQL reassign_order_driver (0058).
-const REASSIGNABLE_STATES = ['scheduled', 'assigned', 'out_for_delivery'];
+export const REASSIGNABLE_STATES = ['scheduled', 'assigned', 'out_for_delivery'];
 
 export function OrderDriverReassign({
   compact = false,
