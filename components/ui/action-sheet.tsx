@@ -172,12 +172,12 @@ export function ActionSheet({ trigger, items, title, align = 'end' }: ActionShee
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>
-        <div className="flex flex-col gap-1 px-2 pb-4" role="menu">
+        <div className="flex flex-col divide-y divide-border px-2 pb-4" role="menu">
           {items.map((item) => (
             <button
               key={item.key}
               className={cn(
-                'flex min-h-[48px] w-full items-center gap-3 rounded-md px-4 text-left text-base font-medium',
+                'flex min-h-[48px] w-full items-center gap-3 px-4 text-left text-base font-medium',
                 'transition-colors active:bg-accent disabled:opacity-50',
                 item.variant === 'destructive' ? 'text-danger' : 'text-text',
               )}
