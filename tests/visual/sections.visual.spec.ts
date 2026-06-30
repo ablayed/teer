@@ -181,10 +181,12 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         fixture.email,
         `/analyses?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
       );
-      // La page Analyses est un seul await serveur : le scorecard visible = données prêtes.
-      await expect(
-        page.getByRole('heading', { name: messages.analytics.scorecard.title }),
-      ).toBeVisible({ timeout: 15_000 });
+      // La page Analyses est un seul await serveur : le h1 (unique) visible = données
+      // prêtes. NB : ne pas ancrer sur « Scorecard par canal » — ce titre apparaît deux
+      // fois (carte graphique ssr:false + table) → match ambigu / course de montage.
+      await expect(page.getByRole('heading', { name: messages.analytics.title })).toBeVisible({
+        timeout: 15_000,
+      });
       await expect(page.locator('.recharts-surface').first()).toBeVisible({ timeout: 15_000 });
       await waitForFonts(page);
 
