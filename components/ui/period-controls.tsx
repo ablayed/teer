@@ -69,19 +69,19 @@ export function PeriodControls({
           </Link>
         ))}
       </div>
-      <label className="space-y-1 text-xs font-medium text-muted">
-        {labels.from}
+      <label className="flex w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
+        <span className="px-0.5">{labels.from}</span>
         <input
-          className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+          className="h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
           defaultValue={toDateInput(from)}
           name="from"
           type="date"
         />
       </label>
-      <label className="space-y-1 text-xs font-medium text-muted">
-        {labels.to}
+      <label className="flex w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
+        <span className="px-0.5">{labels.to}</span>
         <input
-          className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+          className="h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
           defaultValue={toDateInput(to)}
           name="to"
           type="date"
