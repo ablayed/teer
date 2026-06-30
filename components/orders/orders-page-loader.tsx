@@ -5,6 +5,7 @@ import { CustomerReliabilityBadge } from '@/components/orders/customer-reliabili
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   type OrderListCursor,
   type OrderListItem,
@@ -289,12 +290,10 @@ export function OrdersPageLoader({
       ))}
 
       {showSearchEmpty ? (
-        <div className="rounded-lg border border-border bg-surface p-6 text-center shadow-1">
-          <h2 className="text-base font-semibold">
-            {t('search.emptyTitle', { query: localSearchQuery.trim() })}
-          </h2>
-          <p className="mt-1 text-sm text-muted">{t('search.emptyDescription')}</p>
-        </div>
+        <EmptyState
+          description={t('search.emptyDescription')}
+          title={t('search.emptyTitle', { query: localSearchQuery.trim() })}
+        />
       ) : null}
 
       {!localSearchAhead && hasMore && nextCursor ? (

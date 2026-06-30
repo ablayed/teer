@@ -1,3 +1,5 @@
+import { ResourceRowSkeleton } from '@/components/ui/skeleton';
+
 export default function CommandesLoading() {
   return (
     <main className="space-y-6" id="main">
@@ -10,9 +12,9 @@ export default function CommandesLoading() {
           <div className="dashboard-shimmer h-11 w-32 rounded-full" key={key} />
         ))}
       </div>
-      <section className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1">
+      <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-1">
         {['row-1', 'row-2', 'row-3', 'row-4', 'row-5', 'row-6'].map((key) => (
-          <div className="dashboard-shimmer h-24 rounded-lg" key={key} />
+          <ResourceRowSkeleton key={key} />
         ))}
       </section>
     </main>

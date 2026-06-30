@@ -3,6 +3,7 @@ import { OrdersBoardProvider } from '@/components/orders/orders-board-context';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PeriodControls } from '@/components/ui/period-controls';
 import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantAccount, getMerchantMemberForUser } from '@/lib/actions/merchant';
@@ -223,38 +224,34 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         ) : null}
 
         {showNoShop || showNoOrdersWithShop || showFilteredEmpty ? (
-          <section className="rounded-lg border border-border bg-surface p-6 shadow-1">
-            <div className="flex max-w-2xl flex-col gap-4 sm:flex-row sm:items-start">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-canvas text-accent">
-                <Store aria-hidden="true" className="size-6" />
-              </span>
-              <div className="space-y-2">
-                <h2 className="text-xl font-semibold">
-                  {showNoShop
-                    ? t('empty.noShopTitle')
-                    : showNoOrdersWithShop
-                      ? t('empty.withShopTitle')
-                      : t('empty.filteredTitle')}
-                </h2>
-                <p className="text-sm leading-6 text-muted">
-                  {showNoShop
-                    ? t('empty.noShopDescription')
-                    : showNoOrdersWithShop
-                      ? t('empty.withShopDescription')
-                      : t('empty.filteredDescription')}
-                </p>
-                {showNoShop ? (
-                  <Link
-                    className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-accent px-4 font-medium text-[#111]"
-                    href="/boutiques"
-                  >
-                    {t('empty.noShopCta')}
-                    <ArrowRight aria-hidden="true" className="size-4" />
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          </section>
+          <EmptyState
+            description={
+              showNoShop
+                ? t('empty.noShopDescription')
+                : showNoOrdersWithShop
+                  ? t('empty.withShopDescription')
+                  : t('empty.filteredDescription')
+            }
+            illustration={<Store className="size-6" />}
+            title={
+              showNoShop
+                ? t('empty.noShopTitle')
+                : showNoOrdersWithShop
+                  ? t('empty.withShopTitle')
+                  : t('empty.filteredTitle')
+            }
+            action={
+              showNoShop ? (
+                <Link
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-accent px-4 font-medium text-[#111]"
+                  href="/boutiques"
+                >
+                  {t('empty.noShopCta')}
+                  <ArrowRight aria-hidden="true" className="size-4" />
+                </Link>
+              ) : undefined
+            }
+          />
         ) : null}
       </main>
     </OrdersBoardProvider>
