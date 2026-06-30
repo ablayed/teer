@@ -1,11 +1,12 @@
 'use client';
 
-import { CodStatusBadge, codDisplayLabel } from '@/components/orders/cod-status-badge';
+import { CodStatusListBadge } from '@/components/orders/cod-status-list-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ResourceRow } from '@/components/ui/resource-row';
 import {
   type OrderListCursor,
   type OrderListItem,
@@ -14,7 +15,7 @@ import {
 import type { TransitionResult } from '@/lib/actions/transitions';
 import { matchesOrderSavedView, orderQueueDate } from '@/lib/domain/order-saved-views';
 import type { OrderSavedViewId } from '@/lib/domain/order-saved-views';
-import type { orderStatusLabels } from '@/lib/domain/order-state-machine';
+import type { OrderStatus } from '@/lib/domain/order-state-machine';
 import { formatDateDayKey, formatDateGroupLabel, formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatOrderAddress } from '@/lib/format/order-address';
@@ -22,7 +23,6 @@ import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search'
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { useEffect, useState, useTransition } from 'react';
 
 type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
@@ -214,76 +214,73 @@ export function OrdersPageLoader({
           </h2>
           {group.orders.map((order) => (
             <article
-              className="rounded-lg border border-border bg-surface p-4 shadow-1 transition-colors hover:bg-canvas/50"
+              className="overflow-hidden rounded-lg border border-border bg-surface shadow-1 transition-colors hover:bg-canvas/50"
               key={order.id}
             >
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <Link className="min-w-0 flex-1 space-y-3" href={`/commandes/${order.id}`} prefetch>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="font-mono text-sm font-semibold text-muted">
-                      {order.order_number ?? emptyValueLabel}
-                    </p>
-                    <CodStatusBadge
-                      deliveryState={order.delivery_state}
-                      status={order.cod_status as keyof typeof orderStatusLabels}
-                    />
-                    <span className="text-sm text-muted">
-                      {codDisplayLabel(
-                        order.cod_status as keyof typeof orderStatusLabels,
-                        order.delivery_state,
-                      )}
+              <ResourceRow
+                href={`/commandes/${order.id}`}
+                meta={
+                  <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                    <span className="font-mono">{order.order_number ?? emptyValueLabel}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{formatDateRelative(order.created_at_shopify ?? order.created_at)}</span>
+                    <span className="@min-[30rem]/row:inline hidden">
+                      <span aria-hidden="true" className="mr-1.5">
+                        ·
+                      </span>
+                      <span className="font-medium text-text">
+                        {formatMoney(order.total_amount, order.currency)}
+                      </span>
                     </span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold">
-                        {order.customer?.full_name ?? emptyValueLabel}
-                      </p>
-                      <CustomerReliabilityBadge
-                        labels={reliabilityLabels}
-                        tier={
-                          order.customer_id ? (reliabilityTiers[order.customer_id] ?? null) : null
-                        }
-                      />
-                    </div>
-                    <p className="text-sm text-muted">
-                      {formatDateRelative(order.created_at_shopify ?? order.created_at)}
-                    </p>
-                  </div>
-                </Link>
-
-                <div className="flex flex-col items-start gap-3 md:items-end">
-                  <p className="text-lg font-semibold">
-                    {formatMoney(order.total_amount, order.currency)}
-                  </p>
-                  <OrderActionsMenu
-                    allowedActions={order.allowedActions}
-                    canEditAmounts={canReassign}
-                    deliveryState={order.delivery_state}
-                    drivers={drivers}
-                    onTransitionSuccess={handleTransitionSuccess}
-                    orderId={order.id}
-                    phone={order.customer?.phone ?? null}
-                    whatsappOrderData={{
-                      numeroCommande: order.order_number,
-                      telephone: order.customer?.phone ?? null,
-                      adresse: formatOrderAddress(order.shipping_address),
-                      total: order.total_amount,
-                      items: parseItemsSummaryForWhatsapp(order.items_summary),
-                    }}
-                  />
-                  {canReassign && order.assigned_driver_id ? (
-                    <OrderDriverReassign
-                      compact
-                      currentDriverId={order.assigned_driver_id}
+                  </span>
+                }
+                overflow={
+                  <div className="flex items-center gap-1">
+                    <OrderActionsMenu
+                      allowedActions={order.allowedActions}
+                      canEditAmounts={canReassign}
                       deliveryState={order.delivery_state}
                       drivers={drivers}
+                      onTransitionSuccess={handleTransitionSuccess}
                       orderId={order.id}
+                      phone={order.customer?.phone ?? null}
+                      whatsappOrderData={{
+                        numeroCommande: order.order_number,
+                        telephone: order.customer?.phone ?? null,
+                        adresse: formatOrderAddress(order.shipping_address),
+                        total: order.total_amount,
+                        items: parseItemsSummaryForWhatsapp(order.items_summary),
+                      }}
                     />
-                  ) : null}
-                </div>
-              </div>
+                    {canReassign && order.assigned_driver_id ? (
+                      <OrderDriverReassign
+                        compact
+                        currentDriverId={order.assigned_driver_id}
+                        deliveryState={order.delivery_state}
+                        drivers={drivers}
+                        orderId={order.id}
+                      />
+                    ) : null}
+                  </div>
+                }
+                status={
+                  <CodStatusListBadge
+                    deliveryState={order.delivery_state}
+                    status={order.cod_status as OrderStatus}
+                  />
+                }
+                title={
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate">{order.customer?.full_name ?? emptyValueLabel}</span>
+                    <CustomerReliabilityBadge
+                      labels={reliabilityLabels}
+                      tier={
+                        order.customer_id ? (reliabilityTiers[order.customer_id] ?? null) : null
+                      }
+                    />
+                  </span>
+                }
+              />
             </article>
           ))}
         </div>

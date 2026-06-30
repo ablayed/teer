@@ -46,6 +46,7 @@
   --status-tentee: var(--warning);
   --status-confirmee: var(--info);
   --status-programmee: var(--info);
+  --status-assignee: #7c6f5e; /* nuance neutre chaude : assigné ≠ en route */
   --status-en-livraison: var(--info);
   --status-livree: var(--success);
   --status-refusee: var(--danger);
@@ -99,6 +100,7 @@
   --color-status-tentee: var(--status-tentee);
   --color-status-confirmee: var(--status-confirmee);
   --color-status-programmee: var(--status-programmee);
+  --color-status-assignee: var(--status-assignee);
   --color-status-en-livraison: var(--status-en-livraison);
   --color-status-livree: var(--status-livree);
   --color-status-refusee: var(--status-refusee);

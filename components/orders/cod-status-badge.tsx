@@ -70,6 +70,22 @@ const icons = {
   ANNULEE: Ban,
 } satisfies Record<CodDisplayStatus, typeof Circle>;
 
+const tokenClasses = {
+  A_APPELER: 'bg-status-a-appeler/15 text-status-a-appeler',
+  TENTEE: 'bg-status-tentee/15 text-status-tentee',
+  CONFIRMEE: 'bg-status-confirmee/15 text-status-confirmee',
+  PROGRAMMEE: 'bg-status-programmee/15 text-status-programmee',
+  ASSIGNEE: 'bg-status-assignee/15 text-status-assignee',
+  EN_LIVRAISON: 'bg-status-en-livraison/15 text-status-en-livraison',
+  LIVREE: 'bg-status-livree/15 text-status-livree',
+  REFUSEE: 'bg-status-refusee/15 text-status-refusee',
+  ANNULEE: 'bg-status-annulee/15 text-status-annulee',
+} satisfies Record<CodDisplayStatus, string>;
+
+export function codStatusTokenClass(status: CodDisplayStatus): string {
+  return tokenClasses[status];
+}
+
 export function CodStatusBadge({ className, deliveryState, status }: CodStatusBadgeProps) {
   const displayStatus = resolveCodDisplayStatus(status, deliveryState);
   const Icon = icons[displayStatus];
