@@ -160,7 +160,8 @@ test('fiche client enrichie : badge récurrent + adresse + stats Shopify', async
   // Le badge « récurrent » est masqué dans la ligne liste sur mobile (@min-[26rem]/row:hidden)
   // mais toujours visible dans la fiche client (CustomerBadges).
   await page.getByText(fullName).first().click();
-  await expect(page.getByText(messages.clients.badges.recurring).first()).toBeVisible();
+  // exact:true évite le substring match sur le span masqué de la liste (« · Client récurrent »)
+  await expect(page.getByText(messages.clients.badges.recurring, { exact: true })).toBeVisible();
   await expect(page.getByText('Cité Keur Gorgui, près de la mosquée')).toBeVisible();
   await expect(page.getByText(messages.clients.stats.shopifyOrders)).toBeVisible();
 });
