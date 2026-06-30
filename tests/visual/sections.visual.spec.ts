@@ -1,15 +1,20 @@
+import messages from '@/messages/fr.json';
 import { expect, test } from '@playwright/test';
 import { hasSupabaseAdmin } from '../e2e/helpers/auth';
 import {
   cleanupVisualFixture,
   createVisualFixture,
+  seedAnalyticsVisualData,
   seedClientsVisualData,
   seedDashboardVisualData,
   seedDriversVisualData,
+  seedFinanceVisualData,
   seedOrdersVisualData,
   seedProductsVisualData,
   signInToRoute,
   visualFixedTime,
+  visualPeriodFrom,
+  visualPeriodTo,
   waitForFonts,
 } from '../e2e/helpers/visual-fixtures';
 
@@ -132,6 +137,60 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
       await waitForFonts(page);
 
       await expect(page).toHaveScreenshot('tableau.png', {
+        fullPage: false,
+      });
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
+  test('finances', async ({ page }) => {
+    const fixture = await createVisualFixture('finances');
+
+    try {
+      await seedFinanceVisualData(fixture);
+      // Plage figée dans l'URL (cf. visualPeriod*) → fenêtre serveur déterministe.
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/finances?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      // Le disclaimer n'est rendu qu'une fois GlobalTabContent (Suspense) résolu.
+      await expect(page.getByText(messages.finance.disclaimer, { exact: false })).toBeVisible({
+        timeout: 15_000,
+      });
+      // Graphes Recharts montés (dynamic ssr:false) avant capture.
+      await expect(page.locator('.recharts-surface').first()).toBeVisible({ timeout: 15_000 });
+      await waitForFonts(page);
+
+      await expect(page).toHaveScreenshot('finances.png', {
+        fullPage: false,
+      });
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
+  test('analyses', async ({ page }) => {
+    const fixture = await createVisualFixture('analyses');
+
+    try {
+      await seedAnalyticsVisualData(fixture);
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/analyses?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      // La page Analyses est un seul await serveur : le h1 (unique) visible = données
+      // prêtes. NB : ne pas ancrer sur « Scorecard par canal » — ce titre apparaît deux
+      // fois (carte graphique ssr:false + table) → match ambigu / course de montage.
+      await expect(page.getByRole('heading', { name: messages.analytics.title })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.locator('.recharts-surface').first()).toBeVisible({ timeout: 15_000 });
+      await waitForFonts(page);
+
+      await expect(page).toHaveScreenshot('analyses.png', {
         fullPage: false,
       });
     } finally {
