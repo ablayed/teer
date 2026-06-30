@@ -227,14 +227,21 @@ export function OrdersPageLoader({
                     <span className="font-mono">{order.order_number ?? emptyValueLabel}</span>
                     <span aria-hidden="true">·</span>
                     <span>{formatDateRelative(order.created_at_shopify ?? order.created_at)}</span>
-                    <span className="@min-[22rem]/row:inline hidden" data-testid="order-row-amount">
-                      <span aria-hidden="true" className="mr-1.5">
-                        ·
-                      </span>
-                      <span className="font-medium text-text">
-                        {formatMoney(order.total_amount, order.currency)}
-                      </span>
-                    </span>
+                  </span>
+                }
+                primaryAction={
+                  // Montant = atome MÉTIER-critique d'un cockpit COD (somme à
+                  // encaisser) : rail droit dédié, `shrink-0`, JAMAIS masqué par
+                  // container-query — restaure la visibilité pré-refactor (avant
+                  // ResourceRow le montant était un `<p>` toujours visible). Le
+                  // titre reste `flex-1 min-w-0 truncate` ; le badge de statut a
+                  // `min-width:auto` (il se réduit) → pas d'effondrement 0 px du
+                  // titre sur iphone-14.
+                  <span
+                    className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-text"
+                    data-testid="order-row-amount"
+                  >
+                    {formatMoney(order.total_amount, order.currency)}
                   </span>
                 }
                 overflow={
