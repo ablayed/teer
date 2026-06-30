@@ -271,7 +271,14 @@ export function OrdersPageLoader({
                 }
                 title={
                   <span className="flex min-w-0 items-center gap-1.5" data-testid="order-row-title">
-                    <span className="truncate">{order.customer?.full_name ?? emptyValueLabel}</span>
+                    {/* `min-w-0` indispensable : sans lui, `truncate` ne tronque PAS dans */}
+                    {/* un parent flex (min-width:auto) → le nom déborde et est rogné par */}
+                    {/* l'ancêtre `block truncate` de ResourceRow → `hidden` au lieu d'une */}
+                    {/* ellipse. Se manifeste dès que le montant (rail droit) resserre la */}
+                    {/* colonne titre sur mobile. */}
+                    <span className="min-w-0 truncate">
+                      {order.customer?.full_name ?? emptyValueLabel}
+                    </span>
                     <CustomerReliabilityBadge
                       labels={reliabilityLabels}
                       tier={
