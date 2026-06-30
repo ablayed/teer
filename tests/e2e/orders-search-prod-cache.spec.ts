@@ -69,6 +69,10 @@ async function signIn(page: Page, email: string) {
   await expect(page.getByRole('heading', { name: 'Commandes' })).toBeVisible();
 }
 
+function visibleOrderRowTitle(page: Page, name: string) {
+  return page.locator('[data-testid="order-row-title"]:visible', { hasText: name }).first();
+}
+
 async function seedToCallOrder(
   admin: AdminClient,
   merchantAccountId: string,
@@ -164,19 +168,19 @@ test('recherche → détail → retour → mutation : compteurs frais (build pro
     // Recherche en page (synchro shallow + refetch serveur paradigme A).
     await page.getByRole('searchbox').fill('Cible Unique');
     await page.waitForURL(/\/commandes\?.*q=cible/i);
-    await expect(page.getByText('Recherche Cible Unique')).toBeVisible();
+    await expect(visibleOrderRowTitle(page, 'Recherche Cible Unique')).toBeVisible();
     await expect(page.getByText('Client Autre Un')).toHaveCount(0);
 
     // Ouvre la commande, puis revient en arrière (back) — c'est ce round-trip qui exposait
     // le Router Cache périmé à travers un client component.
-    await page.getByText('Recherche Cible Unique').click();
+    await visibleOrderRowTitle(page, 'Recherche Cible Unique').click();
     await page.waitForURL(/\/commandes\/[0-9a-f-]{36}/i);
     await page.goBack();
     await page.waitForURL(/\/commandes(\?|$)/);
 
     // Recherche préservée au retour (back) : la cible reste seule visible, compteurs frais.
     await expect(page.getByRole('searchbox')).toHaveValue('Cible Unique');
-    await expect(page.getByText('Recherche Cible Unique')).toBeVisible();
+    await expect(visibleOrderRowTitle(page, 'Recherche Cible Unique')).toBeVisible();
     await expect(page.getByRole('button', { name: /^À appeler \(1\)/ })).toBeVisible();
 
     // Mutation directe (sans dialog) depuis la liste sur la cible : « Refuser par le client »

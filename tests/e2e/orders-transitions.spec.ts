@@ -509,7 +509,7 @@ function menuItem(page: Page, name: string) {
 }
 
 function orderRowTitle(page: Page, name: string) {
-  return page.getByTestId('order-row-title').filter({ hasText: name }).first();
+  return page.locator('[data-testid="order-row-title"]:visible', { hasText: name }).first();
 }
 
 async function openActionsMenu(page: Page) {

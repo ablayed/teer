@@ -94,10 +94,10 @@ async function selectDeliveryView(page: Page) {
     'aria-pressed',
     'true',
   );
-  await expect(page.getByText('Client Seed')).toBeHidden();
   await expect(
-    page.getByTestId('orders-results').getByText('Aucune commande avec ce statut', { exact: true }),
-  ).toBeVisible();
+    page.locator('[data-testid="order-row-title"]:visible', { hasText: 'Client Seed' }),
+  ).toHaveCount(0);
+  await expect(page.locator('article')).toHaveCount(0);
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E commandes');
@@ -202,7 +202,9 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
   try {
     await signIn(page, email, '/commandes');
     // « /commandes » nu est rendu (Client Seed visible) puis mis en Router Cache.
-    await expect(page.getByText('Client Seed')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="order-row-title"]:visible', { hasText: 'Client Seed' }).first(),
+    ).toBeVisible();
 
     // On part vers une vue filtrée : l'entrée « /commandes » nu reste en cache, périmée.
     await selectDeliveryView(page);

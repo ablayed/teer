@@ -848,12 +848,14 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     // (q vide) prend le early-return du debounce → aucune soft-nav.
     await page.goto('/commandes');
     await expect(
-      page.getByTestId('order-row-title').filter({ hasText: 'Client XOF Scale' }).first(),
+      page
+        .locator('[data-testid="order-row-title"]:visible', { hasText: 'Client XOF Scale' })
+        .first(),
     ).toBeVisible({
       timeout: 15_000,
     });
     await expect(
-      page.getByTestId('order-row-amount').filter({ hasText: money }).first(),
+      page.locator('[data-testid="order-row-amount"]:visible', { hasText: money }).first(),
     ).toBeVisible({
       timeout: 15_000,
     });
