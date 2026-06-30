@@ -271,12 +271,13 @@ export function OrdersPageLoader({
                 }
                 title={
                   <span className="flex min-w-0 items-center gap-1.5" data-testid="order-row-title">
-                    {/* `min-w-0` indispensable : sans lui, `truncate` ne tronque PAS dans */}
-                    {/* un parent flex (min-width:auto) → le nom déborde et est rogné par */}
-                    {/* l'ancêtre `block truncate` de ResourceRow → `hidden` au lieu d'une */}
-                    {/* ellipse. Se manifeste dès que le montant (rail droit) resserre la */}
-                    {/* colonne titre sur mobile. */}
-                    <span className="min-w-0 truncate">
+                    {/* Le nom est l'atome PRIMAIRE (scanné par le marchand, asserté par */}
+                    {/* les E2E). `flex-1` lui donne la priorité sur le badge fiabilité */}
+                    {/* (`shrink-0`) ; `min-w-[2.5rem]` est un PLANCHER qui interdit */}
+                    {/* l'effondrement 0 px : quand le montant (rail droit) resserre la */}
+                    {/* colonne, c'est le badge qui se fait rogner, jamais le nom. */}
+                    {/* `truncate` ajoute l'ellipse dans cette largeur plancher. */}
+                    <span className="min-w-[2.5rem] flex-1 truncate">
                       {order.customer?.full_name ?? emptyValueLabel}
                     </span>
                     <CustomerReliabilityBadge
