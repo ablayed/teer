@@ -26,7 +26,9 @@ type Template = 'clientConfirmation' | 'livreur';
 type Props = {
   order: WhatsappOrderData;
   template: Template;
-  trigger: ReactNode;
+  trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 function buildMessage(
@@ -45,23 +47,29 @@ function buildMessage(
   return template === 'livreur' ? t('livreur', vars) : t('clientConfirmation', vars);
 }
 
-export function WhatsappComposeSheet({ order, template, trigger }: Props) {
+export function WhatsappComposeSheet({ order, template, trigger, open, onOpenChange }: Props) {
   const t = useTranslations('whatsapp');
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [message, setMessage] = useState('');
+
+  const isControlled = open !== undefined;
+  const isOpen = open ?? internalOpen;
 
   function handleOpenChange(next: boolean) {
     if (next) {
       setMessage(buildMessage(t, template, order));
     }
-    setOpen(next);
+    if (!isControlled) {
+      setInternalOpen(next);
+    }
+    onOpenChange?.(next);
   }
 
   const shareUrl = buildWhatsappShareUrl(message);
 
   return (
-    <Drawer open={open} onOpenChange={handleOpenChange}>
-      <DrawerTrigger asChild>{trigger}</DrawerTrigger>
+    <Drawer open={isOpen} onOpenChange={handleOpenChange}>
+      {trigger ? <DrawerTrigger asChild>{trigger}</DrawerTrigger> : null}
       <DrawerContent className="max-h-[90dvh]">
         <DrawerHeader>
           <DrawerTitle>{t('composeTitle')}</DrawerTitle>
@@ -80,7 +88,7 @@ export function WhatsappComposeSheet({ order, template, trigger }: Props) {
           <a
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1ebe5d]"
             href={shareUrl}
-            onClick={() => setOpen(false)}
+            onClick={() => handleOpenChange(false)}
             rel="noopener noreferrer"
             target="_blank"
           >

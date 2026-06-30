@@ -214,7 +214,7 @@ export function OrdersPageLoader({
           </h2>
           {group.orders.map((order) => (
             <article
-              className="overflow-hidden rounded-lg border border-border bg-surface shadow-1 transition-colors hover:bg-canvas/50"
+              className="rounded-lg border border-border bg-surface shadow-1 transition-colors hover:bg-canvas/50"
               key={order.id}
             >
               <ResourceRow
@@ -239,6 +239,7 @@ export function OrdersPageLoader({
                     <OrderActionsMenu
                       allowedActions={order.allowedActions}
                       canEditAmounts={canReassign}
+                      compact
                       deliveryState={order.delivery_state}
                       drivers={drivers}
                       onTransitionSuccess={handleTransitionSuccess}

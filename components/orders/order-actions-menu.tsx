@@ -16,16 +16,18 @@ import {
   visibleAllowedActions,
 } from '@/lib/domain/order-transition-actions';
 import type { WhatsappOrderData } from '@/lib/whatsapp/format';
-import { ChevronDown, Phone } from 'lucide-react';
+import { ChevronDown, MoreHorizontal, Phone } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 type OrderActionsMenuProps = {
   allowedActions: TransitionAction[];
   autoOpenAssignment?: boolean;
   canEditAmounts?: boolean;
+  compact?: boolean;
   deliveryState: string | null;
   drivers: DriverOption[];
   onTransitionSuccess?: (result: Extract<TransitionResult, { ok: true }>) => void;
@@ -60,6 +62,7 @@ export function OrderActionsMenu({
   allowedActions,
   autoOpenAssignment = false,
   canEditAmounts = false,
+  compact = false,
   deliveryState,
   drivers,
   onTransitionSuccess,
@@ -74,6 +77,7 @@ export function OrderActionsMenu({
   const [pendingAction, setPendingAction] = useState<PayloadDialogAction | null>(null);
   const [assignmentOpen, setAssignmentOpen] = useState(canEditAmounts && autoOpenAssignment);
   const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
   const onTransitionSuccessRef = useRef(onTransitionSuccess);
 
   const visibleActions = visibleAllowedActions(allowedActions);
@@ -199,6 +203,84 @@ export function OrderActionsMenu({
     variant: destructiveActions.has(action) ? 'destructive' : 'default',
     disabled: transition.isExecuting,
   }));
+
+  if (compact) {
+    const compactItems: ActionSheetItem[] = [
+      ...(canCall
+        ? [
+            {
+              key: 'call',
+              icon: <Phone className="size-4" />,
+              label: 'Appeler',
+              onSelect: () => {
+                window.location.href = `tel:${phone?.replace(/\s/g, '')}`;
+              },
+            } satisfies ActionSheetItem,
+          ]
+        : []),
+      ...(phone
+        ? [
+            {
+              key: 'whatsapp',
+              label: 'Message client',
+              onSelect: () => setWhatsappOpen(true),
+            } satisfies ActionSheetItem,
+          ]
+        : []),
+      ...actionItems,
+    ];
+
+    return (
+      <>
+        <ActionSheet
+          align="end"
+          items={compactItems}
+          title={t('actions.menuTitle')}
+          trigger={
+            <button
+              aria-label={t('actions.menuTitle')}
+              className="inline-flex size-11 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={transition.isExecuting}
+              type="button"
+            >
+              <MoreHorizontal aria-hidden="true" className="size-4" />
+            </button>
+          }
+        />
+        {phone && (
+          <WhatsappComposeSheet
+            onOpenChange={setWhatsappOpen}
+            open={whatsappOpen}
+            order={whatsappOrderData}
+            template="clientConfirmation"
+          />
+        )}
+        {pendingAction
+          ? createPortal(
+              <TransitionDialog
+                action={pendingAction}
+                drivers={drivers}
+                isSubmitting={transition.isExecuting}
+                onCancel={() => setPendingAction(null)}
+                onConfirm={handleDialogConfirm}
+              />,
+              document.body,
+            )
+          : null}
+        {assignmentOpen
+          ? createPortal(
+              <AssignmentDetailsDialog
+                driverIdToAssign={pendingDriverId}
+                onClose={handleAssignmentClose}
+                onConfirmed={handleAssignmentConfirmed}
+                orderId={orderId}
+              />,
+              document.body,
+            )
+          : null}
+      </>
+    );
+  }
 
   return (
     <div className="space-y-2">
