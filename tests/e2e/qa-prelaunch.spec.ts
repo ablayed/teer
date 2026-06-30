@@ -837,7 +837,9 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
 
     // Détail : le montant s'affiche « 50 000 F CFA ».
     await signIn(page, fixture.email, `/commandes/${orderId}`);
-    await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText('Total', { exact: true }).locator('..').getByText(money),
+    ).toBeVisible({ timeout: 15_000 });
 
     // Liste (vue par défaut « Toutes », SANS recherche) : même montant, pas
     // d'arrondi parasite. On évite volontairement `?q=` : le champ de recherche
@@ -845,13 +847,23 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     // sur WebKit lent, interromprait la navigation suivante. La vue par défaut
     // (q vide) prend le early-return du debounce → aucune soft-nav.
     await page.goto('/commandes');
-    await expect(page.getByText('Client XOF Scale')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByTestId('order-row-title').filter({ hasText: 'Client XOF Scale' }).first(),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByTestId('order-row-amount').filter({ hasText: money }).first(),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Réconciliation cash (Livreurs) : encaissé = 50 000. Dernière page visitée
     // (la remise déclenche un router.refresh() ; rien ne navigue après).
     await page.goto(`/livreurs?driver=${driverId}&period=30j`);
-    await expect(page.getByText(money).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('driver-detail-panel').getByText(money).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Remise du solde : remis = encaissé, à l'unité près.
     // pressSequentially déclenche les événements natifs (keydown/input/keyup) que React

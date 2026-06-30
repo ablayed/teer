@@ -168,7 +168,7 @@ export function ActionSheet({ trigger, items, title, align = 'end' }: ActionShee
   return (
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-      <DrawerContent className="pb-[env(safe-area-inset-bottom)]">
+      <DrawerContent className="bg-surface pb-[env(safe-area-inset-bottom)]">
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>

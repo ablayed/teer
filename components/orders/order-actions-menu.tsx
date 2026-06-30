@@ -247,14 +247,14 @@ export function OrderActionsMenu({
             </button>
           }
         />
-        {phone && (
+        {phone && whatsappOpen ? (
           <WhatsappComposeSheet
             onOpenChange={setWhatsappOpen}
             open={whatsappOpen}
             order={whatsappOrderData}
             template="clientConfirmation"
           />
-        )}
+        ) : null}
         {pendingAction
           ? createPortal(
               <TransitionDialog

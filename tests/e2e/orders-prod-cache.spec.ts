@@ -95,7 +95,9 @@ async function selectDeliveryView(page: Page) {
     'true',
   );
   await expect(page.getByText('Client Seed')).toBeHidden();
-  await expect(page.getByRole('heading', { name: 'Aucune commande avec ce statut' })).toBeVisible();
+  await expect(
+    page.getByTestId('orders-results').getByText('Aucune commande avec ce statut', { exact: true }),
+  ).toBeVisible();
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E commandes');

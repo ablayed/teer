@@ -508,6 +508,10 @@ function menuItem(page: Page, name: string) {
   return page.getByRole('menuitem', { name, exact: true });
 }
 
+function orderRowTitle(page: Page, name: string) {
+  return page.getByTestId('order-row-title').filter({ hasText: name }).first();
+}
+
 async function openActionsMenu(page: Page) {
   await page.getByRole('button', { name: 'Actions' }).first().click();
 }
@@ -824,7 +828,7 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
 
   try {
     await signIn(page, fixture.email, '/commandes?vue=a-appeler');
-    await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
+    await expect(orderRowTitle(page, 'Client Editable')).toBeVisible({ timeout: 15_000 });
 
     await runRowMenuAction(page, 'Client Editable', 'Programmer la livraison');
     await page.getByLabel('Date de livraison', { exact: true }).fill(programDate);
@@ -844,7 +848,7 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
     // Phase 11.1 : une commande seulement programmée reste dans « Programmer »
     // (id confirmee), PAS dans « En cours de livraison » (migration 0062).
     await page.goto('/commandes?vue=confirmee');
-    await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
+    await expect(orderRowTitle(page, 'Client Editable')).toBeVisible({ timeout: 15_000 });
 
     await openActionsMenu(page);
     await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
@@ -918,7 +922,7 @@ test('phase11 - assigner ouvre le popup details puis passe en cours de livraison
 
     // La commande est désormais dans « En cours de livraison ».
     await page.goto('/commandes?vue=en-livraison');
-    await expect(page.getByText('Client Editable')).toBeVisible({ timeout: 15_000 });
+    await expect(orderRowTitle(page, 'Client Editable')).toBeVisible({ timeout: 15_000 });
 
     // En cours de livraison, le détail reste réouvrable/modifiable via « Modifier ».
     // WebKit/iphone-14 : la navigation RSC vers la vue peut être encore EN VOL et
@@ -1688,7 +1692,7 @@ test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) 
     const deepLink = page.getByRole('link', { name: 'En cours de livraison' });
     await expect(deepLink).toBeVisible({ timeout: 15_000 });
     await deepLink.click();
-    await expect(page.getByText('Livraison Dashboard')).toBeVisible({ timeout: 15_000 });
+    await expect(orderRowTitle(page, 'Livraison Dashboard')).toBeVisible({ timeout: 15_000 });
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
