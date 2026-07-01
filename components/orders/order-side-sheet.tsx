@@ -4,7 +4,7 @@ import { OrderDetailPanel } from '@/components/orders/order-detail-panel';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import type { OrderDetail } from '@/lib/actions/orders';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { type MouseEvent, useCallback, useEffect } from 'react';
 
 type OrderSideSheetProps = {
@@ -20,6 +20,7 @@ const sheetTransition = {
 
 export function OrderSideSheet({ canEditAmounts, drivers, order }: OrderSideSheetProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const close = useCallback(() => {
     router.back();
@@ -39,6 +40,17 @@ export function OrderSideSheet({ canEditAmounts, drivers, order }: OrderSideShee
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [close]);
+
+  // Fermeture déterministe : le sheet est monté dans le slot intercepté `@modal`.
+  // Sur build prod + WebKit, `router.back()` remet l'URL à /commandes mais ne démonte
+  // pas toujours ce slot (le scrim `fixed inset-0 z-50` reste alors bloquant, 90 s+).
+  // Comme l'`exit` framer-motion ne joue pas lors d'un démontage piloté par la route,
+  // on se ferme nous-mêmes dès que le pathname n'est plus la route détail — sans
+  // navigation qui effacerait la recherche (cf. retrait du router.replace, 642656e).
+  const isDetailRoute = /\/commandes\/[^/]+$/.test(pathname);
+  if (!isDetailRoute) {
+    return null;
+  }
 
   return (
     <AnimatePresence>

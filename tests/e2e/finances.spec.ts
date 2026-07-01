@@ -324,7 +324,12 @@ test("ajout d'une dépense → apparaît dans la liste et réduit le résultat",
     await expenseAmountInput.click({ clickCount: 3 });
     await expenseAmountInput.pressSequentially('25000');
     await expect(expenseAmountInput).toHaveValue('25000');
-    await page.locator('#expense-date').fill('2026-06-01');
+    // Date dynamique DANS la fenêtre 30 j par défaut (les dépenses sont filtrées par
+    // période). Une date en dur au bord de la fenêtre sortait du périmètre au fil du
+    // calendrier (ex. 2026-06-01 exclu dès le 2026-07-01) → « Total dépenses » absent.
+    const inWindowDate = new Date();
+    inWindowDate.setDate(inWindowDate.getDate() - 10);
+    await page.locator('#expense-date').fill(inWindowDate.toISOString().slice(0, 10));
 
     // Enregistrer
     await page.getByRole('button', { name: messages.finance.expense.save }).click();
