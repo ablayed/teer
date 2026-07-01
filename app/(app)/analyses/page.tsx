@@ -1,9 +1,16 @@
 import { LossAnalyticsChartsLoader } from '@/components/loss-analytics/loss-analytics-charts-loader';
+import { AnalyticsSkeleton } from '@/components/ui/analytics-skeleton';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { LockKeyhole } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { Suspense } from 'react';
+
+// Défense (pas le fix) : /analyses agrège des données lourdes (pertes + refuseurs). Le fix
+// du 503 est algorithmique (RPC list_repeated_refusers, 0077) ; ce budget évite qu'un pic
+// résiduel ne coupe la fonction avant streaming. Réf. vercel.json (shopify-reconcile 300s).
+export const maxDuration = 30;
 
 type AnalyticsPageProps = {
   searchParams: Promise<{
@@ -150,34 +157,13 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     );
   }
 
-  const actionResult = await getLossAnalyticsAction({
-    from: from.toISOString(),
-    to: to.toISOString(),
-  });
-  const data = actionResult?.data;
-
-  if (!data?.ok) {
-    return (
-      <main className="space-y-6" id="main">
-        <header className="space-y-2">
-          <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
-          <p className="max-w-2xl text-muted">{t('subtitle')}</p>
-        </header>
-        <section className="rounded-lg border border-border bg-surface p-5 text-danger shadow-1">
-          {t('error')}
-        </section>
-      </main>
-    );
-  }
-
-  const analytics = data.analytics;
   const periods = ['today', '7j', '30j'] as const;
-  const isEmpty =
-    analytics.summary.totalOrders === 0 &&
-    analytics.summary.cancellationCount === 0 &&
-    analytics.summary.rtoCount === 0 &&
-    analytics.summary.returnCount === 0;
 
+  // Shell synchrone (header + formulaire période) rendu immédiatement ; le bloc lourd
+  // (fetch loss-analytics) suspend derrière une frontière RÉELLE de streaming. Le `await`
+  // n'est PLUS top-level : il vit dans AnalyticsContent, enfant async du Suspense.
+  // Suspense keyé sur la période : un changement de ?period=/from/to (même segment de
+  // route, ne déclenche PAS loading.tsx) affiche le skeleton au lieu de figer l'ancienne vue.
   return (
     <main className="space-y-6" id="main">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -226,6 +212,39 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         </form>
       </header>
 
+      <Suspense
+        fallback={<AnalyticsSkeleton cards={5} />}
+        key={`${activePeriod}-${from.toISOString()}-${to.toISOString()}`}
+      >
+        <AnalyticsContent fromISO={from.toISOString()} toISO={to.toISOString()} />
+      </Suspense>
+    </main>
+  );
+}
+
+async function AnalyticsContent({ fromISO, toISO }: { fromISO: string; toISO: string }) {
+  const t = await getTranslations('analytics');
+
+  const actionResult = await getLossAnalyticsAction({ from: fromISO, to: toISO });
+  const data = actionResult?.data;
+
+  if (!data?.ok) {
+    return (
+      <section className="rounded-lg border border-border bg-surface p-5 text-danger shadow-1">
+        {t('error')}
+      </section>
+    );
+  }
+
+  const analytics = data.analytics;
+  const isEmpty =
+    analytics.summary.totalOrders === 0 &&
+    analytics.summary.cancellationCount === 0 &&
+    analytics.summary.rtoCount === 0 &&
+    analytics.summary.returnCount === 0;
+
+  return (
+    <>
       {isEmpty ? (
         <section className="rounded-lg border border-border bg-surface p-5 text-muted shadow-1">
           {t('empty')}
@@ -579,6 +598,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           </div>
         ) : null}
       </section>
-    </main>
+    </>
   );
 }

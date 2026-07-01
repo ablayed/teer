@@ -1955,6 +1955,17 @@ export type Database = {
           total_amount: number;
         }[];
       };
+      list_repeated_refusers: {
+        Args: { p_limit?: number; p_merchant_id: string };
+        Returns: {
+          customer_id: string;
+          full_name: string;
+          order_count: number;
+          refused_count: number;
+          score: number;
+          tier: string;
+        }[];
+      };
       log_ia_tool_audit: {
         Args: {
           p_allowed: boolean;

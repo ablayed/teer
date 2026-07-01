@@ -7,8 +7,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 type SupabaseServerClient = SupabaseClient<Database>;
-type CustomerReliabilityRow =
-  Database['public']['Functions']['list_customer_reliability']['Returns'][number];
+type RepeatedRefuserRow =
+  Database['public']['Functions']['list_repeated_refusers']['Returns'][number];
 
 const periodSchema = z.object({
   from: z.string().datetime(),
@@ -20,7 +20,7 @@ function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
   return client as SupabaseServerClient;
 }
 
-function toReliability(row: CustomerReliabilityRow): LossAnalyticsReliability {
+function toReliability(row: RepeatedRefuserRow): LossAnalyticsReliability {
   return {
     customerId: row.customer_id,
     fullName: row.full_name ?? null,
@@ -35,21 +35,20 @@ function isNonEmptyString(value: string | null): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-// Quick win Bug 1 : un SEUL appel borné (top 100 par risque), plus de pagination
-// séquentielle `while(true)`. La boucle précédente scorait tous les clients du tenant
-// (cross join lateral) sur ceil(N/100) allers-retours en série => timeout 503 sur gros
-// compte. Le tableau repeatedRefusers n'affiche qu'un top => 100 lignes suffisent.
-// NB : sur un gros compte, se borner au top-100-par-risque peut ne pas capter tous les
-// refuseurs >= 2 (fix de fond en étape B via une RPC dédiée filtrant refused_count >= 2).
-async function listTopRiskCustomerReliability(
+// Bug 1 fix de fond : RPC dédiée list_repeated_refusers (0077). Elle pré-filtre côté SQL
+// les clients à refused_count >= 2 puis ne score QUE ceux-là (lateral O(N_refuseurs) au
+// lieu de O(N_clients) sur list_customer_reliability) => plus de timeout 503 sur gros
+// compte. Sémantique refused_count identique (get_customer_reliability), tri déterministe,
+// tenant-scopée, security invoker via ctx.supabase (client session, respecte RLS).
+// Le filtre `>= 2` et le tri de computeLossAnalytics restent en place : idempotents ici
+// (la RPC renvoie déjà les mêmes lignes filtrées/triées) — aucun changement de contrat.
+async function listRepeatedRefusers(
   supabase: SupabaseServerClient,
   merchantId: string,
 ): Promise<{ data: LossAnalyticsReliability[]; error: string | null }> {
-  const result = await supabase.rpc('list_customer_reliability', {
+  const result = await supabase.rpc('list_repeated_refusers', {
     p_limit: 100,
     p_merchant_id: merchantId,
-    p_offset: 0,
-    p_sort_by_risk: true,
   });
 
   if (result.error) {
@@ -90,7 +89,7 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
         .eq('resource_type', 'orders')
         .gte('created_at', from)
         .lte('created_at', to),
-      listTopRiskCustomerReliability(supabase, merchantId),
+      listRepeatedRefusers(supabase, merchantId),
     ]);
 
     if (ordersResult.error || auditResult.error || reliabilityResult.error) {
