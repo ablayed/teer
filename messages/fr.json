@@ -335,14 +335,14 @@
   "tableau": {
     "title": "Tableau",
     "greeting": "Bonjour {name}",
-    "subtitle": "{count, plural, =0 {Tout est à jour.} one {# commande en attente d'appel.} other {# commandes en attente d'appel.}}",
+    "subtitle": "{count, plural, =0 {Tout est à jour.} one {# commande en attente d'appel (7 derniers jours).} other {# commandes en attente d'appel (7 derniers jours).}}",
     "shops": {
       "label": "Boutique",
       "ariaLabel": "Filtrer le tableau par boutique",
       "all": "Toutes"
     },
     "kpi": {
-      "a_appeler": "À appeler",
+      "a_appeler": "À appeler (7 j)",
       "ca_collecte": "CA collecté (7 j)",
       "ca_collecte_def": "Le chiffre d'affaires : l'argent des commandes livrées et encaissées sur les 7 derniers jours.",
       "ca_collecte_formula": "CA collecté = somme des montants des commandes encaissées (7 derniers jours)",
