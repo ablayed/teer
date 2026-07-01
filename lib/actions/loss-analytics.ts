@@ -7,8 +7,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 type SupabaseServerClient = SupabaseClient<Database>;
-type CustomerReliabilityRow =
-  Database['public']['Functions']['list_customer_reliability']['Returns'][number];
+type RepeatedRefuserRow =
+  Database['public']['Functions']['list_repeated_refusers']['Returns'][number];
 
 const periodSchema = z.object({
   from: z.string().datetime(),
@@ -20,7 +20,7 @@ function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
   return client as SupabaseServerClient;
 }
 
-function toReliability(row: CustomerReliabilityRow): LossAnalyticsReliability {
+function toReliability(row: RepeatedRefuserRow): LossAnalyticsReliability {
   return {
     customerId: row.customer_id,
     fullName: row.full_name ?? null,
@@ -35,36 +35,27 @@ function isNonEmptyString(value: string | null): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-async function listAllCustomerReliability(
+// Bug 1 fix de fond : RPC dédiée list_repeated_refusers (0077). Elle pré-filtre côté SQL
+// les clients à refused_count >= 2 puis ne score QUE ceux-là (lateral O(N_refuseurs) au
+// lieu de O(N_clients) sur list_customer_reliability) => plus de timeout 503 sur gros
+// compte. Sémantique refused_count identique (get_customer_reliability), tri déterministe,
+// tenant-scopée, security invoker via ctx.supabase (client session, respecte RLS).
+// Le filtre `>= 2` et le tri de computeLossAnalytics restent en place : idempotents ici
+// (la RPC renvoie déjà les mêmes lignes filtrées/triées) — aucun changement de contrat.
+async function listRepeatedRefusers(
   supabase: SupabaseServerClient,
   merchantId: string,
 ): Promise<{ data: LossAnalyticsReliability[]; error: string | null }> {
-  const rows: LossAnalyticsReliability[] = [];
-  let offset = 0;
+  const result = await supabase.rpc('list_repeated_refusers', {
+    p_limit: 100,
+    p_merchant_id: merchantId,
+  });
 
-  while (true) {
-    const result = await supabase.rpc('list_customer_reliability', {
-      p_limit: 100,
-      p_merchant_id: merchantId,
-      p_offset: offset,
-      p_sort_by_risk: true,
-    });
-
-    if (result.error) {
-      return { data: [], error: result.error.message };
-    }
-
-    const batch = (result.data ?? []).map(toReliability);
-    rows.push(...batch);
-
-    if (batch.length < 100) {
-      break;
-    }
-
-    offset += batch.length;
+  if (result.error) {
+    return { data: [], error: result.error.message };
   }
 
-  return { data: rows, error: null };
+  return { data: (result.data ?? []).map(toReliability), error: null };
 }
 
 export const getLossAnalyticsAction = requireRole('owner', 'manager')
@@ -98,7 +89,7 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
         .eq('resource_type', 'orders')
         .gte('created_at', from)
         .lte('created_at', to),
-      listAllCustomerReliability(supabase, merchantId),
+      listRepeatedRefusers(supabase, merchantId),
     ]);
 
     if (ordersResult.error || auditResult.error || reliabilityResult.error) {
