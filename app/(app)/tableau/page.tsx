@@ -181,7 +181,7 @@ async function OperationsEssentialsSection({ shopId }: { shopId: string | null }
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">Essentiels opérations (30 j)</h2>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {essentialCard(
           'Cash total chez les livreurs',
           formatMoney(cashTotal.ok ? cashTotal.totalMinor : 0, 'XOF'),
