@@ -208,7 +208,7 @@ export function KPICard({
           <div className="w-full overflow-hidden">
             <output
               aria-label={`${label}: ${error ? 'Indisponible' : formattedValue}`}
-              className="block whitespace-nowrap font-mono text-[clamp(1.5rem,4cqw,2.25rem)] leading-none text-text tabular-nums"
+              className="block whitespace-nowrap font-mono text-[clamp(1.5rem,4cqw,2.25rem)] leading-none text-text tabular-nums @max-[13rem]:text-[clamp(1rem,6cqw,1.5rem)]"
               ref={outputRef}
             >
               {error ? '—' : formattedValue}

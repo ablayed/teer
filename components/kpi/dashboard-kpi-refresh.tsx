@@ -58,8 +58,8 @@ export function DashboardKpiRefresh({
 
   return (
     <section className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="sm:col-span-2 xl:col-span-1">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="col-span-2 xl:col-span-1">
           <KPICard
             deltaAbs={kpi?.a_appeler_delta}
             deltaType="abs"

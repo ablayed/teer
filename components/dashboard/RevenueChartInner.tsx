@@ -2,7 +2,6 @@
 
 import type { DashboardRevenuePoint } from '@/lib/actions/dashboard';
 import { formatFCFA } from '@/lib/format/fcfa';
-import { useReducedMotion } from 'framer-motion';
 import {
   Area,
   AreaChart,
@@ -66,7 +65,6 @@ function RevenueTooltip({
 }
 
 export default function RevenueChartInner({ data, emptyLabel, title }: RevenueChartInnerProps) {
-  const prefersReducedMotion = useReducedMotion();
   const hasRevenue = data.some((point) => point.value > 0);
 
   return (
@@ -114,7 +112,7 @@ export default function RevenueChartInner({ data, emptyLabel, title }: RevenueCh
               <Area
                 dataKey="value"
                 fill="url(#revenueGradient)"
-                isAnimationActive={!prefersReducedMotion}
+                isAnimationActive={false}
                 stroke="var(--accent)"
                 strokeWidth={2}
                 type="monotone"
