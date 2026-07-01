@@ -35,36 +35,28 @@ function isNonEmptyString(value: string | null): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-async function listAllCustomerReliability(
+// Quick win Bug 1 : un SEUL appel borné (top 100 par risque), plus de pagination
+// séquentielle `while(true)`. La boucle précédente scorait tous les clients du tenant
+// (cross join lateral) sur ceil(N/100) allers-retours en série => timeout 503 sur gros
+// compte. Le tableau repeatedRefusers n'affiche qu'un top => 100 lignes suffisent.
+// NB : sur un gros compte, se borner au top-100-par-risque peut ne pas capter tous les
+// refuseurs >= 2 (fix de fond en étape B via une RPC dédiée filtrant refused_count >= 2).
+async function listTopRiskCustomerReliability(
   supabase: SupabaseServerClient,
   merchantId: string,
 ): Promise<{ data: LossAnalyticsReliability[]; error: string | null }> {
-  const rows: LossAnalyticsReliability[] = [];
-  let offset = 0;
+  const result = await supabase.rpc('list_customer_reliability', {
+    p_limit: 100,
+    p_merchant_id: merchantId,
+    p_offset: 0,
+    p_sort_by_risk: true,
+  });
 
-  while (true) {
-    const result = await supabase.rpc('list_customer_reliability', {
-      p_limit: 100,
-      p_merchant_id: merchantId,
-      p_offset: offset,
-      p_sort_by_risk: true,
-    });
-
-    if (result.error) {
-      return { data: [], error: result.error.message };
-    }
-
-    const batch = (result.data ?? []).map(toReliability);
-    rows.push(...batch);
-
-    if (batch.length < 100) {
-      break;
-    }
-
-    offset += batch.length;
+  if (result.error) {
+    return { data: [], error: result.error.message };
   }
 
-  return { data: rows, error: null };
+  return { data: (result.data ?? []).map(toReliability), error: null };
 }
 
 export const getLossAnalyticsAction = requireRole('owner', 'manager')
@@ -98,7 +90,7 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
         .eq('resource_type', 'orders')
         .gte('created_at', from)
         .lte('created_at', to),
-      listAllCustomerReliability(supabase, merchantId),
+      listTopRiskCustomerReliability(supabase, merchantId),
     ]);
 
     if (ordersResult.error || auditResult.error || reliabilityResult.error) {
