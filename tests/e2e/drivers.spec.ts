@@ -348,9 +348,18 @@ test('allouer un lot fait monter le stock en main du livreur', async ({ page }) 
       )
       .toMatchObject({ driver_id: driverId, qty: -15 });
     await page.reload();
-    await expect(
-      page.getByRole('row').filter({ hasText: 'Sac lot E2E' }).getByText('15'),
-    ).toBeVisible({ timeout: 15_000 });
+    // Le <table> desktop (md+) et la liste ResourceRow mobile (< md) existent
+    // TOUS LES DEUX dans le DOM en permanence (l'un est juste masqué en CSS
+    // selon le viewport) — getByRole('row')/getByText ne filtrent pas par
+    // visibilité. `:visible` + `.last()` cible l'élément le plus profond et
+    // réellement affiché, quel que soit le viewport (desktop <td> ou span
+    // ResourceRow mobile).
+    await expect(page.locator(':visible', { hasText: 'Sac lot E2E' }).last()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator(':visible', { hasText: '15' }).last()).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Vérifie le mouvement en base
     const { data: movements } = await fixture.admin
