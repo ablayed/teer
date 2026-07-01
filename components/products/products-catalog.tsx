@@ -1,12 +1,14 @@
 'use client';
 
+import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet';
+import { ResourceRow } from '@/components/ui/resource-row';
 import {
   type ProductCatalogItem,
   createProductAction,
   updateProductUnitCostAction,
 } from '@/lib/actions/products';
 import { setLowStockThresholdAction } from '@/lib/actions/stock';
-import { Store, Tag } from 'lucide-react';
+import { MoreHorizontal, Store, Tag } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -36,6 +38,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
   const [threshold, setThresholdValue] = useState('10');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [unitCostDrafts, setUnitCostDrafts] = useState<Record<string, string>>({});
+  const [mobileEditingId, setMobileEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     const result = updateUnitCost.result.data;
@@ -182,7 +185,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
           Aucun produit dans le catalogue pour le moment.
         </section>
       ) : (
-        <div className="grid gap-3">
+        <div className="hidden gap-3 md:grid">
           {products.map((product) => {
             const unitCostValue = unitCostDrafts[product.id] ?? String(product.unit_cost ?? 0);
             return (
@@ -257,6 +260,130 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
           })}
         </div>
       )}
+
+      {products.length > 0 ? (
+        <div className="overflow-hidden rounded-lg border border-border bg-surface md:hidden">
+          {products.map((product) => (
+            <ProductMobileRow
+              canManage={canManage}
+              editingId={mobileEditingId}
+              isSaving={updateUnitCost.isExecuting}
+              key={product.id}
+              onSaveUnitCost={() => onSaveUnitCost(product)}
+              onToggleEdit={setMobileEditingId}
+              onUnitCostChange={(value) =>
+                setUnitCostDrafts((current) => ({ ...current, [product.id]: value }))
+              }
+              product={product}
+              unitCostValue={unitCostDrafts[product.id] ?? String(product.unit_cost ?? 0)}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+// ── Ligne produit mobile (ResourceRow) ──────────────────────────────────────
+// Desktop reste la carte <article> ci-dessus (hidden md:grid) : cette ligne
+// ne s'affiche qu'en dessous de md (md:hidden sur le conteneur parent).
+// Le coût unitaire n'est pas éditable en ligne ici (rôle rare, 1x à la
+// création) : il apparaît en meta, et son édition passe par l'overflow.
+
+function ProductMobileRow({
+  canManage,
+  editingId,
+  isSaving,
+  onSaveUnitCost,
+  onToggleEdit,
+  onUnitCostChange,
+  product,
+  unitCostValue,
+}: {
+  canManage: boolean;
+  editingId: string | null;
+  isSaving: boolean;
+  onSaveUnitCost: () => void;
+  onToggleEdit: (productId: string | null) => void;
+  onUnitCostChange: (value: string) => void;
+  product: ProductCatalogItem;
+  unitCostValue: string;
+}) {
+  const metaParts = [product.sku ?? 'SKU non renseigné'];
+  if (canManage) {
+    metaParts.push(`${formatMinorAmount(product.unit_cost ?? 0)} XOF`);
+  }
+
+  const overflowItems: ActionSheetItem[] = [
+    {
+      key: 'edit-cost',
+      label: 'Modifier le coût',
+      icon: <Tag className="size-4" />,
+      onSelect: () => onToggleEdit(product.id),
+    },
+  ];
+
+  return (
+    <>
+      <ResourceRow
+        meta={metaParts.join(' · ')}
+        overflow={
+          canManage ? (
+            <ActionSheet
+              align="end"
+              items={overflowItems}
+              title={product.title}
+              trigger={
+                <button
+                  aria-label={`Actions — ${product.title}`}
+                  className="inline-flex size-11 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  type="button"
+                >
+                  <MoreHorizontal aria-hidden="true" className="size-4" />
+                </button>
+              }
+            />
+          ) : null
+        }
+        status={
+          !product.is_active ? (
+            <span className="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-medium text-muted">
+              Inactif
+            </span>
+          ) : null
+        }
+        title={<h2 className="truncate text-base font-semibold text-text">{product.title}</h2>}
+      />
+      {editingId === product.id ? (
+        <div className="flex items-end gap-2 border-b border-border bg-canvas px-3 py-3">
+          <label className="flex-1 space-y-1">
+            <span className="text-xs font-medium text-muted">Coût unitaire</span>
+            <input
+              className="min-h-11 w-full rounded-md border border-border bg-surface px-2 font-mono text-sm tabular-nums"
+              min="0"
+              onChange={(event) => onUnitCostChange(event.target.value)}
+              step="1"
+              type="number"
+              value={unitCostValue}
+            />
+          </label>
+          <button
+            className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+            disabled={isSaving}
+            onClick={onSaveUnitCost}
+            type="button"
+          >
+            {isSaving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+          <button
+            className="min-h-11 rounded-md px-3 text-sm text-muted underline"
+            onClick={() => onToggleEdit(null)}
+            type="button"
+          >
+            Annuler
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }
