@@ -422,9 +422,11 @@ test('analytics pertes COD : scorecard canal, tendance et refuseur repete visibl
     await expect(page.getByRole('cell', { name: 'whatsapp' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'manual' })).toBeVisible();
     await expect(page.getByText(seeded.productTitle).first()).toBeVisible();
-    await expect(page.getByText('Guediawaye')).toBeVisible();
-    await expect(page.getByText('Moussa Analytics')).toBeVisible();
-    await expect(page.getByText('Client Refuseur')).toBeVisible();
+    // .first() : la carte mobile (md:hidden) et la table desktop (sr-only sous md)
+    // affichent volontairement la même valeur — cf. seeded.productTitle ci-dessus.
+    await expect(page.getByText('Guediawaye').first()).toBeVisible();
+    await expect(page.getByText('Moussa Analytics').first()).toBeVisible();
+    await expect(page.getByText('Client Refuseur').first()).toBeVisible();
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
