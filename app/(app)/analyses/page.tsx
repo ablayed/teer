@@ -199,19 +199,19 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </Link>
             ))}
           </div>
-          <label className="flex w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
+          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
             {t('periods.from')}
             <input
-              className="h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
+              className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
               defaultValue={toDateInput(from)}
               name="from"
               type="date"
             />
           </label>
-          <label className="flex w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
+          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
             {t('periods.to')}
             <input
-              className="h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
+              className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
               defaultValue={toDateInput(to)}
               name="to"
               type="date"
