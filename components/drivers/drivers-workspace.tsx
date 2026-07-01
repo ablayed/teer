@@ -3,6 +3,7 @@
 import { PendingSpinner } from '@/components/app-shell/pending-spinner';
 import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
 import { DriverLotForm } from '@/components/drivers/driver-lot-form';
+import { ResourceRow } from '@/components/ui/resource-row';
 import type {
   DriverCashData,
   DriverPerformanceData,
@@ -258,29 +259,47 @@ export function DriversWorkspace({
               ) : detail.stock.rows.length === 0 ? (
                 <p className="text-sm text-muted">Aucun stock en main pour ce livreur.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-surface text-left">
-                        <th className="px-4 py-3 font-medium">Produit</th>
-                        <th className="px-4 py-3 text-right font-medium">Qté en main</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.stock.rows.map((row) => (
-                        <tr className="border-b border-border last:border-0" key={row.productId}>
-                          <td className="px-4 py-3">
-                            <span className="font-medium">{row.title}</span>
-                            {row.sku && <span className="ml-2 text-xs text-muted">{row.sku}</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
-                            {row.qtyOnHand}
-                          </td>
+                <>
+                  <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border bg-surface text-left">
+                          <th className="px-4 py-3 font-medium">Produit</th>
+                          <th className="px-4 py-3 text-right font-medium">Qté en main</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {detail.stock.rows.map((row) => (
+                          <tr className="border-b border-border last:border-0" key={row.productId}>
+                            <td className="px-4 py-3">
+                              <span className="font-medium">{row.title}</span>
+                              {row.sku && (
+                                <span className="ml-2 text-xs text-muted">{row.sku}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums">
+                              {row.qtyOnHand}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="overflow-hidden rounded-lg border border-border bg-surface md:hidden">
+                    {detail.stock.rows.map((row) => (
+                      <ResourceRow
+                        key={row.productId}
+                        meta={row.sku ?? undefined}
+                        primaryAction={
+                          <span className="font-mono text-sm font-semibold tabular-nums">
+                            {row.qtyOnHand}
+                          </span>
+                        }
+                        title={row.title}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
             </section>
 
@@ -309,35 +328,52 @@ export function DriversWorkspace({
               {detail.orders.length === 0 ? (
                 <p className="text-sm text-muted">Aucune commande assignée.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-surface text-left">
-                        <th className="px-4 py-3 font-medium">Commande</th>
-                        <th className="px-4 py-3 font-medium">Statut</th>
-                        <th className="px-4 py-3 text-right font-medium">Montant</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.orders.map((order) => (
-                        <tr className="border-b border-border last:border-0" key={order.id}>
-                          <td className="px-4 py-3">
-                            <Link
-                              className="text-accent hover:underline"
-                              href={`/commandes/${order.id}`}
-                            >
-                              {order.order_number ?? order.id.slice(0, 8)}
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3 text-muted">{order.cod_status}</td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
-                            {formatMoney(Math.round(order.total_amount), 'XOF')}
-                          </td>
+                <>
+                  <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border bg-surface text-left">
+                          <th className="px-4 py-3 font-medium">Commande</th>
+                          <th className="px-4 py-3 font-medium">Statut</th>
+                          <th className="px-4 py-3 text-right font-medium">Montant</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {detail.orders.map((order) => (
+                          <tr className="border-b border-border last:border-0" key={order.id}>
+                            <td className="px-4 py-3">
+                              <Link
+                                className="text-accent hover:underline"
+                                href={`/commandes/${order.id}`}
+                              >
+                                {order.order_number ?? order.id.slice(0, 8)}
+                              </Link>
+                            </td>
+                            <td className="px-4 py-3 text-muted">{order.cod_status}</td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums">
+                              {formatMoney(Math.round(order.total_amount), 'XOF')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="overflow-hidden rounded-lg border border-border bg-surface md:hidden">
+                    {detail.orders.map((order) => (
+                      <ResourceRow
+                        href={`/commandes/${order.id}`}
+                        key={order.id}
+                        meta={order.cod_status}
+                        primaryAction={
+                          <span className="font-mono text-sm tabular-nums">
+                            {formatMoney(Math.round(order.total_amount), 'XOF')}
+                          </span>
+                        }
+                        title={order.order_number ?? order.id.slice(0, 8)}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
             </section>
           </div>
