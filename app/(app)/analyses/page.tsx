@@ -83,6 +83,32 @@ function summaryCard(label: string, value: string, description: string) {
   );
 }
 
+function metricRow(label: string, value: string, danger?: boolean) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-0.5 text-sm" key={label}>
+      <span className="text-muted">{label}</span>
+      <span className={`font-mono tabular-nums ${danger ? 'text-danger' : 'text-text'}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function metricCard(
+  key: string,
+  title: string,
+  rows: Array<{ danger?: boolean; label: string; value: string }>,
+) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3 shadow-1" key={key}>
+      <p className="truncate font-medium">{title}</p>
+      <div className="mt-2 divide-y divide-border/60">
+        {rows.map((row) => metricRow(row.label, row.value, row.danger))}
+      </div>
+    </div>
+  );
+}
+
 async function getCurrentRole() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -173,19 +199,19 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </Link>
             ))}
           </div>
-          <label className="space-y-1 text-xs font-medium text-muted">
+          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
             {t('periods.from')}
             <input
-              className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+              className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
               defaultValue={toDateInput(from)}
               name="from"
               type="date"
             />
           </label>
-          <label className="space-y-1 text-xs font-medium text-muted">
+          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
             {t('periods.to')}
             <input
-              className="block h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+              className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
               defaultValue={toDateInput(to)}
               name="to"
               type="date"
@@ -253,7 +279,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           <h2 className="text-lg font-semibold">{t('scorecard.title')}</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="sr-only w-full text-sm md:not-sr-only md:table">
             <thead>
               <tr className="border-b border-border text-left text-muted">
                 <th className="px-3 py-3 font-medium">{t('scorecard.source')}</th>
@@ -292,13 +318,24 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
             </tbody>
           </table>
         </div>
+        <div aria-hidden="true" className="space-y-2 md:hidden">
+          {analytics.sourceScorecard.map((item) =>
+            metricCard(item.source, item.source, [
+              { label: t('scorecard.totalOrders'), value: count(item.totalOrders) },
+              { label: t('scorecard.completionRate'), value: percent(item.completionRate) },
+              { label: t('scorecard.cancellationRate'), value: percent(item.cancellationRate) },
+              { danger: true, label: t('scorecard.rtoRate'), value: percent(item.rtoRate) },
+              { label: t('scorecard.returnRate'), value: percent(item.returnRate) },
+            ]),
+          )}
+        </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
         <section className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
           <h2 className="text-lg font-semibold">{t('products.title')}</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="sr-only w-full text-sm md:not-sr-only md:table">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
                   <th className="px-3 py-3 font-medium">{t('products.product')}</th>
@@ -341,12 +378,26 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </tbody>
             </table>
           </div>
+          <div aria-hidden="true" className="space-y-2 md:hidden">
+            {analytics.productLosses.slice(0, 8).map((item) =>
+              metricCard(`${item.productId ?? 'none'}-${item.name}`, item.name, [
+                { label: t('products.orders'), value: count(item.totalOrders) },
+                { danger: true, label: t('products.rtoOrders'), value: count(item.rtoOrders) },
+                { label: t('products.returnOrders'), value: count(item.returnOrders) },
+                {
+                  label: t('products.cancellationOrders'),
+                  value: count(item.cancellationOrders),
+                },
+                { label: t('products.rtoRate'), value: percent(item.rtoRate) },
+              ]),
+            )}
+          </div>
         </section>
 
         <section className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
           <h2 className="text-lg font-semibold">{t('zones.title')}</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="sr-only w-full text-sm md:not-sr-only md:table">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
                   <th className="px-3 py-3 font-medium">{t('zones.zone')}</th>
@@ -383,6 +434,20 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </tbody>
             </table>
           </div>
+          <div aria-hidden="true" className="space-y-2 md:hidden">
+            {analytics.zoneLosses.slice(0, 8).map((item) =>
+              metricCard(item.label, item.label, [
+                { label: t('zones.orders'), value: count(item.totalOrders) },
+                { danger: true, label: t('zones.rtoOrders'), value: count(item.rtoOrders) },
+                { label: t('zones.returnOrders'), value: count(item.returnOrders) },
+                {
+                  label: t('zones.cancellationOrders'),
+                  value: count(item.cancellationOrders),
+                },
+                { label: t('zones.rtoRate'), value: percent(item.rtoRate) },
+              ]),
+            )}
+          </div>
         </section>
       </section>
 
@@ -390,7 +455,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         <section className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
           <h2 className="text-lg font-semibold">{t('drivers.title')}</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="sr-only w-full text-sm md:not-sr-only md:table">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
                   <th className="px-3 py-3 font-medium">{t('drivers.driver')}</th>
@@ -421,12 +486,22 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </tbody>
             </table>
           </div>
+          <div aria-hidden="true" className="space-y-2 md:hidden">
+            {analytics.driverPerformance.map((item) =>
+              metricCard(item.driverId, item.driverName, [
+                { label: t('drivers.outcomeOrders'), value: count(item.outcomeOrders) },
+                { danger: true, label: t('drivers.rtoOrders'), value: count(item.rtoOrders) },
+                { label: t('drivers.returnOrders'), value: count(item.returnOrders) },
+                { label: t('drivers.rtoRate'), value: percent(item.rtoRate) },
+              ]),
+            )}
+          </div>
         </section>
 
         <section className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
           <h2 className="text-lg font-semibold">{t('reasons.title')}</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="sr-only w-full text-sm md:not-sr-only md:table">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
                   <th className="px-3 py-3 font-medium">{t('reasons.reason')}</th>
@@ -445,6 +520,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </tbody>
             </table>
           </div>
+          <div aria-hidden="true" className="space-y-2 md:hidden">
+            {analytics.reasonBreakdown
+              .slice(0, 8)
+              .map((item) =>
+                metricCard(item.reason, item.reason, [
+                  { label: t('reasons.count'), value: count(item.count) },
+                ]),
+              )}
+          </div>
         </section>
       </section>
 
@@ -454,7 +538,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           <p className="text-sm text-muted">{t('refusers.empty')}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="sr-only w-full text-sm md:not-sr-only md:table">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
                   <th className="px-3 py-3 font-medium">{t('refusers.customer')}</th>
@@ -482,6 +566,18 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
             </table>
           </div>
         )}
+        {analytics.repeatedRefusers.length > 0 ? (
+          <div aria-hidden="true" className="space-y-2 md:hidden">
+            {analytics.repeatedRefusers.map((item) =>
+              metricCard(item.customerId, item.fullName ?? item.customerId, [
+                { label: t('refusers.orders'), value: count(item.orderCount) },
+                { danger: true, label: t('refusers.refused'), value: count(item.refusedCount) },
+                { label: t('refusers.tier'), value: item.tier },
+                { label: t('refusers.action'), value: t('refusers.deposit') },
+              ]),
+            )}
+          </div>
+        ) : null}
       </section>
     </main>
   );
