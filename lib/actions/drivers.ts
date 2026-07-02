@@ -202,7 +202,17 @@ export type DriverCashData =
 
 // Consolidates cash per driver (dû/collecté/remis/écart) by reusing the existing
 // cash tables and the dimensional cash_state. Owner/manager only.
-export async function getDriverCashConsolidation(driverId: string): Promise<DriverCashData> {
+//
+// `period` ne scope QUE collecté/frais de livraison (cf. retour porteur : le filtre
+// période doit couvrir les cards cash, pas seulement Performance). `cashOnHandMinor`/
+// `discrepancyMinor`/`remittedMinor`/`expectedMinor` restent all-time : c'est un solde
+// de réconciliation (combien le livreur détient encore de cash non remis EN CE MOMENT),
+// pas un rapport périodique — le scoper à une plage donnerait un solde trompeur (ex.
+// négatif) qui ne correspond à rien de réel pour un manager qui rapproche le cash.
+export async function getDriverCashConsolidation(
+  driverId: string,
+  period?: { from: string; to: string },
+): Promise<DriverCashData> {
   const auth = await resolveOwnerManagerContext();
   if (!auth.ok) return { ok: false, message: auth.message };
   const { merchantAccountId, admin } = auth;
@@ -210,7 +220,7 @@ export async function getDriverCashConsolidation(driverId: string): Promise<Driv
   const { data: orders, error: ordersError } = await admin
     .from('orders')
     .select(
-      'id, cash_state, cash_collectable_minor, delivery_fee_minor, payment_channel_at_delivery, total_amount',
+      'id, created_at, cash_state, cash_collectable_minor, delivery_fee_minor, payment_channel_at_delivery, total_amount',
     )
     .eq('merchant_account_id', merchantAccountId)
     .eq('assigned_driver_id', driverId);
@@ -237,18 +247,40 @@ export async function getDriverCashConsolidation(driverId: string): Promise<Driv
     0,
   );
 
+  const toConsolidationOrder = (o: NonNullable<typeof orders>[number]) => ({
+    deliveryFeeMinor: o.delivery_fee_minor,
+    cashState: o.cash_state,
+    cashCollectableMinor: o.cash_collectable_minor,
+    paymentChannel: o.payment_channel_at_delivery,
+    totalAmount: o.total_amount,
+  });
+
   const consolidation = deriveDriverCashConsolidation({
-    orders: (orders ?? []).map((o) => ({
-      deliveryFeeMinor: o.delivery_fee_minor,
-      cashState: o.cash_state,
-      cashCollectableMinor: o.cash_collectable_minor,
-      paymentChannel: o.payment_channel_at_delivery,
-      totalAmount: o.total_amount,
-    })),
+    orders: (orders ?? []).map(toConsolidationOrder),
     remittedMinor,
   });
 
-  return { ok: true, consolidation };
+  if (!period) {
+    return { ok: true, consolidation };
+  }
+
+  const periodOrders = (orders ?? []).filter(
+    (o) => o.created_at >= period.from && o.created_at < period.to,
+  );
+  const periodConsolidation = deriveDriverCashConsolidation({
+    orders: periodOrders.map(toConsolidationOrder),
+    remittedMinor: 0,
+  });
+
+  return {
+    ok: true,
+    consolidation: {
+      ...consolidation,
+      collectedMinor: periodConsolidation.collectedMinor,
+      deliveryFeesMinor: periodConsolidation.deliveryFeesMinor,
+      collectedDeliveryFeesMinor: periodConsolidation.collectedDeliveryFeesMinor,
+    },
+  };
 }
 
 export type DriverPerformanceData =

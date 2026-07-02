@@ -94,7 +94,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     const range = { from: from.toISOString(), to: to.toISOString() };
     const [stock, cash, history, perf, productsResult, ordersResult] = await Promise.all([
       getDriverStockOnHand(selected.id),
-      getDriverCashConsolidation(selected.id),
+      getDriverCashConsolidation(selected.id, range),
       getDriverSettlementHistory(selected.id),
       getDriverPerformance(selected.id, range),
       supabase
@@ -108,6 +108,8 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
         .select('id, order_number, cod_status, total_amount')
         .eq('merchant_account_id', merchantAccountId)
         .eq('assigned_driver_id', selected.id)
+        .gte('created_at', range.from)
+        .lt('created_at', range.to)
         .order('updated_at', { ascending: false })
         .limit(50),
     ]);

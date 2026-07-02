@@ -9,7 +9,9 @@ import {
   getDriverSettlementHistory,
 } from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
+import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
 function statCard(label: string, value: string, accent?: boolean) {
@@ -43,13 +45,26 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
   const [cash, setCash] = useState(initialCash);
   const [history, setHistory] = useState(initialHistory);
   const [, startTransition] = useTransition();
+  const searchParams = useSearchParams();
 
   // Après une remise : relit la conso cash ET l'historique des versements FRAIS
   // côté serveur (même source que le RSC) → aucun drift, pas de router.refresh().
+  // La période relue doit matcher celle affichée à l'écran (collecté/frais sont
+  // scopés à la période, cf. getDriverCashConsolidation) — même résolution que
+  // le RSC, à partir des mêmes searchParams (period/from/to écrits par nuqs).
   const refreshCash = () => {
+    const { from, to } = resolvePeriodRange({
+      allowedPresets: PERIOD_PRESETS,
+      defaultPreset: '30j',
+      from: searchParams.get('from') ?? undefined,
+      period: searchParams.get('period') ?? undefined,
+      to: searchParams.get('to') ?? undefined,
+    });
+    const period = { from: from.toISOString(), to: to.toISOString() };
+
     startTransition(async () => {
       const [nextCash, nextHistory] = await Promise.all([
-        getDriverCashConsolidation(driverId),
+        getDriverCashConsolidation(driverId, period),
         getDriverSettlementHistory(driverId),
       ]);
       setCash(nextCash);

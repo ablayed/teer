@@ -59,7 +59,12 @@ export function DriversWorkspace({ detail, drivers, selected, selectedId }: Driv
     { driver: parseAsString },
     { history: 'push', shallow: false, scroll: false, startTransition: startDriverTransition },
   );
-  const { isPending: isPeriodPending } = usePeriodParams();
+  const {
+    active: activePeriod,
+    from: periodFrom,
+    isPending: isPeriodPending,
+    to: periodTo,
+  } = usePeriodParams();
 
   const effectiveDriverId = pendingDriverId ?? selectedId;
   const isBusy = isDriverTransitionPending || pendingDriverId !== null || isPeriodPending;
@@ -167,13 +172,15 @@ export function DriversWorkspace({ detail, drivers, selected, selectedId }: Driv
 
             <section className="space-y-3">
               <h3 className="text-lg font-semibold">Cash</h3>
-              {/* key={selected.id} : on remonte le panneau au changement de livreur
-                  pour réinitialiser son état cash depuis la donnée serveur fraîche. */}
+              {/* key inclut livreur + période : collecté/frais sont scopés à la période
+                  (getDriverCashConsolidation) → un changement de période doit aussi
+                  remonter le panneau pour resynchroniser son état avec le prop serveur
+                  frais, sinon useState(initialCash) reste figé sur l'ancienne période. */}
               <DriverCashPanel
                 driverId={selected.id}
                 initialCash={detail.cash}
                 initialHistory={detail.history}
-                key={selected.id}
+                key={`${selected.id}-${activePeriod}-${periodFrom ?? ''}-${periodTo ?? ''}`}
               />
             </section>
 
