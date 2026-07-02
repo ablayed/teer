@@ -166,10 +166,7 @@ export function DriversWorkspace({ detail, drivers, selected, selectedId }: Driv
             </header>
 
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold">Cash</h3>
-                <PeriodPicker align="end" />
-              </div>
+              <h3 className="text-lg font-semibold">Cash</h3>
               {/* key={selected.id} : on remonte le panneau au changement de livreur
                   pour réinitialiser son état cash depuis la donnée serveur fraîche. */}
               <DriverCashPanel
@@ -235,7 +232,10 @@ export function DriversWorkspace({ detail, drivers, selected, selectedId }: Driv
             </section>
 
             <section className="space-y-3">
-              <h3 className="text-lg font-semibold">Performance</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold">Performance</h3>
+                <PeriodPicker align="end" />
+              </div>
               {!detail.perf.ok ? (
                 <p className="text-sm text-danger">{detail.perf.message}</p>
               ) : (
