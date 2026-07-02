@@ -7,10 +7,10 @@ import { ProfitSection } from '@/components/finance/ProfitSection';
 import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton';
 import { FinancePeriodPersistence } from '@/components/finance/finance-period-persistence';
 import { FinanceTabSkeleton } from '@/components/finance/finance-tab-skeleton';
+import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { DefinitionCard } from '@/components/ui/definition-card';
-import { PeriodControls } from '@/components/ui/period-controls';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
 import { fetchFinanceDriverCostReport } from '@/lib/finance/driver-cost';
@@ -24,7 +24,7 @@ import { fetchFinanceProductCostReport } from '@/lib/finance/product-cost';
 import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { formatMoney } from '@/lib/format/fcfa';
 import type { ActivePeriod } from '@/lib/periods/date-range';
-import { resolvePeriodRange, toDateInput } from '@/lib/periods/date-range';
+import { PERIOD_PRESETS, resolvePeriodRange, toDateInput } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -70,7 +70,7 @@ function periodRange({
   to?: string;
 }): { activePeriod: ActivePeriod; from: Date; to: Date } {
   return resolvePeriodRange({
-    allowedPresets: ['today', '7j', '30j', '90j'],
+    allowedPresets: PERIOD_PRESETS,
     defaultPreset: '30j',
     from,
     period,
@@ -591,29 +591,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
             selectedShopId={selectedShopId}
             shops={shops}
           />
-          <PeriodControls
-            activePeriod={activePeriod}
-            from={from}
-            labels={{
-              apply: t('periods.apply'),
-              from: t('periods.from'),
-              presets: {
-                today: t('periods.today'),
-                yesterday: t('periods.yesterday'),
-                '7j': t('periods.7j'),
-                '30j': t('periods.30j'),
-                '90j': t('periods.90j'),
-              },
-              to: t('periods.to'),
-            }}
-            pathname="/finances"
-            presets={['today', '7j', '30j', '90j']}
-            searchParams={{
-              shop: activeShopParam,
-              tab: activeTab,
-            }}
-            to={to}
-          />
+          <PeriodPicker />
         </div>
       </header>
 

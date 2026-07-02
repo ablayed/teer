@@ -2,9 +2,9 @@ import { NewOrderForm } from '@/components/orders/new-order-form';
 import { OrdersBoardProvider } from '@/components/orders/orders-board-context';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
+import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { EmptyState } from '@/components/ui/empty-state';
-import { PeriodControls } from '@/components/ui/period-controls';
 import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantAccount, getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getOrdersPageData } from '@/lib/actions/orders';
@@ -12,7 +12,7 @@ import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderSavedViews } from '@/lib/domain/order-saved-views';
 import { normalizeOrderSearch } from '@/lib/orders/search';
-import { resolvePeriodRange } from '@/lib/periods/date-range';
+import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { AlertCircle, ArrowRight, Store } from 'lucide-react';
@@ -59,7 +59,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const params = await searchParams;
   const search = normalizeOrderSearch(params.q);
   const { activePeriod, from, to } = resolvePeriodRange({
-    allowedPresets: ['today', 'yesterday', '7j', '30j'],
+    allowedPresets: PERIOD_PRESETS,
     defaultPreset: '30j',
     from: params.from,
     period: params.period,
@@ -154,31 +154,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <PeriodControls
-              activePeriod={activePeriod}
-              from={from}
-              labels={{
-                apply: t('periods.custom'),
-                from: t('periods.from'),
-                presets: {
-                  today: t('periods.today'),
-                  yesterday: t('periods.yesterday'),
-                  '7j': t('periods.7j'),
-                  '30j': t('periods.30j'),
-                  '90j': t('periods.90j'),
-                },
-                to: t('periods.to'),
-              }}
-              pathname="/commandes"
-              presets={['today', 'yesterday', '7j', '30j']}
-              searchParams={{
-                period: params.period,
-                q: params.q,
-                shop: params.shop,
-                vue: params.vue,
-              }}
-              to={to}
-            />
+            <PeriodPicker align="start" />
             <ShopFilterSelector
               allLabel={t('shops.all')}
               ariaLabel={t('shops.ariaLabel')}
