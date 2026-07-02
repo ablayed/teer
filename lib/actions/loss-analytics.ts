@@ -2,7 +2,7 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import { type LossAnalyticsReliability, computeLossAnalytics } from '@/lib/loss-analytics/metrics';
-import type { Database } from '@/lib/supabase/database.types';
+import type { Database, Json } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
@@ -31,9 +31,29 @@ function toReliability(row: RepeatedRefuserRow): LossAnalyticsReliability {
   };
 }
 
-function isNonEmptyString(value: string | null): value is string {
-  return typeof value === 'string' && value.length > 0;
-}
+// Forme du payload renvoyé par la RPC get_loss_analytics_joins (0078). Les clés d'objet
+// sont les colonnes DB consommées telles quelles par le .map() ci-dessous ; les 3 ensembles
+// sont TOUJOURS des tableaux ([] si vide, jamais null). Contrat exact : cf. migration 0078.
+type LossAnalyticsJoinsPayload = {
+  orderLines: Array<{
+    order_id: string;
+    product_id: string | null;
+    raw_title: string;
+    raw_sku: string | null;
+    qty: number;
+    match_status: string;
+  }>;
+  customers: Array<{
+    id: string;
+    full_name: string | null;
+    address: Json | null;
+    shipping_address: Json | null;
+  }>;
+  drivers: Array<{
+    id: string;
+    full_name: string;
+  }>;
+};
 
 // Bug 1 fix de fond : RPC dédiée list_repeated_refusers (0077). Elle pré-filtre côté SQL
 // les clients à refused_count >= 2 puis ne score QUE ceux-là (lateral O(N_refuseurs) au
@@ -93,156 +113,71 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
     ]);
 
     if (ordersResult.error || auditResult.error || reliabilityResult.error) {
-      // DIAG (temporaire, branche diag/analyses-error-logging) : identifier QUELLE
-      // requête du bloc 1 échoue. Ne change PAS la logique de retour.
-      // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
-      console.error(
-        '[loss-analytics] bloc 1 échec',
-        JSON.stringify({
-          merchantId,
-          orders: ordersResult.error
-            ? {
-                message: ordersResult.error.message,
-                code: ordersResult.error.code,
-                details: ordersResult.error.details,
-                hint: ordersResult.error.hint,
-              }
-            : null,
-          audit: auditResult.error
-            ? {
-                message: auditResult.error.message,
-                code: auditResult.error.code,
-                details: auditResult.error.details,
-                hint: auditResult.error.hint,
-              }
-            : null,
-          // reliabilityResult.error est une string (normalisée dans listRepeatedRefusers), pas un PostgrestError.
-          reliability: reliabilityResult.error ?? null,
-        }),
-      );
       return { ok: false as const, errorCode: 'data_error' as const };
     }
 
     const orders = ordersResult.data ?? [];
-    const customerIds = [
-      ...new Set(orders.map((order) => order.customer_id).filter(isNonEmptyString)),
-    ];
-    const orderIds = orders.map((order) => order.id);
-    const driverIds = [
-      ...new Set(orders.map((order) => order.assigned_driver_id).filter(isNonEmptyString)),
-    ];
 
-    const [orderLinesResult, customersResult, driversResult] = await Promise.all([
-      orderIds.length > 0
-        ? supabase
-            .from('order_line')
-            .select('order_id, product_id, raw_title, raw_sku, qty, match_status')
-            .in('order_id', orderIds)
-        : Promise.resolve({ data: [], error: null }),
-      customerIds.length > 0
-        ? supabase
-            .from('customer')
-            .select('id, full_name, address, shipping_address')
-            .in('id', customerIds)
-        : Promise.resolve({ data: [], error: null }),
-      driverIds.length > 0
-        ? supabase.from('driver').select('id, full_name').in('id', driverIds)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
+    // Fix Bug 2 : les gros .in() (order_line ~1000 UUID, customer ~800 UUID) débordaient
+    // l'URL PostgREST → 400. La RPC 0078 part de la fenêtre marchand+dates (POST body,
+    // aucun tableau d'UUID dans l'URL) et joint order_line/customer/driver côté SQL.
+    // shopId null/undefined → param omis → default null côté SQL (pas de filtre boutique).
+    const joinsResult = await supabase.rpc('get_loss_analytics_joins', {
+      p_from: from,
+      p_merchant_id: merchantId,
+      p_shop_id: shopId ?? undefined,
+      p_to: to,
+    });
 
-    if (orderLinesResult.error || customersResult.error || driversResult.error) {
-      // DIAG (temporaire, branche diag/analyses-error-logging) : identifier QUELLE
-      // requête du bloc 2 échoue. Ne change PAS la logique de retour.
-      // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
-      console.error(
-        '[loss-analytics] bloc 2 échec',
-        JSON.stringify({
-          merchantId,
-          orderLines: orderLinesResult.error
-            ? {
-                message: orderLinesResult.error.message,
-                code: orderLinesResult.error.code,
-                details: orderLinesResult.error.details,
-                hint: orderLinesResult.error.hint,
-              }
-            : null,
-          customers: customersResult.error
-            ? {
-                message: customersResult.error.message,
-                code: customersResult.error.code,
-                details: customersResult.error.details,
-                hint: customersResult.error.hint,
-              }
-            : null,
-          drivers: driversResult.error
-            ? {
-                message: driversResult.error.message,
-                code: driversResult.error.code,
-                details: driversResult.error.details,
-                hint: driversResult.error.hint,
-              }
-            : null,
-        }),
-      );
+    if (joinsResult.error) {
       return { ok: false as const, errorCode: 'data_error' as const };
     }
 
-    let analytics: ReturnType<typeof computeLossAnalytics>;
-    try {
-      analytics = computeLossAnalytics({
-        auditLogs: (auditResult.data ?? []).map((row) => ({
-          createdAt: row.created_at,
-          payload: row.payload,
-          resourceId: row.resource_id,
-        })),
-        customers: (customersResult.data ?? []).map((row) => ({
-          address: row.address,
-          fullName: row.full_name,
-          id: row.id,
-          shippingAddress: row.shipping_address,
-        })),
-        drivers: (driversResult.data ?? []).map((row) => ({
-          fullName: row.full_name,
-          id: row.id,
-        })),
-        fromISO: from,
-        orderLines: (orderLinesResult.data ?? []).map((row) => ({
-          matchStatus: row.match_status,
-          orderId: row.order_id,
-          productId: row.product_id,
-          qty: row.qty,
-          rawSku: row.raw_sku,
-          rawTitle: row.raw_title,
-        })),
-        orders: orders.map((row) => ({
-          assignedDriverId: row.assigned_driver_id,
-          cancelReason: row.cancel_reason,
-          createdAt: row.created_at,
-          customerId: row.customer_id,
-          deliveryState: row.delivery_state,
-          id: row.id,
-          orderState: row.order_state,
-          returnedAt: row.returned_at,
-          source: row.source,
-        })),
-        reliability: reliabilityResult.data,
-        toISO: to,
-      });
-    } catch (e) {
-      // DIAG (temporaire, branche diag/analyses-error-logging) : capturer une exception
-      // jetée par computeLossAnalytics AVEC la donnée fautive, puis re-jeter pour
-      // qu'elle remonte à handleServerError/Sentry.
-      // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
-      console.error(
-        '[loss-analytics] computeLossAnalytics a jeté',
-        JSON.stringify({
-          merchantId,
-          message: e instanceof Error ? e.message : String(e),
-          stack: e instanceof Error ? e.stack : undefined,
-        }),
-      );
-      throw e;
-    }
+    // Payload garanti par la RPC 0078 (3 clés toujours en tableaux, colonnes fixes =
+    // celles consommées ci-dessous). Cast localisé (données maîtrisées, notre propre RPC)
+    // converti immédiatement vers les types internes de computeLossAnalytics (inchangé).
+    const joins = joinsResult.data as unknown as LossAnalyticsJoinsPayload;
+
+    // Une exception éventuelle de computeLossAnalytics remonte à handleServerError (Sentry).
+    const analytics = computeLossAnalytics({
+      auditLogs: (auditResult.data ?? []).map((row) => ({
+        createdAt: row.created_at,
+        payload: row.payload,
+        resourceId: row.resource_id,
+      })),
+      customers: joins.customers.map((row) => ({
+        address: row.address,
+        fullName: row.full_name,
+        id: row.id,
+        shippingAddress: row.shipping_address,
+      })),
+      drivers: joins.drivers.map((row) => ({
+        fullName: row.full_name,
+        id: row.id,
+      })),
+      fromISO: from,
+      orderLines: joins.orderLines.map((row) => ({
+        matchStatus: row.match_status,
+        orderId: row.order_id,
+        productId: row.product_id,
+        qty: row.qty,
+        rawSku: row.raw_sku,
+        rawTitle: row.raw_title,
+      })),
+      orders: orders.map((row) => ({
+        assignedDriverId: row.assigned_driver_id,
+        cancelReason: row.cancel_reason,
+        createdAt: row.created_at,
+        customerId: row.customer_id,
+        deliveryState: row.delivery_state,
+        id: row.id,
+        orderState: row.order_state,
+        returnedAt: row.returned_at,
+        source: row.source,
+      })),
+      reliability: reliabilityResult.data,
+      toISO: to,
+    });
 
     return { ok: true as const, analytics };
   });
