@@ -22,7 +22,6 @@ const Calendar = dynamic(() => import('@/components/ui/calendar').then((m) => m.
 type PeriodPickerBodyProps = {
   active: ActivePeriod;
   from: string | null;
-  isDesktop: boolean;
   onApplied: () => void;
   onSelectCustom: (from: string, to: string) => void;
   onSelectPreset: (preset: PeriodPreset) => void;
@@ -37,7 +36,6 @@ function toISO(date: Date): string {
 export function PeriodPickerBody({
   active,
   from,
-  isDesktop,
   onApplied,
   onSelectCustom,
   onSelectPreset,
@@ -140,7 +138,7 @@ export function PeriodPickerBody({
               defaultMonth={range?.from}
               disabled={{ after: new Date() }}
               mode="range"
-              numberOfMonths={isDesktop ? 2 : 1}
+              numberOfMonths={1}
               onSelect={handleRangeSelect}
               selected={range}
             />

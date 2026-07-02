@@ -62,7 +62,6 @@ export function PeriodPicker({ align = 'end', presets = PERIOD_PRESETS }: Period
     <PeriodPickerBody
       active={active}
       from={from}
-      isDesktop={isDesktop}
       onApplied={() => setOpen(false)}
       onSelectCustom={selectCustom}
       onSelectPreset={selectPreset}
@@ -75,7 +74,10 @@ export function PeriodPicker({ align = 'end', presets = PERIOD_PRESETS }: Period
     return (
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverAnchor asChild>{trigger}</PopoverAnchor>
-        <PopoverContent align={align} className="w-auto min-w-[16rem] p-0">
+        <PopoverContent
+          align={align}
+          className="max-h-[85vh] w-auto min-w-[16rem] overflow-y-auto p-0"
+        >
           {body}
         </PopoverContent>
       </Popover>

@@ -339,7 +339,11 @@ input[type="button"] {
    Surcharge des variables APRÈS l'import de react-day-picker/style.css (fait dans
    components/ui/calendar.tsx). Accent orange pour la sélection, crème pour le
    milieu de plage, Fraunces sur le libellé du mois, cible tactile ≥ 44px (défaut). */
-.rdp-root {
+/* Spécificité renforcée (.rdp-teer.rdp-root) : react-day-picker/style.css est
+   importée dans le chunk lazy du calendrier, donc APRÈS globals.css → un simple
+   `.rdp-root` (même spécificité) se ferait écraser et l'accent retomberait au bleu
+   par défaut. Deux classes battent la déclaration de base quel que soit l'ordre. */
+.rdp-teer.rdp-root {
   --rdp-accent-color: var(--accent);
   --rdp-accent-background-color: var(--accent-subtle);
   --rdp-font-family: var(--font-sans);
