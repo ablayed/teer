@@ -8,7 +8,7 @@ type PeriodControlsProps = {
   labels: {
     apply: string;
     from: string;
-    presets: Record<PeriodPreset, string>;
+    presets: Partial<Record<PeriodPreset, string>>;
     to: string;
   };
   pathname: string;

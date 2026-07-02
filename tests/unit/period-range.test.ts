@@ -23,6 +23,17 @@ describe('resolvePeriodRange', () => {
     expect(toDateInput(range.to)).toBe('2026-06-22');
   });
 
+  it('supports month (Ce mois-ci) from the first day of the current month', () => {
+    const range = resolvePeriodRange({
+      allowedPresets: ['today', '7j', '30j', '90j', 'month'],
+      defaultPreset: '30j',
+      period: 'month',
+    });
+
+    expect(range.activePeriod).toBe('month');
+    expect(toDateInput(range.from)).toBe('2026-06-01');
+  });
+
   it('returns custom when both explicit bounds are present', () => {
     const range = resolvePeriodRange({
       allowedPresets: ['today', '7j', '30j'],

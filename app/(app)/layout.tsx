@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { redirect } from 'next/navigation';
+import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import type { ReactNode } from 'react';
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -67,10 +68,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <NextIntlClientProvider messages={messages}>
-      <AnalyticsProvider />
-      <ServiceWorkerRegister />
-      <IdleTimeout timeoutMs={idleTimeoutMs} warningMs={idleWarningMs} />
-      <AppShell currentRole={member?.role ?? null}>{children}</AppShell>
+      <NuqsAdapter>
+        <AnalyticsProvider />
+        <ServiceWorkerRegister />
+        <IdleTimeout timeoutMs={idleTimeoutMs} warningMs={idleWarningMs} />
+        <AppShell currentRole={member?.role ?? null}>{children}</AppShell>
+      </NuqsAdapter>
     </NextIntlClientProvider>
   );
 }

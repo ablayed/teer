@@ -335,6 +335,30 @@ input[type="button"] {
   }
 }
 
+/* === Calendrier (react-day-picker) — thème Dakar Teranga ===
+   Surcharge des variables APRÈS l'import de react-day-picker/style.css (fait dans
+   components/ui/calendar.tsx). Accent orange pour la sélection, crème pour le
+   milieu de plage, Fraunces sur le libellé du mois, cible tactile ≥ 44px (défaut). */
+.rdp-root {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: var(--accent-subtle);
+  --rdp-font-family: var(--font-sans);
+  --rdp-selected-border: 2px solid var(--accent);
+  --rdp-today-color: var(--accent-deep);
+}
+.rdp-teer .rdp-month_caption,
+.rdp-teer .rdp-caption_label {
+  font-family: var(--font-display);
+  text-transform: capitalize;
+}
+.rdp-teer .rdp-selected .rdp-day_button {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.rdp-teer .rdp-range_middle .rdp-day_button {
+  color: var(--text);
+}
+
 .legal-prose {
   color: var(--text);
   font-size: 0.98rem;
