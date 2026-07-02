@@ -69,7 +69,7 @@ export function PeriodControls({
           </Link>
         ))}
       </div>
-      <label className="flex w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
+      <label className="flex max-sm:basis-[calc((100%-0.5rem)/2)] max-sm:max-w-[10.5rem] max-sm:min-w-[9rem] w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
         <span className="px-0.5">{labels.from}</span>
         <input
           className="h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
@@ -78,7 +78,7 @@ export function PeriodControls({
           type="date"
         />
       </label>
-      <label className="flex w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
+      <label className="flex max-sm:basis-[calc((100%-0.5rem)/2)] max-sm:max-w-[10.5rem] max-sm:min-w-[9rem] w-full min-w-0 flex-col gap-1 text-xs font-medium text-muted sm:w-auto">
         <span className="px-0.5">{labels.to}</span>
         <input
           className="h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"

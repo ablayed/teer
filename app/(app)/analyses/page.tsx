@@ -185,7 +185,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               </Link>
             ))}
           </div>
-          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
+          <label className="block max-sm:basis-[calc((100%-0.5rem)/2)] max-sm:max-w-[10.5rem] max-sm:min-w-[9rem] w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
             {t('periods.from')}
             <input
               className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
@@ -194,7 +194,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               type="date"
             />
           </label>
-          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
+          <label className="block max-sm:basis-[calc((100%-0.5rem)/2)] max-sm:max-w-[10.5rem] max-sm:min-w-[9rem] w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
             {t('periods.to')}
             <input
               className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
