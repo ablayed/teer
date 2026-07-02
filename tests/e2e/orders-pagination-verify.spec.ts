@@ -319,10 +319,51 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     created_at_shopify: new Date(base - s.index * orderSpacingMs).toISOString(),
   }));
 
-  const { error: insertError } = await admin.from('orders').insert(rows);
+  const { data: insertedOrders, error: insertError } = await admin
+    .from('orders')
+    .insert(rows)
+    .select('id, order_state, delivery_state');
 
   if (insertError) {
     throw insertError;
+  }
+
+  // Ce seed écrit l'état final directement (bypass transition_order), donc
+  // order_state_transition reste vide — cassant le bornage 7j des vues Tableau
+  // « En cours de livraison » / « Annulées / Retours » (lues côté /commandes vue=...
+  // via order_state_transition.to_status). On simule la transition d'arrivée pour les
+  // 3 groupes concernés (le reste des vues ne dépend pas de cette table).
+  const transitionRows = (insertedOrders ?? []).flatMap((order) => {
+    const toStatus =
+      order.delivery_state === 'out_for_delivery'
+        ? 'EN_LIVRAISON'
+        : order.order_state === 'cancelled'
+          ? 'ANNULEE'
+          : order.order_state === 'returned'
+            ? 'REFUSEE'
+            : null;
+
+    return toStatus
+      ? [
+          {
+            merchant_account_id: merchantAccountId,
+            order_id: order.id,
+            from_status: null,
+            to_status: toStatus,
+            actor_user_id: userId,
+          },
+        ]
+      : [];
+  });
+
+  if (transitionRows.length > 0) {
+    const { error: transitionError } = await admin
+      .from('order_state_transition')
+      .insert(transitionRows);
+
+    if (transitionError) {
+      throw transitionError;
+    }
   }
 
   try {
