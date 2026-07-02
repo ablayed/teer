@@ -1,8 +1,26 @@
-export type PeriodPreset = 'today' | 'yesterday' | '7j' | '30j' | '90j';
+export type PeriodPreset = 'today' | 'yesterday' | '7j' | '30j' | '90j' | 'month';
 export type ActivePeriod = PeriodPreset | 'custom';
+
+// Ordre d'affichage canonique du PeriodPicker (tokens URL inchangés — cf. décision
+// ticket : zéro rupture de compat, on garde 7j/30j/90j et on AJOUTE month/custom).
+export const PERIOD_PRESETS: readonly PeriodPreset[] = [
+  'today',
+  'yesterday',
+  '7j',
+  '30j',
+  '90j',
+  'month',
+];
 
 export function startOfDay(date: Date): Date {
   const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+export function startOfMonth(date: Date): Date {
+  const next = new Date(date);
+  next.setDate(1);
   next.setHours(0, 0, 0, 0);
   return next;
 }
@@ -59,6 +77,10 @@ export function resolvePeriodRange({
     const yesterday = startOfDay(now);
     yesterday.setDate(yesterday.getDate() - 1);
     return { activePeriod: 'yesterday', from: yesterday, to: endOfDay(yesterday) };
+  }
+
+  if (preset === 'month') {
+    return { activePeriod: 'month', from: startOfMonth(now), to: now };
   }
 
   const days = preset === '7j' ? 7 : preset === '90j' ? 90 : 30;

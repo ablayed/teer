@@ -1,10 +1,11 @@
 import { LossAnalyticsChartsLoader } from '@/components/loss-analytics/loss-analytics-charts-loader';
+import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { AnalyticsSkeleton } from '@/components/ui/analytics-skeleton';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
+import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { LockKeyhole } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 import { Suspense } from 'react';
 
 // Défense (pas le fix) : /analyses agrège des données lourdes (pertes + refuseurs). Le fix
@@ -19,55 +20,6 @@ type AnalyticsPageProps = {
     to?: string;
   }>;
 };
-
-function startOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function parseDateInput(value: string | undefined): Date | null {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function periodRange({
-  from,
-  period,
-  to,
-}: {
-  from?: string;
-  period?: string;
-  to?: string;
-}): { activePeriod: string; from: Date; to: Date } {
-  const now = new Date();
-  const end = now;
-  const customFrom = parseDateInput(from);
-  const customTo = parseDateInput(to);
-
-  if (customFrom && customTo) {
-    customTo.setHours(23, 59, 59, 999);
-    return { activePeriod: 'custom', from: customFrom, to: customTo };
-  }
-
-  if (period === 'today') {
-    return { activePeriod: 'today', from: startOfDay(now), to: end };
-  }
-
-  const days = period === '7j' ? 7 : 30;
-  const start = startOfDay(now);
-  start.setDate(start.getDate() - (days - 1));
-
-  return { activePeriod: days === 7 ? '7j' : '30j', from: start, to: end };
-}
-
-function toDateInput(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
 
 function percent(value: number): string {
   return new Intl.NumberFormat('fr-FR', {
@@ -140,7 +92,13 @@ async function getCurrentRole() {
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
   const t = await getTranslations('analytics');
   const params = await searchParams;
-  const { activePeriod, from, to } = periodRange(params);
+  const { activePeriod, from, to } = resolvePeriodRange({
+    allowedPresets: PERIOD_PRESETS,
+    defaultPreset: '30j',
+    from: params.from,
+    period: params.period,
+    to: params.to,
+  });
   const role = await getCurrentRole();
 
   if (role !== 'owner' && role !== 'manager') {
@@ -157,9 +115,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     );
   }
 
-  const periods = ['today', '7j', '30j'] as const;
-
-  // Shell synchrone (header + formulaire période) rendu immédiatement ; le bloc lourd
+  // Shell synchrone (header + PeriodPicker) rendu immédiatement ; le bloc lourd
   // (fetch loss-analytics) suspend derrière une frontière RÉELLE de streaming. Le `await`
   // n'est PLUS top-level : il vit dans AnalyticsContent, enfant async du Suspense.
   // Suspense keyé sur la période : un changement de ?period=/from/to (même segment de
@@ -171,45 +127,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
           <p className="max-w-3xl text-muted">{t('subtitle')}</p>
         </div>
-        <form className="flex flex-wrap items-end gap-2" method="get">
-          <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
-            {periods.map((period) => (
-              <Link
-                className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
-                  activePeriod === period ? 'bg-accent text-text' : 'text-muted hover:text-text'
-                }`}
-                href={`/analyses?period=${period}`}
-                key={period}
-              >
-                {t(`periods.${period}`)}
-              </Link>
-            ))}
-          </div>
-          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
-            {t('periods.from')}
-            <input
-              className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
-              defaultValue={toDateInput(from)}
-              name="from"
-              type="date"
-            />
-          </label>
-          <label className="block w-full min-w-0 space-y-1 text-xs font-medium text-muted sm:w-auto">
-            {t('periods.to')}
-            <input
-              className="block h-11 w-full min-w-0 max-w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
-              defaultValue={toDateInput(to)}
-              name="to"
-              type="date"
-            />
-          </label>
-          <button
-            className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
-            type="submit"
-          >
-            {t('periods.custom')}
-          </button>
-        </form>
+        <PeriodPicker />
       </header>
 
       <Suspense

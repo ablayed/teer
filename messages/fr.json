@@ -332,6 +332,25 @@
     "show": "Définition",
     "hide": "Masquer"
   },
+  "periodPicker": {
+    "trigger": "Période",
+    "triggerAria": "Choisir la période — {label}",
+    "title": "Choisir la période",
+    "description": "Sélectionnez un raccourci ou une plage personnalisée.",
+    "presets": {
+      "today": "Aujourd'hui",
+      "yesterday": "Hier",
+      "7j": "7 derniers jours",
+      "30j": "30 derniers jours",
+      "90j": "90 derniers jours",
+      "month": "Ce mois-ci",
+      "custom": "Personnalisé"
+    },
+    "from": "Du",
+    "to": "Au",
+    "apply": "Appliquer",
+    "rangeSeparator": "–"
+  },
   "tableau": {
     "title": "Tableau",
     "greeting": "Bonjour {name}",
