@@ -201,6 +201,28 @@ export async function createOrder(fixture: VisualFixture, seed: OrderSeed): Prom
     throw error;
   }
 
+  // Même raison que orders-transitions.spec.ts::createOrderWithCustomer : ce seed écrit
+  // l'état final directement (bypass transition_order), donc order_state_transition reste
+  // vide sans cette ligne — cassant le bornage 7j des vues Tableau « En cours de livraison »
+  // / « Annulées / Retours » qui lisent order_state_transition.to_status.
+  const { data: member } = await fixture.admin
+    .from('merchant_member')
+    .select('user_id')
+    .eq('merchant_account_id', fixture.merchantAccountId)
+    .limit(1)
+    .maybeSingle();
+
+  if (member?.user_id) {
+    await fixture.admin.from('order_state_transition').insert({
+      merchant_account_id: fixture.merchantAccountId,
+      order_id: data.id,
+      from_status: null,
+      to_status: seed.status,
+      actor_user_id: member.user_id,
+      created_at: seed.createdAt,
+    });
+  }
+
   return data.id as string;
 }
 

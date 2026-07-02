@@ -234,16 +234,69 @@ function emptyOrdersViewCounts(): OrdersViewCounts {
   };
 }
 
+// Vues dont la période se filtre sur la dernière transition métier (cf. Tableau
+// « Priorités à traiter ») plutôt que sur une date de commande : le compteur dashboard
+// et /commandes doivent partager exactement le même champ pour que compteur = liste.
+const VIEW_TRANSITION_STATUSES: Partial<Record<OrderSavedViewId, readonly string[]>> = {
+  'en-livraison': ['EN_LIVRAISON'],
+  'annulees-retours': ['ANNULEE', 'REFUSEE'],
+};
+
+async function fetchTransitionOrderIdSets(
+  supabase: SupabaseServerClient,
+  merchantAccountId: string,
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+): Promise<Partial<Record<OrderSavedViewId, Set<string>>>> {
+  if (!dateFrom || !dateTo) {
+    return {};
+  }
+
+  const entries = await Promise.all(
+    (Object.entries(VIEW_TRANSITION_STATUSES) as Array<[OrderSavedViewId, readonly string[]]>).map(
+      async ([viewId, toStatuses]) => {
+        const { data, error } = await supabase
+          .from('order_state_transition')
+          .select('order_id')
+          .eq('merchant_account_id', merchantAccountId)
+          .in('to_status', toStatuses)
+          .gte('created_at', dateFrom)
+          .lte('created_at', dateTo);
+
+        if (error) {
+          throw error;
+        }
+
+        return [viewId, new Set((data ?? []).map((row) => row.order_id))] as const;
+      },
+    ),
+  );
+
+  return Object.fromEntries(entries);
+}
+
 function orderMatchesPeriod(
-  order: Pick<OrderListItem, 'created_at' | 'created_at_shopify'>,
+  order: Pick<OrderListItem, 'created_at' | 'created_at_shopify' | 'id'>,
   from: string | undefined,
   to: string | undefined,
+  view: OrderSavedViewId,
+  transitionOrderIds: Set<string> | null,
 ) {
   if (!from || !to) {
     return true;
   }
 
-  const referenceDate = new Date(orderQueueDate(order));
+  // Ligne « En cours de livraison » / « Annulées / Retours » du Tableau : la période se
+  // vérifie sur la dernière transition métier (order_state_transition), pas sur une date
+  // de commande — garde ciblée à ces 2 vues, orderQueueDate reste inchangé partout ailleurs.
+  if (transitionOrderIds) {
+    return transitionOrderIds.has(order.id);
+  }
+
+  // Ligne « À appeler » du Tableau : alignée sur la carte KPI (RPC get_dashboard_kpi,
+  // migration 0076) qui borne sur `created_at`, pas `orderQueueDate` — garde ciblée à cette
+  // seule vue pour que compteur dashboard = liste /commandes?vue=a-appeler.
+  const referenceDate = new Date(view === 'a-appeler' ? order.created_at : orderQueueDate(order));
   const fromDate = new Date(from);
   const toDate = new Date(to);
 
@@ -338,12 +391,10 @@ async function listOrdersForPageData({
     }
   }
 
-  return rows
-    .filter((order) => orderMatchesPeriod(order, filters.dateFrom, filters.dateTo))
-    .map((order) => ({
-      ...order,
-      allowedActions: allowedActionsForOrderRow(order, member.role),
-    }));
+  return rows.map((order) => ({
+    ...order,
+    allowedActions: allowedActionsForOrderRow(order, member.role),
+  }));
 }
 
 function isReliabilityTier(value: string | null): value is ReliabilityTier {
@@ -398,14 +449,35 @@ async function fetchOrdersPageData({
   supabase: SupabaseServerClient;
 }): Promise<OrdersPageData> {
   const scopedOrders = await listOrdersForPageData({ filters, member, supabase });
-  const filteredOrders = filterOrdersBySearch(scopedOrders, search);
+  const transitionOrderIdsByView = await fetchTransitionOrderIdSets(
+    supabase,
+    member.merchantAccountId,
+    filters.dateFrom,
+    filters.dateTo,
+  );
+
+  const periodFilteredFor = (viewId: OrderSavedViewId) =>
+    scopedOrders.filter((order) =>
+      orderMatchesPeriod(
+        order,
+        filters.dateFrom,
+        filters.dateTo,
+        viewId,
+        transitionOrderIdsByView[viewId] ?? null,
+      ),
+    );
+
+  const periodFilteredToutes = periodFilteredFor('toutes');
   const viewCounts = cursor
     ? emptyOrdersViewCounts()
     : orderSavedViewIds.reduce<OrdersViewCounts>((acc, viewId) => {
-        acc[viewId] = filteredOrders.filter((order) => matchesOrderSavedView(order, viewId)).length;
+        const searchFiltered = filterOrdersBySearch(periodFilteredFor(viewId), search);
+        acc[viewId] = searchFiltered.filter((order) => matchesOrderSavedView(order, viewId)).length;
         return acc;
       }, emptyOrdersViewCounts());
-  const ordersForView = filteredOrders.filter((order) => matchesOrderSavedView(order, activeView));
+  const ordersForView = filterOrdersBySearch(periodFilteredFor(activeView), search).filter(
+    (order) => matchesOrderSavedView(order, activeView),
+  );
   const paginated = paginateOrders(ordersForView, activeView, cursor);
   const reliabilityTiers =
     activeView === 'a-appeler'
@@ -425,7 +497,7 @@ async function fetchOrdersPageData({
     orders: paginated.orders,
     reliabilityTiers,
     search,
-    totalCount: cursor ? 0 : scopedOrders.length,
+    totalCount: cursor ? 0 : periodFilteredToutes.length,
     viewCounts,
   };
 }

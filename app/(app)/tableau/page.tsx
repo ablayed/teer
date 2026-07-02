@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import {
   getCodBreakdown,
   getDashboardKpi,
+  getPriorityCounts,
   getRecentActivity,
   getRevenue30d,
   getShopPerformance,
@@ -20,12 +21,7 @@ import {
 } from '@/lib/actions/dashboard';
 import { getDriversCashOnHandTotal } from '@/lib/actions/drivers';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
-import { getOrders } from '@/lib/actions/orders';
-import {
-  buildOrderViewHref,
-  isSameLocalDate,
-  matchesOrderSavedView,
-} from '@/lib/domain/order-saved-views';
+import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
 import { formatMoney } from '@/lib/format/fcfa';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -76,55 +72,61 @@ async function KpiStrip({ shopId }: { shopId: string | null }) {
   );
 }
 
+// Priorités à traiter : chaque ligne borne sa fenêtre à 7 jours sur le même champ que sa
+// liste-cible /commandes?vue=<id>&period=7j&shop=<actif> (cf. getPriorityCounts) — compteur
+// dashboard = nombre affiché au clic, pas juste un `period=7j` cosmétique dans l'URL.
 async function ExceptionsSection({ shopId }: { shopId: string | null }) {
-  const orders = await getOrders({ shopId });
-  const callbackTodayCount = orders.filter(
-    (order) =>
-      order.order_state === 'open' &&
-      order.call_state === 'callback' &&
-      isSameLocalDate(order.next_contact_at),
-  ).length;
+  const [t, countsResult] = await Promise.all([
+    getTranslations('tableau.blocks.exceptions'),
+    getPriorityCounts(shopId),
+  ]);
+  const counts = countsResult.ok
+    ? countsResult.data
+    : { aAppeler: 0, aRappelerAujourdhui: 0, annuleesRetours: 0, enLivraison: 0 };
+  const hrefFor = (viewId: Parameters<typeof buildOrderViewHref>[0]) =>
+    buildOrderViewHref(viewId, { period: '7j', shopId });
+
   const exceptionCards = [
     {
-      title: 'Urgences du jour',
+      title: t('groups.urgences'),
       rows: [
         {
-          count: orders.filter((order) => matchesOrderSavedView(order, 'a-appeler')).length,
-          href: buildOrderViewHref('a-appeler'),
-          label: 'A appeler',
+          count: counts.aAppeler,
+          href: hrefFor('a-appeler'),
+          label: t('rows.aAppeler'),
         },
         {
-          count: callbackTodayCount,
-          href: buildOrderViewHref('tentee-a-rappeler'),
-          label: "A rappeler aujourd'hui",
+          count: counts.aRappelerAujourdhui,
+          href: buildOrderViewHref('tentee-a-rappeler', { shopId }),
+          label: t('rows.aRappelerAujourdhui'),
         },
       ],
     },
     {
-      title: 'Livraison',
+      title: t('groups.livraison'),
       rows: [
         {
-          count: orders.filter((order) => matchesOrderSavedView(order, 'en-livraison')).length,
-          href: buildOrderViewHref('en-livraison'),
-          label: 'En cours de livraison',
+          count: counts.enLivraison,
+          href: hrefFor('en-livraison'),
+          label: t('rows.enLivraison'),
         },
       ],
     },
-    // Note : la carte « Tresorerie / Cash a remettre » est retiree de l'Apercu Commandes.
-    // Le cash se gere desormais dans Finances / Livreurs (hors perimetre Commandes).
+    // Note : la carte « Trésorerie / Cash à remettre » est retirée de l'Aperçu Commandes.
+    // Le cash se gère désormais dans Finances / Livreurs (hors périmètre Commandes).
     {
-      title: 'Annulations & retours',
+      title: t('groups.annulations'),
       rows: [
         {
-          count: orders.filter((order) => matchesOrderSavedView(order, 'annulees-retours')).length,
-          href: buildOrderViewHref('annulees-retours'),
-          label: 'Annulées / Retours',
+          count: counts.annuleesRetours,
+          href: hrefFor('annulees-retours'),
+          label: t('rows.annuleesRetours'),
         },
       ],
     },
   ];
 
-  return <OrderExceptionsGrid cards={exceptionCards} title="Exceptions a traiter" />;
+  return <OrderExceptionsGrid cards={exceptionCards} title={t('title')} />;
 }
 
 function essentialCard(label: string, value: string, hint?: string) {

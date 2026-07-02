@@ -410,6 +410,20 @@
         "initial": "Initial",
         "orderFallback": "Commande"
       },
+      "exceptions": {
+        "title": "Priorités à traiter",
+        "groups": {
+          "urgences": "Urgences du jour",
+          "livraison": "Livraison",
+          "annulations": "Annulations & retours"
+        },
+        "rows": {
+          "aAppeler": "À appeler (7 j)",
+          "aRappelerAujourdhui": "À rappeler aujourd'hui",
+          "enLivraison": "En cours de livraison (7 j)",
+          "annuleesRetours": "Annulées / Retours (7 j)"
+        }
+      },
       "alerts": {
         "title": "Alertes",
         "empty": "Aucune alerte. Tout va bien.",

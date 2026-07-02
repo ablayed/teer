@@ -1,7 +1,9 @@
 'use server';
 
 import { authActionClient } from '@/lib/actions/safe-action';
+import { isSameLocalDate } from '@/lib/domain/order-saved-views';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
+import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -81,6 +83,18 @@ export type DashboardAlert = {
   id: string;
   kind: 'lateCalls' | 'shops' | 'tokens';
   tone: 'danger' | 'warning';
+};
+
+// Compteurs de la section Tableau « Priorités à traiter ». Chaque compteur est borné aux
+// 7 derniers jours sur le même champ que sa liste-cible /commandes?vue=<id>&period=7j :
+// aAppeler → orders.created_at (aligné get_dashboard_kpi 0076) ; enLivraison /
+// annuleesRetours → dernière order_state_transition.to_status pertinente (pas de date de
+// commande fiable pour ces 2 lignes, cf. diagnostic Tableau « Priorités à traiter »).
+export type DashboardPriorityCounts = {
+  aAppeler: number;
+  aRappelerAujourdhui: number;
+  enLivraison: number;
+  annuleesRetours: number;
 };
 
 export type DashboardReadonlyActionResult<T> =
@@ -823,3 +837,125 @@ export const getAlertsAction = authActionClient
       userId: ctx.user.id,
     });
   });
+
+async function fetchPriorityCountsForUser({
+  shopId,
+  supabase,
+  userId,
+}: {
+  shopId?: string | null;
+  supabase: SupabaseServerClient;
+  userId: string;
+}): Promise<DashboardReadonlyActionResult<DashboardPriorityCounts>> {
+  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
+
+  if (!merchant.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  // Même fenêtre que /commandes?period=7j (resolvePeriodRange), pas un `now() - 7 jours`
+  // indépendant : sinon le lien du Tableau et le compteur peuvent diverger de quelques
+  // heures (resolvePeriodRange tronque au début de journée locale).
+  const { from: sinceDate, to: untilDate } = resolvePeriodRange({
+    allowedPresets: PERIOD_PRESETS,
+    defaultPreset: '7j',
+    period: '7j',
+  });
+  const since = sinceDate.toISOString();
+  const until = untilDate.toISOString();
+
+  let aAppelerQuery = supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('merchant_account_id', merchant.merchantAccountId)
+    .eq('cod_status', 'A_APPELER')
+    .gte('created_at', since)
+    .lte('created_at', until);
+  if (shopId) {
+    aAppelerQuery = aAppelerQuery.eq('shop_id', shopId);
+  }
+
+  let callbackQuery = supabase
+    .from('orders')
+    .select('next_contact_at')
+    .eq('merchant_account_id', merchant.merchantAccountId)
+    .eq('order_state', 'open')
+    .eq('call_state', 'callback');
+  if (shopId) {
+    callbackQuery = callbackQuery.eq('shop_id', shopId);
+  }
+
+  const transitionQuery = (toStatuses: string[]) =>
+    supabase
+      .from('order_state_transition')
+      .select('order_id, order:order_id(delivery_state, order_state, shop_id)')
+      .eq('merchant_account_id', merchant.merchantAccountId)
+      .in('to_status', toStatuses)
+      .gte('created_at', since)
+      .lte('created_at', until);
+
+  const [aAppelerResult, callbackResult, deliveryResult, cancelledResult] = await Promise.all([
+    aAppelerQuery,
+    callbackQuery,
+    transitionQuery(['EN_LIVRAISON']),
+    transitionQuery(['ANNULEE', 'REFUSEE']),
+  ]);
+
+  if (
+    aAppelerResult.error ||
+    callbackResult.error ||
+    deliveryResult.error ||
+    cancelledResult.error
+  ) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const aRappelerAujourdhui = (callbackResult.data ?? []).filter((row) =>
+    isSameLocalDate(row.next_contact_at),
+  ).length;
+
+  const enLivraisonOrderIds = new Set(
+    (deliveryResult.data ?? [])
+      .filter(
+        (row) =>
+          row.order?.delivery_state === 'out_for_delivery' &&
+          (!shopId || row.order?.shop_id === shopId),
+      )
+      .map((row) => row.order_id),
+  );
+
+  const annuleesRetoursOrderIds = new Set(
+    (cancelledResult.data ?? [])
+      .filter(
+        (row) =>
+          (row.order?.order_state === 'cancelled' || row.order?.order_state === 'returned') &&
+          (!shopId || row.order?.shop_id === shopId),
+      )
+      .map((row) => row.order_id),
+  );
+
+  return {
+    ok: true,
+    data: {
+      aAppeler: aAppelerResult.count ?? 0,
+      aRappelerAujourdhui,
+      enLivraison: enLivraisonOrderIds.size,
+      annuleesRetours: annuleesRetoursOrderIds.size,
+    },
+  };
+}
+
+export async function getPriorityCounts(
+  shopId?: string | null,
+): Promise<DashboardReadonlyActionResult<DashboardPriorityCounts>> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchPriorityCountsForUser({ shopId, supabase, userId: user.id });
+}
