@@ -293,12 +293,14 @@ test.describe('Phase 13 — filtre boutique', () => {
     await expect(page.getByText('Client Ancien A')).toBeVisible();
     await expect(page.getByText('Client Récent B')).toHaveCount(0);
 
-    await clickFilterUntilUrl(
-      page,
-      () => page.getByRole('link', { name: "Aujourd'hui" }),
-      new RegExp(`/commandes\\?.*shop=${shopA}.*period=today`),
+    // PeriodPicker : ouvrir le trigger puis appliquer « Aujourd'hui » en 1 tap. Le
+    // shop reste dans l'URL (nuqs fusionne en place) → on vérifie la coexistence des
+    // deux params sans dépendre de leur ordre (lookaheads).
+    await page.getByRole('button', { name: /Choisir la période/ }).click();
+    await page.getByRole('button', { name: "Aujourd'hui", exact: true }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/commandes\\?(?=[^#]*shop=${shopA})(?=[^#]*period=today)`),
     );
-    await expect(page).toHaveURL(new RegExp(`/commandes\\?.*shop=${shopA}.*period=today`));
     await expect(page.getByRole('button', { name: 'Toutes (1)' })).toBeVisible();
     await expect(page.getByText('Client Récent A')).toBeVisible();
     await expect(page.getByText('Client Ancien A')).toHaveCount(0);
