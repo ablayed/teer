@@ -1339,6 +1339,12 @@ function reassignErrorMessage(raw: string): string {
   if (raw.includes('order_not_found')) {
     return 'Commande introuvable.';
   }
+  if (raw.includes('reassign movement requires a driver')) {
+    return 'Livreur manquant pour tracer le transfert de stock.';
+  }
+  if (raw.includes('stock_movement_type_check') || raw.includes('unknown stock movement_type')) {
+    return "Réassignation impossible : le suivi de stock n'a pas pu être enregistré.";
+  }
   return 'La réassignation a échoué.';
 }
 

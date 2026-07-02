@@ -10,6 +10,11 @@
 // reserve / release portent aussi un driver_id (transition_order) mais
 // concernent la réserve molle en entrepôt, AVANT que le stock parte chez le
 // livreur — ils sont exclus. purchase_in / manual_adjustment n'ont pas de livreur.
+//
+// reassign_from_driver (qty > 0, entrepôt reprend) / reassign_to_driver
+// (qty < 0, entrepôt confie) suivent la même convention de signe que
+// dispatch/sold : la formule `-qty` ci-dessous déplace le stock de l'ancien
+// livreur (main −qty) vers le nouveau (main +qty) sans changement de code dédié.
 
 export const DRIVER_HAND_MOVEMENT_TYPES = [
   'dispatch',
@@ -17,6 +22,8 @@ export const DRIVER_HAND_MOVEMENT_TYPES = [
   'sold',
   'courier_return',
   'courier_return_lot',
+  'reassign_from_driver',
+  'reassign_to_driver',
 ] as const;
 
 export type DriverHandMovementType = (typeof DRIVER_HAND_MOVEMENT_TYPES)[number];
