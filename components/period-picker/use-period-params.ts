@@ -13,9 +13,14 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // `period` (from/to effacés) ; « Personnalisé » ne porte QUE `from`+`to`.
 export function usePeriodParams() {
   const [isPending, startTransition] = useTransition();
+  // Pas de `withDefault` : on écrit TOUJOURS le token explicite (y compris 30j).
+  // Sinon nuqs retirerait `period` de l'URL pour le défaut, et sur /finances la
+  // persistence localStorage (FinancePeriodPersistence) restaurerait aussitôt le
+  // dernier preset non-défaut → 30j deviendrait inatteignable. Le défaut serveur
+  // (30j quand `period` absent) est répliqué ici via `period ?? '30j'`.
   const [{ period, from, to }, setParams] = useQueryStates(
     {
-      period: parseAsStringLiteral(PERIOD_PRESETS).withDefault('30j'),
+      period: parseAsStringLiteral(PERIOD_PRESETS),
       from: parseAsString,
       to: parseAsString,
     },
@@ -25,11 +30,11 @@ export function usePeriodParams() {
   const validFrom = from && DATE_RE.test(from) ? from : null;
   const validTo = to && DATE_RE.test(to) ? to : null;
   const isCustom = Boolean(validFrom && validTo);
-  const active: ActivePeriod = isCustom ? 'custom' : period;
+  const active: ActivePeriod = isCustom ? 'custom' : (period ?? '30j');
 
   const selectPreset = (preset: PeriodPreset) => {
     // Efface les bornes : sinon `resolvePeriodRange` privilégie from/to et le clic
-    // du preset est ignoré. nuqs retire `period` de l'URL quand il vaut le défaut.
+    // du preset est ignoré.
     void setParams({ period: preset, from: null, to: null });
   };
 

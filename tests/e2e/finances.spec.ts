@@ -478,7 +478,7 @@ test('COGS réel sur commande encaissée à coût connu → marge brute < 100 %'
   }
 });
 
-test('filtres période : les presets rechargent réellement (7j/30j/90j)', async ({ page }) => {
+test('filtres période : les presets du PeriodPicker rechargent réellement', async ({ page }) => {
   const fixture = await createOwnerFixture('presets');
   try {
     await signIn(page, fixture.email, '/finances');
@@ -486,13 +486,23 @@ test('filtres période : les presets rechargent réellement (7j/30j/90j)', async
       page.getByText(messages.finance.kpis.caUnified, { exact: true }).first(),
     ).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole('link', { name: messages.finance.periods['7j'], exact: true }).click();
+    // Nouveau composant : un trigger compact ouvre la surface (Popover desktop /
+    // Drawer mobile) ; chaque preset s'applique en 1 tap et referme la surface.
+    const trigger = page.getByRole('button', { name: /Choisir la période/ });
+    const presets = messages.periodPicker.presets;
+
+    await trigger.click();
+    await page.getByRole('button', { name: presets['7j'], exact: true }).click();
     await expect(page).toHaveURL(/period=7j/);
 
-    await page.getByRole('link', { name: messages.finance.periods['90j'], exact: true }).click();
+    await trigger.click();
+    await page.getByRole('button', { name: presets['90j'], exact: true }).click();
     await expect(page).toHaveURL(/period=90j/);
 
-    await page.getByRole('link', { name: messages.finance.periods['30j'], exact: true }).click();
+    // 30j est le défaut mais reste écrit explicitement (cf. persistence localStorage
+    // /finances) → l'URL porte bien period=30j, pas d'effacement du param.
+    await trigger.click();
+    await page.getByRole('button', { name: presets['30j'], exact: true }).click();
     await expect(page).toHaveURL(/period=30j/);
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
