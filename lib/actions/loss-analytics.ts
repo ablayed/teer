@@ -93,6 +93,33 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
     ]);
 
     if (ordersResult.error || auditResult.error || reliabilityResult.error) {
+      // DIAG (temporaire, branche diag/analyses-error-logging) : identifier QUELLE
+      // requête du bloc 1 échoue. Ne change PAS la logique de retour.
+      // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
+      console.error(
+        '[loss-analytics] bloc 1 échec',
+        JSON.stringify({
+          merchantId,
+          orders: ordersResult.error
+            ? {
+                message: ordersResult.error.message,
+                code: ordersResult.error.code,
+                details: ordersResult.error.details,
+                hint: ordersResult.error.hint,
+              }
+            : null,
+          audit: auditResult.error
+            ? {
+                message: auditResult.error.message,
+                code: auditResult.error.code,
+                details: auditResult.error.details,
+                hint: auditResult.error.hint,
+              }
+            : null,
+          // reliabilityResult.error est une string (normalisée dans listRepeatedRefusers), pas un PostgrestError.
+          reliability: reliabilityResult.error ?? null,
+        }),
+      );
       return { ok: false as const, errorCode: 'data_error' as const };
     }
 
@@ -124,48 +151,98 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
     ]);
 
     if (orderLinesResult.error || customersResult.error || driversResult.error) {
+      // DIAG (temporaire, branche diag/analyses-error-logging) : identifier QUELLE
+      // requête du bloc 2 échoue. Ne change PAS la logique de retour.
+      // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
+      console.error(
+        '[loss-analytics] bloc 2 échec',
+        JSON.stringify({
+          merchantId,
+          orderLines: orderLinesResult.error
+            ? {
+                message: orderLinesResult.error.message,
+                code: orderLinesResult.error.code,
+                details: orderLinesResult.error.details,
+                hint: orderLinesResult.error.hint,
+              }
+            : null,
+          customers: customersResult.error
+            ? {
+                message: customersResult.error.message,
+                code: customersResult.error.code,
+                details: customersResult.error.details,
+                hint: customersResult.error.hint,
+              }
+            : null,
+          drivers: driversResult.error
+            ? {
+                message: driversResult.error.message,
+                code: driversResult.error.code,
+                details: driversResult.error.details,
+                hint: driversResult.error.hint,
+              }
+            : null,
+        }),
+      );
       return { ok: false as const, errorCode: 'data_error' as const };
     }
 
-    const analytics = computeLossAnalytics({
-      auditLogs: (auditResult.data ?? []).map((row) => ({
-        createdAt: row.created_at,
-        payload: row.payload,
-        resourceId: row.resource_id,
-      })),
-      customers: (customersResult.data ?? []).map((row) => ({
-        address: row.address,
-        fullName: row.full_name,
-        id: row.id,
-        shippingAddress: row.shipping_address,
-      })),
-      drivers: (driversResult.data ?? []).map((row) => ({
-        fullName: row.full_name,
-        id: row.id,
-      })),
-      fromISO: from,
-      orderLines: (orderLinesResult.data ?? []).map((row) => ({
-        matchStatus: row.match_status,
-        orderId: row.order_id,
-        productId: row.product_id,
-        qty: row.qty,
-        rawSku: row.raw_sku,
-        rawTitle: row.raw_title,
-      })),
-      orders: orders.map((row) => ({
-        assignedDriverId: row.assigned_driver_id,
-        cancelReason: row.cancel_reason,
-        createdAt: row.created_at,
-        customerId: row.customer_id,
-        deliveryState: row.delivery_state,
-        id: row.id,
-        orderState: row.order_state,
-        returnedAt: row.returned_at,
-        source: row.source,
-      })),
-      reliability: reliabilityResult.data,
-      toISO: to,
-    });
+    let analytics: ReturnType<typeof computeLossAnalytics>;
+    try {
+      analytics = computeLossAnalytics({
+        auditLogs: (auditResult.data ?? []).map((row) => ({
+          createdAt: row.created_at,
+          payload: row.payload,
+          resourceId: row.resource_id,
+        })),
+        customers: (customersResult.data ?? []).map((row) => ({
+          address: row.address,
+          fullName: row.full_name,
+          id: row.id,
+          shippingAddress: row.shipping_address,
+        })),
+        drivers: (driversResult.data ?? []).map((row) => ({
+          fullName: row.full_name,
+          id: row.id,
+        })),
+        fromISO: from,
+        orderLines: (orderLinesResult.data ?? []).map((row) => ({
+          matchStatus: row.match_status,
+          orderId: row.order_id,
+          productId: row.product_id,
+          qty: row.qty,
+          rawSku: row.raw_sku,
+          rawTitle: row.raw_title,
+        })),
+        orders: orders.map((row) => ({
+          assignedDriverId: row.assigned_driver_id,
+          cancelReason: row.cancel_reason,
+          createdAt: row.created_at,
+          customerId: row.customer_id,
+          deliveryState: row.delivery_state,
+          id: row.id,
+          orderState: row.order_state,
+          returnedAt: row.returned_at,
+          source: row.source,
+        })),
+        reliability: reliabilityResult.data,
+        toISO: to,
+      });
+    } catch (e) {
+      // DIAG (temporaire, branche diag/analyses-error-logging) : capturer une exception
+      // jetée par computeLossAnalytics AVEC la donnée fautive, puis re-jeter pour
+      // qu'elle remonte à handleServerError/Sentry.
+      // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
+      console.error(
+        '[loss-analytics] computeLossAnalytics a jeté',
+        JSON.stringify({
+          merchantId,
+          message: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack : undefined,
+        }),
+      );
+      throw e;
+    }
 
     return { ok: true as const, analytics };
   });
