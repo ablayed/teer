@@ -3,6 +3,8 @@
 import { PendingSpinner } from '@/components/app-shell/pending-spinner';
 import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
 import { DriverLotForm } from '@/components/drivers/driver-lot-form';
+import { PeriodPicker } from '@/components/period-picker/period-picker';
+import { usePeriodParams } from '@/components/period-picker/use-period-params';
 import { ResourceRow } from '@/components/ui/resource-row';
 import type {
   DriverCashData,
@@ -14,12 +16,8 @@ import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { Phone } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { parseAsString, useQueryStates } from 'nuqs';
 import { useEffect, useState, useTransition } from 'react';
-
-type Period = 'today' | '7j' | '30j';
-
-const PERIODS = ['today', '7j', '30j'] as const;
 
 type DriverRow = { id: string; full_name: string; phone: string; is_active: boolean };
 
@@ -35,7 +33,7 @@ type DriverDetail = {
 type DriversWorkspaceProps = {
   detail: DriverDetail | null;
   drivers: DriverRow[];
-  period: Period;
+  periodKey: string;
   selected: DriverRow | null;
   selectedId: string | null;
 };
@@ -56,74 +54,36 @@ function statCard(label: string, value: string, accent?: boolean) {
 export function DriversWorkspace({
   detail,
   drivers,
-  period,
+  periodKey,
   selected,
   selectedId,
 }: DriversWorkspaceProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [pendingSelection, setPendingSelection] = useState<{
-    driverId: string;
-    period: Period;
-  } | null>(null);
-  const [isTransitionPending, startTransition] = useTransition();
+  const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
+  const [isDriverTransitionPending, startDriverTransition] = useTransition();
+  // Seule source d'écriture URL pour `driver` (nuqs) : merge en place, ne touche
+  // jamais period/from/to (écrits séparément par <PeriodPicker>, même mécanisme).
+  const [, setDriverParams] = useQueryStates(
+    { driver: parseAsString },
+    { history: 'push', shallow: false, scroll: false, startTransition: startDriverTransition },
+  );
+  const { isPending: isPeriodPending } = usePeriodParams();
 
-  const effectiveDriverId = pendingSelection?.driverId ?? selectedId;
-  const effectivePeriod = pendingSelection?.period ?? period;
-  const isBusy = isTransitionPending || pendingSelection !== null;
+  const effectiveDriverId = pendingDriverId ?? selectedId;
+  const isBusy = isDriverTransitionPending || pendingDriverId !== null || isPeriodPending;
 
   useEffect(() => {
-    if (
-      pendingSelection !== null &&
-      pendingSelection.driverId === selectedId &&
-      pendingSelection.period === period
-    ) {
-      setPendingSelection(null);
+    if (pendingDriverId !== null && pendingDriverId === selectedId) {
+      setPendingDriverId(null);
     }
-  }, [pendingSelection, period, selectedId]);
-
-  function buildNextUrl(nextDriverId: string | null, nextPeriod: Period) {
-    const nextParams = new URLSearchParams(searchParams.toString());
-
-    if (nextDriverId) {
-      nextParams.set('driver', nextDriverId);
-    } else {
-      nextParams.delete('driver');
-    }
-
-    nextParams.set('period', nextPeriod);
-
-    const query = nextParams.toString();
-    return query ? `${pathname}?${query}` : pathname;
-  }
+  }, [pendingDriverId, selectedId]);
 
   function handleSelectDriver(driverId: string) {
     if (driverId === effectiveDriverId) {
       return;
     }
 
-    setPendingSelection({ driverId, period: effectivePeriod });
-    startTransition(() => {
-      router.replace(buildNextUrl(driverId, effectivePeriod), { scroll: false });
-    });
-  }
-
-  function handleSelectPeriod(nextPeriod: Period) {
-    if (nextPeriod === effectivePeriod) {
-      return;
-    }
-
-    const nextDriverId = effectiveDriverId ?? selectedId;
-
-    if (!nextDriverId) {
-      return;
-    }
-
-    setPendingSelection({ driverId: nextDriverId, period: nextPeriod });
-    startTransition(() => {
-      router.replace(buildNextUrl(nextDriverId, nextPeriod), { scroll: false });
-    });
+    setPendingDriverId(driverId);
+    void setDriverParams({ driver: driverId });
   }
 
   return (
@@ -136,7 +96,7 @@ export function DriversWorkspace({
         ) : (
           drivers.map((driver) => {
             const active = driver.id === effectiveDriverId;
-            const pending = pendingSelection?.driverId === driver.id;
+            const pending = pendingDriverId === driver.id;
 
             return (
               <button
@@ -203,49 +163,37 @@ export function DriversWorkspace({
                   {selected.phone}
                 </p>
               </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  selected.is_active ? 'bg-success-subtle text-success' : 'bg-canvas text-muted'
-                }`}
-              >
-                {selected.is_active ? 'Actif' : 'Inactif'}
-              </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    selected.is_active ? 'bg-success-subtle text-success' : 'bg-canvas text-muted'
+                  }`}
+                >
+                  {selected.is_active ? 'Actif' : 'Inactif'}
+                </span>
+                {/* Un seul PeriodPicker en haut du panneau, avant toutes les cards : il
+                    scope Cash (collecté/frais), Performance ET Commandes assignées.
+                    Cash chez le livreur / Écart non résolu restent all-time (solde de
+                    réconciliation, jamais périodique) et Stock en main est un instantané
+                    (non historisable) — les deux sont volontairement hors filtre. */}
+                <PeriodPicker align="end" />
+              </div>
             </header>
 
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold">Cash</h3>
-                <div className="flex rounded-lg border border-border bg-surface p-1 shadow-1">
-                  {PERIODS.map((nextPeriod) => {
-                    const active = effectivePeriod === nextPeriod;
-
-                    return (
-                      <button
-                        className={`grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium md:min-h-9 ${
-                          active ? 'bg-accent text-[#111]' : 'text-muted hover:text-text'
-                        }`}
-                        aria-pressed={active}
-                        key={nextPeriod}
-                        onClick={() => handleSelectPeriod(nextPeriod)}
-                        type="button"
-                      >
-                        {nextPeriod === 'today'
-                          ? "Aujourd'hui"
-                          : nextPeriod === '7j'
-                            ? '7 jours'
-                            : '30 jours'}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              {/* key={selected.id} : on remonte le panneau au changement de livreur
-                  pour réinitialiser son état cash depuis la donnée serveur fraîche. */}
+              <h3 className="text-lg font-semibold">Cash</h3>
+              {/* key inclut livreur + périodKey (prop SERVEUR, pas usePeriodParams() —
+                  ce hook reflète l'état nuqs optimiste, mis à jour AVANT que le RSC
+                  n'ait fini de refetch ; remonter sur ce signal capture encore le
+                  prop `detail.cash` périmé dans le useState initial. periodKey ne
+                  change qu'une fois le serveur confirmé → remount avec la valeur
+                  fraîche garantie. Collecté/frais sont scopés à la période
+                  (getDriverCashConsolidation). */}
               <DriverCashPanel
                 driverId={selected.id}
                 initialCash={detail.cash}
                 initialHistory={detail.history}
-                key={selected.id}
+                key={`${selected.id}-${periodKey}`}
               />
             </section>
 

@@ -11,28 +11,16 @@ import {
   getDriverSettlementHistory,
   getDriverStockOnHand,
 } from '@/lib/actions/drivers';
+import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { LockKeyhole } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 type LivreursPageProps = {
-  searchParams: Promise<{ driver?: string; period?: string }>;
+  searchParams: Promise<{ driver?: string; from?: string; period?: string; to?: string }>;
 };
 
 type DriverRow = { id: string; full_name: string; phone: string; is_active: boolean };
-
-const PERIODS = ['today', '7j', '30j'] as const;
-type Period = (typeof PERIODS)[number];
-
-function periodRange(period: Period): { from: string; to: string } {
-  const now = new Date();
-  const to = now;
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  if (period === '7j') from.setDate(from.getDate() - 6);
-  else if (period === '30j') from.setDate(from.getDate() - 29);
-  return { from: from.toISOString(), to: to.toISOString() };
-}
 
 async function getCurrentMember() {
   const supabase = await createSupabaseServerClient();
@@ -82,9 +70,6 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     .order('full_name');
 
   const drivers = (driversData ?? []) as DriverRow[];
-  const period: Period = PERIODS.includes(params.period as Period)
-    ? (params.period as Period)
-    : '30j';
   const selectedId =
     params.driver && drivers.some((d) => d.id === params.driver) ? params.driver : null;
   const selected = drivers.find((d) => d.id === selectedId) ?? null;
@@ -99,10 +84,17 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
   } | null = null;
 
   if (selected) {
-    const range = periodRange(period);
+    const { from, to } = resolvePeriodRange({
+      allowedPresets: PERIOD_PRESETS,
+      defaultPreset: '30j',
+      from: params.from,
+      period: params.period,
+      to: params.to,
+    });
+    const range = { from: from.toISOString(), to: to.toISOString() };
     const [stock, cash, history, perf, productsResult, ordersResult] = await Promise.all([
       getDriverStockOnHand(selected.id),
-      getDriverCashConsolidation(selected.id),
+      getDriverCashConsolidation(selected.id, range),
       getDriverSettlementHistory(selected.id),
       getDriverPerformance(selected.id, range),
       supabase
@@ -116,6 +108,8 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
         .select('id, order_number, cod_status, total_amount')
         .eq('merchant_account_id', merchantAccountId)
         .eq('assigned_driver_id', selected.id)
+        .gte('created_at', range.from)
+        .lt('created_at', range.to)
         .order('updated_at', { ascending: false })
         .limit(50),
     ]);
@@ -149,7 +143,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
       <DriversWorkspace
         detail={detail}
         drivers={drivers}
-        period={period}
+        periodKey={`${params.period ?? ''}|${params.from ?? ''}|${params.to ?? ''}`}
         selected={selected}
         selectedId={selectedId}
       />
