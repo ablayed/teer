@@ -3,21 +3,9 @@
 import { Button } from '@/components/ui/button';
 import type { ActivePeriod, PeriodPreset } from '@/lib/periods/date-range';
 import { cn } from '@/lib/utils';
-import { format, parseISO } from 'date-fns';
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import dynamic from 'next/dynamic';
-import { useMemo, useState } from 'react';
-import type { DateRange } from 'react-day-picker';
-
-// Calendrier chargé UNIQUEMENT à l'ouverture de « Personnalisé » (react-day-picker
-// + date-fns + sa CSS ne pèsent pas sur l'usage courant des presets).
-const Calendar = dynamic(() => import('@/components/ui/calendar').then((m) => m.Calendar), {
-  ssr: false,
-  loading: () => (
-    <div aria-hidden="true" className="h-[19rem] w-full animate-pulse rounded-md bg-canvas" />
-  ),
-});
+import { useState } from 'react';
 
 type PeriodPickerBodyProps = {
   active: ActivePeriod;
@@ -28,10 +16,6 @@ type PeriodPickerBodyProps = {
   presets: readonly PeriodPreset[];
   to: string | null;
 };
-
-function toISO(date: Date): string {
-  return format(date, 'yyyy-MM-dd');
-}
 
 export function PeriodPickerBody({
   active,
@@ -47,18 +31,7 @@ export function PeriodPickerBody({
   const [draftFrom, setDraftFrom] = useState(from ?? '');
   const [draftTo, setDraftTo] = useState(to ?? '');
 
-  const range = useMemo<DateRange | undefined>(() => {
-    const start = draftFrom ? parseISO(draftFrom) : undefined;
-    const end = draftTo ? parseISO(draftTo) : undefined;
-    return start ? { from: start, to: end } : undefined;
-  }, [draftFrom, draftTo]);
-
   const canApply = Boolean(draftFrom && draftTo && draftFrom <= draftTo);
-
-  const handleRangeSelect = (next: DateRange | undefined) => {
-    setDraftFrom(next?.from ? toISO(next.from) : '');
-    setDraftTo(next?.to ? toISO(next.to) : '');
-  };
 
   const handleApplyCustom = () => {
     if (!canApply) {
@@ -133,18 +106,8 @@ export function PeriodPickerBody({
               />
             </label>
           </div>
-          <div className="mt-2 flex justify-center" data-vaul-no-drag>
-            <Calendar
-              defaultMonth={range?.from}
-              disabled={{ after: new Date() }}
-              mode="range"
-              numberOfMonths={1}
-              onSelect={handleRangeSelect}
-              selected={range}
-            />
-          </div>
           <Button
-            className="mt-2 w-full"
+            className="mt-3 w-full"
             disabled={!canApply}
             onClick={handleApplyCustom}
             size="sm"

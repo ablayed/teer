@@ -42,7 +42,6 @@
     "nuqs": "^2.9.0",
     "posthog-js": "^1.200.0",
     "react": "^19.0.0",
-    "react-day-picker": "^10.0.1",
     "react-dom": "^19.0.0",
     "recharts": "^3.8.1",
     "resend": "^4.0.0",
