@@ -264,9 +264,16 @@ export async function getDriverCashConsolidation(
     return { ok: true, consolidation };
   }
 
-  const periodOrders = (orders ?? []).filter(
-    (o) => o.created_at >= period.from && o.created_at < period.to,
-  );
+  // Comparaison en timestamps (Date), jamais en string : Postgres renvoie created_at
+  // en "...+00:00" (microsecondes), period.from/to sont des .toISOString() JS
+  // ("...Z", millisecondes) — comparer les strings brutes trie incorrectement selon
+  // la plage (bug constaté : « Aujourd'hui » scopait mal les cards cash).
+  const periodFromMs = new Date(period.from).getTime();
+  const periodToMs = new Date(period.to).getTime();
+  const periodOrders = (orders ?? []).filter((o) => {
+    const createdMs = new Date(o.created_at).getTime();
+    return createdMs >= periodFromMs && createdMs < periodToMs;
+  });
   const periodConsolidation = deriveDriverCashConsolidation({
     orders: periodOrders.map(toConsolidationOrder),
     remittedMinor: 0,

@@ -134,12 +134,13 @@ async function seedDeliveredCashOrder(
   merchantAccountId: string,
   driverId: string,
   totalAmount: number,
+  createdAt?: string,
 ) {
   const { data, error } = await admin
     .from('orders')
     .insert({
       merchant_account_id: merchantAccountId,
-      order_number: `E2E-LIV-${Date.now()}`,
+      order_number: `E2E-LIV-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       total_amount: totalAmount,
       currency: 'XOF',
       cod_status: 'LIVREE',
@@ -150,6 +151,7 @@ async function seedDeliveredCashOrder(
       assigned_driver_id: driverId,
       payment_channel_at_delivery: 'ESPECES',
       cash_collectable_minor: totalAmount,
+      ...(createdAt ? { created_at: createdAt } : {}),
     })
     .select('id')
     .single();
@@ -434,6 +436,96 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
       .select('allocated_minor')
       .eq('merchant_account_id', fixture.merchantAccountId);
     expect((allocations ?? []).reduce((s, a) => s + a.allocated_minor, 0)).toBe(12000);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('cash livreur: le filtre période exclut réellement les commandes hors plage (Cash total collecté)', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cash-period');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Fatou Period');
+  const oldDate = new Date();
+  oldDate.setDate(oldDate.getDate() - 60);
+  await seedDeliveredCashOrder(
+    fixture.admin,
+    fixture.merchantAccountId,
+    driverId,
+    15000,
+    oldDate.toISOString(),
+  );
+  await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 20000);
+
+  try {
+    // period=today : seule la commande créée à l'instant doit compter (20 000),
+    // pas celle vieille de 60 jours (15 000) — régression du bug de comparaison
+    // de strings (created_at Postgres "+00:00" vs .toISOString() JS "Z").
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=today`);
+
+    await expect(page.getByRole('heading', { name: 'Fatou Period' })).toBeVisible();
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /20\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+
+    // period=90j : les deux commandes comptent (35 000).
+    await page.goto(`/livreurs?driver=${driverId}&period=90j`);
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /35\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('cash livreur: cliquer un preset du PeriodPicker recharge réellement les cards cash', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cash-picker-click');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Modou Click');
+  // 10 jours : dans la fenêtre 30j (défaut), hors de la fenêtre « Aujourd'hui ».
+  const tenDaysAgo = new Date();
+  tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+  await seedDeliveredCashOrder(
+    fixture.admin,
+    fixture.merchantAccountId,
+    driverId,
+    15000,
+    tenDaysAgo.toISOString(),
+  );
+  await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 20000);
+
+  try {
+    const performanceDelivered = () =>
+      page.locator('section').filter({ hasText: 'Performance' }).getByText('2', { exact: true });
+
+    // Défaut 30j au chargement : les deux commandes comptent (35 000, 2 livrées).
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}`);
+    await expect(page.getByRole('heading', { name: 'Modou Click' })).toBeVisible();
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /35\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+    await expect(performanceDelivered()).toBeVisible({ timeout: 15_000 });
+
+    // Clic réel sur le trigger + preset « Aujourd'hui » (flux utilisateur, pas un
+    // page.goto direct) : ne doit garder que la commande créée à l'instant
+    // (20 000, 1 livrée). Vérifie Performance ET Cash : si seul Cash reste figé,
+    // le bug est dans DriverCashPanel, pas dans la navigation nuqs elle-même.
+    const trigger = page.getByRole('button', { name: /Choisir la période/ });
+    const presets = messages.periodPicker.presets;
+    await trigger.click();
+    await page.getByRole('button', { name: presets.today, exact: true }).click();
+    await expect(page).toHaveURL(/period=today/);
+    await expect(
+      page.locator('section').filter({ hasText: 'Performance' }).getByText('1', { exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /20\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

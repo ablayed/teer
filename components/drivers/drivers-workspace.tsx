@@ -33,6 +33,7 @@ type DriverDetail = {
 type DriversWorkspaceProps = {
   detail: DriverDetail | null;
   drivers: DriverRow[];
+  periodKey: string;
   selected: DriverRow | null;
   selectedId: string | null;
 };
@@ -50,7 +51,13 @@ function statCard(label: string, value: string, accent?: boolean) {
   );
 }
 
-export function DriversWorkspace({ detail, drivers, selected, selectedId }: DriversWorkspaceProps) {
+export function DriversWorkspace({
+  detail,
+  drivers,
+  periodKey,
+  selected,
+  selectedId,
+}: DriversWorkspaceProps) {
   const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
   const [isDriverTransitionPending, startDriverTransition] = useTransition();
   // Seule source d'écriture URL pour `driver` (nuqs) : merge en place, ne touche
@@ -59,12 +66,7 @@ export function DriversWorkspace({ detail, drivers, selected, selectedId }: Driv
     { driver: parseAsString },
     { history: 'push', shallow: false, scroll: false, startTransition: startDriverTransition },
   );
-  const {
-    active: activePeriod,
-    from: periodFrom,
-    isPending: isPeriodPending,
-    to: periodTo,
-  } = usePeriodParams();
+  const { isPending: isPeriodPending } = usePeriodParams();
 
   const effectiveDriverId = pendingDriverId ?? selectedId;
   const isBusy = isDriverTransitionPending || pendingDriverId !== null || isPeriodPending;
@@ -161,26 +163,37 @@ export function DriversWorkspace({ detail, drivers, selected, selectedId }: Driv
                   {selected.phone}
                 </p>
               </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  selected.is_active ? 'bg-success-subtle text-success' : 'bg-canvas text-muted'
-                }`}
-              >
-                {selected.is_active ? 'Actif' : 'Inactif'}
-              </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    selected.is_active ? 'bg-success-subtle text-success' : 'bg-canvas text-muted'
+                  }`}
+                >
+                  {selected.is_active ? 'Actif' : 'Inactif'}
+                </span>
+                {/* Un seul PeriodPicker en haut du panneau, avant toutes les cards : il
+                    scope Cash (collecté/frais), Performance ET Commandes assignées.
+                    Cash chez le livreur / Écart non résolu restent all-time (solde de
+                    réconciliation, jamais périodique) et Stock en main est un instantané
+                    (non historisable) — les deux sont volontairement hors filtre. */}
+                <PeriodPicker align="end" />
+              </div>
             </header>
 
             <section className="space-y-3">
               <h3 className="text-lg font-semibold">Cash</h3>
-              {/* key inclut livreur + période : collecté/frais sont scopés à la période
-                  (getDriverCashConsolidation) → un changement de période doit aussi
-                  remonter le panneau pour resynchroniser son état avec le prop serveur
-                  frais, sinon useState(initialCash) reste figé sur l'ancienne période. */}
+              {/* key inclut livreur + périodKey (prop SERVEUR, pas usePeriodParams() —
+                  ce hook reflète l'état nuqs optimiste, mis à jour AVANT que le RSC
+                  n'ait fini de refetch ; remonter sur ce signal capture encore le
+                  prop `detail.cash` périmé dans le useState initial. periodKey ne
+                  change qu'une fois le serveur confirmé → remount avec la valeur
+                  fraîche garantie. Collecté/frais sont scopés à la période
+                  (getDriverCashConsolidation). */}
               <DriverCashPanel
                 driverId={selected.id}
                 initialCash={detail.cash}
                 initialHistory={detail.history}
-                key={`${selected.id}-${activePeriod}-${periodFrom ?? ''}-${periodTo ?? ''}`}
+                key={`${selected.id}-${periodKey}`}
               />
             </section>
 
@@ -239,10 +252,7 @@ export function DriversWorkspace({ detail, drivers, selected, selectedId }: Driv
             </section>
 
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold">Performance</h3>
-                <PeriodPicker align="end" />
-              </div>
+              <h3 className="text-lg font-semibold">Performance</h3>
               {!detail.perf.ok ? (
                 <p className="text-sm text-danger">{detail.perf.message}</p>
               ) : (

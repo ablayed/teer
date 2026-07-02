@@ -143,6 +143,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
       <DriversWorkspace
         detail={detail}
         drivers={drivers}
+        periodKey={`${params.period ?? ''}|${params.from ?? ''}|${params.to ?? ''}`}
         selected={selected}
         selectedId={selectedId}
       />
