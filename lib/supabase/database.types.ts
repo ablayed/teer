@@ -1853,6 +1853,15 @@ export type Database = {
         Args: { p_merchant_id: string; p_shop_id?: string };
         Returns: Json;
       };
+      get_loss_analytics_joins: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: Json;
+      };
       ia_count_recent_tool_calls: {
         Args: { p_merchant_account_id: string; p_since: string };
         Returns: number;

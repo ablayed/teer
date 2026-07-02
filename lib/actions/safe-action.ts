@@ -2,6 +2,7 @@ import { reportAuthorizationFailure } from '@/lib/security/authz-audit';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole, teamRoles } from '@/lib/team/permissions';
+import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSafeActionClient } from 'next-safe-action';
 import { z } from 'zod';
@@ -16,7 +17,21 @@ export const actionClient = createSafeActionClient({
       section: z.string(),
     });
   },
-  handleServerError() {
+  handleServerError(error, utils) {
+    // DIAG (temporaire, branche diag/analyses-error-logging) : révéler l'exception
+    // avalée par next-safe-action. Ne change PAS la valeur de retour opaque.
+    // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
+    console.error(
+      '[action-error]',
+      JSON.stringify({
+        actionName: utils?.metadata?.actionName,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      }),
+    );
+    Sentry.captureException(error, {
+      extra: { actionName: utils?.metadata?.actionName },
+    });
     return 'UNEXPECTED_ERROR';
   },
 });
