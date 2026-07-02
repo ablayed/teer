@@ -537,7 +537,10 @@ test('feedback pending sur changement de livreur (build prod)', async ({ page })
     await expect(driverButton).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('driver-detail-panel')).toHaveAttribute('aria-busy', 'true');
 
-    await page.waitForURL(new RegExp(`driver=${driverBId}.*period=30j`));
+    // Ordre des params non garanti : `driver` (nuqs) et `period` (PeriodPicker, nuqs
+    // séparé) sont deux instances distinctes du même mécanisme d'écriture URL.
+    await page.waitForURL((url) => url.searchParams.get('driver') === driverBId);
+    await expect.poll(() => new URL(page.url()).searchParams.get('period')).toBe('30j');
     await expect(page.getByTestId('driver-detail-panel')).not.toHaveAttribute('aria-busy', 'true');
     await expect(page.getByRole('heading', { name: 'Moussa B' })).toBeVisible();
   } finally {
