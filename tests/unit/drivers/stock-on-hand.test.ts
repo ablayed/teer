@@ -40,6 +40,16 @@ describe('deriveDriverStockOnHand', () => {
     expect(map.get(DRIVER)?.get(PROD_A)).toBe(0);
   });
 
+  it("reassign_from_driver (qty>0) débite l'ancien livreur, reassign_to_driver (qty<0) crédite le nouveau", () => {
+    const map = deriveDriverStockOnHand([
+      mv({ driver_id: DRIVER, movement_type: 'dispatch', qty: -2 }),
+      mv({ driver_id: DRIVER, movement_type: 'reassign_from_driver', qty: 2 }),
+      mv({ driver_id: OTHER, movement_type: 'reassign_to_driver', qty: -2 }),
+    ]);
+    expect(map.get(DRIVER)?.get(PROD_A)).toBe(0);
+    expect(map.get(OTHER)?.get(PROD_A)).toBe(2);
+  });
+
   it('reserve et release sont exclus (réserve entrepôt, pré-dispatch)', () => {
     const map = deriveDriverStockOnHand([
       mv({ movement_type: 'reserve', qty: 5 }),
