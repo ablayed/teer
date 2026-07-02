@@ -133,7 +133,7 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
     try {
       await seedDashboardVisualData(fixture);
       await signInToRoute(page, fixture.email, '/tableau');
-      await expect(page.getByText('Exceptions a traiter')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('Priorités à traiter')).toBeVisible({ timeout: 15_000 });
       await waitForFonts(page);
 
       await expect(page).toHaveScreenshot('tableau.png', {

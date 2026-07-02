@@ -128,6 +128,25 @@ export function compareOrdersForSavedView(
   return orderQueueDate(right).localeCompare(orderQueueDate(left));
 }
 
-export function buildOrderViewHref(viewId: OrderSavedViewId) {
-  return viewId === 'toutes' ? '/commandes' : `/commandes?vue=${viewId}`;
+export function buildOrderViewHref(
+  viewId: OrderSavedViewId,
+  options: { period?: string; shopId?: string | null } = {},
+) {
+  if (viewId === 'toutes' && !options.period && !options.shopId) {
+    return '/commandes';
+  }
+
+  const params = new URLSearchParams();
+  if (viewId !== 'toutes') {
+    params.set('vue', viewId);
+  }
+  if (options.period) {
+    params.set('period', options.period);
+  }
+  if (options.shopId) {
+    params.set('shop', options.shopId);
+  }
+
+  const query = params.toString();
+  return query ? `/commandes?${query}` : '/commandes';
 }

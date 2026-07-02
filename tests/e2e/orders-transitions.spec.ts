@@ -244,6 +244,28 @@ async function createOrderWithCustomer(
     throw orderError;
   }
 
+  // Le seed insère l'état final directement (bypass transition_order) : sans cette ligne,
+  // order_state_transition reste vide pour cette commande — cassant tout code qui borne une
+  // vue Tableau sur la dernière transition (ex. « En cours de livraison » / « Annulées /
+  // Retours », period=7j via order_state_transition.to_status). On simule la transition
+  // d'arrivée dans l'état seedé pour que ces vues restent cohérentes en E2E.
+  const { data: member } = await admin
+    .from('merchant_member')
+    .select('user_id')
+    .eq('merchant_account_id', merchantAccountId)
+    .limit(1)
+    .maybeSingle();
+
+  if (member?.user_id) {
+    await admin.from('order_state_transition').insert({
+      merchant_account_id: merchantAccountId,
+      order_id: order.id,
+      from_status: null,
+      to_status: status,
+      actor_user_id: member.user_id,
+    });
+  }
+
   return order.id as string;
 }
 
