@@ -1,7 +1,6 @@
 'use server';
 
 import { authActionClient } from '@/lib/actions/safe-action';
-import { startOfLocalDay } from '@/lib/domain/order-saved-views';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import type { Database } from '@/lib/supabase/database.types';
@@ -92,7 +91,7 @@ export type DashboardAlert = {
 // commande fiable pour ces 2 lignes, cf. diagnostic Tableau « Priorités à traiter »).
 export type DashboardPriorityCounts = {
   aAppeler: number;
-  aRappelerAujourdhui: number;
+  aRappeler: number;
   enLivraison: number;
   annuleesRetours: number;
 };
@@ -797,29 +796,22 @@ async function fetchPriorityCountsForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  // Agrégation SQL non plafonnée (RPC 0081). Les 3 lignes dé-cappées rapatriaient sinon
-  // orders/order_state_transition sans .limit → tronqué à 1000 (max_rows). Les bornes de dates
-  // restent calculées CÔTE TS (source de vérité, aucune logique de date en SQL) puis passées
-  // en timestamptz :
-  //   - resolvePeriodRange('7j') : fenêtre alignée /commandes?period=7j (début de journée
-  //     locale, pas un now()-7j indépendant) ;
-  //   - startOfLocalDay(now) .. +1 jour : jour métier local, équivalent instant-exact de
-  //     isSameLocalDate pour « à rappeler aujourd'hui ».
+  // Agrégation SQL non plafonnée (RPC 0082). Les compteurs 7j (a_appeler / en_livraison /
+  // annulees_retours) partent des bornes calculées CÔTE TS (source de vérité, aucune logique
+  // de date en SQL) : resolvePeriodRange('7j') = fenêtre alignée /commandes?period=7j.
+  // « À rappeler » (Option A, issue #58) ne filtre plus sur une date : il compte TOUTES les
+  // tentées open+callback (= liste tentee-a-rappeler) car next_contact_at n'est jamais
+  // renseigné par le geste « À rappeler » → l'ancien filtre « aujourd'hui » restait à 0.
   const { from: sinceDate, to: untilDate } = resolvePeriodRange({
     allowedPresets: PERIOD_PRESETS,
     defaultPreset: '7j',
     period: '7j',
   });
-  const todayStart = startOfLocalDay();
-  const todayEnd = new Date(todayStart);
-  todayEnd.setDate(todayEnd.getDate() + 1);
 
   const { data, error } = await supabase.rpc('get_dashboard_priority_counts', {
     p_merchant_id: merchant.merchantAccountId,
     p_since: sinceDate.toISOString(),
     p_until: untilDate.toISOString(),
-    p_today_start: todayStart.toISOString(),
-    p_today_end: todayEnd.toISOString(),
     ...(shopId ? { p_shop_id: shopId } : {}),
   });
 
@@ -833,7 +825,7 @@ async function fetchPriorityCountsForUser({
     ok: true,
     data: {
       aAppeler: numberField(row, 'a_appeler'),
-      aRappelerAujourdhui: numberField(row, 'a_rappeler_aujourdhui'),
+      aRappeler: numberField(row, 'a_rappeler'),
       enLivraison: numberField(row, 'en_livraison'),
       annuleesRetours: numberField(row, 'annulees_retours'),
     },

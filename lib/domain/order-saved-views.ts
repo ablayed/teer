@@ -42,7 +42,7 @@ type OrderListViewShape = Pick<
   | 'order_state'
 >;
 
-export function startOfLocalDay(date = new Date()) {
+function startOfLocalDay(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
