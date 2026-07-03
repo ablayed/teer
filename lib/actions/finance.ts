@@ -10,6 +10,7 @@ import {
 import { buildDriverSettlements } from '@/lib/finance/driver-settlements';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 type SupabaseServerClient = SupabaseClient<Database>;
@@ -185,6 +186,13 @@ export const recordSettlementAction = requireRole('owner', 'manager')
     if (!payload) {
       return { ok: false as const, errorCode: 'settlement_failed' as const };
     }
+
+    // Fraîcheur Tableau (Ticket 2, Volet B — symptôme (a) prouvé) : un versement réduit le
+    // cash chez les livreurs (settlement_allocation), mais le bloc « Cash total chez les
+    // livreurs » (RSC /tableau, getDriversCashOnHandTotal) restait périmé jusqu'à un F5 —
+    // le versement se fait sur /finances, aucun revalidatePath('/tableau') sur ce chemin.
+    // Le panneau Finances, lui, se rafraîchit déjà via Paradigm-A (getDriverSettlementsAction).
+    revalidatePath('/tableau');
 
     return { ok: true as const, ...payload };
   });
