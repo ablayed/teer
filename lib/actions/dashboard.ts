@@ -1,6 +1,14 @@
 'use server';
 
 import { authActionClient } from '@/lib/actions/safe-action';
+import {
+  type DashboardRevenue30d,
+  type DashboardRevenuePoint,
+  type Revenue30dOrder,
+  aggregateRevenue30d,
+  normalizeCurrency,
+  revenue30dLowerBound,
+} from '@/lib/dashboard/revenue-30d';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import type { Database } from '@/lib/supabase/database.types';
@@ -36,15 +44,7 @@ export type DashboardKpiActionResult =
   | { ok: true; data: DashboardKpi }
   | { ok: false; errorCode: 'not_found' | 'rpc_error' };
 
-export type DashboardRevenuePoint = {
-  date: string;
-  value: number;
-};
-
-export type DashboardRevenue30d = {
-  currency: string | null;
-  points: DashboardRevenuePoint[];
-};
+export type { DashboardRevenue30d, DashboardRevenuePoint };
 
 export type DashboardRevenue30dActionResult =
   | { ok: true; data: DashboardRevenue30d }
@@ -161,12 +161,6 @@ function firstRpcRow(value: unknown): DashboardKpiRpcPayload | null {
   return isRecord(row) ? row : null;
 }
 
-function normalizeCurrency(value: string | null | undefined): string | null {
-  const currency = value?.trim().toUpperCase();
-
-  return currency ? currency : null;
-}
-
 function toDashboardKpi(row: DashboardKpiRpcPayload, currency: string | null): DashboardKpi {
   return {
     a_appeler_count: numberFromRpc(row.a_appeler_count),
@@ -199,57 +193,6 @@ async function getMerchantAccountIdForUser({
   }
 
   return { ok: true, merchantAccountId: member.merchant_account_id };
-}
-
-function dateKey(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
-function createEmptyRevenueWindow(today = new Date()): DashboardRevenuePoint[] {
-  return Array.from({ length: 30 }, (_, index) => {
-    const date = new Date(today);
-    date.setUTCHours(0, 0, 0, 0);
-    date.setUTCDate(date.getUTCDate() - (29 - index));
-
-    return { date: dateKey(date), value: 0 };
-  });
-}
-
-function dateFromOrder(value: string | null, fallback: string): Date {
-  return new Date(value ?? fallback);
-}
-
-function aggregateRevenue30d(
-  orders: Array<{
-    created_at: string;
-    created_at_shopify: string | null;
-    currency: string | null;
-    total_amount: number;
-  }>,
-): DashboardRevenue30d {
-  const points = createEmptyRevenueWindow();
-  const pointIndex = new Map(points.map((point, index) => [point.date, index]));
-  const firstPointDate = new Date(`${points[0]?.date ?? dateKey(new Date())}T00:00:00.000Z`);
-  let currency: string | null = null;
-
-  for (const order of orders) {
-    const orderDate = dateFromOrder(order.created_at_shopify, order.created_at);
-
-    if (orderDate < firstPointDate) {
-      continue;
-    }
-
-    const index = pointIndex.get(dateKey(orderDate));
-
-    if (index === undefined) {
-      continue;
-    }
-
-    points[index].value += Number(order.total_amount ?? 0);
-    currency ??= normalizeCurrency(order.currency);
-  }
-
-  return { currency, points };
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | null {
@@ -515,6 +458,15 @@ async function fetchAlertsForUser({
   return { ok: true, data: alerts };
 }
 
+// PostgREST plafonne silencieusement toute requête sans .range()/.limit() à
+// max_rows=1000 (supabase/config.toml:8). Sans borne, ce select all-time (`.limit(5000)`
+// inopérant au-delà de max_rows) tronque aux 1000 LIVREE les plus récentes par created_at →
+// graphe 30j faux dès qu'un tenant dépasse 1000 commandes livrées cumulées (Lot perf 2, H3).
+// `revenue30dLowerBound` borne sur created_at (sûr car created_at ≥ created_at_shopify),
+// puis boucle .range() pour rester exact même si la fenêtre élargie dépasse 1000 lignes
+// sur un très gros tenant.
+const REVENUE_30D_PAGE_SIZE = 500;
+
 async function fetchRevenue30dForUser({
   shopId,
   supabase,
@@ -530,24 +482,39 @@ async function fetchRevenue30dForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  let query = supabase
-    .from('orders')
-    .select('created_at, created_at_shopify, currency, total_amount')
-    .eq('merchant_account_id', merchant.merchantAccountId)
-    .eq('cod_status', 'LIVREE')
-    .order('created_at', { ascending: false });
+  const lowerBound = revenue30dLowerBound();
+  const orders: Revenue30dOrder[] = [];
 
-  if (shopId) {
-    query = query.eq('shop_id', shopId);
+  for (let offset = 0; ; offset += REVENUE_30D_PAGE_SIZE) {
+    let query = supabase
+      .from('orders')
+      .select('created_at, created_at_shopify, currency, total_amount')
+      .eq('merchant_account_id', merchant.merchantAccountId)
+      .eq('cod_status', 'LIVREE')
+      .gte('created_at', lowerBound);
+
+    if (shopId) {
+      query = query.eq('shop_id', shopId);
+    }
+
+    const { data, error } = await query
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + REVENUE_30D_PAGE_SIZE - 1);
+
+    if (error) {
+      return { ok: false, errorCode: 'query_error' };
+    }
+
+    const batch = data ?? [];
+    orders.push(...batch);
+
+    if (batch.length < REVENUE_30D_PAGE_SIZE) {
+      break;
+    }
   }
 
-  const { data, error } = await query.limit(5000);
-
-  if (error) {
-    return { ok: false, errorCode: 'query_error' };
-  }
-
-  return { ok: true, data: aggregateRevenue30d(data ?? []) };
+  return { ok: true, data: aggregateRevenue30d(orders) };
 }
 
 async function fetchDashboardKpiForUser({
