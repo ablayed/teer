@@ -242,6 +242,53 @@ const VIEW_TRANSITION_STATUSES: Partial<Record<OrderSavedViewId, readonly string
   'annulees-retours': ['ANNULEE', 'REFUSEE'],
 };
 
+const TRANSITION_ID_SETS_PAGE_SIZE = 500;
+
+// PostgREST plafonne silencieusement toute requête sans .range()/.limit() à
+// max_rows=1000 (supabase/config.toml:8). Sans pagination, au-delà de 1000 transitions
+// dans la fenêtre le Set order_id est tronqué → des commandes disparaissent des vues
+// en-livraison/annulees-retours alors qu'elles restent comptées par le Tableau (RPC SQL
+// non plafonnée) — violation de « compteur = univers exact du lien » (Lot perf 1, QW2).
+// Boucle .range() par paquets de 500. Tri sur `id` (clé primaire, unique) — order_id
+// N'EST PAS unique ici (une commande peut transiter plusieurs fois vers le même statut),
+// donc un ordre total requiert la PK propre de la ligne, pas order_id (aucun .order() avant).
+async function fetchTransitionOrderIds(
+  supabase: SupabaseServerClient,
+  merchantAccountId: string,
+  toStatuses: readonly string[],
+  dateFrom: string,
+  dateTo: string,
+): Promise<Set<string>> {
+  const orderIds = new Set<string>();
+
+  for (let offset = 0; ; offset += TRANSITION_ID_SETS_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('order_state_transition')
+      .select('order_id')
+      .eq('merchant_account_id', merchantAccountId)
+      .in('to_status', toStatuses)
+      .gte('created_at', dateFrom)
+      .lte('created_at', dateTo)
+      .order('id', { ascending: true })
+      .range(offset, offset + TRANSITION_ID_SETS_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const batch = data ?? [];
+    for (const row of batch) {
+      orderIds.add(row.order_id);
+    }
+
+    if (batch.length < TRANSITION_ID_SETS_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return orderIds;
+}
+
 async function fetchTransitionOrderIdSets(
   supabase: SupabaseServerClient,
   merchantAccountId: string,
@@ -255,19 +302,15 @@ async function fetchTransitionOrderIdSets(
   const entries = await Promise.all(
     (Object.entries(VIEW_TRANSITION_STATUSES) as Array<[OrderSavedViewId, readonly string[]]>).map(
       async ([viewId, toStatuses]) => {
-        const { data, error } = await supabase
-          .from('order_state_transition')
-          .select('order_id')
-          .eq('merchant_account_id', merchantAccountId)
-          .in('to_status', toStatuses)
-          .gte('created_at', dateFrom)
-          .lte('created_at', dateTo);
+        const orderIds = await fetchTransitionOrderIds(
+          supabase,
+          merchantAccountId,
+          toStatuses,
+          dateFrom,
+          dateTo,
+        );
 
-        if (error) {
-          throw error;
-        }
-
-        return [viewId, new Set((data ?? []).map((row) => row.order_id))] as const;
+        return [viewId, orderIds] as const;
       },
     ),
   );

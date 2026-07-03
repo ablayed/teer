@@ -20,6 +20,39 @@ function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
   return client as SupabaseServerClient;
 }
 
+const CAPPED_READ_PAGE_SIZE = 500;
+
+// PostgREST plafonne silencieusement toute requête sans .range()/.limit() à
+// max_rows=1000 (supabase/config.toml:8). Les 2 selects fenêtrés ci-dessous n'avaient
+// aucune pagination : au-delà de 1000 lignes dans la fenêtre, orders/audit_log étaient
+// tronqués sans erreur (Lot perf 1, QW1). On repagine en boucle .range() par paquets de
+// 500 (même pattern que listOrdersForPageData, orders.ts) avec un ordre stable sur `id`
+// requis pour paginer sans trou ni doublon — les deux requêtes n'avaient aucun .order().
+async function fetchAllPages<Row>(
+  queryPage: (
+    offset: number,
+  ) => PromiseLike<{ data: Row[] | null; error: { message: string } | null }>,
+): Promise<{ data: Row[]; error: { message: string } | null }> {
+  const rows: Row[] = [];
+
+  for (let offset = 0; ; offset += CAPPED_READ_PAGE_SIZE) {
+    const { data, error } = await queryPage(offset);
+
+    if (error) {
+      return { data: rows, error };
+    }
+
+    const batch = data ?? [];
+    rows.push(...batch);
+
+    if (batch.length < CAPPED_READ_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return { data: rows, error: null };
+}
+
 function toReliability(row: RepeatedRefuserRow): LossAnalyticsReliability {
   return {
     customerId: row.customer_id,
@@ -86,21 +119,25 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
     const merchantId = ctx.member.merchantAccountId;
     const { from, shopId, to } = parsedInput;
 
-    let ordersQuery = supabase
-      .from('orders')
-      .select(
-        'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at, returned_at',
-      )
-      .eq('merchant_account_id', merchantId)
-      .gte('created_at', from)
-      .lte('created_at', to);
+    const ordersPage = (offset: number) => {
+      let query = supabase
+        .from('orders')
+        .select(
+          'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at, returned_at',
+        )
+        .eq('merchant_account_id', merchantId)
+        .gte('created_at', from)
+        .lte('created_at', to)
+        .order('id', { ascending: true });
 
-    if (shopId) {
-      ordersQuery = ordersQuery.eq('shop_id', shopId);
-    }
+      if (shopId) {
+        query = query.eq('shop_id', shopId);
+      }
 
-    const [ordersResult, auditResult, reliabilityResult] = await Promise.all([
-      ordersQuery,
+      return query.range(offset, offset + CAPPED_READ_PAGE_SIZE - 1);
+    };
+
+    const auditPage = (offset: number) =>
       supabase
         .from('audit_log')
         .select('resource_id, payload, created_at')
@@ -108,7 +145,13 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
         .eq('action', 'order.transition')
         .eq('resource_type', 'orders')
         .gte('created_at', from)
-        .lte('created_at', to),
+        .lte('created_at', to)
+        .order('id', { ascending: true })
+        .range(offset, offset + CAPPED_READ_PAGE_SIZE - 1);
+
+    const [ordersResult, auditResult, reliabilityResult] = await Promise.all([
+      fetchAllPages(ordersPage),
+      fetchAllPages(auditPage),
       listRepeatedRefusers(supabase, merchantId),
     ]);
 
