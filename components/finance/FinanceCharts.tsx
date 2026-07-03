@@ -1,5 +1,6 @@
 'use client';
 
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { formatMoney } from '@/lib/format/fcfa';
 import {
   Area,
@@ -93,6 +94,7 @@ export function FinanceCharts({
   shops,
   shopsTitle,
 }: FinanceChartsProps) {
+  const isDesktop = useIsDesktop();
   const hasRevenue = revenue.some((point) => point.value > 0);
   const hasFunnel = funnel.some((point) => point.count > 0);
   const hasShops = shops.some((point) => point.revenue > 0);
@@ -116,6 +118,8 @@ export function FinanceCharts({
               <XAxis
                 axisLine={false}
                 dataKey="date"
+                interval={isDesktop ? undefined : 'preserveStartEnd'}
+                minTickGap={isDesktop ? 5 : 28}
                 tickFormatter={formatDate}
                 tickLine={false}
                 tick={{ fill: 'var(--muted)', fontFamily: 'var(--font-geist-mono)', fontSize: 12 }}

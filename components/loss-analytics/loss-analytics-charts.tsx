@@ -1,5 +1,6 @@
 'use client';
 
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import type { LossAnalyticsTrendPoint } from '@/lib/loss-analytics/metrics';
 import {
   Area,
@@ -64,6 +65,7 @@ export function LossAnalyticsCharts({
   trendData,
   trendTitle,
 }: LossAnalyticsChartsProps) {
+  const isDesktop = useIsDesktop();
   const hasTrendData = trendData.some((point) => point.rtoDenominator > 0);
   const hasSourceData = sourceData.some((point) => point.rtoRate > 0 || point.cancellationRate > 0);
 
@@ -83,6 +85,8 @@ export function LossAnalyticsCharts({
               <XAxis
                 axisLine={false}
                 dataKey="date"
+                interval={isDesktop ? undefined : 'preserveStartEnd'}
+                minTickGap={isDesktop ? 5 : 28}
                 tickFormatter={formatDate}
                 tickLine={false}
                 tick={{ fill: 'var(--muted)', fontFamily: 'var(--font-geist-mono)', fontSize: 12 }}
