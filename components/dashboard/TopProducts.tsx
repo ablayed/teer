@@ -6,14 +6,25 @@ type TopProductsProps = {
   currency: string | null;
   emptyLabel: string;
   items: DashboardTopProduct[];
+  subtitle?: string;
   title: string;
   unitsLabel: string;
 };
 
-export function TopProducts({ currency, emptyLabel, items, title, unitsLabel }: TopProductsProps) {
+export function TopProducts({
+  currency,
+  emptyLabel,
+  items,
+  subtitle,
+  title,
+  unitsLabel,
+}: TopProductsProps) {
   return (
     <Card className="rounded-lg" padding="lg">
-      <h2 className="mb-5 text-[15px] font-semibold text-text">{title}</h2>
+      <div className="mb-5">
+        <h2 className="text-[15px] font-semibold text-text">{title}</h2>
+        {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
+      </div>
       {items.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-canvas p-4 text-sm text-muted">
           {emptyLabel}

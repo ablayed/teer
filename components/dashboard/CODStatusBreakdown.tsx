@@ -9,6 +9,7 @@ type CODStatusBreakdownProps = {
   definition?: string;
   emptyLabel: string;
   items: DashboardCodBreakdownItem[];
+  subtitle?: string;
   title: string;
 };
 
@@ -27,6 +28,7 @@ export function CODStatusBreakdown({
   definition,
   emptyLabel,
   items,
+  subtitle,
   title,
 }: CODStatusBreakdownProps) {
   const total = items.reduce((sum, item) => sum + item.count, 0);
@@ -34,7 +36,10 @@ export function CODStatusBreakdown({
   return (
     <Card className="rounded-lg" padding="lg">
       <div className="mb-5 flex items-start justify-between gap-2">
-        <h2 className="text-[15px] font-semibold text-text">{title}</h2>
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold text-text">{title}</h2>
+          {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
+        </div>
         {definition ? <DefinitionToggle definition={definition} /> : null}
       </div>
       {total === 0 ? (

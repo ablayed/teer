@@ -9,6 +9,7 @@ type ShopPerformanceProps = {
   emptyLabel: string;
   items: DashboardShopPerformance[];
   ordersLabel: string;
+  subtitle?: string;
   title: string;
   warningLabel: string;
 };
@@ -19,12 +20,16 @@ export function ShopPerformance({
   emptyLabel,
   items,
   ordersLabel,
+  subtitle,
   title,
   warningLabel,
 }: ShopPerformanceProps) {
   return (
     <Card className="rounded-lg" padding="lg">
-      <h2 className="mb-5 text-[15px] font-semibold text-text">{title}</h2>
+      <div className="mb-5">
+        <h2 className="text-[15px] font-semibold text-text">{title}</h2>
+        {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
+      </div>
       {items.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-canvas p-4 text-sm text-muted">
           {emptyLabel}

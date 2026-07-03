@@ -389,11 +389,13 @@
     "blocks": {
       "topProducts": {
         "title": "Produits les plus vendus",
+        "subtitle": "Commandes confirmées à livrées · depuis le début",
         "empty": "Aucun produit vendu pour le moment.",
         "units": "unités"
       },
       "shopPerformance": {
         "title": "Performance par boutique",
+        "subtitle": "Toutes commandes · depuis le début",
         "empty": "Aucune boutique connectée.",
         "connected": "Connectée",
         "warning": "À vérifier",
@@ -401,6 +403,7 @@
       },
       "codBreakdown": {
         "title": "Répartition COD",
+        "subtitle": "Toutes commandes · depuis le début",
         "definition": "COD = paiement à la livraison. La répartition de vos commandes par étape : à appeler, confirmée, programmée, en livraison, livrée, refusée, annulée.",
         "empty": "Aucune commande à afficher."
       },

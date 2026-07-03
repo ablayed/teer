@@ -1849,7 +1849,19 @@ export type Database = {
           tier: string;
         }[];
       };
+      get_dashboard_cod_breakdown: {
+        Args: { p_merchant_id: string; p_shop_id?: string };
+        Returns: Json;
+      };
       get_dashboard_kpi: {
+        Args: { p_merchant_id: string; p_shop_id?: string };
+        Returns: Json;
+      };
+      get_dashboard_shop_performance: {
+        Args: { p_merchant_id: string; p_shop_id?: string };
+        Returns: Json;
+      };
+      get_dashboard_top_products: {
         Args: { p_merchant_id: string; p_shop_id?: string };
         Returns: Json;
       };
