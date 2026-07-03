@@ -1,7 +1,7 @@
 'use server';
 
 import { authActionClient } from '@/lib/actions/safe-action';
-import { isSameLocalDate } from '@/lib/domain/order-saved-views';
+import { startOfLocalDay } from '@/lib/domain/order-saved-views';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import type { Database } from '@/lib/supabase/database.types';
@@ -797,94 +797,45 @@ async function fetchPriorityCountsForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  // Même fenêtre que /commandes?period=7j (resolvePeriodRange), pas un `now() - 7 jours`
-  // indépendant : sinon le lien du Tableau et le compteur peuvent diverger de quelques
-  // heures (resolvePeriodRange tronque au début de journée locale).
+  // Agrégation SQL non plafonnée (RPC 0081). Les 3 lignes dé-cappées rapatriaient sinon
+  // orders/order_state_transition sans .limit → tronqué à 1000 (max_rows). Les bornes de dates
+  // restent calculées CÔTE TS (source de vérité, aucune logique de date en SQL) puis passées
+  // en timestamptz :
+  //   - resolvePeriodRange('7j') : fenêtre alignée /commandes?period=7j (début de journée
+  //     locale, pas un now()-7j indépendant) ;
+  //   - startOfLocalDay(now) .. +1 jour : jour métier local, équivalent instant-exact de
+  //     isSameLocalDate pour « à rappeler aujourd'hui ».
   const { from: sinceDate, to: untilDate } = resolvePeriodRange({
     allowedPresets: PERIOD_PRESETS,
     defaultPreset: '7j',
     period: '7j',
   });
-  const since = sinceDate.toISOString();
-  const until = untilDate.toISOString();
+  const todayStart = startOfLocalDay();
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
 
-  let aAppelerQuery = supabase
-    .from('orders')
-    .select('id', { count: 'exact', head: true })
-    .eq('merchant_account_id', merchant.merchantAccountId)
-    .eq('cod_status', 'A_APPELER')
-    .gte('created_at', since)
-    .lte('created_at', until);
-  if (shopId) {
-    aAppelerQuery = aAppelerQuery.eq('shop_id', shopId);
-  }
+  const { data, error } = await supabase.rpc('get_dashboard_priority_counts', {
+    p_merchant_id: merchant.merchantAccountId,
+    p_since: sinceDate.toISOString(),
+    p_until: untilDate.toISOString(),
+    p_today_start: todayStart.toISOString(),
+    p_today_end: todayEnd.toISOString(),
+    ...(shopId ? { p_shop_id: shopId } : {}),
+  });
 
-  let callbackQuery = supabase
-    .from('orders')
-    .select('next_contact_at')
-    .eq('merchant_account_id', merchant.merchantAccountId)
-    .eq('order_state', 'open')
-    .eq('call_state', 'callback');
-  if (shopId) {
-    callbackQuery = callbackQuery.eq('shop_id', shopId);
-  }
-
-  const transitionQuery = (toStatuses: string[]) =>
-    supabase
-      .from('order_state_transition')
-      .select('order_id, order:order_id(delivery_state, order_state, shop_id)')
-      .eq('merchant_account_id', merchant.merchantAccountId)
-      .in('to_status', toStatuses)
-      .gte('created_at', since)
-      .lte('created_at', until);
-
-  const [aAppelerResult, callbackResult, deliveryResult, cancelledResult] = await Promise.all([
-    aAppelerQuery,
-    callbackQuery,
-    transitionQuery(['EN_LIVRAISON']),
-    transitionQuery(['ANNULEE', 'REFUSEE']),
-  ]);
-
-  if (
-    aAppelerResult.error ||
-    callbackResult.error ||
-    deliveryResult.error ||
-    cancelledResult.error
-  ) {
+  if (error) {
     return { ok: false, errorCode: 'query_error' };
   }
 
-  const aRappelerAujourdhui = (callbackResult.data ?? []).filter((row) =>
-    isSameLocalDate(row.next_contact_at),
-  ).length;
-
-  const enLivraisonOrderIds = new Set(
-    (deliveryResult.data ?? [])
-      .filter(
-        (row) =>
-          row.order?.delivery_state === 'out_for_delivery' &&
-          (!shopId || row.order?.shop_id === shopId),
-      )
-      .map((row) => row.order_id),
-  );
-
-  const annuleesRetoursOrderIds = new Set(
-    (cancelledResult.data ?? [])
-      .filter(
-        (row) =>
-          (row.order?.order_state === 'cancelled' || row.order?.order_state === 'returned') &&
-          (!shopId || row.order?.shop_id === shopId),
-      )
-      .map((row) => row.order_id),
-  );
+  const row = isRecord(data) ? data : {};
 
   return {
     ok: true,
     data: {
-      aAppeler: aAppelerResult.count ?? 0,
-      aRappelerAujourdhui,
-      enLivraison: enLivraisonOrderIds.size,
-      annuleesRetours: annuleesRetoursOrderIds.size,
+      aAppeler: numberField(row, 'a_appeler'),
+      aRappelerAujourdhui: numberField(row, 'a_rappeler_aujourdhui'),
+      enLivraison: numberField(row, 'en_livraison'),
+      annuleesRetours: numberField(row, 'annulees_retours'),
     },
   };
 }

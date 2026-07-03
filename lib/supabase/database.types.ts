@@ -1857,6 +1857,17 @@ export type Database = {
         Args: { p_merchant_id: string; p_shop_id?: string };
         Returns: Json;
       };
+      get_dashboard_priority_counts: {
+        Args: {
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_since: string;
+          p_today_end: string;
+          p_today_start: string;
+          p_until: string;
+        };
+        Returns: Json;
+      };
       get_dashboard_shop_performance: {
         Args: { p_merchant_id: string; p_shop_id?: string };
         Returns: Json;
