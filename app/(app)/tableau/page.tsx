@@ -82,7 +82,7 @@ async function ExceptionsSection({ shopId }: { shopId: string | null }) {
   ]);
   const counts = countsResult.ok
     ? countsResult.data
-    : { aAppeler: 0, aRappelerAujourdhui: 0, annuleesRetours: 0, enLivraison: 0 };
+    : { aAppeler: 0, aRappeler: 0, annuleesRetours: 0, enLivraison: 0 };
   const hrefFor = (viewId: Parameters<typeof buildOrderViewHref>[0]) =>
     buildOrderViewHref(viewId, { period: '7j', shopId });
 
@@ -96,9 +96,9 @@ async function ExceptionsSection({ shopId }: { shopId: string | null }) {
           label: t('rows.aAppeler'),
         },
         {
-          count: counts.aRappelerAujourdhui,
+          count: counts.aRappeler,
           href: buildOrderViewHref('tentee-a-rappeler', { shopId }),
-          label: t('rows.aRappelerAujourdhui'),
+          label: t('rows.aRappeler'),
         },
       ],
     },

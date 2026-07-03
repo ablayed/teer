@@ -422,7 +422,7 @@
         },
         "rows": {
           "aAppeler": "À appeler (7 j)",
-          "aRappelerAujourdhui": "À rappeler aujourd'hui",
+          "aRappeler": "À rappeler",
           "enLivraison": "En cours de livraison (7 j)",
           "annuleesRetours": "Annulées / Retours (7 j)"
         }
