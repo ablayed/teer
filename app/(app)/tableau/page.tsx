@@ -230,6 +230,7 @@ async function TopProductsSection({ shopId }: { shopId: string | null }) {
       currency={kpi?.currency ?? null}
       emptyLabel={t('blocks.topProducts.empty')}
       items={topProducts}
+      subtitle={t('blocks.topProducts.subtitle')}
       title={t('blocks.topProducts.title')}
       unitsLabel={t('blocks.topProducts.units')}
     />
@@ -252,6 +253,7 @@ async function ShopPerformanceSection({ shopId }: { shopId: string | null }) {
       emptyLabel={t('blocks.shopPerformance.empty')}
       items={shopPerformance}
       ordersLabel={t('blocks.shopPerformance.orders')}
+      subtitle={t('blocks.shopPerformance.subtitle')}
       title={t('blocks.shopPerformance.title')}
       warningLabel={t('blocks.shopPerformance.warning')}
     />
@@ -270,6 +272,7 @@ async function CodBreakdownSection({ shopId }: { shopId: string | null }) {
       definition={t('blocks.codBreakdown.definition')}
       emptyLabel={t('blocks.codBreakdown.empty')}
       items={codBreakdown}
+      subtitle={t('blocks.codBreakdown.subtitle')}
       title={t('blocks.codBreakdown.title')}
     />
   );

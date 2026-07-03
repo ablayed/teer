@@ -266,30 +266,8 @@ function numberField(record: Record<string, unknown>, key: string): number {
   return Number.isFinite(numericValue) ? numericValue : 0;
 }
 
-function parseItems(value: unknown): Array<{ price: number; quantity: number; title: string }> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((item) => {
-      if (!isRecord(item)) {
-        return null;
-      }
-
-      const title = stringField(item, 'title');
-
-      if (!title) {
-        return null;
-      }
-
-      return {
-        title,
-        quantity: numberField(item, 'quantity'),
-        price: numberField(item, 'price'),
-      };
-    })
-    .filter((item): item is { price: number; quantity: number; title: string } => item !== null);
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 async function fetchTopProductsForUser({
@@ -307,39 +285,27 @@ async function fetchTopProductsForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  let query = supabase
-    .from('orders')
-    .select('items_summary')
-    .eq('merchant_account_id', merchant.merchantAccountId)
-    .in('cod_status', ['CONFIRMEE', 'PROGRAMMEE', 'EN_LIVRAISON', 'LIVREE'])
-    .order('created_at', { ascending: false });
-
-  if (shopId) {
-    query = query.eq('shop_id', shopId);
-  }
-
-  const { data, error } = await query.limit(500);
+  // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version parsait items_summary côté JS
+  // sur les 500 commandes les plus récentes (.limit(500)) → top faux. La RPC agrège
+  // items_summary sur tout le périmètre (mêmes 4 statuts) et renvoie le top 5 déjà trié.
+  const { data, error } = await supabase.rpc('get_dashboard_top_products', {
+    p_merchant_id: merchant.merchantAccountId,
+    ...(shopId ? { p_shop_id: shopId } : {}),
+  });
 
   if (error) {
     return { ok: false, errorCode: 'query_error' };
   }
 
-  const productMap = new Map<string, DashboardTopProduct>();
-
-  for (const order of data ?? []) {
-    for (const item of parseItems(order.items_summary)) {
-      const current = productMap.get(item.title) ?? { name: item.title, revenue: 0, units: 0 };
-      current.units += item.quantity;
-      current.revenue += item.quantity * item.price;
-      productMap.set(item.title, current);
-    }
-  }
-
   return {
     ok: true,
-    data: [...productMap.values()]
-      .sort((first, second) => second.units - first.units || second.revenue - first.revenue)
-      .slice(0, 5),
+    data: asRecordArray(data)
+      .map((row) => ({
+        name: stringField(row, 'name') ?? '',
+        units: numberField(row, 'units'),
+        revenue: numberField(row, 'revenue'),
+      }))
+      .filter((product) => product.name !== ''),
   };
 }
 
@@ -358,48 +324,27 @@ async function fetchShopPerformanceForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  let shopsQuery = supabase
-    .from('shop')
-    .select('id, shop_domain, status')
-    .eq('merchant_account_id', merchant.merchantAccountId)
-    .order('installed_at', { ascending: true });
-  let ordersQuery = supabase
-    .from('orders')
-    .select('shop_id, total_amount')
-    .eq('merchant_account_id', merchant.merchantAccountId);
+  // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version rapatriait orders(shop_id,
+  // total_amount) sans .limit → tronqué à 1000 (max_rows) → « 1000 commandes » pile. La RPC
+  // compte/somme par boutique côté SQL (all-time, sans filtre de statut), LEFT JOIN shop →
+  // boutiques à 0 incluses, ordre installed_at asc (sémantique identique, chiffres exacts).
+  const { data, error } = await supabase.rpc('get_dashboard_shop_performance', {
+    p_merchant_id: merchant.merchantAccountId,
+    ...(shopId ? { p_shop_id: shopId } : {}),
+  });
 
-  if (shopId) {
-    shopsQuery = shopsQuery.eq('id', shopId);
-    ordersQuery = ordersQuery.eq('shop_id', shopId);
-  }
-
-  const [shopsResult, ordersResult] = await Promise.all([shopsQuery, ordersQuery]);
-
-  if (shopsResult.error || ordersResult.error) {
+  if (error) {
     return { ok: false, errorCode: 'query_error' };
-  }
-
-  const orderStats = new Map<string, { ordersCount: number; revenue: number }>();
-
-  for (const order of ordersResult.data ?? []) {
-    if (!order.shop_id) {
-      continue;
-    }
-
-    const current = orderStats.get(order.shop_id) ?? { ordersCount: 0, revenue: 0 };
-    current.ordersCount += 1;
-    current.revenue += Number(order.total_amount ?? 0);
-    orderStats.set(order.shop_id, current);
   }
 
   return {
     ok: true,
-    data: (shopsResult.data ?? []).map((shop) => ({
-      id: shop.id,
-      name: shop.shop_domain,
-      status: shop.status,
-      ordersCount: orderStats.get(shop.id)?.ordersCount ?? 0,
-      revenue: orderStats.get(shop.id)?.revenue ?? 0,
+    data: asRecordArray(data).map((row) => ({
+      id: stringField(row, 'id') ?? '',
+      name: stringField(row, 'name') ?? '',
+      status: stringField(row, 'status') ?? '',
+      ordersCount: numberField(row, 'orders_count'),
+      revenue: numberField(row, 'revenue'),
     })),
   };
 }
@@ -419,16 +364,14 @@ async function fetchCodBreakdownForUser({
     return { ok: false, errorCode: 'not_found' };
   }
 
-  let query = supabase
-    .from('orders')
-    .select('cod_status')
-    .eq('merchant_account_id', merchant.merchantAccountId);
-
-  if (shopId) {
-    query = query.eq('shop_id', shopId);
-  }
-
-  const { data, error } = await query;
+  // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version rapatriait orders(cod_status)
+  // sans .limit → tronqué à 1000 (max_rows) → « À appeler 1000 / reste 0 ». La RPC compte
+  // par cod_status côté SQL (all-time). On remappe sur orderStatuses (8 catégories, 0 par
+  // défaut) → contrat UI inchangé.
+  const { data, error } = await supabase.rpc('get_dashboard_cod_breakdown', {
+    p_merchant_id: merchant.merchantAccountId,
+    ...(shopId ? { p_shop_id: shopId } : {}),
+  });
 
   if (error) {
     return { ok: false, errorCode: 'query_error' };
@@ -436,9 +379,10 @@ async function fetchCodBreakdownForUser({
 
   const counts = new Map<OrderStatus, number>(orderStatuses.map((status) => [status, 0]));
 
-  for (const order of data ?? []) {
-    if (isOrderStatus(order.cod_status)) {
-      counts.set(order.cod_status, (counts.get(order.cod_status) ?? 0) + 1);
+  for (const row of asRecordArray(data)) {
+    const status = stringField(row, 'cod_status');
+    if (isOrderStatus(status)) {
+      counts.set(status, numberField(row, 'count'));
     }
   }
 
