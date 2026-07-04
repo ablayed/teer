@@ -5,6 +5,7 @@ import { performTransitionForContext } from '@/lib/actions/transitions';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import {
   type OrderSavedViewId,
+  mapOrderViewCountRows,
   matchesOrderSavedView,
   orderQueueDate,
   orderSavedViewIds,
@@ -476,6 +477,31 @@ async function getReliabilityTiersForOrders(
   );
 }
 
+// Lot 6 (migration 0088) — compteurs de vues en SQL, UNIQUEMENT quand aucune recherche texte
+// n'est active (search === '', cas ultra-majoritaire : la frappe interactive est shallow côté
+// client sans round-trip serveur, cf. orders-page-loader.tsx). Reproduit exactement les 7
+// prédicats de matchesOrderSavedView/orderMatchesPeriod côté SQL — ne remplace PAS le calcul
+// TS (conservé tel quel comme fallback quand une recherche est active, cf.
+// fetchOrdersPageData).
+async function fetchOrderViewCountsFromRpc(
+  supabase: SupabaseServerClient,
+  merchantAccountId: string,
+  filters: { dateFrom: string; dateTo: string; shopId?: string | null },
+): Promise<OrdersViewCounts> {
+  const { data, error } = await supabase.rpc('get_order_view_counts', {
+    p_from: filters.dateFrom,
+    p_merchant_id: merchantAccountId,
+    p_shop_id: filters.shopId ?? undefined,
+    p_to: filters.dateTo,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return mapOrderViewCountRows(data ?? []);
+}
+
 async function fetchOrdersPageData({
   activeView,
   cursor,
@@ -510,14 +536,35 @@ async function fetchOrdersPageData({
       ),
     );
 
-  const periodFilteredToutes = periodFilteredFor('toutes');
-  const viewCounts = cursor
-    ? emptyOrdersViewCounts()
-    : orderSavedViewIds.reduce<OrdersViewCounts>((acc, viewId) => {
-        const searchFiltered = filterOrdersBySearch(periodFilteredFor(viewId), search);
-        acc[viewId] = searchFiltered.filter((order) => matchesOrderSavedView(order, viewId)).length;
-        return acc;
-      }, emptyOrdersViewCounts());
+  let viewCounts: OrdersViewCounts;
+  let totalCount: number;
+
+  if (cursor) {
+    // Pagination (page 2+) : les compteurs ne sont affichés qu'au premier chargement,
+    // comportement inchangé (ni RPC ni calcul TS ici, comme avant ce lot).
+    viewCounts = emptyOrdersViewCounts();
+    totalCount = 0;
+  } else if (search || !filters.dateFrom || !filters.dateTo) {
+    // Recherche active OU période absente (défensif, non atteint par /commandes en pratique) :
+    // calcul TS exact inchangé, sur scopedOrders déjà chargé pour la liste — zéro fetch de plus.
+    viewCounts = orderSavedViewIds.reduce<OrdersViewCounts>((acc, viewId) => {
+      const searchFiltered = filterOrdersBySearch(periodFilteredFor(viewId), search);
+      acc[viewId] = searchFiltered.filter((order) => matchesOrderSavedView(order, viewId)).length;
+      return acc;
+    }, emptyOrdersViewCounts());
+    totalCount = periodFilteredFor('toutes').length;
+  } else {
+    // search === '' : compteurs via get_order_view_counts (Lot 6, migration 0088). totalCount
+    // ignore déjà la recherche dans l'ancien calcul TS (periodFilteredToutes n'était jamais
+    // search-filtré) → la ligne 'toutes' de la RPC est strictement équivalente ici.
+    viewCounts = await fetchOrderViewCountsFromRpc(supabase, member.merchantAccountId, {
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      shopId: filters.shopId,
+    });
+    totalCount = viewCounts.toutes;
+  }
+
   const ordersForView = filterOrdersBySearch(periodFilteredFor(activeView), search).filter(
     (order) => matchesOrderSavedView(order, activeView),
   );
@@ -540,7 +587,7 @@ async function fetchOrdersPageData({
     orders: paginated.orders,
     reliabilityTiers,
     search,
-    totalCount: cursor ? 0 : periodFilteredToutes.length,
+    totalCount,
     viewCounts,
   };
 }
