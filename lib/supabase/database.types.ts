@@ -2063,6 +2063,42 @@ export type Database = {
           role: string;
         }[];
       };
+      list_orders_keyset: {
+        Args: {
+          p_cursor_id?: string;
+          p_cursor_sort?: string;
+          p_from: string;
+          p_limit?: number;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+          p_view: string;
+        };
+        Returns: {
+          assigned_driver_id: string;
+          call_state: string;
+          cash_state: string;
+          cod_status: string;
+          created_at: string;
+          created_at_shopify: string;
+          currency: string;
+          customer_full_name: string;
+          customer_id: string;
+          customer_phone: string;
+          delivery_state: string;
+          id: string;
+          items_summary: Json;
+          next_action_at: string;
+          next_contact_at: string;
+          order_number: string;
+          order_state: string;
+          scheduled_for: string;
+          shipping_address: Json;
+          sort_at: string;
+          source: string;
+          total_amount: number;
+        }[];
+      };
       list_orders_paginated: {
         Args: {
           p_cursor_id?: string;
