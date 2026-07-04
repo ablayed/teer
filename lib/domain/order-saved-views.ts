@@ -68,6 +68,36 @@ export function parseOrderSavedViewId(value: string | undefined): OrderSavedView
     : 'toutes';
 }
 
+export type OrderViewCountRow = { view_id: string; count: number };
+
+function emptyOrderViewCounts(): Record<OrderSavedViewId, number> {
+  return {
+    toutes: 0,
+    'a-appeler': 0,
+    'tentee-a-rappeler': 0,
+    confirmee: 0,
+    'en-livraison': 0,
+    valide: 0,
+    'annulees-retours': 0,
+  };
+}
+
+// Lot 6 (migration 0088, get_order_view_counts) — mapping pur RPC → shape des compteurs de
+// vues. Une ligne dont `view_id` ne correspond à aucune vue connue (RPC future, valeur
+// inattendue) est ignorée silencieusement (compteur reste à 0), jamais une exception :
+// `orderSavedViewIds` ci-dessus reste la seule source de vérité des vues valides, pas la RPC.
+export function mapOrderViewCountRows(rows: OrderViewCountRow[]): Record<OrderSavedViewId, number> {
+  const counts = emptyOrderViewCounts();
+
+  for (const row of rows) {
+    if (orderSavedViewIds.includes(row.view_id as OrderSavedViewId)) {
+      counts[row.view_id as OrderSavedViewId] = Number(row.count);
+    }
+  }
+
+  return counts;
+}
+
 export function matchesOrderSavedView(order: OrderListViewShape, viewId: OrderSavedViewId) {
   switch (viewId) {
     case 'toutes':

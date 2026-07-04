@@ -2,6 +2,7 @@ import {
   type OrderSavedViewId,
   applyOrderSavedViewCountTransition,
   compareOrdersForSavedView,
+  mapOrderViewCountRows,
   matchesOrderSavedView,
   orderSavedViews,
 } from '@/lib/domain/order-saved-views';
@@ -235,5 +236,54 @@ describe('order search helpers', () => {
     expect(filterOrdersBySearch(orders, '771234567')).toHaveLength(1);
     expect(filterOrdersBySearch(orders, 'montre')).toHaveLength(1);
     expect(filterOrdersBySearch(orders, 'introuvable')).toHaveLength(0);
+  });
+});
+
+// Lot 6 (migration 0088, get_order_view_counts) — mapping pur RPC → shape des compteurs.
+describe('mapOrderViewCountRows', () => {
+  it('mappe les 7 vues connues sur la shape attendue', () => {
+    const counts = mapOrderViewCountRows([
+      { count: 12, view_id: 'toutes' },
+      { count: 3, view_id: 'a-appeler' },
+      { count: 1, view_id: 'tentee-a-rappeler' },
+      { count: 2, view_id: 'confirmee' },
+      { count: 4, view_id: 'en-livraison' },
+      { count: 1, view_id: 'valide' },
+      { count: 1, view_id: 'annulees-retours' },
+    ]);
+
+    expect(counts).toEqual({
+      toutes: 12,
+      'a-appeler': 3,
+      'tentee-a-rappeler': 1,
+      confirmee: 2,
+      'en-livraison': 4,
+      valide: 1,
+      'annulees-retours': 1,
+    });
+  });
+
+  it('vue manquante dans la réponse RPC → reste à 0 (pas d’exception)', () => {
+    const counts = mapOrderViewCountRows([{ count: 5, view_id: 'toutes' }]);
+
+    expect(counts.toutes).toBe(5);
+    expect(counts['a-appeler']).toBe(0);
+    expect(counts['en-livraison']).toBe(0);
+  });
+
+  it('view_id inconnu (RPC future/valeur inattendue) → ignoré silencieusement', () => {
+    const counts = mapOrderViewCountRows([
+      { count: 5, view_id: 'toutes' },
+      { count: 99, view_id: 'vue-future-inconnue' },
+    ]);
+
+    expect(counts.toutes).toBe(5);
+    expect(Object.values(counts).reduce((sum, value) => sum + value, 0)).toBe(5);
+  });
+
+  it('tableau vide → toutes les vues à 0', () => {
+    const counts = mapOrderViewCountRows([]);
+
+    expect(Object.values(counts).every((value) => value === 0)).toBe(true);
   });
 });
