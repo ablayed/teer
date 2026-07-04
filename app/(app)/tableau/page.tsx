@@ -21,10 +21,10 @@ import {
 } from '@/lib/actions/dashboard';
 import { getDriversCashOnHandTotal } from '@/lib/actions/drivers';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
+import { getCachedDashboardContext } from '@/lib/dashboard/context';
 import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
 import { formatMoney } from '@/lib/format/fcfa';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getTranslations } from 'next-intl/server';
 import { Suspense, cache } from 'react';
 
@@ -143,20 +143,9 @@ function essentialCard(label: string, value: string, hint?: string) {
 // cash-consolidation) + taux d'annulation / livraison réussie / retour (réutilise
 // getLossAnalyticsAction, période-aware 30 j). /analyses reste la vue détaillée.
 async function OperationsEssentialsSection({ shopId }: { shopId: string | null }) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: member } = await supabase
-    .from('merchant_member')
-    .select('role')
-    .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle();
-  const role = (member as { role: string } | null)?.role ?? null;
-  if (role !== 'owner' && role !== 'manager') return null;
+  const ctx = await getCachedDashboardContext();
+  if (!ctx.ok) return null;
+  if (ctx.role !== 'owner' && ctx.role !== 'manager') return null;
 
   const now = new Date();
   const from = new Date(now);
@@ -384,10 +373,10 @@ function CodBreakdownSkeleton() {
 }
 
 export default async function TableauPage({ searchParams }: TableauPageProps) {
-  const [t, tInvitation, supabase] = await Promise.all([
+  const [t, tInvitation, ctx] = await Promise.all([
     getTranslations('tableau'),
     getTranslations('invitation'),
-    createSupabaseServerClient(),
+    getCachedDashboardContext(),
   ]);
   const params = await searchParams;
   // Bandeau d'accueil post-acceptation d'invitation (B5) : alimenté par
@@ -401,21 +390,8 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           role: tInvitation(`roles.${welcomeRole}`),
         })
       : null;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  let merchantAccountId: string | null = null;
-  if (user) {
-    const { data: memberRow } = await supabase
-      .from('merchant_member')
-      .select('merchant_account_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle();
-    const member = memberRow as { merchant_account_id: string } | null;
-    merchantAccountId = member?.merchant_account_id ?? null;
-  }
-  const shops = merchantAccountId ? await listShopFilterOptions(supabase, merchantAccountId) : [];
+  const user = ctx.ok ? ctx.user : null;
+  const shops = ctx.ok ? await listShopFilterOptions(ctx.supabase, ctx.merchantAccountId) : [];
   const selectedShopId = normalizeShopParam(params.shop, shops);
   // Suffixe de boutique pour les clés Suspense : il DOIT être combiné a un prefixe
   // unique par bloc. Plusieurs Suspense freres partageant la meme clé littérale
