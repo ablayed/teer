@@ -1874,6 +1874,37 @@ export type Database = {
         Args: { p_merchant_id: string; p_shop_id?: string };
         Returns: Json;
       };
+      get_driver_cash_consolidation: {
+        Args: {
+          p_driver_id?: string;
+          p_merchant_id: string;
+          p_period_from?: string;
+          p_period_to?: string;
+        };
+        Returns: {
+          cash_on_hand_minor: number;
+          collected_delivery_fees_minor: number;
+          collected_minor: number;
+          delivery_fees_minor: number;
+          driver_id: string;
+          driver_name: string;
+          expected_minor: number;
+          period_collected_delivery_fees_minor: number;
+          period_collected_minor: number;
+          period_delivery_fees_minor: number;
+          remitted_minor: number;
+        }[];
+      };
+      get_driver_cash_outstanding_orders: {
+        Args: { p_driver_id?: string; p_merchant_id: string };
+        Returns: {
+          delivered_at: string;
+          driver_id: string;
+          order_id: string;
+          order_number: string;
+          outstanding_minor: number;
+        }[];
+      };
       get_loss_analytics_joins: {
         Args: {
           p_from: string;
