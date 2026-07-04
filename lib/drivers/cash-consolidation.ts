@@ -90,13 +90,16 @@ export type DriverConsolidationInput = ConsolidationOrder & {
   orderId: string;
 };
 
-// SOURCE UNIQUE de « cash chez le livreur » par livreur, pour TOUTES les surfaces TS :
-// total page Livreurs (getDriversCashOnHandTotal), panneau Finances (buildDriverSettlements)
-// ET rapport PDF (getReportData). La card Finances (RPC SQL finance_kpis) réplique cette même
-// arithmétique (migration 0065). Regroupe les commandes assignées par livreur, somme les
-// allocations (remis) par livreur, puis applique deriveDriverCashConsolidation — clamp AGRÉGÉ
-// par livreur (collecté − frais − remis, greatest 0), JAMAIS un clamp par commande (qui laisse
-// un résidu = frais sur un livreur multi-commandes, cf. piège record_cash_settlement oldest-first).
+// Référence de la formule « cash chez le livreur » par livreur — plus appelée directement
+// par les surfaces TS depuis les migrations 0083 (page Livreurs, panneau Finances) et 0084
+// (rapport PDF), qui la répliquent en SQL via get_driver_cash_consolidation/
+// get_driver_cash_outstanding_orders/get_report_driver_cash_pending (parité prouvée en
+// tests RLS). Reste la source de vérité pour les tests unitaires de la formule elle-même
+// (tests/unit/drivers/cash-consolidation.test.ts) et pour toute future RPC du même domaine.
+// Regroupe les commandes assignées par livreur, somme les allocations (remis) par livreur,
+// puis applique deriveDriverCashConsolidation — clamp AGRÉGÉ par livreur (collecté − frais −
+// remis, greatest 0), JAMAIS un clamp par commande (qui laisse un résidu = frais sur un
+// livreur multi-commandes, cf. piège record_cash_settlement oldest-first).
 export function consolidateCashByDriver(
   orders: DriverConsolidationInput[],
   allocatedByOrderId: ReadonlyMap<string, number>,
