@@ -1,3 +1,4 @@
+import { fetchAllPages, fetchFinanceCollectedJoins } from '@/lib/finance/finance-joins';
 import type { FinanceAdminClient } from '@/lib/finance/report-data';
 
 type DriverRow = {
@@ -139,42 +140,35 @@ export async function fetchFinanceDriverCostReport(
   toIso: string,
   shopId?: string | null,
 ): Promise<FinanceDriverCostReport> {
-  let ordersQuery = admin
-    .from('orders')
-    .select('id, assigned_driver_id, delivery_fee_minor, total_amount')
-    .eq('merchant_account_id', merchantId)
-    .gte('cash_collected_at', fromIso)
-    .lte('cash_collected_at', toIso);
+  // Lot 5 : select fenêtré paginé .range() (n'alimente plus aucun .in() une fois la jointure
+  // stock_movement déplacée vers la RPC get_finance_collected_joins).
+  const ordersPage = (offset: number) => {
+    let query = admin
+      .from('orders')
+      .select('id, assigned_driver_id, delivery_fee_minor, total_amount')
+      .eq('merchant_account_id', merchantId)
+      .gte('cash_collected_at', fromIso)
+      .lte('cash_collected_at', toIso)
+      .order('id', { ascending: true });
 
-  if (shopId) {
-    ordersQuery = ordersQuery.eq('shop_id', shopId);
-  }
+    if (shopId) {
+      query = query.eq('shop_id', shopId);
+    }
 
-  const [driversRes, ordersRes] = await Promise.all([
+    return query.range(offset, offset + 499);
+  };
+
+  const [driversRes, ordersResult, collectedJoins] = await Promise.all([
     admin
       .from('driver')
       .select('id, full_name')
       .eq('merchant_account_id', merchantId)
       .order('full_name', { ascending: true }),
-    ordersQuery,
+    fetchAllPages(ordersPage),
+    fetchFinanceCollectedJoins(admin, merchantId, fromIso, toIso, shopId),
   ]);
 
-  if (driversRes.error || ordersRes.error) {
-    throw new Error('finance_driver_cost_error');
-  }
-
-  const orderIds = (ordersRes.data ?? []).map((order) => order.id);
-  const soldRes =
-    orderIds.length > 0
-      ? await admin
-          .from('stock_movement')
-          .select('driver_id, qty, unit_cost')
-          .eq('merchant_account_id', merchantId)
-          .eq('movement_type', 'sold')
-          .in('order_id', orderIds)
-      : { data: [], error: null };
-
-  if (soldRes.error) {
+  if (driversRes.error || ordersResult.error) {
     throw new Error('finance_driver_cost_error');
   }
 
@@ -183,12 +177,12 @@ export async function fetchFinanceDriverCostReport(
       fullName: driver.full_name,
       id: driver.id,
     })),
-    orders: (ordersRes.data ?? []).map((order) => ({
+    orders: ordersResult.data.map((order) => ({
       assignedDriverId: order.assigned_driver_id,
       deliveryFeeMinor: order.delivery_fee_minor,
       totalAmount: order.total_amount,
     })),
-    soldMovements: (soldRes.data ?? []).map((movement) => ({
+    soldMovements: collectedJoins.soldMovements.map((movement) => ({
       driverId: movement.driver_id,
       qty: movement.qty,
       unitCost: movement.unit_cost,

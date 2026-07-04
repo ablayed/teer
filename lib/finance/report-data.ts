@@ -4,6 +4,14 @@
 // helpers can be exported and reused.
 
 import { env } from '@/lib/env';
+import {
+  CAPPED_READ_PAGE_SIZE,
+  type FinanceCourierReturnJoinRow,
+  type FinanceSoldMovementJoinRow,
+  fetchAllPages,
+  fetchFinanceCollectedJoins,
+  fetchFinanceReturnedJoins,
+} from '@/lib/finance/finance-joins';
 import { type FeeSettings, type FinanceReport, computeFinanceReport } from '@/lib/finance/profit';
 import type { Database } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
@@ -15,13 +23,6 @@ export function createFinanceAdminClient() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }
-
-type RawSoldRow = {
-  order_id: string | null;
-  product_id: string;
-  qty: number;
-  unit_cost: number | null;
-};
 
 type RawSettingsRow = {
   wave_fee_bps: number;
@@ -36,44 +37,6 @@ type RawExpenseRow = {
   category_id: string;
 };
 
-type RawCourierReturnRow = {
-  order_id: string | null;
-  product_id: string;
-  qty: number;
-};
-
-async function fetchSoldMovements(
-  admin: FinanceAdminClient,
-  merchantId: string,
-  orderIds: string[],
-): Promise<RawSoldRow[]> {
-  if (orderIds.length === 0) return [];
-  const { data, error } = await admin
-    .from('stock_movement')
-    .select('order_id, product_id, qty, unit_cost')
-    .eq('merchant_account_id', merchantId)
-    .eq('movement_type', 'sold')
-    .in('order_id', orderIds);
-  if (error) throw new Error('sold_fetch_error');
-  return (data ?? []) as RawSoldRow[];
-}
-
-async function fetchCourierReturns(
-  admin: FinanceAdminClient,
-  merchantId: string,
-  orderIds: string[],
-): Promise<RawCourierReturnRow[]> {
-  if (orderIds.length === 0) return [];
-  const { data, error } = await admin
-    .from('stock_movement')
-    .select('order_id, product_id, qty')
-    .eq('merchant_account_id', merchantId)
-    .eq('movement_type', 'courier_return')
-    .in('order_id', orderIds);
-  if (error) throw new Error('return_fetch_error');
-  return (data ?? []) as RawCourierReturnRow[];
-}
-
 // Calcule le compte de résultat (P&L) returns-aware sur la période [fromIso, toIso].
 // CA = commandes avec cash_collected_at dans la période ; COGS = sold.unit_cost figé (fallback
 // CUMP, lignes au coût inconnu exclues) ; retours, frais mobile money, charges, résultat net.
@@ -84,46 +47,57 @@ export async function fetchFinanceReport(
   toIso: string,
   shopId?: string | null,
 ): Promise<FinanceReport> {
-  // 1. Commandes encaissées dans la période
-  let collectedQuery = admin
-    .from('orders')
-    .select('id, total_amount, delivery_fee_minor, payment_channel_at_delivery')
-    .eq('merchant_account_id', merchantId)
-    .gte('cash_collected_at', fromIso)
-    .lte('cash_collected_at', toIso);
+  // 1. Commandes encaissées dans la période (paginé .range() — Lot 5 : ce select fenêtré
+  // n'alimente plus aucun .in(), safe à paginer simplement).
+  const collectedPage = (offset: number) => {
+    let query = admin
+      .from('orders')
+      .select('id, total_amount, delivery_fee_minor, payment_channel_at_delivery')
+      .eq('merchant_account_id', merchantId)
+      .gte('cash_collected_at', fromIso)
+      .lte('cash_collected_at', toIso)
+      .order('id', { ascending: true });
 
-  if (shopId) {
-    collectedQuery = collectedQuery.eq('shop_id', shopId);
-  }
+    if (shopId) {
+      query = query.eq('shop_id', shopId);
+    }
 
-  const { data: collectedRaw, error: e1 } = await collectedQuery;
-  if (e1) throw new Error('finance_data_error');
+    return query.range(offset, offset + CAPPED_READ_PAGE_SIZE - 1);
+  };
 
-  // 2. Retours dans la période (cash_collected_at non null = contra-revenue réel)
-  let returnedQuery = admin
-    .from('orders')
-    .select('id, total_amount, delivery_fee_minor')
-    .eq('merchant_account_id', merchantId)
-    .gte('returned_at', fromIso)
-    .lte('returned_at', toIso)
-    .not('cash_collected_at', 'is', null);
+  // 2. Retours dans la période (cash_collected_at non null = contra-revenue réel), paginé.
+  const returnedPage = (offset: number) => {
+    let query = admin
+      .from('orders')
+      .select('id, total_amount, delivery_fee_minor')
+      .eq('merchant_account_id', merchantId)
+      .gte('returned_at', fromIso)
+      .lte('returned_at', toIso)
+      .not('cash_collected_at', 'is', null)
+      .order('id', { ascending: true });
 
-  if (shopId) {
-    returnedQuery = returnedQuery.eq('shop_id', shopId);
-  }
+    if (shopId) {
+      query = query.eq('shop_id', shopId);
+    }
 
-  const { data: returnedRaw, error: e2 } = await returnedQuery;
-  if (e2) throw new Error('finance_data_error');
+    return query.range(offset, offset + CAPPED_READ_PAGE_SIZE - 1);
+  };
 
-  const collectedIds = (collectedRaw ?? []).map((o) => o.id);
-  const returnedIds = (returnedRaw ?? []).map((o) => o.id);
-
-  // 3. Mouvements sold + courier_return (unit_cost caché → admin requis)
-  const [soldForCollected, soldForReturned, courierReturnRows] = await Promise.all([
-    fetchSoldMovements(admin, merchantId, collectedIds),
-    fetchSoldMovements(admin, merchantId, returnedIds),
-    fetchCourierReturns(admin, merchantId, returnedIds),
+  // 3. Mouvements sold + courier_return (unit_cost caché → admin requis) via les RPC 0087 —
+  // partent de la fenêtre marchand+dates, aucun tableau d'UUID en paramètre (Lot 5).
+  const [collectedResult, returnedResult, collectedJoins, returnedJoins] = await Promise.all([
+    fetchAllPages(collectedPage),
+    fetchAllPages(returnedPage),
+    fetchFinanceCollectedJoins(admin, merchantId, fromIso, toIso, shopId),
+    fetchFinanceReturnedJoins(admin, merchantId, fromIso, toIso, shopId),
   ]);
+  if (collectedResult.error || returnedResult.error) throw new Error('finance_data_error');
+
+  const collectedRaw = collectedResult.data;
+  const returnedRaw = returnedResult.data;
+  const soldForCollected = collectedJoins.soldMovements;
+  const soldForReturned = returnedJoins.soldMovements;
+  const courierReturnRows = returnedJoins.courierReturns;
 
   // 4. Dépenses
   const fromDate = fromIso.slice(0, 10);
@@ -193,7 +167,7 @@ export async function fetchFinanceReport(
     })),
     soldMovementsForCollected: soldForCollected
       .filter(
-        (m): m is RawSoldRow & { order_id: string; unit_cost: number } =>
+        (m): m is FinanceSoldMovementJoinRow & { order_id: string; unit_cost: number } =>
           m.order_id !== null && m.unit_cost !== null,
       )
       .map((m) => ({
@@ -208,12 +182,16 @@ export async function fetchFinanceReport(
       totalAmount: o.total_amount,
     })),
     courierReturns: courierReturnRows
-      .filter((m): m is RawCourierReturnRow & { order_id: string } => m.order_id !== null)
+      .filter((m): m is FinanceCourierReturnJoinRow & { order_id: string } => m.order_id !== null)
       .map((m) => ({ orderId: m.order_id, productId: m.product_id, qty: m.qty })),
     soldMovementsForReturned: soldForReturned
       .filter(
-        (m): m is RawSoldRow & { order_id: string; unit_cost: number } =>
-          m.order_id !== null && m.unit_cost !== null,
+        (
+          m,
+        ): m is Omit<FinanceSoldMovementJoinRow, 'driver_id'> & {
+          order_id: string;
+          unit_cost: number;
+        } => m.order_id !== null && m.unit_cost !== null,
       )
       .map((m) => ({
         orderId: m.order_id,

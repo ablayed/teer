@@ -1,3 +1,4 @@
+import { fetchAllPages, fetchFinanceCollectedJoins } from '@/lib/finance/finance-joins';
 import type { FinanceAdminClient } from '@/lib/finance/report-data';
 import type { Json } from '@/lib/supabase/database.types';
 
@@ -446,55 +447,49 @@ export async function fetchFinanceProductCostReport(
   toIso: string,
   shopId?: string | null,
 ): Promise<FinanceProductCostReport> {
-  let ordersQuery = admin
-    .from('orders')
-    .select('id, total_amount, delivery_fee_minor, items_summary')
-    .eq('merchant_account_id', merchantId)
-    .gte('cash_collected_at', fromIso)
-    .lte('cash_collected_at', toIso);
-
-  if (shopId) {
-    ordersQuery = ordersQuery.eq('shop_id', shopId);
-  }
-
-  const [ordersRes, expensesRes, productsRes, categoriesRes] = await Promise.all([
-    ordersQuery,
-    admin
-      .from('expense')
-      .select('amount_minor, category_id')
+  // Lot 5 : select fenêtré paginé .range() (n'alimente plus aucun .in() une fois les
+  // jointures order_line/stock_movement déplacées vers la RPC get_finance_collected_joins).
+  const ordersPage = (offset: number) => {
+    let query = admin
+      .from('orders')
+      .select('id, total_amount, delivery_fee_minor, items_summary')
       .eq('merchant_account_id', merchantId)
-      .gte('spent_at', fromIso.slice(0, 10))
-      .lte('spent_at', toIso.slice(0, 10)),
-    admin.from('product').select('id, title, unit_cost').eq('merchant_account_id', merchantId),
-    admin.from('expense_category').select('id, code').eq('merchant_account_id', merchantId),
-  ]);
+      .gte('cash_collected_at', fromIso)
+      .lte('cash_collected_at', toIso)
+      .order('id', { ascending: true });
 
-  if (ordersRes.error || expensesRes.error || productsRes.error || categoriesRes.error) {
-    throw new Error('finance_product_cost_error');
-  }
+    if (shopId) {
+      query = query.eq('shop_id', shopId);
+    }
 
-  const orderIds = (ordersRes.data ?? []).map((order) => order.id);
-  const [orderLinesRes, soldRes] =
-    orderIds.length > 0
-      ? await Promise.all([
-          admin
-            .from('order_line')
-            .select('order_id, product_id, raw_title, qty')
-            .eq('merchant_account_id', merchantId)
-            .in('order_id', orderIds),
-          admin
-            .from('stock_movement')
-            .select('product_id, qty, unit_cost')
-            .eq('merchant_account_id', merchantId)
-            .eq('movement_type', 'sold')
-            .in('order_id', orderIds),
-        ])
-      : [
-          { data: [], error: null },
-          { data: [], error: null },
-        ];
+    return query.range(offset, offset + 499);
+  };
 
-  if (orderLinesRes.error || soldRes.error) {
+  // Catalogue produits paginé .range() : select tenant-wide sans fenêtre, à risque sur un
+  // gros catalogue (>1000 SKU) indépendamment du volume de commandes (Lot 5).
+  const productsPage = (offset: number) =>
+    admin
+      .from('product')
+      .select('id, title, unit_cost')
+      .eq('merchant_account_id', merchantId)
+      .order('id', { ascending: true })
+      .range(offset, offset + 499);
+
+  const [ordersResult, productsResult, expensesRes, categoriesRes, collectedJoins] =
+    await Promise.all([
+      fetchAllPages(ordersPage),
+      fetchAllPages(productsPage),
+      admin
+        .from('expense')
+        .select('amount_minor, category_id')
+        .eq('merchant_account_id', merchantId)
+        .gte('spent_at', fromIso.slice(0, 10))
+        .lte('spent_at', toIso.slice(0, 10)),
+      admin.from('expense_category').select('id, code').eq('merchant_account_id', merchantId),
+      fetchFinanceCollectedJoins(admin, merchantId, fromIso, toIso, shopId),
+    ]);
+
+  if (ordersResult.error || productsResult.error || expensesRes.error || categoriesRes.error) {
     throw new Error('finance_product_cost_error');
   }
 
@@ -506,24 +501,24 @@ export async function fetchFinanceProductCostReport(
         categoryCode: category?.code ?? 'OTHER',
       };
     }),
-    orderLines: (orderLinesRes.data ?? []).map((line) => ({
+    orderLines: collectedJoins.orderLines.map((line) => ({
       orderId: line.order_id,
       productId: line.product_id,
       rawTitle: line.raw_title,
       qty: line.qty,
     })),
-    orders: (ordersRes.data ?? []).map((order) => ({
+    orders: ordersResult.data.map((order) => ({
       deliveryFeeMinor: order.delivery_fee_minor,
       id: order.id,
       itemsSummary: order.items_summary,
       totalAmount: order.total_amount,
     })),
-    products: (productsRes.data ?? []).map((product) => ({
+    products: productsResult.data.map((product) => ({
       id: product.id,
       title: product.title,
       unitCost: product.unit_cost,
     })),
-    soldMovements: (soldRes.data ?? []).map((movement) => ({
+    soldMovements: collectedJoins.soldMovements.map((movement) => ({
       productId: movement.product_id,
       qty: movement.qty,
       unitCost: movement.unit_cost,

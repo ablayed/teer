@@ -1905,6 +1905,24 @@ export type Database = {
           outstanding_minor: number;
         }[];
       };
+      get_finance_collected_joins: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: Json;
+      };
+      get_finance_returned_joins: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: Json;
+      };
       get_loss_analytics_joins: {
         Args: {
           p_from: string;
