@@ -1,4 +1,3 @@
-import { consolidateCashByDriver } from '@/lib/drivers/cash-consolidation';
 import {
   type MerchantFeeSettings,
   type SettlementForMargin,
@@ -14,6 +13,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 type SupabaseServerClient = SupabaseClient<Database>;
 type FinanceKpiRow = Database['public']['Functions']['finance_kpis']['Returns'][number];
 type CashAgingRow = Database['public']['Functions']['cash_aging']['Returns'][number];
+type ReportDriverCashPendingRow =
+  Database['public']['Functions']['get_report_driver_cash_pending']['Returns'][number];
 type CodStatus = Tables<'orders'>['cod_status'];
 type SettlementMethod = SettlementForMargin['method'];
 
@@ -35,7 +36,6 @@ type ReportOrderRow = Pick<
   | 'updated_at'
 >;
 
-type AllocationRow = Pick<Tables<'settlement_allocation'>, 'allocated_minor' | 'order_id'>;
 type DriverRow = Pick<Tables<'driver'>, 'full_name' | 'id'>;
 type ShortfallRow = Pick<
   Tables<'settlement_shortfall'>,
@@ -133,6 +133,15 @@ function cashAgingRpc(supabase: SupabaseServerClient) {
     fn: 'cash_aging',
     args: { p_merchant: string },
   ) => Promise<{ data: CashAgingRow[] | null; error: unknown }>;
+
+  return rpc;
+}
+
+function reportDriverCashPendingRpc(supabase: SupabaseServerClient) {
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    fn: 'get_report_driver_cash_pending',
+    args: { p_from: string; p_merchant_id: string; p_shop_id?: string | null; p_to: string },
+  ) => Promise<{ data: ReportDriverCashPendingRow[] | null; error: unknown }>;
 
   return rpc;
 }
@@ -312,6 +321,7 @@ export async function getReportData({
     settlementsResult,
     driversResult,
     shortfallsResult,
+    driverCashPendingResult,
   ] = await Promise.all([
     supabase.from('merchant_account').select('name').eq('id', merchantAccountId).maybeSingle(),
     supabase.from('shop').select('id, shop_domain').eq('merchant_account_id', merchantAccountId),
@@ -339,6 +349,12 @@ export async function getReportData({
       .from('settlement_shortfall')
       .select('driver_id, resolution, shortfall_minor')
       .eq('merchant_account_id', merchantAccountId),
+    reportDriverCashPendingRpc(supabase)('get_report_driver_cash_pending', {
+      p_from: fromIso,
+      p_merchant_id: merchantAccountId,
+      p_shop_id: shopId ?? null,
+      p_to: toIso,
+    }),
   ]);
 
   if (
@@ -350,26 +366,13 @@ export async function getReportData({
     ordersResult.error ||
     settlementsResult.error ||
     driversResult.error ||
-    shortfallsResult.error
+    shortfallsResult.error ||
+    driverCashPendingResult.error
   ) {
     throw new Error('REPORT_DATA_FAILED');
   }
 
   const orders = (ordersResult.data ?? []) as ReportOrderRow[];
-  const orderIds = orders.map((order) => order.id);
-  const allocationsResult =
-    orderIds.length > 0
-      ? await supabase
-          .from('settlement_allocation')
-          .select('order_id, allocated_minor')
-          .eq('merchant_account_id', merchantAccountId)
-          .in('order_id', orderIds)
-      : { data: [], error: null };
-
-  if (allocationsResult.error) {
-    throw new Error('REPORT_DATA_FAILED');
-  }
-
   const merchant = merchantResult.data as MerchantRow | null;
   const shops = (shopsResult.data ?? []) as ShopRow[];
   const selectedShop = shopId ? shops.find((shop) => shop.id === shopId) : shops[0];
@@ -414,15 +417,6 @@ export async function getReportData({
       status,
     };
   });
-  const allocatedByOrder = new Map<string, number>();
-
-  for (const allocation of (allocationsResult.data ?? []) as AllocationRow[]) {
-    allocatedByOrder.set(
-      allocation.order_id,
-      (allocatedByOrder.get(allocation.order_id) ?? 0) + allocation.allocated_minor,
-    );
-  }
-
   const driversById = new Map(
     ((driversResult.data ?? []) as DriverRow[]).map((driver) => [driver.id, driver.full_name]),
   );
@@ -440,40 +434,25 @@ export async function getReportData({
     driverRows.set(settlement.driverId, current);
   }
 
-  // Cash chez le livreur NET = collecté − frais − remis, via le helper PARTAGÉ
-  // consolidateCashByDriver (même arithmétique agrégée que la page Livreurs, le panneau
-  // Finances et la card finance_kpis SQL — migration 0065). On retranche les frais de
-  // livraison (le livreur les garde) et on clampe par livreur, jamais par commande.
-  // Périmètre du rapport (commandes créées dans [from,to], boutique optionnelle) — c'est
-  // l'axe propre au PDF ; la FORMULE est identique aux autres surfaces.
-  const consolidations = consolidateCashByDriver(
-    orders
-      .filter((order) => order.assigned_driver_id !== null)
-      .map((order) => ({
-        driverId: order.assigned_driver_id as string,
-        orderId: order.id,
-        deliveryFeeMinor: order.delivery_fee_minor,
-        cashState: order.cash_state,
-        cashCollectableMinor: order.cash_collectable_minor,
-        paymentChannel: order.payment_channel_at_delivery,
-        totalAmount: order.total_amount,
-      })),
-    allocatedByOrder,
-  );
-
-  for (const [driverId, consolidation] of consolidations) {
-    if (consolidation.cashOnHandMinor <= 0) {
+  // Cash chez le livreur PENDING (périmètre PDF : commandes créées dans [from,to],
+  // boutique optionnelle — ≠ le cash total en main cross-boutique all-time des autres
+  // surfaces, cf. migration 0083) via la RPC get_report_driver_cash_pending (migration
+  // 0084), même arithmétique agrégée que deriveDriverCashConsolidation/
+  // consolidateCashByDriver mais calculée en SQL — plus de select `orders` fenêtré sans
+  // `.range()` (cap PostgREST 1000) ni de `.in(orderIds)` sur settlement_allocation.
+  for (const row of (driverCashPendingResult.data ?? []) as ReportDriverCashPendingRow[]) {
+    if (row.pending_minor <= 0) {
       continue;
     }
-    const current = driverRows.get(driverId) ?? {
-      driverId,
-      driverName: driversById.get(driverId) ?? 'Livreur',
+    const current = driverRows.get(row.driver_id) ?? {
+      driverId: row.driver_id,
+      driverName: driversById.get(row.driver_id) ?? row.driver_name ?? 'Livreur',
       pendingMinor: 0,
       settledMinor: 0,
       shortfallMinor: 0,
     };
-    current.pendingMinor += consolidation.cashOnHandMinor;
-    driverRows.set(driverId, current);
+    current.pendingMinor += row.pending_minor;
+    driverRows.set(row.driver_id, current);
   }
 
   for (const shortfall of (shortfallsResult.data ?? []) as ShortfallRow[]) {

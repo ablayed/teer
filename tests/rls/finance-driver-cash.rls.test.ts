@@ -97,6 +97,8 @@ type SeedOrder = {
   collectableMinor: number;
   feeMinor: number;
   ageDays: number; // pour l'ordre oldest-first du versement auto
+  createdAt?: string; // borne précise (Lot 3b : tests d'inclusivité de fenêtre)
+  shopId?: string | null;
 };
 
 async function seedDeliveredCollectedOrder(
@@ -105,7 +107,7 @@ async function seedDeliveredCollectedOrder(
   driverId: string,
   order: SeedOrder,
 ) {
-  const ts = new Date(Date.now() - order.ageDays * 86_400_000).toISOString();
+  const ts = order.createdAt ?? new Date(Date.now() - order.ageDays * 86_400_000).toISOString();
   const { data, error } = await admin
     .from('orders')
     .insert({
@@ -119,6 +121,7 @@ async function seedDeliveredCollectedOrder(
       delivery_state: 'delivered',
       cash_state: 'collected',
       assigned_driver_id: driverId,
+      shop_id: order.shopId ?? null,
       payment_channel_at_delivery: 'ESPECES',
       cash_collectable_minor: order.collectableMinor,
       delivery_fee_minor: order.feeMinor,
@@ -129,6 +132,21 @@ async function seedDeliveredCollectedOrder(
     .select('id')
     .single();
   if (error || !data) throw error ?? new Error('order insert failed');
+  return data.id;
+}
+
+async function createShop(admin: AdminClient, merchantAccountId: string) {
+  const { data, error } = await admin
+    .from('shop')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_domain: `fdc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.myshopify.com`,
+      access_token_encrypted: 'test-token',
+      scopes: 'read_orders',
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('shop insert failed');
   return data.id;
 }
 
@@ -423,6 +441,193 @@ describe('get_driver_cash_consolidation / get_driver_cash_outstanding_orders (Lo
       // "SECURITY DEFINER role gates must be NULL-safe").
       const result = await clientB.rpc('get_driver_cash_consolidation', {
         p_merchant_id: merchantA,
+      });
+      expect(result.error).not.toBeNull();
+    },
+  );
+});
+
+// Lot 3b perf (migration 0084) — get_report_driver_cash_pending remplace le select `orders`
+// fenêtré + `.in(orderIds)` de getReportData (rapport PDF). Contrat DIFFÉRENT de 0083 :
+// borné à la période du rapport [from,to] (bornes INCLUSIVES, cf. data.ts:300-301) et
+// scopé boutique en option — ce n'est PAS le cash total en main cross-boutique all-time.
+describe('get_report_driver_cash_pending (Lot 3b, 0084)', () => {
+  skipIfNoServiceRole(
+    'parité avec deriveDriverCashConsolidation dans la fenêtre (piège multi-commandes)',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('report-pending-trap');
+      const driverId = await createDriver(admin, merchantAccountId);
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 5000,
+        feeMinor: 1000,
+        ageDays: 2,
+      });
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 3000,
+        feeMinor: 500,
+        ageDays: 1,
+      });
+
+      const client = await signIn(email);
+      const { error: settleError } = await client.rpc('record_cash_settlement', {
+        p_merchant: merchantAccountId,
+        p_driver: driverId,
+        p_amount_received_minor: 6500,
+        p_method: 'ESPECES',
+        p_note: '',
+        p_client_request_id: crypto.randomUUID(),
+      });
+      if (settleError) throw settleError;
+
+      const reference = deriveDriverCashConsolidation({
+        orders: [
+          {
+            cashState: 'collected',
+            cashCollectableMinor: 5000,
+            deliveryFeeMinor: 1000,
+            paymentChannel: 'ESPECES',
+            totalAmount: 5000,
+          },
+          {
+            cashState: 'collected',
+            cashCollectableMinor: 3000,
+            deliveryFeeMinor: 500,
+            paymentChannel: 'ESPECES',
+            totalAmount: 3000,
+          },
+        ],
+        remittedMinor: 6500,
+      });
+
+      const { data, error } = await client.rpc('get_report_driver_cash_pending', {
+        p_merchant_id: merchantAccountId,
+        p_from: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+        p_to: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (error) throw error;
+      const row = (data ?? []).find((entry) => entry.driver_id === driverId);
+
+      expect(reference.cashOnHandMinor).toBe(0);
+      // Livreur au net 0 : absent ou pending_minor=0 selon la RPC (agrégat, pas de garde
+      // "having" ici — driver_id apparaît toujours, cf. get_driver_cash_consolidation).
+      expect(row?.pending_minor ?? 0).toBe(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'bornes de fenêtre INCLUSIVES aux deux extrémités, commande hors fenêtre exclue',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('report-pending-window');
+      const driverId = await createDriver(admin, merchantAccountId);
+      const from = new Date(Date.now() - 10 * 86_400_000);
+      const to = new Date(Date.now() - 5 * 86_400_000);
+
+      // Une commande pile sur chaque borne (incluse) + une hors fenêtre (exclue).
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 2000,
+        feeMinor: 0,
+        ageDays: 0,
+        createdAt: from.toISOString(),
+      });
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 3000,
+        feeMinor: 0,
+        ageDays: 0,
+        createdAt: to.toISOString(),
+      });
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 9000,
+        feeMinor: 0,
+        ageDays: 0,
+        createdAt: new Date(Date.now() - 1 * 86_400_000).toISOString(), // après `to`
+      });
+
+      const client = await signIn(email);
+      const { data, error } = await client.rpc('get_report_driver_cash_pending', {
+        p_merchant_id: merchantAccountId,
+        p_from: from.toISOString(),
+        p_to: to.toISOString(),
+      });
+      if (error) throw error;
+      const row = (data ?? []).find((entry) => entry.driver_id === driverId);
+
+      // Seules les 2 commandes sur les bornes comptent : 2000 + 3000 = 5000. La 3ᵉ (9000,
+      // hors fenêtre) doit être exclue malgré un cash_state collecté identique.
+      expect(row?.pending_minor).toBe(5000);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'scope boutique optionnel : exclut les commandes des autres boutiques',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('report-pending-shop');
+      const driverId = await createDriver(admin, merchantAccountId);
+      const shopA = await createShop(admin, merchantAccountId);
+      const shopB = await createShop(admin, merchantAccountId);
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 4000,
+        feeMinor: 0,
+        ageDays: 1,
+        shopId: shopA,
+      });
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 7000,
+        feeMinor: 0,
+        ageDays: 1,
+        shopId: shopB,
+      });
+
+      const client = await signIn(email);
+      const { data, error } = await client.rpc('get_report_driver_cash_pending', {
+        p_merchant_id: merchantAccountId,
+        p_from: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+        p_to: new Date(Date.now() + 86_400_000).toISOString(),
+        p_shop_id: shopA,
+      });
+      if (error) throw error;
+      const row = (data ?? []).find((entry) => entry.driver_id === driverId);
+
+      // Scopé shopA : seule la commande de 4000 compte, pas celle de shopB (7000).
+      expect(row?.pending_minor).toBe(4000);
+    },
+  );
+
+  skipIfNoServiceRole('agent : accès refusé (garde de rôle, ni owner ni manager)', async () => {
+    const { admin, merchantAccountId } = await createOwnerFixture('report-pending-agent');
+    const driverId = await createDriver(admin, merchantAccountId);
+    await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+      collectableMinor: 5000,
+      feeMinor: 0,
+      ageDays: 0,
+    });
+    const { email: agentEmail } = await addMember(admin, merchantAccountId, 'agent');
+    const client = await signIn(agentEmail);
+
+    const result = await client.rpc('get_report_driver_cash_pending', {
+      p_merchant_id: merchantAccountId,
+      p_from: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+      p_to: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    expect(result.error).not.toBeNull();
+  });
+
+  skipIfNoServiceRole(
+    'isolation tenant : owner du tenant B ne peut pas lire le cash du tenant A (rôle NULL)',
+    async () => {
+      const { admin, merchantAccountId: merchantA } = await createOwnerFixture('report-pending-a');
+      const driverId = await createDriver(admin, merchantA);
+      await seedDeliveredCollectedOrder(admin, merchantA, driverId, {
+        collectableMinor: 5000,
+        feeMinor: 0,
+        ageDays: 0,
+      });
+      const { email: emailB } = await createOwnerFixture('report-pending-b');
+      const clientB = await signIn(emailB);
+
+      const result = await clientB.rpc('get_report_driver_cash_pending', {
+        p_merchant_id: merchantA,
+        p_from: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+        p_to: new Date(Date.now() + 86_400_000).toISOString(),
       });
       expect(result.error).not.toBeNull();
     },
