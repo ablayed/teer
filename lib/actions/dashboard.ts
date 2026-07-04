@@ -1,6 +1,7 @@
 'use server';
 
 import { authActionClient } from '@/lib/actions/safe-action';
+import { type SupabaseServerClient, getCachedDashboardContext } from '@/lib/dashboard/context';
 import {
   type DashboardRevenue30d,
   type DashboardRevenuePoint,
@@ -11,12 +12,9 @@ import {
 } from '@/lib/dashboard/revenue-30d';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
-import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
-type SupabaseServerClient = SupabaseClient<Database>;
 type DashboardKpiRpcPayload = Record<string, unknown>;
 const dashboardShopFilterSchema = z
   .object({
@@ -213,25 +211,19 @@ function asRecordArray(value: unknown): Array<Record<string, unknown>> {
 }
 
 async function fetchTopProductsForUser({
+  merchantAccountId,
   shopId,
   supabase,
-  userId,
 }: {
+  merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
-  userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
-  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
-
-  if (!merchant.ok) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
   // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version parsait items_summary côté JS
   // sur les 500 commandes les plus récentes (.limit(500)) → top faux. La RPC agrège
   // items_summary sur tout le périmètre (mêmes 4 statuts) et renvoie le top 5 déjà trié.
   const { data, error } = await supabase.rpc('get_dashboard_top_products', {
-    p_merchant_id: merchant.merchantAccountId,
+    p_merchant_id: merchantAccountId,
     ...(shopId ? { p_shop_id: shopId } : {}),
   });
 
@@ -252,26 +244,20 @@ async function fetchTopProductsForUser({
 }
 
 async function fetchShopPerformanceForUser({
+  merchantAccountId,
   shopId,
   supabase,
-  userId,
 }: {
+  merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
-  userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
-  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
-
-  if (!merchant.ok) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
   // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version rapatriait orders(shop_id,
   // total_amount) sans .limit → tronqué à 1000 (max_rows) → « 1000 commandes » pile. La RPC
   // compte/somme par boutique côté SQL (all-time, sans filtre de statut), LEFT JOIN shop →
   // boutiques à 0 incluses, ordre installed_at asc (sémantique identique, chiffres exacts).
   const { data, error } = await supabase.rpc('get_dashboard_shop_performance', {
-    p_merchant_id: merchant.merchantAccountId,
+    p_merchant_id: merchantAccountId,
     ...(shopId ? { p_shop_id: shopId } : {}),
   });
 
@@ -292,26 +278,20 @@ async function fetchShopPerformanceForUser({
 }
 
 async function fetchCodBreakdownForUser({
+  merchantAccountId,
   shopId,
   supabase,
-  userId,
 }: {
+  merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
-  userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
-  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
-
-  if (!merchant.ok) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
   // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version rapatriait orders(cod_status)
   // sans .limit → tronqué à 1000 (max_rows) → « À appeler 1000 / reste 0 ». La RPC compte
   // par cod_status côté SQL (all-time). On remappe sur orderStatuses (8 catégories, 0 par
   // défaut) → contrat UI inchangé.
   const { data, error } = await supabase.rpc('get_dashboard_cod_breakdown', {
-    p_merchant_id: merchant.merchantAccountId,
+    p_merchant_id: merchantAccountId,
     ...(shopId ? { p_shop_id: shopId } : {}),
   });
 
@@ -335,24 +315,18 @@ async function fetchCodBreakdownForUser({
 }
 
 async function fetchRecentActivityForUser({
+  merchantAccountId,
   shopId,
   supabase,
-  userId,
 }: {
+  merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
-  userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardRecentActivityItem[]>> {
-  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
-
-  if (!merchant.ok) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
   const { data, error } = await supabase
     .from('order_state_transition')
     .select('id, created_at, from_status, to_status, order:order_id(order_number, shop_id)')
-    .eq('merchant_account_id', merchant.merchantAccountId)
+    .eq('merchant_account_id', merchantAccountId)
     .order('created_at', { ascending: false })
     .limit(shopId ? 40 : 8);
 
@@ -468,20 +442,14 @@ async function fetchAlertsForUser({
 const REVENUE_30D_PAGE_SIZE = 500;
 
 async function fetchRevenue30dForUser({
+  merchantAccountId,
   shopId,
   supabase,
-  userId,
 }: {
+  merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
-  userId: string;
 }): Promise<DashboardRevenue30dActionResult> {
-  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
-
-  if (!merchant.ok) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
   const lowerBound = revenue30dLowerBound();
   const orders: Revenue30dOrder[] = [];
 
@@ -489,7 +457,7 @@ async function fetchRevenue30dForUser({
     let query = supabase
       .from('orders')
       .select('created_at, created_at_shopify, currency, total_amount')
-      .eq('merchant_account_id', merchant.merchantAccountId)
+      .eq('merchant_account_id', merchantAccountId)
       .eq('cod_status', 'LIVREE')
       .gte('created_at', lowerBound);
 
@@ -518,33 +486,18 @@ async function fetchRevenue30dForUser({
 }
 
 async function fetchDashboardKpiForUser({
+  merchantAccountId,
   shopId,
   supabase,
-  userId,
 }: {
+  merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
-  userId: string;
 }): Promise<DashboardKpiActionResult> {
-  const { data: member, error: memberError } = await supabase
-    .from('merchant_member')
-    .select('merchant_account_id')
-    .eq('user_id', userId)
-    .limit(1)
-    .maybeSingle();
-
-  if (memberError) {
-    return { ok: false, errorCode: 'rpc_error' };
-  }
-
-  if (!member) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
   let currencyQuery = supabase
     .from('orders')
     .select('currency')
-    .eq('merchant_account_id', member.merchant_account_id)
+    .eq('merchant_account_id', merchantAccountId)
     .not('currency', 'is', null);
 
   if (shopId) {
@@ -553,7 +506,7 @@ async function fetchDashboardKpiForUser({
 
   const [kpiResult, currencyResult] = await Promise.all([
     supabase.rpc('get_dashboard_kpi', {
-      p_merchant_id: member.merchant_account_id,
+      p_merchant_id: merchantAccountId,
       ...(shopId ? { p_shop_id: shopId } : {}),
     }),
     currencyQuery.limit(1).maybeSingle(),
@@ -580,148 +533,205 @@ async function fetchDashboardKpiForUser({
   };
 }
 
+// QW4 — les fonctions ci-dessous (consommées par /tableau) résolvaient chacune leur propre
+// auth.getUser() + merchant_member (9 résolutions indépendantes par rendu de page, cf.
+// lib/dashboard/context.ts). getCachedDashboardContext() est request-scoped (React.cache) :
+// une seule résolution identité/membre est réellement exécutée, partagée par toutes ces
+// fonctions ET par app/(app)/tableau/page.tsx. Les *Action (next-safe-action) restent
+// inchangées dans leur comportement : elles ne participent pas au rendu /tableau (invocations
+// séparées) et résolvent merchantAccountId via getMerchantAccountIdForUser comme avant, juste
+// déplacé hors de fetchXForUser (devenue privée à merchantAccountId déjà résolu).
 export async function getDashboardKpi(shopId?: string | null): Promise<DashboardKpiActionResult> {
-  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const ctx = await getCachedDashboardContext();
 
-  if (!user) {
-    return { ok: false, errorCode: 'not_found' };
+  if (!ctx.ok) {
+    return {
+      ok: false,
+      errorCode: ctx.errorCode === 'member_query_error' ? 'rpc_error' : 'not_found',
+    };
   }
 
-  return fetchDashboardKpiForUser({ shopId, supabase, userId: user.id });
+  return fetchDashboardKpiForUser({
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+  });
 }
 
 export const getDashboardKpiAction = authActionClient
   .metadata({ actionName: 'dashboard.get_kpi', section: 'dashboard' })
   .inputSchema(dashboardShopFilterSchema)
   .action(async ({ ctx, parsedInput }): Promise<DashboardKpiActionResult> => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    // Distinction préservée à l'identique de l'ancienne fetchDashboardKpiForUser :
+    // erreur de requête → rpc_error, membre absent → not_found.
+    const { data: member, error: memberError } = await supabase
+      .from('merchant_member')
+      .select('merchant_account_id')
+      .eq('user_id', ctx.user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (memberError) {
+      return { ok: false, errorCode: 'rpc_error' };
+    }
+    if (!member) {
+      return { ok: false, errorCode: 'not_found' };
+    }
+
     return fetchDashboardKpiForUser({
+      merchantAccountId: member.merchant_account_id,
       shopId: parsedInput?.shopId ?? null,
-      supabase: asTypedSupabaseClient(ctx.supabase),
-      userId: ctx.user.id,
+      supabase,
     });
   });
 
 export async function getRevenue30d(
   shopId?: string | null,
 ): Promise<DashboardRevenue30dActionResult> {
-  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const ctx = await getCachedDashboardContext();
 
-  if (!user) {
+  if (!ctx.ok) {
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchRevenue30dForUser({ shopId, supabase, userId: user.id });
+  return fetchRevenue30dForUser({
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+  });
 }
 
 export const getRevenue30dAction = authActionClient
   .metadata({ actionName: 'dashboard.get_revenue_30d', section: 'dashboard' })
   .action(async ({ ctx }): Promise<DashboardRevenue30dActionResult> => {
-    return fetchRevenue30dForUser({
-      supabase: asTypedSupabaseClient(ctx.supabase),
-      userId: ctx.user.id,
-    });
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+
+    if (!merchant.ok) {
+      return { ok: false, errorCode: 'not_found' };
+    }
+
+    return fetchRevenue30dForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
   });
 
 export async function getTopProducts(
   shopId?: string | null,
 ): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
-  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const ctx = await getCachedDashboardContext();
 
-  if (!user) {
+  if (!ctx.ok) {
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchTopProductsForUser({ shopId, supabase, userId: user.id });
+  return fetchTopProductsForUser({
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+  });
 }
 
 export const getTopProductsAction = authActionClient
   .metadata({ actionName: 'dashboard.get_top_products', section: 'dashboard' })
   .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> => {
-    return fetchTopProductsForUser({
-      supabase: asTypedSupabaseClient(ctx.supabase),
-      userId: ctx.user.id,
-    });
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+
+    if (!merchant.ok) {
+      return { ok: false, errorCode: 'not_found' };
+    }
+
+    return fetchTopProductsForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
   });
 
 export async function getShopPerformance(
   shopId?: string | null,
 ): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
-  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const ctx = await getCachedDashboardContext();
 
-  if (!user) {
+  if (!ctx.ok) {
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchShopPerformanceForUser({ shopId, supabase, userId: user.id });
+  return fetchShopPerformanceForUser({
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+  });
 }
 
 export const getShopPerformanceAction = authActionClient
   .metadata({ actionName: 'dashboard.get_shop_performance', section: 'dashboard' })
   .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> => {
-    return fetchShopPerformanceForUser({
-      supabase: asTypedSupabaseClient(ctx.supabase),
-      userId: ctx.user.id,
-    });
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+
+    if (!merchant.ok) {
+      return { ok: false, errorCode: 'not_found' };
+    }
+
+    return fetchShopPerformanceForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
   });
 
 export async function getCodBreakdown(
   shopId?: string | null,
 ): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
-  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const ctx = await getCachedDashboardContext();
 
-  if (!user) {
+  if (!ctx.ok) {
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchCodBreakdownForUser({ shopId, supabase, userId: user.id });
+  return fetchCodBreakdownForUser({
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+  });
 }
 
 export const getCodBreakdownAction = authActionClient
   .metadata({ actionName: 'dashboard.get_cod_breakdown', section: 'dashboard' })
   .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> => {
-    return fetchCodBreakdownForUser({
-      supabase: asTypedSupabaseClient(ctx.supabase),
-      userId: ctx.user.id,
-    });
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+
+    if (!merchant.ok) {
+      return { ok: false, errorCode: 'not_found' };
+    }
+
+    return fetchCodBreakdownForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
   });
 
 export async function getRecentActivity(
   shopId?: string | null,
 ): Promise<DashboardReadonlyActionResult<DashboardRecentActivityItem[]>> {
-  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const ctx = await getCachedDashboardContext();
 
-  if (!user) {
+  if (!ctx.ok) {
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchRecentActivityForUser({ shopId, supabase, userId: user.id });
+  return fetchRecentActivityForUser({
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+  });
 }
 
 export const getRecentActivityAction = authActionClient
   .metadata({ actionName: 'dashboard.get_recent_activity', section: 'dashboard' })
   .action(
     async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardRecentActivityItem[]>> => {
+      const supabase = asTypedSupabaseClient(ctx.supabase);
+      const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+
+      if (!merchant.ok) {
+        return { ok: false, errorCode: 'not_found' };
+      }
+
       return fetchRecentActivityForUser({
-        supabase: asTypedSupabaseClient(ctx.supabase),
-        userId: ctx.user.id,
+        merchantAccountId: merchant.merchantAccountId,
+        supabase,
       });
     },
   );
@@ -749,20 +759,14 @@ export const getAlertsAction = authActionClient
   });
 
 async function fetchPriorityCountsForUser({
+  merchantAccountId,
   shopId,
   supabase,
-  userId,
 }: {
+  merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
-  userId: string;
 }): Promise<DashboardReadonlyActionResult<DashboardPriorityCounts>> {
-  const merchant = await getMerchantAccountIdForUser({ supabase, userId });
-
-  if (!merchant.ok) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
   // Agrégation SQL non plafonnée (RPC 0082). Les compteurs 7j (a_appeler / en_livraison /
   // annulees_retours) partent des bornes calculées CÔTE TS (source de vérité, aucune logique
   // de date en SQL) : resolvePeriodRange('7j') = fenêtre alignée /commandes?period=7j.
@@ -776,7 +780,7 @@ async function fetchPriorityCountsForUser({
   });
 
   const { data, error } = await supabase.rpc('get_dashboard_priority_counts', {
-    p_merchant_id: merchant.merchantAccountId,
+    p_merchant_id: merchantAccountId,
     p_since: sinceDate.toISOString(),
     p_until: untilDate.toISOString(),
     ...(shopId ? { p_shop_id: shopId } : {}),
@@ -802,14 +806,15 @@ async function fetchPriorityCountsForUser({
 export async function getPriorityCounts(
   shopId?: string | null,
 ): Promise<DashboardReadonlyActionResult<DashboardPriorityCounts>> {
-  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const ctx = await getCachedDashboardContext();
 
-  if (!user) {
+  if (!ctx.ok) {
     return { ok: false, errorCode: 'not_found' };
   }
 
-  return fetchPriorityCountsForUser({ shopId, supabase, userId: user.id });
+  return fetchPriorityCountsForUser({
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+  });
 }
