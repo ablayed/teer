@@ -1932,6 +1932,18 @@ export type Database = {
         };
         Returns: Json;
       };
+      get_order_view_counts: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: {
+          count: number;
+          view_id: string;
+        }[];
+      };
       get_report_driver_cash_pending: {
         Args: {
           p_from: string;
