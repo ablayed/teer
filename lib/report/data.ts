@@ -15,26 +15,14 @@ type FinanceKpiRow = Database['public']['Functions']['finance_kpis']['Returns'][
 type CashAgingRow = Database['public']['Functions']['cash_aging']['Returns'][number];
 type ReportDriverCashPendingRow =
   Database['public']['Functions']['get_report_driver_cash_pending']['Returns'][number];
+type ReportStatusBreakdownRow =
+  Database['public']['Functions']['get_report_status_breakdown']['Returns'][number];
+type ReportRevenueByDayRow =
+  Database['public']['Functions']['get_report_revenue_by_day']['Returns'][number];
+type ReportTopProductRow =
+  Database['public']['Functions']['get_report_top_products']['Returns'][number];
 type CodStatus = Tables<'orders'>['cod_status'];
 type SettlementMethod = SettlementForMargin['method'];
-
-type ReportOrderRow = Pick<
-  Tables<'orders'>,
-  | 'assigned_driver_id'
-  | 'cash_collectable_minor'
-  | 'cash_state'
-  | 'cod_status'
-  | 'created_at'
-  | 'currency'
-  | 'delivery_fee_minor'
-  | 'id'
-  | 'items_summary'
-  | 'order_number'
-  | 'payment_channel_at_delivery'
-  | 'shop_id'
-  | 'total_amount'
-  | 'updated_at'
->;
 
 type DriverRow = Pick<Tables<'driver'>, 'full_name' | 'id'>;
 type ShortfallRow = Pick<
@@ -146,60 +134,46 @@ function reportDriverCashPendingRpc(supabase: SupabaseServerClient) {
   return rpc;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function reportStatusBreakdownRpc(supabase: SupabaseServerClient) {
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    fn: 'get_report_status_breakdown',
+    args: { p_from: string; p_merchant_id: string; p_shop_id?: string | null; p_to: string },
+  ) => Promise<{ data: ReportStatusBreakdownRow[] | null; error: unknown }>;
+
+  return rpc;
 }
 
-function stringField(record: Record<string, unknown>, key: string): string | null {
-  const value = record[key];
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
+function reportRevenueByDayRpc(supabase: SupabaseServerClient) {
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    fn: 'get_report_revenue_by_day',
+    args: { p_from: string; p_merchant_id: string; p_shop_id?: string | null; p_to: string },
+  ) => Promise<{ data: ReportRevenueByDayRow[] | null; error: unknown }>;
+
+  return rpc;
 }
 
-function numberField(record: Record<string, unknown>, key: string): number {
-  const value = record[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
+function reportTopProductsRpc(supabase: SupabaseServerClient) {
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    fn: 'get_report_top_products',
+    args: { p_from: string; p_merchant_id: string; p_shop_id?: string | null; p_to: string },
+  ) => Promise<{ data: ReportTopProductRow[] | null; error: unknown }>;
 
-function itemPriceMinor(item: Record<string, unknown>): number {
-  const price = numberField(item, 'price');
-  const priceMinor = numberField(item, 'price_minor');
-
-  return Math.round(priceMinor > 0 ? priceMinor : price);
-}
-
-function aggregateTopProducts(orders: ReportOrderRow[]): ReportTopProduct[] {
-  const byTitle = new Map<string, ReportTopProduct>();
-
-  for (const order of orders) {
-    if (!Array.isArray(order.items_summary)) {
-      continue;
-    }
-
-    for (const item of order.items_summary) {
-      if (!isRecord(item)) {
-        continue;
-      }
-
-      const title = stringField(item, 'title') ?? 'Produit';
-      const quantity = Math.max(Math.round(numberField(item, 'quantity')), 0);
-      const amountMinor = itemPriceMinor(item) * quantity;
-      const current = byTitle.get(title) ?? { amountMinor: 0, quantity: 0, title };
-      current.quantity += quantity;
-      current.amountMinor += amountMinor;
-      byTitle.set(title, current);
-    }
-  }
-
-  return [...byTitle.values()]
-    .sort((left, right) => right.amountMinor - left.amountMinor || right.quantity - left.quantity)
-    .slice(0, 10);
+  return rpc;
 }
 
 function dateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function aggregateRevenue(orders: ReportOrderRow[], from: Date, to: Date): ReportRevenuePoint[] {
+// Pré-population de la série continue [from,to] à 0 (comportement actuel inchangé), puis fusion
+// des lignes get_report_revenue_by_day (migration 0085) par clé de jour. Une commande dont le
+// bucket (coalesce(updated_at,created_at), UTC) tombe hors [from,to] ajoute une clé hors série
+// pré-peuplée, comme aujourd'hui (RPC ne filtre pas la date de bucket, seulement created_at).
+function buildRevenueSeries(
+  rows: ReportRevenueByDayRow[],
+  from: Date,
+  to: Date,
+): ReportRevenuePoint[] {
   const points = new Map<string, number>();
   const cursor = new Date(from);
   cursor.setHours(0, 0, 0, 0);
@@ -211,13 +185,8 @@ function aggregateRevenue(orders: ReportOrderRow[], from: Date, to: Date): Repor
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  for (const order of orders) {
-    if (order.cod_status !== 'LIVREE') {
-      continue;
-    }
-
-    const key = dateKey(new Date(order.updated_at ?? order.created_at));
-    points.set(key, (points.get(key) ?? 0) + Math.round(order.total_amount));
+  for (const row of rows) {
+    points.set(row.day, (points.get(row.day) ?? 0) + row.amount_minor);
   }
 
   return [...points.entries()].map(([date, valueMinor]) => ({ date, valueMinor }));
@@ -300,16 +269,22 @@ export async function getReportData({
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
 
-  const ordersQuery = supabase
+  // currency (data affichée mais inerte : formatMoneyPdf/formatMoney ignore le paramètre
+  // _currency) : source déterministe validée pour Lot 4 — dernière commande créée de la
+  // fenêtre (created_at desc, id asc en tie-break), même filtre merchant+période+shop que les
+  // agrégats ci-dessous, bornée à 1 ligne. Remplace l'ancien orders[0]?.currency non déterministe
+  // (résultat non ordonné, potentiellement tronqué à 1000 lignes).
+  const currencyBaseQuery = supabase
     .from('orders')
-    .select(
-      'id, shop_id, order_number, total_amount, currency, cod_status, items_summary, assigned_driver_id, payment_channel_at_delivery, cash_collectable_minor, cash_state, delivery_fee_minor, created_at, updated_at',
-    )
+    .select('currency')
     .eq('merchant_account_id', merchantAccountId)
     .gte('created_at', fromIso)
     .lte('created_at', toIso);
 
-  const scopedOrdersQuery = shopId ? ordersQuery.eq('shop_id', shopId) : ordersQuery;
+  const currencyQuery = (shopId ? currencyBaseQuery.eq('shop_id', shopId) : currencyBaseQuery)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .limit(1);
 
   const [
     merchantResult,
@@ -317,11 +292,14 @@ export async function getReportData({
     kpisResult,
     agingResult,
     settingsResult,
-    ordersResult,
+    currencyResult,
     settlementsResult,
     driversResult,
     shortfallsResult,
     driverCashPendingResult,
+    statusBreakdownResult,
+    revenueByDayResult,
+    topProductsResult,
   ] = await Promise.all([
     supabase.from('merchant_account').select('name').eq('id', merchantAccountId).maybeSingle(),
     supabase.from('shop').select('id, shop_domain').eq('merchant_account_id', merchantAccountId),
@@ -337,7 +315,7 @@ export async function getReportData({
       .select('*')
       .eq('merchant_account_id', merchantAccountId)
       .maybeSingle(),
-    scopedOrdersQuery,
+    currencyQuery,
     supabase
       .from('cash_settlement')
       .select('amount_received_minor, driver_id, method')
@@ -355,6 +333,24 @@ export async function getReportData({
       p_shop_id: shopId ?? null,
       p_to: toIso,
     }),
+    reportStatusBreakdownRpc(supabase)('get_report_status_breakdown', {
+      p_from: fromIso,
+      p_merchant_id: merchantAccountId,
+      p_shop_id: shopId ?? null,
+      p_to: toIso,
+    }),
+    reportRevenueByDayRpc(supabase)('get_report_revenue_by_day', {
+      p_from: fromIso,
+      p_merchant_id: merchantAccountId,
+      p_shop_id: shopId ?? null,
+      p_to: toIso,
+    }),
+    reportTopProductsRpc(supabase)('get_report_top_products', {
+      p_from: fromIso,
+      p_merchant_id: merchantAccountId,
+      p_shop_id: shopId ?? null,
+      p_to: toIso,
+    }),
   ]);
 
   if (
@@ -363,16 +359,18 @@ export async function getReportData({
     kpisResult.error ||
     agingResult.error ||
     settingsResult.error ||
-    ordersResult.error ||
+    currencyResult.error ||
     settlementsResult.error ||
     driversResult.error ||
     shortfallsResult.error ||
-    driverCashPendingResult.error
+    driverCashPendingResult.error ||
+    statusBreakdownResult.error ||
+    revenueByDayResult.error ||
+    topProductsResult.error
   ) {
     throw new Error('REPORT_DATA_FAILED');
   }
 
-  const orders = (ordersResult.data ?? []) as ReportOrderRow[];
   const merchant = merchantResult.data as MerchantRow | null;
   const shops = (shopsResult.data ?? []) as ShopRow[];
   const selectedShop = shopId ? shops.find((shop) => shop.id === shopId) : shops[0];
@@ -395,25 +393,29 @@ export async function getReportData({
     encaisse: 0,
     taux_refus: 0,
   };
-  const deliveredOrdersCount = orders.filter((order) => order.cod_status === 'LIVREE').length;
+  const statusBreakdownByStatus = new Map(
+    ((statusBreakdownResult.data ?? []) as ReportStatusBreakdownRow[]).map((row) => [
+      row.cod_status as CodStatus,
+      row,
+    ]),
+  );
+  const deliveredOrdersCount = statusBreakdownByStatus.get('LIVREE')?.count ?? 0;
   const marginMinor = estimatedMarginMinor({
     caLivreMinor: kpis.ca_livre,
     deliveredOrdersCount,
     settlements,
     settings,
   });
-  const totalOrders = orders.length || 1;
+  const totalOrders =
+    [...statusBreakdownByStatus.values()].reduce((total, row) => total + row.count, 0) || 1;
   const statuses = codStatuses.map((status) => {
-    const matching = orders.filter((order) => order.cod_status === status);
-    const amountMinor = matching.reduce(
-      (total, order) => total + Math.round(order.total_amount),
-      0,
-    );
+    const matching = statusBreakdownByStatus.get(status);
+    const amountMinor = matching?.amount_minor ?? 0;
 
     return {
       amountMinor,
-      count: matching.length,
-      percent: matching.length / totalOrders,
+      count: matching?.count ?? 0,
+      percent: (matching?.count ?? 0) / totalOrders,
       status,
     };
   });
@@ -504,7 +506,7 @@ export async function getReportData({
 
   return {
     cashAging: agingResult.data ?? [],
-    currency: orders[0]?.currency ?? 'XOF',
+    currency: currencyResult.data?.[0]?.currency ?? 'XOF',
     drivers: [...driverRows.values()].sort(
       (left, right) =>
         right.pendingMinor + right.shortfallMinor - (left.pendingMinor + left.shortfallMinor),
@@ -514,7 +516,11 @@ export async function getReportData({
     kpis: { ...kpis, margin_estimee: marginMinor },
     methods: [...methods.values()].sort((left, right) => right.settledMinor - left.settledMinor),
     profit,
-    revenue: aggregateRevenue(orders, from, to),
+    revenue: buildRevenueSeries(
+      (revenueByDayResult.data ?? []) as ReportRevenueByDayRow[],
+      from,
+      to,
+    ),
     shop: {
       domain: selectedShop?.shop_domain ?? null,
       name: shopName,
@@ -522,6 +528,10 @@ export async function getReportData({
     },
     statuses,
     to,
-    topProducts: aggregateTopProducts(orders),
+    topProducts: ((topProductsResult.data ?? []) as ReportTopProductRow[]).map((row) => ({
+      amountMinor: row.amount_minor,
+      quantity: row.quantity,
+      title: row.title,
+    })),
   };
 }
