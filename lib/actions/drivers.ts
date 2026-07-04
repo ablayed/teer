@@ -1,11 +1,7 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
-import {
-  type DriverCashConsolidation,
-  consolidateCashByDriver,
-  deriveDriverCashConsolidation,
-} from '@/lib/drivers/cash-consolidation';
+import type { DriverCashConsolidation } from '@/lib/drivers/cash-consolidation';
 import { type DriverPerformance, deriveDriverPerformance } from '@/lib/drivers/performance';
 import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
 import { env } from '@/lib/env';
@@ -123,8 +119,18 @@ export type DriverStockRow = {
 export type DriverStockData = { ok: true; rows: DriverStockRow[] } | { ok: false; message: string };
 
 // Resolves the current owner/manager context (auth via server client, data via admin).
+// `supabase` (client authentifié, cookie-based) est exposé en plus de `admin` : les RPC
+// cash (get_driver_cash_consolidation / get_driver_cash_outstanding_orders, migration 0083)
+// sont `security definer` avec garde `current_member_role(...)` qui lit `auth.uid()` — un
+// appel via le client admin (service-role, sans session) ne verrait aucun `auth.uid()` et
+// se ferait rejeter par la garde. Ces RPC DOIVENT être appelées via `supabase`, pas `admin`.
 type OwnerManagerContext =
-  | { ok: true; merchantAccountId: string; admin: ReturnType<typeof createSupabaseAdminClient> }
+  | {
+      ok: true;
+      merchantAccountId: string;
+      admin: ReturnType<typeof createSupabaseAdminClient>;
+      supabase: SupabaseClient<Database>;
+    }
   | { ok: false; message: string };
 
 async function resolveOwnerManagerContext(): Promise<OwnerManagerContext> {
@@ -147,7 +153,15 @@ async function resolveOwnerManagerContext(): Promise<OwnerManagerContext> {
     return { ok: false, message: 'Accès refusé.' };
   }
 
-  return { ok: true, merchantAccountId: memberAuth.merchant_account_id, admin };
+  return {
+    ok: true,
+    merchantAccountId: memberAuth.merchant_account_id,
+    admin,
+    // @supabase/ssr et @supabase/supabase-js exposent des arités génériques différentes
+    // pour SupabaseClient<Database> dans ce repo — même cast que asTypedSupabaseClient
+    // (lib/actions/finance.ts), la valeur runtime est le même client typé.
+    supabase: supabase as unknown as SupabaseClient<Database>,
+  };
 }
 
 // Derives the courier's stock-in-hand per product from the ledger (owner/manager only).
@@ -200,8 +214,21 @@ export type DriverCashData =
   | { ok: true; consolidation: DriverCashConsolidation }
   | { ok: false; message: string };
 
-// Consolidates cash per driver (dû/collecté/remis/écart) by reusing the existing
-// cash tables and the dimensional cash_state. Owner/manager only.
+const emptyDriverCashConsolidation: DriverCashConsolidation = {
+  expectedMinor: 0,
+  collectedMinor: 0,
+  deliveryFeesMinor: 0,
+  collectedDeliveryFeesMinor: 0,
+  remittedMinor: 0,
+  discrepancyMinor: 0,
+  cashOnHandMinor: 0,
+};
+
+// Consolidates cash per driver (dû/collecté/remis/écart) via la RPC SQL
+// get_driver_cash_consolidation (migration 0083), qui reproduit exactement
+// deriveDriverCashConsolidation — plus de select `orders` all-time ni de
+// `.in(orderIds)` sur settlement_allocation (cap PostgREST 1000 / URL, #56/#50).
+// Owner/manager only (garde côté RPC).
 //
 // `period` ne scope QUE collecté/frais de livraison (cf. retour porteur : le filtre
 // période doit couvrir les cards cash, pas seulement Performance). `cashOnHandMinor`/
@@ -215,77 +242,36 @@ export async function getDriverCashConsolidation(
 ): Promise<DriverCashData> {
   const auth = await resolveOwnerManagerContext();
   if (!auth.ok) return { ok: false, message: auth.message };
-  const { merchantAccountId, admin } = auth;
+  const { merchantAccountId, supabase } = auth;
 
-  const { data: orders, error: ordersError } = await admin
-    .from('orders')
-    .select(
-      'id, created_at, cash_state, cash_collectable_minor, delivery_fee_minor, payment_channel_at_delivery, total_amount',
-    )
-    .eq('merchant_account_id', merchantAccountId)
-    .eq('assigned_driver_id', driverId);
-
-  if (ordersError) return { ok: false, message: ordersError.message };
-
-  const orderIds = (orders ?? []).map((o) => o.id);
-
-  // « remis » = Σ allocations ; l'écart est dérivé du live (collecté − remis),
-  // pas d'une ligne settlement_shortfall figée → plus besoin de la requête.
-  const allocationsResult =
-    orderIds.length > 0
-      ? await admin
-          .from('settlement_allocation')
-          .select('allocated_minor')
-          .eq('merchant_account_id', merchantAccountId)
-          .in('order_id', orderIds)
-      : { data: [] as { allocated_minor: number }[], error: null };
-
-  if (allocationsResult.error) return { ok: false, message: allocationsResult.error.message };
-
-  const remittedMinor = (allocationsResult.data ?? []).reduce(
-    (total, a) => total + a.allocated_minor,
-    0,
-  );
-
-  const toConsolidationOrder = (o: NonNullable<typeof orders>[number]) => ({
-    deliveryFeeMinor: o.delivery_fee_minor,
-    cashState: o.cash_state,
-    cashCollectableMinor: o.cash_collectable_minor,
-    paymentChannel: o.payment_channel_at_delivery,
-    totalAmount: o.total_amount,
+  const { data, error } = await supabase.rpc('get_driver_cash_consolidation', {
+    p_merchant_id: merchantAccountId,
+    p_driver_id: driverId,
+    p_period_from: period?.from,
+    p_period_to: period?.to,
   });
 
-  const consolidation = deriveDriverCashConsolidation({
-    orders: (orders ?? []).map(toConsolidationOrder),
-    remittedMinor,
-  });
+  if (error) return { ok: false, message: error.message };
 
-  if (!period) {
-    return { ok: true, consolidation };
+  const row = data?.[0];
+  if (!row) {
+    // Livreur sans commande assignée : mêmes zéros que l'ancien code (tableau
+    // d'orders vide → deriveDriverCashConsolidation renvoyait déjà des zéros).
+    return { ok: true, consolidation: emptyDriverCashConsolidation };
   }
-
-  // Comparaison en timestamps (Date), jamais en string : Postgres renvoie created_at
-  // en "...+00:00" (microsecondes), period.from/to sont des .toISOString() JS
-  // ("...Z", millisecondes) — comparer les strings brutes trie incorrectement selon
-  // la plage (bug constaté : « Aujourd'hui » scopait mal les cards cash).
-  const periodFromMs = new Date(period.from).getTime();
-  const periodToMs = new Date(period.to).getTime();
-  const periodOrders = (orders ?? []).filter((o) => {
-    const createdMs = new Date(o.created_at).getTime();
-    return createdMs >= periodFromMs && createdMs < periodToMs;
-  });
-  const periodConsolidation = deriveDriverCashConsolidation({
-    orders: periodOrders.map(toConsolidationOrder),
-    remittedMinor: 0,
-  });
 
   return {
     ok: true,
     consolidation: {
-      ...consolidation,
-      collectedMinor: periodConsolidation.collectedMinor,
-      deliveryFeesMinor: periodConsolidation.deliveryFeesMinor,
-      collectedDeliveryFeesMinor: periodConsolidation.collectedDeliveryFeesMinor,
+      expectedMinor: row.expected_minor,
+      collectedMinor: period ? row.period_collected_minor : row.collected_minor,
+      deliveryFeesMinor: period ? row.period_delivery_fees_minor : row.delivery_fees_minor,
+      collectedDeliveryFeesMinor: period
+        ? row.period_collected_delivery_fees_minor
+        : row.collected_delivery_fees_minor,
+      remittedMinor: row.remitted_minor,
+      discrepancyMinor: row.cash_on_hand_minor,
+      cashOnHandMinor: row.cash_on_hand_minor,
     },
   };
 }
@@ -434,58 +420,24 @@ export type DriversCashTotal =
   | { ok: false; message: string };
 
 // Cash total « à remettre » chez TOUS les livreurs = Σ cashOnHand par livreur
-// (collecté − frais encaissés − remis), via la même dérivation que le panneau
-// Livreurs (deriveDriverCashConsolidation) → aucun chiffre dupliqué. Owner/manager.
+// (collecté − frais encaissés − remis), via la RPC get_driver_cash_consolidation
+// (migration 0083) qui porte la même arithmétique agrégée que le panneau Livreurs
+// et le panneau Finances → aucun chiffre dupliqué. Owner/manager (garde côté RPC).
 export async function getDriversCashOnHandTotal(): Promise<DriversCashTotal> {
   const auth = await resolveOwnerManagerContext();
   if (!auth.ok) return { ok: false, message: auth.message };
-  const { merchantAccountId, admin } = auth;
+  const { merchantAccountId, supabase } = auth;
 
-  const { data: orders, error } = await admin
-    .from('orders')
-    .select(
-      'id, assigned_driver_id, cash_state, cash_collectable_minor, delivery_fee_minor, payment_channel_at_delivery, total_amount',
-    )
-    .eq('merchant_account_id', merchantAccountId)
-    .not('assigned_driver_id', 'is', null);
+  const { data, error } = await supabase.rpc('get_driver_cash_consolidation', {
+    p_merchant_id: merchantAccountId,
+  });
   if (error) return { ok: false, message: error.message };
-
-  const rows = orders ?? [];
-  const orderIds = rows.map((o) => o.id);
-
-  const allocationsResult =
-    orderIds.length > 0
-      ? await admin
-          .from('settlement_allocation')
-          .select('order_id, allocated_minor')
-          .eq('merchant_account_id', merchantAccountId)
-          .in('order_id', orderIds)
-      : { data: [] as { order_id: string; allocated_minor: number }[], error: null };
-  if (allocationsResult.error) return { ok: false, message: allocationsResult.error.message };
-
-  const allocatedByOrder = new Map<string, number>();
-  for (const a of allocationsResult.data ?? []) {
-    allocatedByOrder.set(a.order_id, (allocatedByOrder.get(a.order_id) ?? 0) + a.allocated_minor);
-  }
-
-  const consolidations = consolidateCashByDriver(
-    rows.map((o) => ({
-      driverId: o.assigned_driver_id as string,
-      orderId: o.id,
-      deliveryFeeMinor: o.delivery_fee_minor,
-      cashState: o.cash_state,
-      cashCollectableMinor: o.cash_collectable_minor,
-      paymentChannel: o.payment_channel_at_delivery,
-      totalAmount: o.total_amount,
-    })),
-    allocatedByOrder,
-  );
 
   let totalMinor = 0;
   let driverCount = 0;
-  for (const consolidation of consolidations.values()) {
-    totalMinor += consolidation.cashOnHandMinor;
-    if (consolidation.cashOnHandMinor > 0) driverCount += 1;
+  for (const row of data ?? []) {
+    totalMinor += row.cash_on_hand_minor;
+    if (row.cash_on_hand_minor > 0) driverCount += 1;
   }
 
   return { ok: true, totalMinor, driverCount };

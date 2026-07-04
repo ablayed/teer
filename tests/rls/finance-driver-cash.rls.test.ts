@@ -66,6 +66,18 @@ async function createOwnerFixture(label: string) {
   return { admin, email, merchantAccountId, userId };
 }
 
+async function addMember(admin: AdminClient, merchantAccountId: string, role: 'agent' | 'manager') {
+  const email = `finance-driver-cash-member-${role}-${Date.now()}@example.com`;
+  const userId = await createConfirmedUser(admin, email);
+  // L'utilisateur créé ci-dessus obtient AUSSI son propre merchant_account (trigger de
+  // signup) — on le retire pour ne garder que le membership sur le tenant du test.
+  await admin.from('merchant_account').delete().eq('owner_user_id', userId);
+  await admin
+    .from('merchant_member')
+    .insert({ merchant_account_id: merchantAccountId, role, user_id: userId });
+  return { email, userId };
+}
+
 async function createDriver(admin: AdminClient, merchantAccountId: string) {
   const { data, error } = await admin
     .from('driver')
@@ -243,6 +255,176 @@ describe('finance_kpis cash_chez_livreurs — frais retranchés, aligné Livreur
       expect(reference.cashOnHandMinor).toBe(3000); // 10000 − 1000 − 6000
       expect(row.cash_chez_livreurs).toBe(3000);
       expect(row.cash_chez_livreurs).toBe(reference.cashOnHandMinor);
+    },
+  );
+});
+
+// Lot 3 perf (migration 0083) — get_driver_cash_consolidation / get_driver_cash_outstanding_orders
+// remplacent les selects `orders` all-time + `.in(orderIds)` de getDriversCashOnHandTotal,
+// getDriverCashConsolidation et buildDriverSettlements. Même exigence de parité stricte
+// avec deriveDriverCashConsolidation que ci-dessus, plus la garde de rôle NULL-safe.
+describe('get_driver_cash_consolidation / get_driver_cash_outstanding_orders (Lot 3, 0083)', () => {
+  skipIfNoServiceRole(
+    'piège multi-commandes : total agrégé = référence TS = 0, ET aucune ligne de détail ' +
+      'pour ce livreur malgré un résidu brut non nul sur une commande',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('consolidation-trap');
+      const driverId = await createDriver(admin, merchantAccountId);
+      // Identique au test finance_kpis ci-dessus : net dû total = 6500, versé 6500.
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 5000,
+        feeMinor: 1000,
+        ageDays: 2,
+      });
+      await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 3000,
+        feeMinor: 500,
+        ageDays: 1,
+      });
+
+      const client = await signIn(email);
+      const { error: settleError } = await client.rpc('record_cash_settlement', {
+        p_merchant: merchantAccountId,
+        p_driver: driverId,
+        p_amount_received_minor: 6500,
+        p_method: 'ESPECES',
+        p_note: '',
+        p_client_request_id: crypto.randomUUID(),
+      });
+      if (settleError) throw settleError;
+
+      // Allocation oldest-first au BRUT (record_cash_settlement, 0018) : la commande la
+      // plus ancienne (5000) est soldée en entier, la plus récente (3000) reçoit le reste
+      // (1500) → résidu BRUT de 1500 sur cette commande, alors que le NET agrégé (frais
+      // déduits) tombe bien à 0. C'est le piège documenté dans consolidateCashByDriver.
+      const { data: consolidationRows, error: consolidationError } = await client.rpc(
+        'get_driver_cash_consolidation',
+        { p_merchant_id: merchantAccountId },
+      );
+      if (consolidationError) throw consolidationError;
+      const driverRow = (consolidationRows ?? []).find((row) => row.driver_id === driverId);
+
+      expect(driverRow?.cash_on_hand_minor).toBe(0);
+
+      const { data: outstandingRows, error: outstandingError } = await client.rpc(
+        'get_driver_cash_outstanding_orders',
+        { p_merchant_id: merchantAccountId },
+      );
+      if (outstandingError) throw outstandingError;
+
+      // Garde reproduite de buildDriverSettlements (`if (!entry) continue`) : un livreur
+      // au net à 0 n'a AUCUNE ligne de détail, même si une commande isolée montre un
+      // résidu brut de 1500 (5ème assertion du test finance_kpis jumeau : net=0 malgré
+      // le résidu par commande).
+      expect((outstandingRows ?? []).filter((row) => row.driver_id === driverId)).toHaveLength(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'versement partiel : total agrégé = référence TS, détail = brut (peut dépasser le net)',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('consolidation-partial');
+      const driverId = await createDriver(admin, merchantAccountId);
+      const orderId = await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+        collectableMinor: 10000,
+        feeMinor: 1000,
+        ageDays: 1,
+      });
+
+      const client = await signIn(email);
+      const { error: settleError } = await client.rpc('record_cash_settlement', {
+        p_merchant: merchantAccountId,
+        p_driver: driverId,
+        p_amount_received_minor: 6000,
+        p_method: 'ESPECES',
+        p_note: '',
+        p_client_request_id: crypto.randomUUID(),
+      });
+      if (settleError) throw settleError;
+
+      const reference = deriveDriverCashConsolidation({
+        orders: [
+          {
+            cashState: 'collected',
+            cashCollectableMinor: 10000,
+            deliveryFeeMinor: 1000,
+            paymentChannel: 'ESPECES',
+            totalAmount: 10000,
+          },
+        ],
+        remittedMinor: 6000,
+      });
+
+      const { data: consolidationRows, error: consolidationError } = await client.rpc(
+        'get_driver_cash_consolidation',
+        { p_merchant_id: merchantAccountId },
+      );
+      if (consolidationError) throw consolidationError;
+      const driverRow = (consolidationRows ?? []).find((row) => row.driver_id === driverId);
+
+      expect(reference.cashOnHandMinor).toBe(3000); // 10000 − 1000 − 6000
+      expect(driverRow?.cash_on_hand_minor).toBe(3000);
+      expect(driverRow?.cash_on_hand_minor).toBe(reference.cashOnHandMinor);
+      expect(driverRow?.collected_minor).toBe(10000);
+      expect(driverRow?.collected_delivery_fees_minor).toBe(1000);
+      expect(driverRow?.remitted_minor).toBe(6000);
+
+      const { data: outstandingRows, error: outstandingError } = await client.rpc(
+        'get_driver_cash_outstanding_orders',
+        { p_merchant_id: merchantAccountId },
+      );
+      if (outstandingError) throw outstandingError;
+      const orderRow = (outstandingRows ?? []).find((row) => row.order_id === orderId);
+
+      // Ligne de détail BRUTE (collectable − alloué = 10000 − 6000 = 4000), volontairement
+      // > au net (3000) : les frais (1000) sont une déduction par livreur, pas par commande
+      // (cf. commentaire buildDriverSettlements).
+      expect(orderRow?.outstanding_minor).toBe(4000);
+    },
+  );
+
+  skipIfNoServiceRole('agent : accès refusé (garde de rôle, ni owner ni manager)', async () => {
+    const { admin, merchantAccountId } = await createOwnerFixture('consolidation-agent');
+    const driverId = await createDriver(admin, merchantAccountId);
+    await seedDeliveredCollectedOrder(admin, merchantAccountId, driverId, {
+      collectableMinor: 5000,
+      feeMinor: 0,
+      ageDays: 0,
+    });
+    const { email: agentEmail } = await addMember(admin, merchantAccountId, 'agent');
+    const client = await signIn(agentEmail);
+
+    const consolidation = await client.rpc('get_driver_cash_consolidation', {
+      p_merchant_id: merchantAccountId,
+    });
+    expect(consolidation.error).not.toBeNull();
+
+    const outstanding = await client.rpc('get_driver_cash_outstanding_orders', {
+      p_merchant_id: merchantAccountId,
+    });
+    expect(outstanding.error).not.toBeNull();
+  });
+
+  skipIfNoServiceRole(
+    'isolation tenant : owner du tenant B ne peut pas lire le cash du tenant A (rôle NULL)',
+    async () => {
+      const { admin, merchantAccountId: merchantA } = await createOwnerFixture('consolidation-a');
+      const driverId = await createDriver(admin, merchantA);
+      await seedDeliveredCollectedOrder(admin, merchantA, driverId, {
+        collectableMinor: 5000,
+        feeMinor: 0,
+        ageDays: 0,
+      });
+      const { email: emailB } = await createOwnerFixture('consolidation-b');
+      const clientB = await signIn(emailB);
+
+      // v_role est NULL pour B sur le tenant A → la garde `v_role is null or v_role not in
+      // (...)` doit refuser, pas silencieusement renvoyer 0 ligne (cf. gotcha CLAUDE.md
+      // "SECURITY DEFINER role gates must be NULL-safe").
+      const result = await clientB.rpc('get_driver_cash_consolidation', {
+        p_merchant_id: merchantA,
+      });
+      expect(result.error).not.toBeNull();
     },
   );
 });
