@@ -502,7 +502,130 @@ async function fetchOrderViewCountsFromRpc(
   return mapOrderViewCountRows(data ?? []);
 }
 
+type OrderKeysetRow = Database['public']['Functions']['list_orders_keyset']['Returns'][number];
+
+// Lot 7 (migration 0089) — page 1+ de la liste via keyset SQL, UNIQUEMENT quand aucune
+// recherche texte n'est active (même garde que Lot 6/get_order_view_counts). Récupère
+// ORDERS_PAGE_SIZE + 1 lignes pour déduire hasMore/nextCursor côté TS, sans colonne dédiée côté
+// RPC (contrat RPC simple et symétrique avec la pagination actuelle). Aplatit customer_full_name/
+// customer_phone en `customer: {full_name, phone} | null`, shape OrderListItem inchangée.
+async function fetchOrdersKeysetPage({
+  activeView,
+  cursor,
+  filters,
+  member,
+  supabase,
+}: {
+  activeView: OrderSavedViewId;
+  cursor: OrderListCursor | null;
+  filters: { dateFrom: string; dateTo: string; shopId?: string | null };
+  member: CurrentMember;
+  supabase: SupabaseServerClient;
+}): Promise<{ hasMore: boolean; nextCursor: OrderListCursor | null; orders: OrderListItem[] }> {
+  const { data, error } = await supabase.rpc('list_orders_keyset', {
+    p_cursor_id: cursor?.id,
+    p_cursor_sort: cursor?.sort,
+    p_from: filters.dateFrom,
+    p_limit: ORDERS_PAGE_SIZE + 1,
+    p_merchant_id: member.merchantAccountId,
+    p_shop_id: filters.shopId ?? undefined,
+    p_to: filters.dateTo,
+    p_view: activeView,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as OrderKeysetRow[];
+  const hasMore = rows.length > ORDERS_PAGE_SIZE;
+  const page = hasMore ? rows.slice(0, ORDERS_PAGE_SIZE) : rows;
+
+  const orders: OrderListItem[] = page.map((row) => {
+    const { customer_full_name, customer_phone, ...columns } = row;
+    const order = columns as unknown as Omit<OrderListItem, 'allowedActions' | 'customer'>;
+
+    return {
+      ...order,
+      allowedActions: allowedActionsForOrderRow(order, member.role),
+      customer: order.customer_id ? { full_name: customer_full_name, phone: customer_phone } : null,
+    };
+  });
+
+  const lastRow = page.at(-1);
+  const cursorSort =
+    activeView === 'tentee-a-rappeler' ? lastRow?.next_action_at : lastRow?.sort_at;
+  const nextCursor = hasMore && lastRow && cursorSort ? { id: lastRow.id, sort: cursorSort } : null;
+
+  return { hasMore, nextCursor, orders };
+}
+
 async function fetchOrdersPageData({
+  activeView,
+  cursor,
+  filters,
+  member,
+  search,
+  supabase,
+}: {
+  activeView: OrderSavedViewId;
+  cursor: OrderListCursor | null;
+  filters: OrdersPageFilters;
+  member: CurrentMember;
+  search: string;
+  supabase: SupabaseServerClient;
+}): Promise<OrdersPageData> {
+  if (!search && filters.dateFrom && filters.dateTo) {
+    const dateFrom = filters.dateFrom;
+    const dateTo = filters.dateTo;
+
+    const [viewCounts, keysetPage] = await Promise.all([
+      cursor
+        ? Promise.resolve(emptyOrdersViewCounts())
+        : fetchOrderViewCountsFromRpc(supabase, member.merchantAccountId, {
+            dateFrom,
+            dateTo,
+            shopId: filters.shopId,
+          }),
+      fetchOrdersKeysetPage({
+        activeView,
+        cursor,
+        filters: { dateFrom, dateTo, shopId: filters.shopId },
+        member,
+        supabase,
+      }),
+    ]);
+
+    const reliabilityTiers =
+      activeView === 'a-appeler'
+        ? await getReliabilityTiersForOrders(
+            supabase,
+            member.merchantAccountId,
+            keysetPage.orders
+              .map((order) => order.customer_id)
+              .filter((customerId): customerId is string => Boolean(customerId)),
+          )
+        : {};
+
+    return {
+      activeView,
+      hasMore: keysetPage.hasMore,
+      nextCursor: keysetPage.nextCursor,
+      orders: keysetPage.orders,
+      reliabilityTiers,
+      search,
+      totalCount: cursor ? 0 : viewCounts.toutes,
+      viewCounts,
+    };
+  }
+
+  return fetchOrdersPageDataLegacy({ activeView, cursor, filters, member, search, supabase });
+}
+
+// Chemin TS legacy — INCHANGÉ, utilisé quand une recherche texte est active (matching flou
+// nom/produit/téléphone non porté en SQL, hors scope Lot 7) ou si les dates de période sont
+// absentes (défensif, non atteint par /commandes en pratique).
+async function fetchOrdersPageDataLegacy({
   activeView,
   cursor,
   filters,
