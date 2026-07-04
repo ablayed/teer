@@ -1927,6 +1927,44 @@ export type Database = {
           pending_minor: number;
         }[];
       };
+      get_report_revenue_by_day: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: {
+          amount_minor: number;
+          day: string;
+        }[];
+      };
+      get_report_status_breakdown: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: {
+          amount_minor: number;
+          cod_status: string;
+          count: number;
+        }[];
+      };
+      get_report_top_products: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: {
+          amount_minor: number;
+          quantity: number;
+          title: string;
+        }[];
+      };
       ia_count_recent_tool_calls: {
         Args: { p_merchant_account_id: string; p_since: string };
         Returns: number;
