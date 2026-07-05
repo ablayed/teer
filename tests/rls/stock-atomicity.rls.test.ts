@@ -278,10 +278,14 @@ describe('atomicité transition + mouvement stock', () => {
         .eq('order_id', orderId)
         .order('created_at');
 
-      // reserve (+3) + dispatch (-3)
-      expect(movements).toHaveLength(2);
+      // reserve (+3) + dispatch (-3) + disponibilite livreur engagee (+3)
+      expect(movements).toHaveLength(3);
       const dispatch = movements?.find((m) => m.movement_type === 'dispatch');
       expect(dispatch?.qty).toBe(-3);
+      const assignmentCommit = movements?.find(
+        (m) => m.movement_type === 'order_assignment_commit',
+      );
+      expect(assignmentCommit?.qty).toBe(3);
     },
   );
 
@@ -330,7 +334,7 @@ describe('atomicité transition + mouvement stock', () => {
   });
 
   skipIfNoServiceRole(
-    'annuler post-dispatch : aucun mouvement automatique (stock chez livreur)',
+    'annuler post-dispatch : libere la disponibilite engagee sans courier_return',
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('cancel-post');
       const productId = await createProduct(admin, merchantAccountId);
@@ -362,12 +366,14 @@ describe('atomicité transition + mouvement stock', () => {
         .single();
 
       // annuler post-dispatch → pas de mouvement stock automatique
-      await transitionRpc(client)('transition_order', {
+      const cancelled = await transitionRpc(client)('transition_order', {
         p_actor: userId,
         p_order_id: orderId,
         p_order_state: 'cancelled',
+        p_delivery_state: 'failed',
         p_cash_state: 'not_due',
       });
+      expect(cancelled.error).toBeNull();
 
       const { data: stockAfter } = await admin
         .from('product_stock')
@@ -381,11 +387,236 @@ describe('atomicité transition + mouvement stock', () => {
       // Aucun mouvement courier_return posté automatiquement
       const { data: movements } = await admin
         .from('stock_movement')
-        .select('movement_type')
+        .select('movement_type, qty')
         .eq('order_id', orderId);
 
       const hasReturn = movements?.some((m) => m.movement_type === 'courier_return');
       expect(hasReturn).toBe(false);
+      const assignmentRelease = movements?.find(
+        (m) => m.movement_type === 'order_assignment_release',
+      );
+      expect(assignmentRelease?.qty).toBe(-3);
+    },
+  );
+});
+
+describe('Lot 2 PR1 - ledger de disponibilite livreur', () => {
+  skipIfNoServiceRole(
+    'assigner groupe les lignes par produit et poste order_assignment_commit',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('assignment-commit');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 1 },
+        { productId, qty: 2 },
+      ]);
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+
+      const assign = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+      expect(assign.error).toBeNull();
+
+      const assignmentMoves = await readOrderAssignmentMovements(admin, orderId);
+      expect(assignmentMoves).toHaveLength(1);
+      expect(assignmentMoves[0]).toMatchObject({
+        movement_type: 'order_assignment_commit',
+        product_id: productId,
+        driver_id: driverId,
+        qty: 3,
+      });
+    },
+  );
+
+  skipIfNoServiceRole('livrer ne poste aucun order_assignment_* supplementaire', async () => {
+    const { admin, email, merchantAccountId, userId } =
+      await createOwnerFixture('assignment-deliver');
+    const productId = await createProduct(admin, merchantAccountId);
+    const driverId = await createDriver(admin, merchantAccountId);
+    const owner = await signIn(email);
+    await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+    const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+      { productId, qty: 3 },
+    ]);
+
+    const client = await signIn(email);
+    await transitionRpc(client)('transition_order', {
+      p_actor: userId,
+      p_order_id: orderId,
+      p_call_state: 'validated',
+      p_attempt_count: 1,
+    });
+    await transitionRpc(client)('transition_order', {
+      p_actor: userId,
+      p_order_id: orderId,
+      p_delivery_state: 'scheduled',
+    });
+    await transitionRpc(client)('transition_order', {
+      p_actor: userId,
+      p_order_id: orderId,
+      p_delivery_state: 'out_for_delivery',
+    });
+    const beforeDeliver = await readOrderAssignmentMovements(admin, orderId);
+
+    const delivered = await transitionRpc(client)('transition_order', {
+      p_actor: userId,
+      p_order_id: orderId,
+      p_delivery_state: 'delivered',
+      p_order_state: 'completed',
+      p_cash_state: 'collected',
+      p_payment_channel: 'ESPECES',
+    });
+    expect(delivered.error).toBeNull();
+
+    const afterDeliver = await readOrderAssignmentMovements(admin, orderId);
+    expect(afterDeliver).toEqual(beforeDeliver);
+  });
+
+  skipIfNoServiceRole(
+    'annuler sans commit net ouvert ne poste aucun release et ne leve pas erreur',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('assignment-no-open');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 3 },
+      ]);
+      await admin.from('orders').update({ delivery_state: 'assigned' }).eq('id', orderId);
+
+      const client = await signIn(email);
+      const cancelled = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_order_state: 'cancelled',
+        p_delivery_state: 'failed',
+        p_cash_state: 'not_due',
+      });
+      expect(cancelled.error).toBeNull();
+
+      const assignmentMoves = await readOrderAssignmentMovements(admin, orderId);
+      expect(assignmentMoves).toHaveLength(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'reassign_order_driver libere seulement ancien livreur et engage le nouveau',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('assignment-reassign');
+      const productId = await createProduct(admin, merchantAccountId);
+      const oldDriverId = await createDriver(admin, merchantAccountId);
+      const newDriverId = await createDriver(admin, merchantAccountId);
+      const anomalyDriverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+      const orderId = await createOrderForDriver(admin, merchantAccountId, oldDriverId, [
+        { productId, qty: 3 },
+      ]);
+
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+      await admin.from('stock_movement').insert({
+        merchant_account_id: merchantAccountId,
+        product_id: productId,
+        movement_type: 'order_assignment_commit',
+        qty: 3,
+        idempotency_key: `test-anomaly:${orderId}:${anomalyDriverId}`,
+        created_by: userId,
+        order_id: orderId,
+        driver_id: anomalyDriverId,
+        reason: 'Test anomaly: unrelated open commitment must not be released',
+      });
+
+      const reassign = await client.rpc('reassign_order_driver', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_new_driver: newDriverId,
+      });
+      expect(reassign.error).toBeNull();
+
+      const assignmentMoves = await readOrderAssignmentMovements(admin, orderId);
+      const oldRelease = assignmentMoves.find(
+        (m) => m.movement_type === 'order_assignment_release' && m.driver_id === oldDriverId,
+      );
+      const anomalyRelease = assignmentMoves.find(
+        (m) => m.movement_type === 'order_assignment_release' && m.driver_id === anomalyDriverId,
+      );
+      const newCommit = assignmentMoves.find(
+        (m) => m.movement_type === 'order_assignment_commit' && m.driver_id === newDriverId,
+      );
+      expect(oldRelease?.qty).toBe(-3);
+      expect(anomalyRelease).toBeUndefined();
+      expect(newCommit?.qty).toBe(3);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'reassign_order_driver sans engagement ouvert ancien ne release rien mais engage le nouveau',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture(
+        'assignment-reassign-no-open',
+      );
+      const productId = await createProduct(admin, merchantAccountId);
+      const oldDriverId = await createDriver(admin, merchantAccountId);
+      const newDriverId = await createDriver(admin, merchantAccountId);
+      const orderId = await createOrderForDriver(admin, merchantAccountId, oldDriverId, [
+        { productId, qty: 3 },
+      ]);
+      await admin.from('orders').update({ delivery_state: 'assigned' }).eq('id', orderId);
+
+      const client = await signIn(email);
+      const reassign = await client.rpc('reassign_order_driver', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_new_driver: newDriverId,
+      });
+      expect(reassign.error).toBeNull();
+
+      const assignmentMoves = await readOrderAssignmentMovements(admin, orderId);
+      expect(
+        assignmentMoves.some(
+          (m) => m.movement_type === 'order_assignment_release' && m.driver_id === oldDriverId,
+        ),
+      ).toBe(false);
+      expect(
+        assignmentMoves.find(
+          (m) => m.movement_type === 'order_assignment_commit' && m.driver_id === newDriverId,
+        )?.qty,
+      ).toBe(3);
     },
   );
 });
@@ -1011,7 +1242,12 @@ describe('Phase 13.1 : désannuler post-dispatch vide le livreur sans mouvement'
         .select('movement_type')
         .eq('order_id', orderId)
         .order('created_at');
-      expect(movementsBefore.data?.map((m) => m.movement_type)).toEqual(['reserve', 'dispatch']);
+      expect(movementsBefore.data?.map((m) => m.movement_type)).toEqual([
+        'reserve',
+        'dispatch',
+        'order_assignment_commit',
+        'order_assignment_release',
+      ]);
 
       // désannuler post-dispatch (avec effacement du livreur)
       const desann = await transitionRpc(client)('transition_order', {
@@ -1045,7 +1281,12 @@ describe('Phase 13.1 : désannuler post-dispatch vide le livreur sans mouvement'
         .select('movement_type, driver_id')
         .eq('order_id', orderId)
         .order('created_at');
-      expect(movementsAfter.data?.map((m) => m.movement_type)).toEqual(['reserve', 'dispatch']);
+      expect(movementsAfter.data?.map((m) => m.movement_type)).toEqual([
+        'reserve',
+        'dispatch',
+        'order_assignment_commit',
+        'order_assignment_release',
+      ]);
       // Le dispatch reste attribué au livreur d'origine dans le ledger.
       const dispatchMovement = movementsAfter.data?.find((m) => m.driver_id === dispatchDriverId);
       expect(dispatchMovement).toBeTruthy();
@@ -1190,6 +1431,16 @@ async function readStock(admin: AdminClient, productId: string) {
   return data;
 }
 
+async function readOrderAssignmentMovements(admin: AdminClient, orderId: string) {
+  const { data } = await admin
+    .from('stock_movement')
+    .select('movement_type, qty, product_id, driver_id')
+    .eq('order_id', orderId)
+    .in('movement_type', ['order_assignment_commit', 'order_assignment_release'])
+    .order('created_at');
+  return data ?? [];
+}
+
 async function reconcileDiscrepancyFor(admin: AdminClient, productId: string) {
   const { data } = await admin.rpc('reconcile_product_stock' as 'reconcile_order_cod_status');
   return ((data as Array<{ product_id: string }> | null) ?? []).filter(
@@ -1246,6 +1497,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       expect(assignMovements.data?.map((m) => m.movement_type)).toEqual([
         'reserve',
         'advance_commit',
+        'order_assignment_commit',
       ]);
 
       // Livrer → sold
@@ -1319,6 +1571,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
         'reserve',
         'advance_commit',
         'dispatch',
+        'order_assignment_commit',
       ]);
       expect(assignMovements.data?.find((m) => m.movement_type === 'advance_commit')?.qty).toBe(2);
       expect(assignMovements.data?.find((m) => m.movement_type === 'dispatch')?.qty).toBe(-1);
@@ -1663,14 +1916,22 @@ describe('Lot D - mark_returned apres livraison', () => {
       expect(movements?.map((movement) => movement.movement_type)).toEqual([
         'reserve',
         'dispatch',
+        'order_assignment_commit',
         'sold',
         'courier_return',
+        'order_assignment_release',
       ]);
       expect(
         movements?.find((movement) => movement.movement_type === 'courier_return'),
       ).toMatchObject({
         driver_id: driverId,
         qty: 3,
+      });
+      expect(
+        movements?.find((movement) => movement.movement_type === 'order_assignment_release'),
+      ).toMatchObject({
+        driver_id: driverId,
+        qty: -3,
       });
 
       const { data: stock } = await admin
