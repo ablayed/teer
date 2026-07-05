@@ -82,7 +82,7 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {statCard(t('collectedTotal'), formatMoney(c.collectedMinor, 'XOF'))}
-        {statCard(t('deliveryFees'), formatMoney(c.deliveryFeesMinor, 'XOF'))}
+        {statCard(t('deliveryFees'), formatMoney(c.collectedDeliveryFeesMinor, 'XOF'))}
         {statCard(t('cashOnHand'), formatMoney(c.cashOnHandMinor, 'XOF'), true)}
       </div>
       {c.discrepancyMinor > 0 && (

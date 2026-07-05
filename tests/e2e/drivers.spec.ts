@@ -159,6 +159,37 @@ async function seedDeliveredCashOrder(
   return data.id as string;
 }
 
+async function seedAssignedCashOrder(
+  admin: AdminClient,
+  merchantAccountId: string,
+  driverId: string,
+  totalAmount: number,
+  deliveryFeeMinor: number,
+  createdAt?: string,
+) {
+  const { data, error } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      order_number: `E2E-ASS-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      total_amount: totalAmount,
+      delivery_fee_minor: deliveryFeeMinor,
+      currency: 'XOF',
+      cod_status: 'EN_LIVRAISON',
+      order_state: 'open',
+      call_state: 'validated',
+      delivery_state: 'assigned',
+      cash_state: 'expected',
+      assigned_driver_id: driverId,
+      cash_collectable_minor: totalAmount,
+      ...(createdAt ? { created_at: createdAt } : {}),
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
 async function cleanupUsers(admin: AdminClient, userIds: string[]) {
   await Promise.all(userIds.map((userId) => admin.auth.admin.deleteUser(userId)));
 }
@@ -436,6 +467,73 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
       .select('allocated_minor')
       .eq('merchant_account_id', fixture.merchantAccountId);
     expect((allocations ?? []).reduce((s, a) => s + a.allocated_minor, 0)).toBe(12000);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('cash livreur: les frais de livraison attendent la collecte avant de monter', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cash-fee-timing');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Awa Fee');
+  const orderId = await seedAssignedCashOrder(
+    fixture.admin,
+    fixture.merchantAccountId,
+    driverId,
+    20_000,
+    3_500,
+  );
+  const ownerClient = await signInClient(fixture.email);
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+
+    await expect(page.getByRole('heading', { name: 'Awa Fee' })).toBeVisible();
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /0\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+    await expect(statValue(page, messages.livreurs.cash.deliveryFees)).toContainText(
+      /0\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+
+    const { error } = await ownerClient.rpc('transition_order', {
+      p_order_id: orderId,
+      p_actor: fixture.userIds[0],
+      p_call_state: 'validated',
+      p_delivery_state: 'delivered',
+      p_order_state: 'completed',
+      p_cash_state: 'collected',
+      p_payment_channel: 'ESPECES',
+    });
+    if (error) throw error;
+
+    await expect
+      .poll(
+        async () => {
+          const { data } = await fixture.admin
+            .from('orders')
+            .select('cash_state, delivery_state')
+            .eq('id', orderId)
+            .single();
+          return data?.cash_state ?? null;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('collected');
+
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Awa Fee' })).toBeVisible();
+    await expect(statValue(page, messages.livreurs.cash.collectedTotal)).toContainText(
+      /20\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+    await expect(statValue(page, messages.livreurs.cash.deliveryFees)).toContainText(
+      /3\s*500\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
