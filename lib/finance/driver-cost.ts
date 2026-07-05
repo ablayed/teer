@@ -1,4 +1,8 @@
-import { fetchAllPages, fetchFinanceCollectedJoins } from '@/lib/finance/finance-joins';
+import {
+  CAPPED_READ_PAGE_SIZE,
+  fetchAllPages,
+  fetchFinanceCollectedJoins,
+} from '@/lib/finance/finance-joins';
 import type { FinanceAdminClient } from '@/lib/finance/report-data';
 
 type DriverRow = {
@@ -155,25 +159,30 @@ export async function fetchFinanceDriverCostReport(
       query = query.eq('shop_id', shopId);
     }
 
-    return query.range(offset, offset + 499);
+    return query.range(offset, offset + CAPPED_READ_PAGE_SIZE - 1);
   };
 
-  const [driversRes, ordersResult, collectedJoins] = await Promise.all([
+  const driversPage = (offset: number) =>
     admin
       .from('driver')
       .select('id, full_name')
       .eq('merchant_account_id', merchantId)
-      .order('full_name', { ascending: true }),
+      .order('full_name', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + CAPPED_READ_PAGE_SIZE - 1);
+
+  const [driversResult, ordersResult, collectedJoins] = await Promise.all([
+    fetchAllPages(driversPage),
     fetchAllPages(ordersPage),
     fetchFinanceCollectedJoins(admin, merchantId, fromIso, toIso, shopId),
   ]);
 
-  if (driversRes.error || ordersResult.error) {
+  if (driversResult.error || ordersResult.error) {
     throw new Error('finance_driver_cost_error');
   }
 
   return computeFinanceDriverCostReport({
-    drivers: (driversRes.data ?? []).map((driver) => ({
+    drivers: driversResult.data.map((driver) => ({
       fullName: driver.full_name,
       id: driver.id,
     })),
