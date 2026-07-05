@@ -54,7 +54,11 @@ function visualEmail(label: string): string {
 export async function createVisualFixture(label: string): Promise<VisualFixture> {
   const admin = adminClient();
   const email = visualEmail(label);
-  const userId = await createConfirmedUser(admin, email);
+  const userId = await createConfirmedUser(
+    admin,
+    email,
+    label === 'tableau' ? { userMetadata: { full_name: 'Marchand Visual' } } : undefined,
+  );
   const merchantAccountId = await waitForMerchant(admin, userId);
 
   const { error } = await admin

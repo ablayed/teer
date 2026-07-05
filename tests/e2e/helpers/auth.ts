@@ -50,11 +50,23 @@ export function e2eEmail(label: string): string {
   return `e2e+auth-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
 }
 
-export async function createConfirmedUser(admin: AdminClient, email: string): Promise<string> {
+type CreateE2EUserOptions = {
+  userMetadata?: {
+    full_name?: string;
+    name?: string;
+  };
+};
+
+export async function createConfirmedUser(
+  admin: AdminClient,
+  email: string,
+  options?: CreateE2EUserOptions,
+): Promise<string> {
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password: e2ePassword,
     email_confirm: true,
+    user_metadata: options?.userMetadata,
   });
 
   if (error || !data.user) {
