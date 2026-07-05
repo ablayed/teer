@@ -477,8 +477,10 @@ test('Lot D - marquer retournée via UI (sans remise) restaure le stock, aucune 
     expect(movements?.map((m) => m.movement_type)).toEqual([
       'reserve',
       'dispatch',
+      'order_assignment_commit',
       'sold',
       'courier_return',
+      'order_assignment_release',
     ]);
     const courierReturn = movements?.find((m) => m.movement_type === 'courier_return');
     expect(courierReturn?.qty).toBe(3);
@@ -664,7 +666,11 @@ test('refuser depuis EN_LIVRAISON: failed/cancelled, cash not_due, aucun mouveme
       .select('movement_type')
       .eq('order_id', orderId)
       .order('created_at');
-    expect(movementsBefore?.map((m) => m.movement_type)).toEqual(['reserve', 'dispatch']);
+    expect(movementsBefore?.map((m) => m.movement_type)).toEqual([
+      'reserve',
+      'dispatch',
+      'order_assignment_commit',
+    ]);
 
     await signIn(page, fixture.email, `/commandes/${orderId}`);
     await runDetailMenuAction(page, 'Refuser');
@@ -686,7 +692,12 @@ test('refuser depuis EN_LIVRAISON: failed/cancelled, cash not_due, aucun mouveme
       .select('movement_type')
       .eq('order_id', orderId)
       .order('created_at');
-    expect(movementsAfter?.map((m) => m.movement_type)).toEqual(['reserve', 'dispatch']);
+    expect(movementsAfter?.map((m) => m.movement_type)).toEqual([
+      'reserve',
+      'dispatch',
+      'order_assignment_commit',
+      'order_assignment_release',
+    ]);
 
     // qty_on_hand inchangé depuis le dispatch (50 - 3 = 47), pas de courier_return.
     const { data: stock } = await fixture.admin
