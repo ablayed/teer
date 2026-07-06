@@ -1597,6 +1597,69 @@ export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager'
     };
   });
 
+// Lot 2 / PR 3 — besoins de stock d'une commande pour l'alerte informative "Stock
+// insuffisant" du popup d'assignation. Agrège order_line par product_id, même
+// prédicat exact que transition_order/reassign_order_driver (migration 0091) :
+// match_status='matched' and product_id is not null. Lecture seule, ne déclenche
+// aucune précondition serveur. Owner/manager (même périmètre que le popup et que
+// getDriverAvailableStock — cf. audit Phase A, aucun gap RBAC sur ce chemin).
+export type OrderRequiredStockRow = {
+  productId: string;
+  title: string;
+  requiredQty: number;
+};
+
+export type OrderRequiredStockData =
+  | { ok: true; rows: OrderRequiredStockRow[] }
+  | { ok: false; errorCode: 'read_failed' };
+
+export const getOrderRequiredStockAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'orders.required_stock', section: 'orders' })
+  .inputSchema(z.object({ orderId: z.string().uuid() }))
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const { data: lines, error } = await supabase
+      .from('order_line')
+      .select('product_id, qty, match_status')
+      .eq('order_id', parsedInput.orderId)
+      .eq('match_status', 'matched')
+      .not('product_id', 'is', null);
+
+    if (error) {
+      return { ok: false as const, errorCode: 'read_failed' as const };
+    }
+
+    const requiredByProduct = new Map<string, number>();
+    for (const line of lines ?? []) {
+      if (!line.product_id) continue;
+      requiredByProduct.set(
+        line.product_id,
+        (requiredByProduct.get(line.product_id) ?? 0) + line.qty,
+      );
+    }
+
+    if (requiredByProduct.size === 0) {
+      return { ok: true as const, rows: [] };
+    }
+
+    const { data: products } = await supabase
+      .from('product')
+      .select('id, title')
+      .in('id', [...requiredByProduct.keys()]);
+
+    const productTitles = new Map((products ?? []).map((p) => [p.id, p.title]));
+
+    const rows: OrderRequiredStockRow[] = [...requiredByProduct.entries()].map(
+      ([productId, requiredQty]) => ({
+        productId,
+        title: productTitles.get(productId) ?? 'Produit inconnu',
+        requiredQty,
+      }),
+    );
+
+    return { ok: true as const, rows };
+  });
+
 // Phase 11 — réassignation du livreur. Délègue au RPC SECURITY INVOKER
 // reassign_order_driver (0058) : swap atomique de assigned_driver_id + compensation
 // stock (courier_return X / dispatch Y, qty_reserved INCHANGÉ) si le dispatch est

@@ -761,6 +761,84 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
   }
 });
 
+test('stock insuffisant : le bandeau informatif detaille le manque par produit sans bloquer l assignation', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('stock-warning');
+  const driverId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur Sous Stock',
+  );
+  const productTitle = 'Sac Manque E2E';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  const ownerClient = await signInClient(fixture.email);
+  // Le livreur détient déjà 1 unité (dispatch antérieur simulé) ; la commande ci-dessous
+  // en requiert 3 → disponible=1, requis=3, manque attendu = 2 (Lot 2 / PR 3).
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'dispatch',
+    p_qty: -1,
+    p_idempotency_key: `stock-warn-seed:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_driver_id: driverId,
+  });
+  const orderId = await createConfirmedOrderWithLine(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productId,
+    productTitle,
+    3,
+  );
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
+    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
+
+    await runDetailMenuAction(page, 'Assigner');
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+
+    // Bandeau informatif : titre + détail par produit avec le manque exact (3 requis − 1
+    // disponible = 2), affiché avant même le clic sur « Envoyer au livreur ».
+    await expect(page.getByText('Stock insuffisant')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(`${productTitle} : manque 2`)).toBeVisible();
+
+    await page
+      .context()
+      .route('https://api.whatsapp.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
+      );
+    // Non-bloquant : le bouton d'assignation reste actif malgré le manque et l'assignation
+    // aboutit exactement comme sans alerte.
+    await expect(
+      page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }),
+    ).toBeEnabled();
+    await page.getByRole('button', { name: 'Envoyer au livreur (WhatsApp)', exact: true }).click();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'out_for_delivery');
+
+    const { data: order } = await fixture.admin
+      .from('orders')
+      .select('assigned_driver_id, delivery_state')
+      .eq('id', orderId)
+      .single();
+    expect(order?.delivery_state).toBe('out_for_delivery');
+    expect(order?.assigned_driver_id).toBe(driverId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('phase13.1 - annuler le popup d assignation laisse la commande programmee sans livreur ni dispatch', async ({
   page,
 }) => {
