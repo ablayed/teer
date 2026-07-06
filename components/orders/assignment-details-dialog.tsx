@@ -1,5 +1,6 @@
 'use client';
 
+import { StockShortageWarning } from '@/components/orders/stock-shortage-warning';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -56,7 +57,6 @@ export function AssignmentDetailsDialog({
   orderId,
 }: AssignmentDetailsDialogProps) {
   const t = useTranslations('whatsapp');
-  const stockWarningT = useTranslations('orders.assignment.stockWarning');
   const fieldId = useId();
   const fetchDetails = useAction(getOrderAmountsForAssignmentAction);
   const fetchRequiredStock = useAction(getOrderRequiredStockAction);
@@ -284,24 +284,7 @@ export function AssignmentDetailsDialog({
           <p className="py-6 text-center text-sm text-muted">Chargement…</p>
         ) : (
           <>
-            {stockShortages.length > 0 ? (
-              <output className="block space-y-1 rounded-md bg-warning/15 p-3">
-                <p className="text-sm font-medium text-warning-foreground">
-                  {stockWarningT('title')}
-                </p>
-                <ul className="space-y-0.5 text-sm text-warning-foreground">
-                  {stockShortages.map((shortage) => (
-                    <li key={shortage.productId}>
-                      {stockWarningT('item', { product: shortage.title, qty: shortage.missingQty })}
-                    </li>
-                  ))}
-                </ul>
-              </output>
-            ) : null}
-
-            {stockCheckFailed ? (
-              <p className="text-sm text-warning-foreground">{stockWarningT('checkFailed')}</p>
-            ) : null}
+            <StockShortageWarning checkFailed={stockCheckFailed} shortages={stockShortages} />
 
             {items.length > 0 ? (
               <ul className="divide-y divide-border rounded-lg border border-border">

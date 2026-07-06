@@ -260,9 +260,11 @@ export function OrderActionsMenu({
               <TransitionDialog
                 action={pendingAction}
                 drivers={drivers}
+                enableStockWarning={pendingAction === 'assigner' && !canEditAmounts}
                 isSubmitting={transition.isExecuting}
                 onCancel={() => setPendingAction(null)}
                 onConfirm={handleDialogConfirm}
+                orderId={orderId}
               />,
               document.body,
             )
@@ -335,9 +337,11 @@ export function OrderActionsMenu({
         <TransitionDialog
           action={pendingAction}
           drivers={drivers}
+          enableStockWarning={pendingAction === 'assigner' && !canEditAmounts}
           isSubmitting={transition.isExecuting}
           onCancel={() => setPendingAction(null)}
           onConfirm={handleDialogConfirm}
+          orderId={orderId}
         />
       ) : null}
 
