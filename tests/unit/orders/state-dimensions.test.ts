@@ -78,6 +78,13 @@ describe('order state dimensions', () => {
     ).toEqual(['demarrer_livraison', 'livrer', 'annuler', 'refuser']);
   });
 
+  it('Lot 3 - deconfirmer (affiché "Déprogrammer") reste légal sur PROGRAMMEE pour les 3 rôles', () => {
+    const programmed = legacyStatusToDimensions('PROGRAMMEE');
+    for (const role of ['owner', 'manager', 'agent'] as const) {
+      expect(getAllowedTransitionActionsForDimensions(programmed, role)).toContain('deconfirmer');
+    }
+  });
+
   it('returns a delivered order with cash reset to not_due', () => {
     const delivered = legacyStatusToDimensions('LIVREE');
     const returned = applyPatch(

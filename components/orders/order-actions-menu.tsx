@@ -32,6 +32,7 @@ type OrderActionsMenuProps = {
   drivers: DriverOption[];
   onTransitionSuccess?: (result: Extract<TransitionResult, { ok: true }>) => void;
   orderId: string;
+  orderState: string | null;
   phone: string | null;
   whatsappOrderData: WhatsappOrderData;
 };
@@ -67,6 +68,7 @@ export function OrderActionsMenu({
   drivers,
   onTransitionSuccess,
   orderId,
+  orderState,
   phone,
   whatsappOrderData,
 }: OrderActionsMenuProps) {
@@ -85,13 +87,22 @@ export function OrderActionsMenu({
   const transitionEntries = transitionMenuOrder
     .filter((action) => visibleActions.includes(action))
     .filter((action) => {
-      if (deliveryState === 'scheduled' && (action === 'deconfirmer' || action === 'refuser')) {
+      // "Refuser" reste hors scope pour une commande programmée — cf. CLAUDE.md
+      // (Lot 3 : Refuser en "En cours de livraison" n'est pas touché, ici même filtre
+      // conservé pour "scheduled"). "Déconfirmer" redevient visible sous le libellé
+      // "Déprogrammer" (cf. getTransitionLabel) : même action/légalité de dimensions,
+      // seul l'affichage change.
+      if (deliveryState === 'scheduled' && action === 'refuser') {
         return false;
       }
       return true;
     });
   const hasMenu = transitionEntries.length > 0;
   const canCall = phone !== null;
+  // Sujet B (Lot 3) : le template client n'a de sens que pour une commande encore
+  // ouverte (À appeler/Tentée/Programmer/En cours de livraison) — vide pour
+  // livrée/annulée/retournée (orderState !== 'open').
+  const whatsappTemplate = orderState === 'open' ? ('clientConfirmation' as const) : null;
 
   useEffect(() => {
     onTransitionSuccessRef.current = onTransitionSuccess;
@@ -186,7 +197,9 @@ export function OrderActionsMenu({
       case 'annuler':
         return 'Annuler la commande';
       case 'deconfirmer':
-        return 'Déconfirmer';
+        // Programmée (deliveryState==='scheduled') : même action/légalité que
+        // "Déconfirmer" (dimensions inchangées), seul le libellé reflète le contexte.
+        return deliveryState === 'scheduled' ? 'Déprogrammer' : 'Déconfirmer';
       case 'desannuler':
         return 'Désannuler';
     }
@@ -252,7 +265,7 @@ export function OrderActionsMenu({
             onOpenChange={setWhatsappOpen}
             open={whatsappOpen}
             order={whatsappOrderData}
-            template="clientConfirmation"
+            template={whatsappTemplate}
           />
         ) : null}
         {pendingAction
@@ -299,7 +312,7 @@ export function OrderActionsMenu({
 
         <WhatsappComposeSheet
           order={whatsappOrderData}
-          template="clientConfirmation"
+          template={whatsappTemplate}
           trigger={
             <button
               className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text hover:bg-canvas"

@@ -1873,3 +1873,175 @@ test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) 
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
 });
+
+// Lot 3 (Sujet A/B/C) : "Déprogrammer" + template client conditionnel + fix du
+// cycle d'ouverture WhatsApp en mode compact (liste). Voir CLAUDE.md.
+function whatsappComposeDialog(page: Page) {
+  return page.getByRole('dialog').filter({ hasText: messages.whatsapp.composeTitle });
+}
+
+test('Lot 3 - Déprogrammer ramène une commande Programmée vers À appeler', async ({ page }) => {
+  const fixture = await createOwnerFixture('lot3-deprogrammer');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'PROGRAMMEE',
+    customerName: 'Client Deprogrammer',
+    phone: '+221771667788',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await openActionsMenu(page);
+    // Le libellé reflète le contexte "scheduled" — jamais "Déconfirmer" ici.
+    await expect(menuItem(page, 'Déprogrammer')).toBeVisible({ timeout: 15_000 });
+    await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
+    await menuItem(page, 'Déprogrammer').click();
+    await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
+
+    const { data: reverted } = await fixture.admin
+      .from('orders')
+      .select('call_state, delivery_state, cash_state, scheduled_for')
+      .eq('id', orderId)
+      .single();
+    expect(reverted?.call_state).toBe('to_call');
+    expect(reverted?.delivery_state).toBe('unassigned');
+    expect(reverted?.cash_state).toBe('not_due');
+    expect(reverted?.scheduled_for).toBeNull();
+
+    await page.reload();
+    await expect(page.getByText('À appeler').first()).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot 3 - Message client (détail) pré-remplit le template pour une commande ouverte', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('lot3-whatsapp-open');
+  const productTitle = 'Produit Whatsapp Ouvert';
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Whatsapp Ouvert',
+    phone: '+221771778899',
+    productName: productTitle,
+    totalAmount: 17500,
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await page.getByRole('button', { name: 'Message client', exact: true }).click();
+    const textarea = whatsappComposeDialog(page).getByRole('textbox');
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(textarea).toHaveValue(new RegExp(`1x ${productTitle}`));
+    await expect(textarea).not.toHaveValue('');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot 3 - Message client (détail) reste vide pour une commande livrée', async ({ page }) => {
+  const fixture = await createOwnerFixture('lot3-whatsapp-livree');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'LIVREE',
+    customerName: 'Client Whatsapp Livree',
+    phone: '+221771889900',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await page.getByRole('button', { name: 'Message client', exact: true }).click();
+    const textarea = whatsappComposeDialog(page).getByRole('textbox');
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(textarea).toHaveValue('');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot 3 - Message client (détail) reste vide pour une commande annulée', async ({ page }) => {
+  const fixture = await createOwnerFixture('lot3-whatsapp-annulee');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'ANNULEE',
+    customerName: 'Client Whatsapp Annulee',
+    phone: '+221771990022',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await page.getByRole('button', { name: 'Message client', exact: true }).click();
+    const textarea = whatsappComposeDialog(page).getByRole('textbox');
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(textarea).toHaveValue('');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot 3 - Message client depuis le menu de la liste (mode compact) pré-remplit le template', async ({
+  page,
+}) => {
+  // Régression du bug de cycle de vie : en mode compact, WhatsappComposeSheet était
+  // monté avec open déjà true (aucune transition fermé→ouvert observable par Vaul),
+  // donc handleOpenChange ne se déclenchait jamais et le textarea restait vide.
+  const fixture = await createOwnerFixture('lot3-whatsapp-compact');
+  const productTitle = 'Produit Whatsapp Liste';
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Whatsapp Liste',
+    phone: '+221771990011',
+    productName: productTitle,
+  });
+
+  try {
+    await signIn(page, fixture.email, '/commandes?vue=a-appeler');
+    await expect(orderRowTitle(page, 'Client Whatsapp Liste')).toBeVisible({ timeout: 15_000 });
+
+    await runRowMenuAction(page, 'Client Whatsapp Liste', 'Message client');
+    const textarea = whatsappComposeDialog(page).getByRole('textbox');
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(textarea).toHaveValue(new RegExp(`1x ${productTitle}`));
+    await expect(textarea).not.toHaveValue('');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot 3 - Message client : le texte tapé manuellement n est jamais écrasé pendant l ouverture', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('lot3-whatsapp-edit');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Whatsapp Edit',
+    phone: '+221771001122',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await page.getByRole('button', { name: 'Message client', exact: true }).click();
+    const textarea = whatsappComposeDialog(page).getByRole('textbox');
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(textarea).not.toHaveValue('');
+
+    await textarea.fill('Message personnalisé du marchand');
+    await expect(textarea).toHaveValue('Message personnalisé du marchand');
+    // Laisse le temps à un éventuel re-render parent de se produire : si
+    // l'initialisation du message se re-déclenchait à chaque render (bug naïf), le
+    // texte tapé serait écrasé par le template recalculé.
+    await page.waitForTimeout(500);
+    await expect(textarea).toHaveValue('Message personnalisé du marchand');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
