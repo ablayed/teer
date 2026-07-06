@@ -19,13 +19,15 @@ import {
 } from '@/lib/whatsapp/format';
 import { MessageCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 type Template = 'clientConfirmation' | 'livreur';
 
 type Props = {
   order: WhatsappOrderData;
-  template: Template;
+  // Lot 3 (Sujet B) : null pour une commande hors périmètre (livrée/annulée/retournée)
+  // — textarea vide, aucun appel à buildMessage.
+  template: Template | null;
   trigger?: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -33,9 +35,12 @@ type Props = {
 
 function buildMessage(
   t: ReturnType<typeof useTranslations<'whatsapp'>>,
-  template: Template,
+  template: Template | null,
   order: WhatsappOrderData,
 ): string {
+  if (!template) {
+    return '';
+  }
   const vars = {
     numeroCommande: safeText(order.numeroCommande),
     telephone: safeText(order.telephone),
@@ -51,14 +56,26 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
   const t = useTranslations('whatsapp');
   const [internalOpen, setInternalOpen] = useState(false);
   const [message, setMessage] = useState('');
+  // Lot 3 (Sujet C) : suit la dernière valeur connue de isOpen pour détecter une
+  // VRAIE transition fermé→ouvert, y compris quand le composant est monté avec
+  // open=true dès son premier rendu (mode compact/liste — voir order-actions-menu.tsx).
+  // Un composant contrôlé de type Vaul/Radix n'invoque onOpenChange qu'en réaction à
+  // une action interne (trigger/close), jamais simplement parce que le parent lui
+  // passe open=true au montage — buildMessage() ne peut donc pas dépendre de
+  // handleOpenChange seul, sous peine de laisser le textarea vide en mode compact.
+  const wasOpenRef = useRef(false);
 
   const isControlled = open !== undefined;
   const isOpen = open ?? internalOpen;
 
-  function handleOpenChange(next: boolean) {
-    if (next) {
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
       setMessage(buildMessage(t, template, order));
     }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, template, order, t]);
+
+  function handleOpenChange(next: boolean) {
     if (!isControlled) {
       setInternalOpen(next);
     }

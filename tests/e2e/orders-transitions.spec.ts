@@ -1874,7 +1874,8 @@ test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) 
   }
 });
 
-// Lot 3 (Sujet A/B) : "Déprogrammer" + template client conditionnel. Voir CLAUDE.md.
+// Lot 3 (Sujet A/B/C) : "Déprogrammer" + template client conditionnel + fix du
+// cycle d'ouverture WhatsApp en mode compact (liste). Voir CLAUDE.md.
 function whatsappComposeDialog(page: Page) {
   return page.getByRole('dialog').filter({ hasText: messages.whatsapp.composeTitle });
 }
@@ -1979,6 +1980,67 @@ test('Lot 3 - Message client (détail) reste vide pour une commande annulée', a
     const textarea = whatsappComposeDialog(page).getByRole('textbox');
     await expect(textarea).toBeVisible({ timeout: 15_000 });
     await expect(textarea).toHaveValue('');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot 3 - Message client depuis le menu de la liste (mode compact) pré-remplit le template', async ({
+  page,
+}) => {
+  // Régression du bug de cycle de vie : en mode compact, WhatsappComposeSheet était
+  // monté avec open déjà true (aucune transition fermé→ouvert observable par Vaul),
+  // donc handleOpenChange ne se déclenchait jamais et le textarea restait vide.
+  const fixture = await createOwnerFixture('lot3-whatsapp-compact');
+  const productTitle = 'Produit Whatsapp Liste';
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Whatsapp Liste',
+    phone: '+221771990011',
+    productName: productTitle,
+  });
+
+  try {
+    await signIn(page, fixture.email, '/commandes?vue=a-appeler');
+    await expect(orderRowTitle(page, 'Client Whatsapp Liste')).toBeVisible({ timeout: 15_000 });
+
+    await runRowMenuAction(page, 'Client Whatsapp Liste', 'Message client');
+    const textarea = whatsappComposeDialog(page).getByRole('textbox');
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(textarea).toHaveValue(new RegExp(`1x ${productTitle}`));
+    await expect(textarea).not.toHaveValue('');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Lot 3 - Message client : le texte tapé manuellement n est jamais écrasé pendant l ouverture', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('lot3-whatsapp-edit');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Client Whatsapp Edit',
+    phone: '+221771001122',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await page.getByRole('button', { name: 'Message client', exact: true }).click();
+    const textarea = whatsappComposeDialog(page).getByRole('textbox');
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(textarea).not.toHaveValue('');
+
+    await textarea.fill('Message personnalisé du marchand');
+    await expect(textarea).toHaveValue('Message personnalisé du marchand');
+    // Laisse le temps à un éventuel re-render parent de se produire : si
+    // l'initialisation du message se re-déclenchait à chaque render (bug naïf), le
+    // texte tapé serait écrasé par le template recalculé.
+    await page.waitForTimeout(500);
+    await expect(textarea).toHaveValue('Message personnalisé du marchand');
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
