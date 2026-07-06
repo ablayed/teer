@@ -326,6 +326,13 @@
       "cashOnHand": "Cash chez le livreur",
       "remittanceTitle": "Enregistrer un versement (remise globale)",
       "discrepancy": "Écart non résolu : {amount}"
+    },
+    "stock": {
+      "title": "Stock disponible",
+      "empty": "Aucun stock disponible pour ce livreur.",
+      "productColumn": "Produit",
+      "qtyColumn": "Qté disponible",
+      "definition": "Stock physique en main du livreur, moins les commandes qui lui sont assignées et pas encore livrées ou annulées."
     }
   },
   "definitionCard": {

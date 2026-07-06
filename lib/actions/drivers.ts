@@ -3,7 +3,11 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import type { DriverCashConsolidation } from '@/lib/drivers/cash-consolidation';
 import { type DriverPerformance, deriveDriverPerformance } from '@/lib/drivers/performance';
-import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
+import {
+  type DriverStockMovement,
+  driverAvailableStockRows,
+  driverStockRows,
+} from '@/lib/drivers/stock-on-hand';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -203,6 +207,64 @@ export async function getDriverStockOnHand(driverId: string): Promise<DriverStoc
         title: product?.title ?? 'Produit inconnu',
         sku: product?.sku ?? null,
         qtyOnHand: p.qtyOnHand,
+      };
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+
+  return { ok: true, rows };
+}
+
+export type DriverAvailableStockRow = {
+  productId: string;
+  title: string;
+  sku: string | null;
+  qtyAvailable: number;
+};
+
+export type DriverAvailableStockData =
+  | { ok: true; rows: DriverAvailableStockRow[] }
+  | { ok: false; message: string };
+
+// Derives the courier's AVAILABLE stock per product (physical hand minus net
+// open order-assignment commitments, PR 1 ledger) — owner/manager only.
+// Mirror of getDriverStockOnHand above, minus the qtyOnHand > 0 filter:
+// available positions can be negative (over-committed courier).
+export async function getDriverAvailableStock(driverId: string): Promise<DriverAvailableStockData> {
+  const auth = await resolveOwnerManagerContext();
+  if (!auth.ok) return { ok: false, message: auth.message };
+  const { merchantAccountId, admin } = auth;
+
+  const { data: movements, error } = await admin
+    .from('stock_movement')
+    .select('driver_id, product_id, movement_type, qty')
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('driver_id', driverId);
+
+  if (error) return { ok: false, message: error.message };
+
+  const positions = driverAvailableStockRows((movements ?? []) as DriverStockMovement[], driverId);
+
+  if (positions.length === 0) return { ok: true, rows: [] };
+
+  const { data: products } = await admin
+    .from('product')
+    .select('id, title, sku')
+    .eq('merchant_account_id', merchantAccountId)
+    .in(
+      'id',
+      positions.map((p) => p.productId),
+    );
+
+  const productMap = new Map((products ?? []).map((p) => [p.id, p]));
+
+  const rows: DriverAvailableStockRow[] = positions
+    .map((p) => {
+      const product = productMap.get(p.productId);
+      return {
+        productId: p.productId,
+        title: product?.title ?? 'Produit inconnu',
+        sku: product?.sku ?? null,
+        qtyAvailable: p.qtyAvailable,
       };
     })
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));

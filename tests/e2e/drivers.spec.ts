@@ -737,3 +737,79 @@ test('feedback pending sur changement de livreur (build prod)', async ({ page })
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
 });
+
+test('stock disponible: un engagement (order_assignment_commit) au-delà de la main physique affiche une valeur négative', async ({
+  page,
+}) => {
+  // Lot 2 / PR 2 : contrairement au stock EN MAIN (toujours >= 0), le stock
+  // DISPONIBLE peut être négatif — ex. le livreur a rendu physiquement des
+  // unités (courier_return_lot) alors qu'elles restent engagées sur une
+  // commande ouverte assignée (order_assignment_commit non relâché). C'est
+  // précisément ce que ce panneau doit surfacer, cf. décision produit Phase A.
+  const fixture = await createOwnerFixture('stock-dispo-negatif');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Ousmane Négatif');
+  const productId = await createProduct(fixture.admin, fixture.merchantAccountId, 'Bidon E2E');
+  const orderId = await seedAssignedCashOrder(
+    fixture.admin,
+    fixture.merchantAccountId,
+    driverId,
+    30_000,
+    0,
+  );
+  const ownerClient = await signInClient(fixture.email);
+
+  // Main physique du livreur : dispatch 5 → hand = 5.
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'dispatch',
+    p_qty: -5,
+    p_idempotency_key: `neg-dispatch:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_driver_id: driverId,
+    p_order_id: orderId,
+  });
+  // Engagement sur la commande ouverte : 8 unités (au-delà des 5 en main).
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'order_assignment_commit',
+    p_qty: 8,
+    p_idempotency_key: `neg-commit:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_driver_id: driverId,
+    p_order_id: orderId,
+  });
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+
+    await expect(page.getByRole('heading', { name: 'Ousmane Négatif' })).toBeVisible();
+    await expect(page.getByText(messages.livreurs.stock.title, { exact: true })).toBeVisible();
+
+    // hand(5) − commit(8) = −3, visible tel quel (pas de plancher à 0).
+    await expect(page.locator(':visible', { hasText: 'Bidon E2E' }).last()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator(':visible', { hasText: '-3' }).last()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // La base confirme le même calcul que l'UI affiche (pas de dérive read-model).
+    const { data: movements } = await fixture.admin
+      .from('stock_movement')
+      .select('movement_type, qty')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId)
+      .eq('product_id', productId);
+    const net = (movements ?? []).reduce((sum, m) => {
+      if (m.movement_type === 'dispatch' || m.movement_type === 'order_assignment_commit') {
+        return sum - m.qty;
+      }
+      return sum;
+    }, 0);
+    expect(net).toBe(-3);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});

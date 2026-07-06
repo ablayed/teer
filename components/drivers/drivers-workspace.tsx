@@ -5,16 +5,18 @@ import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
 import { DriverLotForm } from '@/components/drivers/driver-lot-form';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { usePeriodParams } from '@/components/period-picker/use-period-params';
+import { DefinitionToggle } from '@/components/ui/definition-card';
 import { ResourceRow } from '@/components/ui/resource-row';
 import type {
+  DriverAvailableStockData,
   DriverCashData,
   DriverPerformanceData,
-  DriverStockData,
   SettlementHistoryRow,
 } from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { Phone } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { parseAsString, useQueryStates } from 'nuqs';
 import { useEffect, useState, useTransition } from 'react';
@@ -22,12 +24,12 @@ import { useEffect, useState, useTransition } from 'react';
 type DriverRow = { id: string; full_name: string; phone: string; is_active: boolean };
 
 type DriverDetail = {
+  availableStock: DriverAvailableStockData;
   cash: DriverCashData;
   history: SettlementHistoryRow[];
   orders: { cod_status: string; id: string; order_number: string | null; total_amount: number }[];
   perf: DriverPerformanceData;
   products: { id: string; sku: string | null; title: string }[];
-  stock: DriverStockData;
 };
 
 type DriversWorkspaceProps = {
@@ -58,6 +60,7 @@ export function DriversWorkspace({
   selected,
   selectedId,
 }: DriversWorkspaceProps) {
+  const t = useTranslations('livreurs.stock');
   const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
   const [isDriverTransitionPending, startDriverTransition] = useTransition();
   // Seule source d'écriture URL pour `driver` (nuqs) : merge en place, ne touche
@@ -174,7 +177,7 @@ export function DriversWorkspace({
                 {/* Un seul PeriodPicker en haut du panneau, avant toutes les cards : il
                     scope Cash (collecté/frais), Performance ET Commandes assignées.
                     Cash chez le livreur / Écart non résolu restent all-time (solde de
-                    réconciliation, jamais périodique) et Stock en main est un instantané
+                    réconciliation, jamais périodique) et Stock disponible est un instantané
                     (non historisable) — les deux sont volontairement hors filtre. */}
                 <PeriodPicker align="end" />
               </div>
@@ -198,26 +201,29 @@ export function DriversWorkspace({
             </section>
 
             <section className="space-y-3">
-              <h3 className="text-lg font-semibold">Stock en main</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-semibold">{t('title')}</h3>
+                <DefinitionToggle definition={t('definition')} />
+              </div>
               <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
                 <DriverLotForm driverId={selected.id} products={detail.products} />
               </div>
-              {!detail.stock.ok ? (
-                <p className="text-sm text-danger">{detail.stock.message}</p>
-              ) : detail.stock.rows.length === 0 ? (
-                <p className="text-sm text-muted">Aucun stock en main pour ce livreur.</p>
+              {!detail.availableStock.ok ? (
+                <p className="text-sm text-danger">{detail.availableStock.message}</p>
+              ) : detail.availableStock.rows.length === 0 ? (
+                <p className="text-sm text-muted">{t('empty')}</p>
               ) : (
                 <>
                   <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border bg-surface text-left">
-                          <th className="px-4 py-3 font-medium">Produit</th>
-                          <th className="px-4 py-3 text-right font-medium">Qté en main</th>
+                          <th className="px-4 py-3 font-medium">{t('productColumn')}</th>
+                          <th className="px-4 py-3 text-right font-medium">{t('qtyColumn')}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {detail.stock.rows.map((row) => (
+                        {detail.availableStock.rows.map((row) => (
                           <tr className="border-b border-border last:border-0" key={row.productId}>
                             <td className="px-4 py-3">
                               <span className="font-medium">{row.title}</span>
@@ -226,7 +232,7 @@ export function DriversWorkspace({
                               )}
                             </td>
                             <td className="px-4 py-3 text-right font-mono tabular-nums">
-                              {row.qtyOnHand}
+                              {row.qtyAvailable}
                             </td>
                           </tr>
                         ))}
@@ -234,13 +240,13 @@ export function DriversWorkspace({
                     </table>
                   </div>
                   <div className="overflow-hidden rounded-lg border border-border bg-surface md:hidden">
-                    {detail.stock.rows.map((row) => (
+                    {detail.availableStock.rows.map((row) => (
                       <ResourceRow
                         key={row.productId}
                         meta={row.sku ?? undefined}
                         primaryAction={
                           <span className="font-mono text-sm font-semibold tabular-nums">
-                            {row.qtyOnHand}
+                            {row.qtyAvailable}
                           </span>
                         }
                         title={row.title}

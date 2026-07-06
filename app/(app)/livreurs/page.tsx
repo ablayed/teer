@@ -1,15 +1,15 @@
 import { DriversWorkspace } from '@/components/drivers/drivers-workspace';
 import { SettlementHistoryTable } from '@/components/drivers/settlement-history';
 import {
+  type DriverAvailableStockData,
   type DriverCashData,
   type DriverPerformanceData,
-  type DriverStockData,
   type SettlementHistoryRow,
   getAllSettlementHistory,
+  getDriverAvailableStock,
   getDriverCashConsolidation,
   getDriverPerformance,
   getDriverSettlementHistory,
-  getDriverStockOnHand,
 } from '@/lib/actions/drivers';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -75,7 +75,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
   const selected = drivers.find((d) => d.id === selectedId) ?? null;
 
   let detail: {
-    stock: DriverStockData;
+    availableStock: DriverAvailableStockData;
     cash: DriverCashData;
     history: SettlementHistoryRow[];
     perf: DriverPerformanceData;
@@ -92,8 +92,8 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
       to: params.to,
     });
     const range = { from: from.toISOString(), to: to.toISOString() };
-    const [stock, cash, history, perf, productsResult, ordersResult] = await Promise.all([
-      getDriverStockOnHand(selected.id),
+    const [availableStock, cash, history, perf, productsResult, ordersResult] = await Promise.all([
+      getDriverAvailableStock(selected.id),
       getDriverCashConsolidation(selected.id, range),
       getDriverSettlementHistory(selected.id),
       getDriverPerformance(selected.id, range),
@@ -115,7 +115,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     ]);
 
     detail = {
-      stock,
+      availableStock,
       cash,
       history: history.ok ? history.rows : [],
       perf,
