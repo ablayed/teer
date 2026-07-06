@@ -807,6 +807,11 @@ test('stock insuffisant : le bandeau informatif detaille le manque par produit s
 
     await runDetailMenuAction(page, 'Assigner');
     await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+    // Lot 2 / PR 4 — non-régression owner/manager : TransitionDialog (cette étape, avant le
+    // clic Valider) ne montre JAMAIS le bandeau pour owner/manager (enableStockWarning=false
+    // ici, car canEditAmounts=true bascule vers AssignmentDetailsDialog juste après) — même
+    // livreur sous-stocké que ci-dessous, la seule alerte visible reste celle du popup.
+    await expect(page.getByText('Stock insuffisant')).not.toBeVisible();
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
 
     // Bandeau informatif : titre + détail par produit avec le manque exact (3 requis − 1
@@ -833,6 +838,77 @@ test('stock insuffisant : le bandeau informatif detaille le manque par produit s
       .eq('id', orderId)
       .single();
     expect(order?.delivery_state).toBe('out_for_delivery');
+    expect(order?.assigned_driver_id).toBe(driverId);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('stock insuffisant (agent) : le bandeau apparait dans TransitionDialog sans bloquer l assignation', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('stock-warning-agent');
+  const driverId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur Agent Sous Stock',
+  );
+  const productTitle = 'Sac Manque Agent E2E';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  const ownerClient = await signInClient(fixture.email);
+  // Même scénario que le test owner/manager ci-dessus : disponible=1, requis=3, manque=2.
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'dispatch',
+    p_qty: -1,
+    p_idempotency_key: `stock-warn-agent-seed:${productId}`,
+    p_created_by: fixture.userIds[0],
+    p_driver_id: driverId,
+  });
+  const orderId = await createConfirmedOrderWithLine(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productId,
+    productTitle,
+    3,
+  );
+  const agent = await addMember(fixture, 'agent');
+
+  try {
+    // Chemin agent de bout en bout (Programmer + Assigner autorisés pour agent).
+    await signIn(page, agent.email, `/commandes/${orderId}`);
+
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
+    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
+
+    // Un agent n'atteint jamais AssignmentDetailsDialog (canEditAmounts=false) : le clic
+    // « Assigner » ouvre TransitionDialog et y reste jusqu'à « Valider ».
+    await runDetailMenuAction(page, 'Assigner');
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+
+    await expect(page.getByText('Stock insuffisant')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(`${productTitle} : manque 2`)).toBeVisible();
+
+    // Non-bloquant : « Valider » reste actif malgré le manque et assigne directement
+    // (pas de popup WhatsApp intermédiaire pour l'agent).
+    await expect(page.getByRole('button', { name: 'Valider', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'assigned');
+
+    const { data: order } = await fixture.admin
+      .from('orders')
+      .select('assigned_driver_id, delivery_state')
+      .eq('id', orderId)
+      .single();
+    expect(order?.delivery_state).toBe('assigned');
     expect(order?.assigned_driver_id).toBe(driverId);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);

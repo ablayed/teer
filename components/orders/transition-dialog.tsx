@@ -1,8 +1,11 @@
 'use client';
 
+import { StockShortageWarning } from '@/components/orders/stock-shortage-warning';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getDriverAvailableStockForAssignmentAction } from '@/lib/actions/assignment-stock';
+import { getOrderRequiredStockAction } from '@/lib/actions/orders';
 import {
   type CancelReason,
   cancelReasonLabels,
@@ -13,6 +16,8 @@ import {
   nextWholeHourInputs,
   normalizeHourInput,
 } from '@/lib/format/datetime-input';
+import { type StockShortageRow, computeStockShortages } from '@/lib/orders/assignment-stock-check';
+import { useAction } from 'next-safe-action/hooks';
 import { useEffect, useId, useState } from 'react';
 
 export type DriverOption = { id: string; fullName: string };
@@ -30,9 +35,16 @@ export type TransitionPayload = {
 type TransitionDialogProps = {
   action: PayloadDialogAction;
   drivers: DriverOption[];
+  // Lot 2 / PR 4 — active le check "Stock insuffisant" (chemin agent uniquement :
+  // owner/manager revoit déjà l'alerte dans AssignmentDetailsDialog juste après ce
+  // dialog, cf. OrderActionsMenu.handleDialogConfirm). Toujours false pour
+  // programmer/annuler (le check ne concerne que action==='assigner').
+  enableStockWarning?: boolean;
   isSubmitting: boolean;
   onCancel: () => void;
   onConfirm: (payload: TransitionPayload) => void;
+  // Requis uniquement quand enableStockWarning est vrai.
+  orderId?: string;
 };
 
 const dialogTitles: Record<PayloadDialogAction, string> = {
@@ -44,9 +56,11 @@ const dialogTitles: Record<PayloadDialogAction, string> = {
 export function TransitionDialog({
   action,
   drivers,
+  enableStockWarning = false,
   isSubmitting,
   onCancel,
   onConfirm,
+  orderId,
 }: TransitionDialogProps) {
   const fieldId = useId();
   const defaultSchedule = nextWholeHourInputs();
@@ -55,6 +69,10 @@ export function TransitionDialog({
   const [time, setTime] = useState(defaultSchedule.time);
   const [reasons, setReasons] = useState<Set<CancelReason>>(new Set());
   const [note, setNote] = useState('');
+  const [stockShortages, setStockShortages] = useState<StockShortageRow[]>([]);
+  const [stockCheckFailed, setStockCheckFailed] = useState(false);
+  const fetchRequiredStock = useAction(getOrderRequiredStockAction);
+  const fetchAvailableStock = useAction(getDriverAvailableStockForAssignmentAction);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -71,6 +89,48 @@ export function TransitionDialog({
   const isCancel = action === 'annuler';
   const title = dialogTitles[action];
   const hasNoDrivers = isAssign && drivers.length === 0;
+
+  // Lot 2 / PR 4 — "Stock insuffisant" côté agent (TransitionDialog n'a qu'une seule étape :
+  // dès que le livreur est choisi ici, "Valider" assigne directement pour un agent, cf.
+  // OrderActionsMenu.handleDialogConfirm). Se réinitialise si driverId change (résultat
+  // périmé de l'ancien livreur) ou si le check est désactivé. `cancelled` protège contre
+  // une réponse tardive d'une sélection déjà remplacée par une autre.
+  useEffect(() => {
+    if (!enableStockWarning || !isAssign || !orderId || !driverId) {
+      setStockShortages([]);
+      setStockCheckFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const [requiredResult, availableResult] = await Promise.all([
+        fetchRequiredStock.executeAsync({ orderId }),
+        fetchAvailableStock.executeAsync({ driverId }),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      if (!requiredResult?.data?.ok || !availableResult?.data?.ok) {
+        setStockCheckFailed(true);
+        setStockShortages([]);
+        return;
+      }
+      setStockShortages(computeStockShortages(requiredResult.data.rows, availableResult.data.rows));
+      setStockCheckFailed(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // orderId stable pour la durée de vie du dialog ; executeAsync mémoïsé.
+  }, [
+    enableStockWarning,
+    isAssign,
+    orderId,
+    driverId,
+    fetchRequiredStock.executeAsync,
+    fetchAvailableStock.executeAsync,
+  ]);
 
   function toggleReason(reason: CancelReason) {
     setReasons((current) => {
@@ -148,6 +208,7 @@ export function TransitionDialog({
                   </option>
                 ))}
               </select>
+              <StockShortageWarning checkFailed={stockCheckFailed} shortages={stockShortages} />
             </div>
           )
         ) : isCancel ? (

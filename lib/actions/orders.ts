@@ -1601,8 +1601,11 @@ export const getOrderAmountsForAssignmentAction = requireRole('owner', 'manager'
 // insuffisant" du popup d'assignation. Agrège order_line par product_id, même
 // prédicat exact que transition_order/reassign_order_driver (migration 0091) :
 // match_status='matched' and product_id is not null. Lecture seule, ne déclenche
-// aucune précondition serveur. Owner/manager (même périmètre que le popup et que
-// getDriverAvailableStock — cf. audit Phase A, aucun gap RBAC sur ce chemin).
+// aucune précondition serveur.
+// Lot 2 / PR 4 — élargi à agent (RLS order_line_select autorise déjà owner/manager/agent,
+// même prédicat, aucune donnée supplémentaire exposée) pour couvrir le chemin
+// TransitionDialog. getDriverAvailableStock (PR 2) reste owner/manager only — cf.
+// lib/actions/assignment-stock.ts pour le pendant agent du disponible.
 export type OrderRequiredStockRow = {
   productId: string;
   title: string;
@@ -1613,7 +1616,7 @@ export type OrderRequiredStockData =
   | { ok: true; rows: OrderRequiredStockRow[] }
   | { ok: false; errorCode: 'read_failed' };
 
-export const getOrderRequiredStockAction = requireRole('owner', 'manager')
+export const getOrderRequiredStockAction = requireRole('owner', 'manager', 'agent')
   .metadata({ actionName: 'orders.required_stock', section: 'orders' })
   .inputSchema(z.object({ orderId: z.string().uuid() }))
   .action(async ({ ctx, parsedInput }) => {
