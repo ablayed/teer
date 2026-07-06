@@ -82,3 +82,74 @@ export function driverStockRows(
     .filter(([, qty]) => qty !== 0)
     .map(([productId, qtyOnHand]) => ({ driverId, productId, qtyOnHand }));
 }
+
+// Stock DISPONIBLE d'un livreur (Lot 2 / PR 2) : le stock en main ci-dessus,
+// diminué de l'engagement net envers des commandes ouvertes (ledger
+// order_assignment_commit/release, PR 1). Ces deux types ne touchent jamais
+// product_stock (post_stock_movement les court-circuite) — ils suivent la
+// MÊME convention de signe que les mouvements physiques ci-dessus :
+//   order_assignment_commit  (qty > 0)  →  −qty  (réduit le disponible)
+//   order_assignment_release (qty < 0)  →  −qty  (restaure le disponible)
+// La formule est donc une simple extension de l'ensemble de types sommés,
+// pas une formule séparée : Σ(−qty) sur DRIVER_HAND_MOVEMENT_TYPES ∪ ces deux
+// types de ledger, groupé par livreur × produit.
+
+export const DRIVER_AVAILABLE_MOVEMENT_TYPES = [
+  ...DRIVER_HAND_MOVEMENT_TYPES,
+  'order_assignment_commit',
+  'order_assignment_release',
+] as const;
+
+export type DriverAvailableMovementType = (typeof DRIVER_AVAILABLE_MOVEMENT_TYPES)[number];
+
+export type DriverProductAvailability = {
+  driverId: string;
+  productId: string;
+  qtyAvailable: number;
+};
+
+function isAvailableMovement(type: string): type is DriverAvailableMovementType {
+  return (DRIVER_AVAILABLE_MOVEMENT_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Réduit une liste de mouvements en stock DISPONIBLE par livreur×produit.
+ * Retourne une Map driverId → (Map productId → qty disponible, signée).
+ * Les positions nulles ne sont pas filtrées ici (laissé à l'appelant).
+ */
+export function deriveDriverAvailableStock(
+  movements: DriverStockMovement[],
+): Map<string, Map<string, number>> {
+  const byDriver = new Map<string, Map<string, number>>();
+
+  for (const m of movements) {
+    if (m.driver_id === null) continue;
+    if (!isAvailableMovement(m.movement_type)) continue;
+
+    const contribution = -m.qty;
+    let byProduct = byDriver.get(m.driver_id);
+    if (!byProduct) {
+      byProduct = new Map<string, number>();
+      byDriver.set(m.driver_id, byProduct);
+    }
+    byProduct.set(m.product_id, (byProduct.get(m.product_id) ?? 0) + contribution);
+  }
+
+  return byDriver;
+}
+
+/**
+ * Stock disponible d'un livreur donné, en lignes filtrées (qty <> 0).
+ * Positions négatives incluses (commandes assignées au-delà de la possession
+ * physique) — seule une somme nette EXACTEMENT nulle est exclue.
+ */
+export function driverAvailableStockRows(
+  movements: DriverStockMovement[],
+  driverId: string,
+): DriverProductAvailability[] {
+  const byProduct = deriveDriverAvailableStock(movements).get(driverId);
+  if (!byProduct) return [];
+  return [...byProduct.entries()]
+    .filter(([, qty]) => qty !== 0)
+    .map(([productId, qtyAvailable]) => ({ driverId, productId, qtyAvailable }));
+}
