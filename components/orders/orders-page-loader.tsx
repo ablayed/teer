@@ -253,6 +253,7 @@ export function OrdersPageLoader({
                     drivers={drivers}
                     onTransitionSuccess={handleTransitionSuccess}
                     orderId={order.id}
+                    orderState={order.order_state}
                     phone={order.customer?.phone ?? null}
                     whatsappOrderData={{
                       numeroCommande: order.order_number,

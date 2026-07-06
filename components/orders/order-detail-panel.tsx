@@ -156,6 +156,7 @@ export function OrderDetailPanel({
       deliveryState={order.delivery_state}
       drivers={drivers}
       orderId={order.id}
+      orderState={order.order_state}
       phone={phone}
       whatsappOrderData={whatsappOrderData}
     />

@@ -32,6 +32,7 @@ type OrderActionsMenuProps = {
   drivers: DriverOption[];
   onTransitionSuccess?: (result: Extract<TransitionResult, { ok: true }>) => void;
   orderId: string;
+  orderState: string | null;
   phone: string | null;
   whatsappOrderData: WhatsappOrderData;
 };
@@ -67,6 +68,7 @@ export function OrderActionsMenu({
   drivers,
   onTransitionSuccess,
   orderId,
+  orderState,
   phone,
   whatsappOrderData,
 }: OrderActionsMenuProps) {
@@ -97,6 +99,10 @@ export function OrderActionsMenu({
     });
   const hasMenu = transitionEntries.length > 0;
   const canCall = phone !== null;
+  // Sujet B (Lot 3) : le template client n'a de sens que pour une commande encore
+  // ouverte (À appeler/Tentée/Programmer/En cours de livraison) — vide pour
+  // livrée/annulée/retournée (orderState !== 'open').
+  const whatsappTemplate = orderState === 'open' ? ('clientConfirmation' as const) : null;
 
   useEffect(() => {
     onTransitionSuccessRef.current = onTransitionSuccess;
@@ -259,7 +265,7 @@ export function OrderActionsMenu({
             onOpenChange={setWhatsappOpen}
             open={whatsappOpen}
             order={whatsappOrderData}
-            template="clientConfirmation"
+            template={whatsappTemplate}
           />
         ) : null}
         {pendingAction
@@ -306,7 +312,7 @@ export function OrderActionsMenu({
 
         <WhatsappComposeSheet
           order={whatsappOrderData}
-          template="clientConfirmation"
+          template={whatsappTemplate}
           trigger={
             <button
               className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text hover:bg-canvas"
