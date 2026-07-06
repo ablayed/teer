@@ -1873,3 +1873,40 @@ test('le tableau deep-link vers la vue En cours de livraison', async ({ page }) 
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
 });
+
+// Lot 3 (Sujet A) : "Déprogrammer". Voir CLAUDE.md.
+test('Lot 3 - Déprogrammer ramène une commande Programmée vers À appeler', async ({ page }) => {
+  const fixture = await createOwnerFixture('lot3-deprogrammer');
+  const orderId = await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'PROGRAMMEE',
+    customerName: 'Client Deprogrammer',
+    phone: '+221771667788',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await openActionsMenu(page);
+    // Le libellé reflète le contexte "scheduled" — jamais "Déconfirmer" ici.
+    await expect(menuItem(page, 'Déprogrammer')).toBeVisible({ timeout: 15_000 });
+    await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
+    await menuItem(page, 'Déprogrammer').click();
+    await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
+
+    const { data: reverted } = await fixture.admin
+      .from('orders')
+      .select('call_state, delivery_state, cash_state, scheduled_for')
+      .eq('id', orderId)
+      .single();
+    expect(reverted?.call_state).toBe('to_call');
+    expect(reverted?.delivery_state).toBe('unassigned');
+    expect(reverted?.cash_state).toBe('not_due');
+    expect(reverted?.scheduled_for).toBeNull();
+
+    await page.reload();
+    await expect(page.getByText('À appeler').first()).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});

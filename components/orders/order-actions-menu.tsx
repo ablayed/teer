@@ -85,7 +85,12 @@ export function OrderActionsMenu({
   const transitionEntries = transitionMenuOrder
     .filter((action) => visibleActions.includes(action))
     .filter((action) => {
-      if (deliveryState === 'scheduled' && (action === 'deconfirmer' || action === 'refuser')) {
+      // "Refuser" reste hors scope pour une commande programmée — cf. CLAUDE.md
+      // (Lot 3 : Refuser en "En cours de livraison" n'est pas touché, ici même filtre
+      // conservé pour "scheduled"). "Déconfirmer" redevient visible sous le libellé
+      // "Déprogrammer" (cf. getTransitionLabel) : même action/légalité de dimensions,
+      // seul l'affichage change.
+      if (deliveryState === 'scheduled' && action === 'refuser') {
         return false;
       }
       return true;
@@ -186,7 +191,9 @@ export function OrderActionsMenu({
       case 'annuler':
         return 'Annuler la commande';
       case 'deconfirmer':
-        return 'Déconfirmer';
+        // Programmée (deliveryState==='scheduled') : même action/légalité que
+        // "Déconfirmer" (dimensions inchangées), seul le libellé reflète le contexte.
+        return deliveryState === 'scheduled' ? 'Déprogrammer' : 'Déconfirmer';
       case 'desannuler':
         return 'Désannuler';
     }
