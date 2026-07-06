@@ -1339,6 +1339,13 @@
       "annulee": "Annuler",
       "retournee": "Marquer retournée"
     },
+    "assignment": {
+      "stockWarning": {
+        "title": "Stock insuffisant",
+        "item": "{product} : manque {qty}",
+        "checkFailed": "Impossible de vérifier le stock disponible pour le moment."
+      }
+    },
     "kanban": {
       "ariaLabel": "Tableau Kanban des commandes",
       "toggle": {

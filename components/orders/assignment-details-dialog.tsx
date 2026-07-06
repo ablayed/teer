@@ -3,7 +3,12 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { getOrderAmountsForAssignmentAction, updateOrderAmountsAction } from '@/lib/actions/orders';
+import { getDriverAvailableStock } from '@/lib/actions/drivers';
+import {
+  getOrderAmountsForAssignmentAction,
+  getOrderRequiredStockAction,
+  updateOrderAmountsAction,
+} from '@/lib/actions/orders';
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
 import {
   dateTimeInputsToIso,
@@ -12,6 +17,7 @@ import {
   normalizeHourInput,
 } from '@/lib/format/datetime-input';
 import { formatMoney } from '@/lib/format/fcfa';
+import { type StockShortageRow, computeStockShortages } from '@/lib/orders/assignment-stock-check';
 import {
   buildWhatsappShareUrl,
   formatMoneyForWhatsApp,
@@ -50,8 +56,10 @@ export function AssignmentDetailsDialog({
   orderId,
 }: AssignmentDetailsDialogProps) {
   const t = useTranslations('whatsapp');
+  const stockWarningT = useTranslations('orders.assignment.stockWarning');
   const fieldId = useId();
   const fetchDetails = useAction(getOrderAmountsForAssignmentAction);
+  const fetchRequiredStock = useAction(getOrderRequiredStockAction);
   const update = useAction(updateOrderAmountsAction);
   const startDelivery = useAction(performTransition);
 
@@ -71,6 +79,8 @@ export function AssignmentDetailsDialog({
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [stockShortages, setStockShortages] = useState<StockShortageRow[]>([]);
+  const [stockCheckFailed, setStockCheckFailed] = useState(false);
 
   const isExecuting = update.isExecuting || startDelivery.isExecuting;
 
@@ -111,6 +121,43 @@ export function AssignmentDetailsDialog({
     };
     // orderId/driverIdToAssign stables pour la durée de vie du popup ; executeAsync mémoïsé.
   }, [orderId, driverIdToAssign, fetchDetails.executeAsync]);
+
+  // Lot 2 / PR 3 — alerte informative "Stock insuffisant" : besoins de la commande
+  // (order_line) vs disponible du livreur CHOISI (driverIdToAssign), en parallèle du
+  // chargement des détails ci-dessus. Ne concerne que la NOUVELLE assignation (pas la
+  // réouverture d'une commande déjà assignée, où driverIdToAssign est absent) — le
+  // popup n'assigne rien dans ce cas, donc aucun manque à signaler. Purement
+  // informatif : un échec de lecture n'affiche qu'un message discret et n'empêche
+  // jamais `canConfirm`/`handleConfirm`.
+  useEffect(() => {
+    if (!driverIdToAssign) {
+      setStockShortages([]);
+      setStockCheckFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const [requiredResult, availableResult] = await Promise.all([
+        fetchRequiredStock.executeAsync({ orderId }),
+        getDriverAvailableStock(driverIdToAssign),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      if (!requiredResult?.data?.ok || !availableResult.ok) {
+        setStockCheckFailed(true);
+        setStockShortages([]);
+        return;
+      }
+      setStockShortages(computeStockShortages(requiredResult.data.rows, availableResult.rows));
+      setStockCheckFailed(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // orderId/driverIdToAssign stables pour la durée de vie du popup ; executeAsync mémoïsé.
+  }, [orderId, driverIdToAssign, fetchRequiredStock.executeAsync]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -237,6 +284,25 @@ export function AssignmentDetailsDialog({
           <p className="py-6 text-center text-sm text-muted">Chargement…</p>
         ) : (
           <>
+            {stockShortages.length > 0 ? (
+              <output className="block space-y-1 rounded-md bg-warning/15 p-3">
+                <p className="text-sm font-medium text-warning-foreground">
+                  {stockWarningT('title')}
+                </p>
+                <ul className="space-y-0.5 text-sm text-warning-foreground">
+                  {stockShortages.map((shortage) => (
+                    <li key={shortage.productId}>
+                      {stockWarningT('item', { product: shortage.title, qty: shortage.missingQty })}
+                    </li>
+                  ))}
+                </ul>
+              </output>
+            ) : null}
+
+            {stockCheckFailed ? (
+              <p className="text-sm text-warning-foreground">{stockWarningT('checkFailed')}</p>
+            ) : null}
+
             {items.length > 0 ? (
               <ul className="divide-y divide-border rounded-lg border border-border">
                 {items.map((item, index) => (
