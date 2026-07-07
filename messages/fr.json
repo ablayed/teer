@@ -328,11 +328,29 @@
       "discrepancy": "Écart non résolu : {amount}"
     },
     "stock": {
-      "title": "Stock disponible",
-      "empty": "Aucun stock disponible pour ce livreur.",
+      "title": "Stock du livreur",
+      "empty": "Aucun stock enregistré pour ce livreur.",
       "productColumn": "Produit",
-      "qtyColumn": "Qté disponible",
-      "definition": "Stock physique en main du livreur, moins les commandes qui lui sont assignées et pas encore livrées ou annulées."
+      "physicalColumn": "Stock physique",
+      "availableColumn": "Stock disponible",
+      "definition": "Stock physique : ce que le livreur a réellement en main, base de « Modifier le stock ». Stock disponible : le physique moins les commandes qui lui sont assignées et pas encore livrées ou annulées — peut être négatif si le livreur est engagé au-delà de ce qu'il détient.",
+      "centralNote": "Modifier le stock du livreur ne touche jamais le stock central affiché sur /produits.",
+      "action": "Modifier le stock",
+      "addProduct": "+ Ajouter un produit",
+      "chooseProduct": "— Choisir un produit —",
+      "newQtyLabel": "Nouvelle quantité en main",
+      "submit": "Valider",
+      "cancel": "Annuler",
+      "success": "Stock du livreur mis à jour.",
+      "noChange": "Aucun changement (quantité identique).",
+      "shortageCentral": {
+        "title": "Stock central insuffisant",
+        "item": "Il manque {qty} unité(s) au stock central de « {product} » pour couvrir cette augmentation."
+      },
+      "shortagePhysical": {
+        "title": "Retrait excédentaire",
+        "item": "Le livreur n'a que {current} unité(s) de « {product} » en main ; {qty} unité(s) en trop demandées."
+      }
     }
   },
   "definitionCard": {

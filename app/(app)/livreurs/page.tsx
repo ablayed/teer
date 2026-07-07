@@ -4,12 +4,14 @@ import {
   type DriverAvailableStockData,
   type DriverCashData,
   type DriverPerformanceData,
+  type DriverStockData,
   type SettlementHistoryRow,
   getAllSettlementHistory,
   getDriverAvailableStock,
   getDriverCashConsolidation,
   getDriverPerformance,
   getDriverSettlementHistory,
+  getDriverStockOnHand,
 } from '@/lib/actions/drivers';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -76,6 +78,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
 
   let detail: {
     availableStock: DriverAvailableStockData;
+    stock: DriverStockData;
     cash: DriverCashData;
     history: SettlementHistoryRow[];
     perf: DriverPerformanceData;
@@ -92,30 +95,33 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
       to: params.to,
     });
     const range = { from: from.toISOString(), to: to.toISOString() };
-    const [availableStock, cash, history, perf, productsResult, ordersResult] = await Promise.all([
-      getDriverAvailableStock(selected.id),
-      getDriverCashConsolidation(selected.id, range),
-      getDriverSettlementHistory(selected.id),
-      getDriverPerformance(selected.id, range),
-      supabase
-        .from('product')
-        .select('id, title, sku')
-        .eq('merchant_account_id', merchantAccountId)
-        .eq('is_active', true)
-        .order('title'),
-      supabase
-        .from('orders')
-        .select('id, order_number, cod_status, total_amount')
-        .eq('merchant_account_id', merchantAccountId)
-        .eq('assigned_driver_id', selected.id)
-        .gte('created_at', range.from)
-        .lt('created_at', range.to)
-        .order('updated_at', { ascending: false })
-        .limit(50),
-    ]);
+    const [availableStock, stock, cash, history, perf, productsResult, ordersResult] =
+      await Promise.all([
+        getDriverAvailableStock(selected.id),
+        getDriverStockOnHand(selected.id),
+        getDriverCashConsolidation(selected.id, range),
+        getDriverSettlementHistory(selected.id),
+        getDriverPerformance(selected.id, range),
+        supabase
+          .from('product')
+          .select('id, title, sku')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('is_active', true)
+          .order('title'),
+        supabase
+          .from('orders')
+          .select('id, order_number, cod_status, total_amount')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('assigned_driver_id', selected.id)
+          .gte('created_at', range.from)
+          .lt('created_at', range.to)
+          .order('updated_at', { ascending: false })
+          .limit(50),
+      ]);
 
     detail = {
       availableStock,
+      stock,
       cash,
       history: history.ok ? history.rows : [],
       perf,
