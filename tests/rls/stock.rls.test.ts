@@ -203,6 +203,60 @@ describe('stock_movement — immutabilité (RLS)', () => {
   );
 });
 
+describe('stock_movement — manual_adjustment sans saisie utilisateur (Lot 4a)', () => {
+  skipIfNoServiceRole(
+    'manualAdjustmentAction generates the reason internally: RPC succeeds without a user-supplied reason and persists "Ajustement manuel"',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('adj-auto-reason');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, { qtyOnHand: 20 });
+      const ownerClient = await signIn(email);
+
+      const { data, error } = await ownerClient.rpc('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'manual_adjustment',
+        p_qty: 3,
+        p_idempotency_key: `adj-auto-${Date.now()}`,
+        p_created_by: (await ownerClient.auth.getUser()).data.user?.id ?? '',
+        p_reason: 'Ajustement manuel',
+      });
+
+      expect(error).toBeNull();
+      expect(data).not.toBeNull();
+
+      const { data: movement } = await admin
+        .from('stock_movement')
+        .select('reason')
+        .eq('id', data as string)
+        .maybeSingle();
+
+      expect(movement?.reason).toBe('Ajustement manuel');
+    },
+  );
+
+  skipIfNoServiceRole(
+    'the underlying SQL guard still rejects an empty reason (unchanged — Lot 4a does not touch it)',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('adj-empty-reason');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, { qtyOnHand: 20 });
+      const ownerClient = await signIn(email);
+
+      const { error } = await ownerClient.rpc('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'manual_adjustment',
+        p_qty: 3,
+        p_idempotency_key: `adj-empty-${Date.now()}`,
+        p_created_by: (await ownerClient.auth.getUser()).data.user?.id ?? '',
+      });
+
+      expect(error).not.toBeNull();
+    },
+  );
+});
+
 describe('product_stock — visibilité unit_cost (RLS colonne)', () => {
   skipIfNoServiceRole(
     'agent: selecting unit_cost errors (column revoked), other columns stay readable',

@@ -115,14 +115,14 @@ export const purchaseInAction = requireRole('owner', 'manager')
     return { ok: true as const };
   });
 
-// Records a manual stock adjustment (+/-) with a required reason (atomic via RPC).
+// Records a manual stock adjustment (+/-), atomic via RPC. The reason required
+// by post_stock_movement/stock_movement is generated internally — no user input.
 export const manualAdjustmentAction = requireRole('owner', 'manager')
   .metadata({ actionName: 'stock.manual_adjustment', section: 'stock' })
   .inputSchema(
     z.object({
       productId: z.string().uuid(),
       qty: z.number().int(),
-      reason: z.string().trim().min(3).max(500),
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
@@ -138,7 +138,7 @@ export const manualAdjustmentAction = requireRole('owner', 'manager')
       p_qty: parsedInput.qty,
       p_idempotency_key: `adj:${parsedInput.productId}:${ctx.user.id}:${Date.now()}`,
       p_created_by: ctx.user.id,
-      p_reason: parsedInput.reason,
+      p_reason: 'Ajustement manuel',
     });
 
     if (error) return { ok: false as const, message: error.message };
