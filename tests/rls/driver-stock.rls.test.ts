@@ -342,6 +342,119 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// driver_stock_set (Lot 4b+4c / PR 2) : ledger-only, jamais qty_on_hand
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
+  skipIfNoServiceRole('poste un mouvement driver_stock_set sans muter qty_on_hand', async () => {
+    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('dss');
+    const productId = await createProduct(admin, merchantAccountId);
+    const driverId = await createDriver(admin, merchantAccountId);
+    const ownerClient = await signIn(email);
+    const post = postMovementRpc(ownerClient);
+
+    // Stock central : purchase_in 100 → entrepôt 100.
+    await post('post_stock_movement', {
+      p_merchant_account_id: merchantAccountId,
+      p_product_id: productId,
+      p_movement_type: 'purchase_in',
+      p_qty: 100,
+      p_idempotency_key: `dss:${productId}:in`,
+      p_created_by: userId,
+      p_unit_cost: 5000,
+    });
+
+    const { error } = await post('post_stock_movement', {
+      p_merchant_account_id: merchantAccountId,
+      p_product_id: productId,
+      p_movement_type: 'driver_stock_set',
+      p_qty: 12,
+      p_idempotency_key: `dss:${productId}:set`,
+      p_created_by: userId,
+      p_driver_id: driverId,
+    });
+    expect(error).toBeNull();
+
+    const { data: stock } = await admin
+      .from('product_stock')
+      .select('qty_on_hand')
+      .eq('product_id', productId)
+      .single();
+    // driver_stock_set est ledger-only (0095) : l'entrepôt reste 100.
+    expect(stock?.qty_on_hand).toBe(100);
+
+    const { data: movements } = await admin
+      .from('stock_movement')
+      .select('driver_id, movement_type, qty')
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('driver_id', driverId);
+    const set = (movements ?? []).find((m) => m.movement_type === 'driver_stock_set');
+    expect(set?.qty).toBe(12);
+    expect(set?.driver_id).toBe(driverId);
+  });
+
+  skipIfNoServiceRole('driver_stock_set sans livreur est rejeté (contrainte)', async () => {
+    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('dss-nodriver');
+    const productId = await createProduct(admin, merchantAccountId);
+    const ownerClient = await signIn(email);
+    const post = postMovementRpc(ownerClient);
+
+    const { error } = await post('post_stock_movement', {
+      p_merchant_account_id: merchantAccountId,
+      p_product_id: productId,
+      p_movement_type: 'driver_stock_set',
+      p_qty: 5,
+      p_idempotency_key: `dss-nodriver:${productId}`,
+      p_created_by: userId,
+      p_driver_id: null,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  skipIfNoServiceRole(
+    "driver_stock_set n'entre jamais dans l'allowlist de réconciliation (0032/0094)",
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('dss-recon');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const ownerClient = await signIn(email);
+      const post = postMovementRpc(ownerClient);
+
+      await post('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'purchase_in',
+        p_qty: 20,
+        p_idempotency_key: `dss-recon:${productId}:in`,
+        p_created_by: userId,
+        p_unit_cost: 5000,
+      });
+      await post('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'driver_stock_set',
+        p_qty: 8,
+        p_idempotency_key: `dss-recon:${productId}:set`,
+        p_created_by: userId,
+        p_driver_id: driverId,
+      });
+
+      const rpc = admin.rpc.bind(admin) as unknown as (
+        fn: string,
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+      const { data: discrepancies, error } = await rpc('reconcile_product_stock');
+      expect(error).toBeNull();
+      const productDiscrepancies = (discrepancies as { product_id: string }[] | null)?.filter(
+        (row) => row.product_id === productId,
+      );
+      // driver_stock_set ne touchant jamais qty_on_hand, aucun écart ne peut
+      // apparaître même sans figurer dans l'allowlist de reconcile_product_stock.
+      expect(productDiscrepancies).toHaveLength(0);
+    },
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // CASH LIVREUR INVISIBLE À L'AGENT
 // ──────────────────────────────────────────────────────────────────────────
 
