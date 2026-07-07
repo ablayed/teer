@@ -25,6 +25,7 @@ type TransitionOrderArgs = {
   p_call_state?: string;
   p_cancel_reason?: string;
   p_cash_state?: string;
+  p_clear_scheduled_for?: boolean;
   p_delivery_state?: string;
   p_next_contact_at?: string;
   p_note?: string;
@@ -517,6 +518,222 @@ describe('orders dimensions RLS', () => {
 
       expect(foreignMatches).toEqual([]);
       expect(ownMatches).toHaveLength(1);
+    },
+  );
+});
+
+// Migration 0096 — cash_collected_at doit prendre scheduled_for quand renseigné, jamais
+// now() seul, pour les commandes livrées. Exerce le VRAI chemin transition_order (RPC),
+// jamais un insert direct dans orders — la garde d'idempotence et le fallback now() ne
+// peuvent être prouvés qu'en rejouant le moteur.
+describe('transition_order — cash_collected_at daté sur scheduled_for (migration 0096)', () => {
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'commande programmée puis livrée en retard : cash_collected_at = scheduled_for, pas now()',
+    async () => {
+      const fixture = await createOwnerFixture('cca-scheduled');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      const owner = await signIn(fixture.email);
+      // scheduled_for dans le passé (3 jours) : simule une livraison saisie en retard.
+      const scheduledFor = new Date(Date.now() - 3 * 86_400_000).toISOString();
+
+      const programmed = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_order_id: orderId,
+        p_scheduled_for: scheduledFor,
+      });
+      expect(programmed.error).toBeNull();
+      expect(programmed.data).toBe('PROGRAMMEE');
+
+      const delivered = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'collected',
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(delivered.error).toBeNull();
+      expect(delivered.data).toBe('LIVREE');
+
+      const { data: stored, error: storedError } = await fixture.admin
+        .from('orders')
+        .select('cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      expect(storedError).toBeNull();
+      expect(stored?.cash_collected_at).not.toBeNull();
+      const collectedAtMs = new Date(stored?.cash_collected_at as string).getTime();
+      expect(collectedAtMs).toBe(new Date(scheduledFor).getTime());
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'commande jamais programmée (scheduled_for null) : cash_collected_at reste now() au clic',
+    async () => {
+      const fixture = await createOwnerFixture('cca-fallback');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      const owner = await signIn(fixture.email);
+
+      const before = Date.now();
+      const delivered = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'collected',
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      const after = Date.now();
+      expect(delivered.error).toBeNull();
+      expect(delivered.data).toBe('LIVREE');
+
+      const { data: stored, error: storedError } = await fixture.admin
+        .from('orders')
+        .select('cash_collected_at, scheduled_for')
+        .eq('id', orderId)
+        .single();
+      expect(storedError).toBeNull();
+      expect(stored?.scheduled_for).toBeNull();
+      expect(stored?.cash_collected_at).not.toBeNull();
+      // Fenêtre before/after plutôt qu'une égalité exacte à now() — évite tout flake
+      // d'horloge entre l'appel RPC et cette assertion (garde-fou porteur).
+      const collectedAtMs = new Date(stored?.cash_collected_at as string).getTime();
+      expect(collectedAtMs).toBeGreaterThanOrEqual(before);
+      expect(collectedAtMs).toBeLessThanOrEqual(after);
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'idempotence : un second passage sur une commande déjà livrée ne réécrase jamais cash_collected_at',
+    async () => {
+      const fixture = await createOwnerFixture('cca-idempotent');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      const owner = await signIn(fixture.email);
+      const scheduledFor = new Date(Date.now() - 1 * 86_400_000).toISOString();
+
+      await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_order_id: orderId,
+        p_scheduled_for: scheduledFor,
+      });
+      const firstDelivery = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'collected',
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(firstDelivery.error).toBeNull();
+
+      const { data: firstStored } = await fixture.admin
+        .from('orders')
+        .select('cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      const firstCashCollectedAt = firstStored?.cash_collected_at;
+      expect(firstCashCollectedAt).not.toBeNull();
+
+      // Second appel identique (rejoue "livrer") : la garde `cash_collected_at is null`
+      // doit rester intacte malgré le changement de branche.
+      const secondDelivery = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'collected',
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(secondDelivery.error).toBeNull();
+
+      const { data: secondStored } = await fixture.admin
+        .from('orders')
+        .select('cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      expect(secondStored?.cash_collected_at).toBe(firstCashCollectedAt);
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'programmée puis déprogrammée puis reconfirmée sans reprogrammer : fallback now(), aucune valeur fantôme',
+    async () => {
+      const fixture = await createOwnerFixture('cca-deprogrammed');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      const owner = await signIn(fixture.email);
+      const oldScheduledFor = new Date(Date.now() - 10 * 86_400_000).toISOString();
+
+      const programmed = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_order_id: orderId,
+        p_scheduled_for: oldScheduledFor,
+      });
+      expect(programmed.error).toBeNull();
+
+      // deconfirmer (Lot B) : efface scheduled_for explicitement.
+      const deconfirmed = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'to_call',
+        p_cash_state: 'not_due',
+        p_clear_scheduled_for: true,
+        p_delivery_state: 'unassigned',
+        p_order_id: orderId,
+      });
+      expect(deconfirmed.error).toBeNull();
+
+      const { data: afterDeconfirm } = await fixture.admin
+        .from('orders')
+        .select('scheduled_for')
+        .eq('id', orderId)
+        .single();
+      expect(afterDeconfirm?.scheduled_for).toBeNull();
+
+      // confirmer : ne pose jamais scheduledFor (lib/domain/order-transition-actions.ts).
+      const reconfirmed = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_order_id: orderId,
+      });
+      expect(reconfirmed.error).toBeNull();
+
+      const before = Date.now();
+      const delivered = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'collected',
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      const after = Date.now();
+      expect(delivered.error).toBeNull();
+      expect(delivered.data).toBe('LIVREE');
+
+      const { data: stored } = await fixture.admin
+        .from('orders')
+        .select('cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      expect(stored?.cash_collected_at).not.toBeNull();
+      const collectedAtMs = new Date(stored?.cash_collected_at as string).getTime();
+      // Ni valeur fantôme de l'ancien scheduled_for, ni égalité exacte à now() : fenêtre.
+      expect(collectedAtMs).not.toBe(new Date(oldScheduledFor).getTime());
+      expect(collectedAtMs).toBeGreaterThanOrEqual(before);
+      expect(collectedAtMs).toBeLessThanOrEqual(after);
     },
   );
 });
