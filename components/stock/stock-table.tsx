@@ -128,7 +128,6 @@ function AdjustmentForm({
 }) {
   const action = useAction(manualAdjustmentAction);
   const [qty, setQty] = useState('');
-  const [reason, setReason] = useState('');
   const [feedback, setFeedback] = useState<{ msg: string; kind: 'error' | 'success' } | null>(null);
 
   async function submit() {
@@ -137,11 +136,7 @@ function AdjustmentForm({
       setFeedback({ msg: 'Quantité invalide (≠ 0).', kind: 'error' });
       return;
     }
-    if (reason.trim().length < 3) {
-      setFeedback({ msg: 'Raison obligatoire (3 car. min.).', kind: 'error' });
-      return;
-    }
-    const res = await action.executeAsync({ productId, qty: q, reason: reason.trim() });
+    const res = await action.executeAsync({ productId, qty: q });
     if (res?.data?.ok) {
       setFeedback({ msg: 'Ajustement enregistré.', kind: 'success' });
       setTimeout(onDone, 800);
@@ -160,16 +155,6 @@ function AdjustmentForm({
           placeholder="-3"
           type="number"
           value={qty}
-        />
-      </label>
-      <label className="space-y-1">
-        <span className="text-xs text-muted">Raison (obligatoire)</span>
-        <input
-          className="min-h-11 w-48 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Casse, vol, inventaire…"
-          type="text"
-          value={reason}
         />
       </label>
       <button
