@@ -2,7 +2,7 @@
 
 import { PendingSpinner } from '@/components/app-shell/pending-spinner';
 import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
-import { DriverLotForm } from '@/components/drivers/driver-lot-form';
+import { DriverStockTable } from '@/components/drivers/driver-stock-table';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { usePeriodParams } from '@/components/period-picker/use-period-params';
 import { DefinitionToggle } from '@/components/ui/definition-card';
@@ -11,6 +11,7 @@ import type {
   DriverAvailableStockData,
   DriverCashData,
   DriverPerformanceData,
+  DriverStockData,
   SettlementHistoryRow,
 } from '@/lib/actions/drivers';
 import { formatMoney } from '@/lib/format/fcfa';
@@ -25,6 +26,7 @@ type DriverRow = { id: string; full_name: string; phone: string; is_active: bool
 
 type DriverDetail = {
   availableStock: DriverAvailableStockData;
+  stock: DriverStockData;
   cash: DriverCashData;
   history: SettlementHistoryRow[];
   orders: { cod_status: string; id: string; order_number: string | null; total_amount: number }[];
@@ -205,55 +207,18 @@ export function DriversWorkspace({
                 <h3 className="text-lg font-semibold">{t('title')}</h3>
                 <DefinitionToggle definition={t('definition')} />
               </div>
-              <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
-                <DriverLotForm driverId={selected.id} products={detail.products} />
-              </div>
-              {!detail.availableStock.ok ? (
+              <p className="text-xs text-muted">{t('centralNote')}</p>
+              {!detail.stock.ok ? (
+                <p className="text-sm text-danger">{detail.stock.message}</p>
+              ) : !detail.availableStock.ok ? (
                 <p className="text-sm text-danger">{detail.availableStock.message}</p>
-              ) : detail.availableStock.rows.length === 0 ? (
-                <p className="text-sm text-muted">{t('empty')}</p>
               ) : (
-                <>
-                  <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border bg-surface text-left">
-                          <th className="px-4 py-3 font-medium">{t('productColumn')}</th>
-                          <th className="px-4 py-3 text-right font-medium">{t('qtyColumn')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.availableStock.rows.map((row) => (
-                          <tr className="border-b border-border last:border-0" key={row.productId}>
-                            <td className="px-4 py-3">
-                              <span className="font-medium">{row.title}</span>
-                              {row.sku && (
-                                <span className="ml-2 text-xs text-muted">{row.sku}</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums">
-                              {row.qtyAvailable}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="overflow-hidden rounded-lg border border-border bg-surface md:hidden">
-                    {detail.availableStock.rows.map((row) => (
-                      <ResourceRow
-                        key={row.productId}
-                        meta={row.sku ?? undefined}
-                        primaryAction={
-                          <span className="font-mono text-sm font-semibold tabular-nums">
-                            {row.qtyAvailable}
-                          </span>
-                        }
-                        title={row.title}
-                      />
-                    ))}
-                  </div>
-                </>
+                <DriverStockTable
+                  availableRows={detail.availableStock.rows}
+                  driverId={selected.id}
+                  physicalRows={detail.stock.rows}
+                  products={detail.products}
+                />
               )}
             </section>
 

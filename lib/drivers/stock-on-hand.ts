@@ -15,6 +15,13 @@
 // (qty < 0, entrepôt confie) suivent la même convention de signe que
 // dispatch/sold : la formule `-qty` ci-dessous déplace le stock de l'ancien
 // livreur (main −qty) vers le nouveau (main +qty) sans changement de code dédié.
+//
+// driver_stock_set (Lot 4b+4c / PR 2) est un CAS À PART : n'ayant aucune
+// contrepartie entrepôt (ledger-only, ne mute jamais product_stock), son
+// `qty` encode DIRECTEMENT le delta en main ("le livreur a maintenant X" −
+// stock physique actuel), pas un effet entrepôt inversé. Contribution = +qty,
+// pas −qty — seul type de DRIVER_HAND_MOVEMENT_TYPES dans ce cas, isolé
+// explicitement dans deriveDriverStockOnHand/deriveDriverAvailableStock.
 
 export const DRIVER_HAND_MOVEMENT_TYPES = [
   'dispatch',
@@ -24,7 +31,12 @@ export const DRIVER_HAND_MOVEMENT_TYPES = [
   'courier_return_lot',
   'reassign_from_driver',
   'reassign_to_driver',
+  'driver_stock_set',
 ] as const;
+
+// Types dont le qty encode DIRECTEMENT le delta en main (pas l'effet entrepôt
+// inversé) — contribution = +qty. Actuellement seul driver_stock_set.
+const DIRECT_HAND_DELTA_TYPES: readonly string[] = ['driver_stock_set'];
 
 export type DriverHandMovementType = (typeof DRIVER_HAND_MOVEMENT_TYPES)[number];
 
@@ -59,7 +71,7 @@ export function deriveDriverStockOnHand(
     if (m.driver_id === null) continue;
     if (!isHandMovement(m.movement_type)) continue;
 
-    const contribution = -m.qty;
+    const contribution = DIRECT_HAND_DELTA_TYPES.includes(m.movement_type) ? m.qty : -m.qty;
     let byProduct = byDriver.get(m.driver_id);
     if (!byProduct) {
       byProduct = new Map<string, number>();
@@ -126,7 +138,7 @@ export function deriveDriverAvailableStock(
     if (m.driver_id === null) continue;
     if (!isAvailableMovement(m.movement_type)) continue;
 
-    const contribution = -m.qty;
+    const contribution = DIRECT_HAND_DELTA_TYPES.includes(m.movement_type) ? m.qty : -m.qty;
     let byProduct = byDriver.get(m.driver_id);
     if (!byProduct) {
       byProduct = new Map<string, number>();

@@ -345,28 +345,45 @@ test('supprimer un livreur vierge: retiré de la base (suppression dure)', async
   }
 });
 
-test('allouer un lot fait monter le stock en main du livreur', async ({ page }) => {
-  const fixture = await createOwnerFixture('lot');
+test('modifier le stock (nouveau produit) poste un driver_stock_set et affiche physique+disponible', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('dss-new');
   const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa Lot');
-  await createProduct(fixture.admin, fixture.merchantAccountId, 'Sac lot E2E');
+  const productId = await createProduct(fixture.admin, fixture.merchantAccountId, 'Sac lot E2E');
+  const ownerClient = await signInClient(fixture.email);
+
+  // Stock central suffisant (20) pour couvrir la demande de 15 ci-dessous —
+  // ce test vérifie le CAS DE SUCCÈS, pas le blocage cas 1.
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'purchase_in',
+    p_qty: 20,
+    p_idempotency_key: `dss-new:${productId}:in`,
+    p_created_by: fixture.userIds[0],
+    p_unit_cost: 1000,
+  });
 
   try {
     await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
 
     await expect(page.getByRole('heading', { name: 'Moussa Lot' })).toBeVisible();
 
-    // Mode "Allouer un lot" est actif par défaut ; choisir le produit + qté
-    await page.locator('select').filter({ hasText: 'Sac lot E2E' }).selectOption({
+    // Produit sans position (physique ET disponible = 0) : uniquement dans
+    // le sélecteur "+ Ajouter un produit", pas encore une ligne de tableau.
+    // Ce contrôle n'est jamais dupliqué desktop/mobile (contrairement aux
+    // lignes du tableau) — pas d'ambiguïté ici.
+    await page.getByLabel(messages.livreurs.stock.addProduct).selectOption({
       label: 'Sac lot E2E',
     });
-    const allocationQtyInput = page.getByPlaceholder('10');
-    await allocationQtyInput.click({ clickCount: 3 });
-    await allocationQtyInput.pressSequentially('15');
-    await expect(allocationQtyInput).toHaveValue('15');
-    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    const qtyInput = page.getByLabel(messages.livreurs.stock.newQtyLabel);
+    await qtyInput.click({ clickCount: 3 });
+    await qtyInput.pressSequentially('15');
+    await expect(qtyInput).toHaveValue('15');
+    await page.getByRole('button', { name: messages.livreurs.stock.submit, exact: true }).click();
 
-    // Le mouvement est posté hors commande ; le stock en main remonte
-    await expect(page.getByText('Lot alloué au livreur.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(messages.livreurs.stock.success)).toBeVisible({ timeout: 15_000 });
     await expect
       .poll(
         async () => {
@@ -375,34 +392,170 @@ test('allouer un lot fait monter le stock en main du livreur', async ({ page }) 
             .select('movement_type, qty, driver_id')
             .eq('merchant_account_id', fixture.merchantAccountId)
             .eq('driver_id', driverId);
-          return (data ?? []).find((movement) => movement.movement_type === 'allocate_to_courier');
+          return (data ?? []).find((movement) => movement.movement_type === 'driver_stock_set');
         },
         { timeout: 15_000 },
       )
-      .toMatchObject({ driver_id: driverId, qty: -15 });
+      .toMatchObject({ driver_id: driverId, qty: 15 });
+
+    // product_stock (stock central) n'est JAMAIS affecté par ce mouvement —
+    // reste à 20 (le purchase_in de seed), pas 20+15 ni 20-15.
+    const { data: stock } = await fixture.admin
+      .from('product_stock')
+      .select('qty_on_hand')
+      .eq('product_id', productId)
+      .maybeSingle();
+    expect(stock?.qty_on_hand).toBe(20);
+
     await page.reload();
-    // Le <table> desktop (md+) et la liste ResourceRow mobile (< md) existent
-    // TOUS LES DEUX dans le DOM en permanence (l'un est juste masqué en CSS
-    // selon le viewport) — getByRole('row')/getByText ne filtrent pas par
-    // visibilité. `:visible` + `.last()` cible l'élément le plus profond et
-    // réellement affiché, quel que soit le viewport (desktop <td> ou span
-    // ResourceRow mobile).
+    // Le <table> desktop (md+) et la liste mobile (< md) existent TOUS LES
+    // DEUX dans le DOM en permanence (l'un masqué en CSS selon le viewport) —
+    // `:visible` + `.last()` cible l'élément réellement affiché quel que soit
+    // le viewport (desktop <td> ou carte mobile).
     await expect(page.locator(':visible', { hasText: 'Sac lot E2E' }).last()).toBeVisible({
       timeout: 15_000,
     });
+    // Physique ET disponible affichent 15 (aucun engagement de commande sur
+    // ce produit) — les deux colonnes/valeurs sont visibles simultanément.
     await expect(page.locator(':visible', { hasText: '15' }).last()).toBeVisible({
       timeout: 15_000,
     });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
 
-    // Vérifie le mouvement en base
+test('modifier le stock: augmentation au-delà du stock central est bloquée avec le montant manquant', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('dss-central');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Alpha Central');
+  const productId = await createProduct(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Carton central E2E',
+  );
+  const ownerClient = await signInClient(fixture.email);
+
+  // Stock central : 5 unités seulement.
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'purchase_in',
+    p_qty: 5,
+    p_idempotency_key: `dss-central:${productId}:in`,
+    p_created_by: fixture.userIds[0],
+    p_unit_cost: 1000,
+  });
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+    await expect(page.getByRole('heading', { name: 'Alpha Central' })).toBeVisible();
+
+    // Demande 10 alors que le central n'en a que 5 → manque 5.
+    await page.getByLabel(messages.livreurs.stock.addProduct).selectOption({
+      label: 'Carton central E2E',
+    });
+    const qtyInput = page.getByLabel(messages.livreurs.stock.newQtyLabel);
+    await qtyInput.click({ clickCount: 3 });
+    await qtyInput.pressSequentially('10');
+    await expect(qtyInput).toHaveValue('10');
+    await page.getByRole('button', { name: messages.livreurs.stock.submit, exact: true }).click();
+
+    await expect(
+      page.getByText(
+        messages.livreurs.stock.shortageCentral.item
+          .replace('{qty}', '5')
+          .replace('{product}', 'Carton central E2E'),
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Aucune écriture : ni driver_stock_set, ni effet sur product_stock.
     const { data: movements } = await fixture.admin
       .from('stock_movement')
-      .select('movement_type, qty, driver_id')
+      .select('movement_type')
       .eq('merchant_account_id', fixture.merchantAccountId)
       .eq('driver_id', driverId);
-    const alloc = (movements ?? []).find((m) => m.movement_type === 'allocate_to_courier');
-    expect(alloc?.qty).toBe(-15);
-    expect(alloc?.driver_id).toBe(driverId);
+    expect((movements ?? []).some((m) => m.movement_type === 'driver_stock_set')).toBe(false);
+    const { data: stock } = await fixture.admin
+      .from('product_stock')
+      .select('qty_on_hand')
+      .eq('product_id', productId)
+      .single();
+    expect(stock?.qty_on_hand).toBe(5);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('modifier le stock: retrait excédentaire (valeur négative) est bloqué avec le montant en trop', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('dss-physical');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Beta Physique');
+  const productId = await createProduct(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Carton physique E2E',
+  );
+  const ownerClient = await signInClient(fixture.email);
+
+  // Le livreur a 3 en main via driver_stock_set (ledger-only).
+  await ownerClient.rpc('post_stock_movement', {
+    p_merchant_account_id: fixture.merchantAccountId,
+    p_product_id: productId,
+    p_movement_type: 'driver_stock_set',
+    p_qty: 3,
+    p_idempotency_key: `dss-physical:${productId}:set`,
+    p_created_by: fixture.userIds[0],
+    p_driver_id: driverId,
+  });
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+    await expect(page.getByRole('heading', { name: 'Beta Physique' })).toBeVisible();
+
+    await expect(page.locator(':visible', { hasText: 'Carton physique E2E' }).last()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.locator(':visible', { hasText: messages.livreurs.stock.action }).last().click();
+
+    // Le formulaire ouvert existe en double dans le DOM (desktop <table> +
+    // carte mobile, l'un masqué en CSS selon le viewport) — `.and(page.locator(':visible'))`
+    // (combinateur Playwright officiel, contrairement à `.locator(':visible')`
+    // chaîné qui ne filtre pas par visibilité ici) cible l'élément réellement affiché.
+    const qtyInput = page
+      .getByLabel(messages.livreurs.stock.newQtyLabel)
+      .and(page.locator(':visible'));
+    // Valeur cible négative (-2) : au-delà de 0, quel que soit le physique
+    // actuel (3) — retrait en trop demandé = 2.
+    await qtyInput.click({ clickCount: 3 });
+    await qtyInput.pressSequentially('-2');
+    await expect(qtyInput).toHaveValue('-2');
+    await page
+      .getByRole('button', { name: messages.livreurs.stock.submit, exact: true })
+      .and(page.locator(':visible'))
+      .click();
+
+    await expect(
+      page.getByText(
+        messages.livreurs.stock.shortagePhysical.item
+          .replace('{current}', '3')
+          .replace('{product}', 'Carton physique E2E')
+          .replace('{qty}', '2'),
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Un seul mouvement driver_stock_set en base (le seed initial) — le
+    // retrait bloqué n'a rien écrit.
+    const { data: movements } = await fixture.admin
+      .from('stock_movement')
+      .select('qty')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId)
+      .eq('movement_type', 'driver_stock_set');
+    expect(movements).toHaveLength(1);
+    expect(movements?.[0]?.qty).toBe(3);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

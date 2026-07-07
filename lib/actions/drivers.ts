@@ -2,6 +2,7 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import type { DriverCashConsolidation } from '@/lib/drivers/cash-consolidation';
+import { computeDriverStockSetPlan } from '@/lib/drivers/driver-stock-set';
 import { type DriverPerformance, deriveDriverPerformance } from '@/lib/drivers/performance';
 import {
   type DriverStockMovement,
@@ -30,66 +31,95 @@ function createSupabaseAdminClient() {
   });
 }
 
-// Allocates an advance lot of a product to a courier (lot d'avance).
-// Stock physically leaves the warehouse → qty_on_hand decremented, attributed
-// to the driver, outside any order. Atomic via post_stock_movement.
-export const allocateToCourierAction = requireRole('owner', 'manager')
-  .metadata({ actionName: 'drivers.allocate_to_courier', section: 'drivers' })
+// Sets the courier's PHYSICAL stock for a product to an absolute value ("le
+// livreur a maintenant X"), replacing the former allocate/return-lot tabs
+// (Lot 4b+4c / PR 2). The delta vs. the current physical position is computed
+// HERE, server-side — never accept a raw signed delta from the client for this
+// gesture (unlike manualAdjustmentAction on /produits, which is delta-based by
+// design and stays that way).
+//
+// Two hard guards, both server-side, both block with no write:
+//   - increase (delta > 0) : the central warehouse (product_stock.qty_on_hand)
+//     must cover it, else BLOCKED with the exact missing qty.
+//   - decrease (delta < 0) : cannot exceed what the driver physically holds,
+//     else BLOCKED with the exact excess qty.
+// A delta of 0 is a clean no-op (no movement posted, no error).
+//
+// Posts a single ledger-only `driver_stock_set` movement (0095) — never
+// mutates product_stock, same reasoning as order_assignment_commit/release
+// (Lot 2) and the PR 1 change to allocate_to_courier/courier_return_lot (0093).
+export const setDriverStockAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'drivers.set_driver_stock', section: 'drivers' })
   .inputSchema(
     z.object({
       driverId: z.string().uuid(),
       productId: z.string().uuid(),
-      qty: z.number().int().min(1),
+      // Pas de .min(0) ici volontairement : un newQty négatif doit atteindre
+      // computeDriverStockSetPlan et déclencher le blocage "physique" avec un
+      // message détaillé, pas une erreur Zod générique. Un newQty négatif
+      // équivaut algébriquement à demander un retrait de -newQty au-delà de 0,
+      // quel que soit le stock physique actuel (cf. lib/drivers/driver-stock-set.ts).
+      newQty: z.number().int(),
       clientRequestId: z.string().uuid(),
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
+    const { driverId, productId, newQty } = parsedInput;
+    // Même arité générique SupabaseClient<Database> que resolveOwnerManagerContext
+    // (@supabase/ssr vs @supabase/supabase-js) : cast nécessaire pour que .from()
+    // résolve les types de colonnes, la valeur runtime est le même client typé.
+    const supabase = ctx.supabase as unknown as SupabaseClient<Database>;
+
+    const { data: movements, error: movementsError } = await supabase
+      .from('stock_movement')
+      .select('driver_id, product_id, movement_type, qty')
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('driver_id', driverId)
+      .eq('product_id', productId);
+
+    if (movementsError) return { ok: false as const, message: movementsError.message };
+
+    const currentQty =
+      driverStockRows((movements ?? []) as DriverStockMovement[], driverId).find(
+        (r) => r.productId === productId,
+      )?.qtyOnHand ?? 0;
+
+    let centralAvailable = 0;
+    if (newQty > currentQty) {
+      const { data: stock, error: stockError } = await supabase
+        .from('product_stock')
+        .select('qty_on_hand')
+        .eq('merchant_account_id', ctx.member.merchantAccountId)
+        .eq('product_id', productId)
+        .maybeSingle();
+
+      if (stockError) return { ok: false as const, message: stockError.message };
+      centralAvailable = stock?.qty_on_hand ?? 0;
+    }
+
+    const plan = computeDriverStockSetPlan({ currentQty, newQty, centralAvailable });
+
+    if (plan.kind === 'noop') {
+      return { ok: true as const, delta: 0 };
+    }
+    if (plan.kind === 'blocked') {
+      return { ok: false as const, shortage: plan };
+    }
+
     const post = postStockMovementRpc(ctx.supabase);
     const { error } = await post('post_stock_movement', {
       p_merchant_account_id: ctx.member.merchantAccountId,
-      p_product_id: parsedInput.productId,
-      p_movement_type: 'allocate_to_courier',
-      p_qty: -parsedInput.qty,
-      p_idempotency_key: `lot_alloc:${parsedInput.driverId}:${parsedInput.productId}:${parsedInput.clientRequestId}`,
+      p_product_id: productId,
+      p_movement_type: 'driver_stock_set',
+      p_qty: plan.delta,
+      p_idempotency_key: `driver_stock_set:${driverId}:${productId}:${parsedInput.clientRequestId}`,
       p_created_by: ctx.user.id,
-      p_driver_id: parsedInput.driverId,
+      p_driver_id: driverId,
     });
 
     if (error) return { ok: false as const, message: error.message };
     revalidatePath('/livreurs');
-    revalidatePath('/produits');
-    return { ok: true as const };
-  });
-
-// Records the return of an unsold lot from a courier (retour de lot).
-// Stock comes back to the warehouse → qty_on_hand incremented, attributed to
-// the driver, outside any order. Atomic via post_stock_movement.
-export const courierReturnLotAction = requireRole('owner', 'manager')
-  .metadata({ actionName: 'drivers.courier_return_lot', section: 'drivers' })
-  .inputSchema(
-    z.object({
-      driverId: z.string().uuid(),
-      productId: z.string().uuid(),
-      qty: z.number().int().min(1),
-      clientRequestId: z.string().uuid(),
-    }),
-  )
-  .action(async ({ ctx, parsedInput }) => {
-    const post = postStockMovementRpc(ctx.supabase);
-    const { error } = await post('post_stock_movement', {
-      p_merchant_account_id: ctx.member.merchantAccountId,
-      p_product_id: parsedInput.productId,
-      p_movement_type: 'courier_return_lot',
-      p_qty: parsedInput.qty,
-      p_idempotency_key: `lot_return:${parsedInput.driverId}:${parsedInput.productId}:${parsedInput.clientRequestId}`,
-      p_created_by: ctx.user.id,
-      p_driver_id: parsedInput.driverId,
-    });
-
-    if (error) return { ok: false as const, message: error.message };
-    revalidatePath('/livreurs');
-    revalidatePath('/produits');
-    return { ok: true as const };
+    return { ok: true as const, delta: plan.delta };
   });
 
 export type ActiveDriverOption = { id: string; fullName: string };

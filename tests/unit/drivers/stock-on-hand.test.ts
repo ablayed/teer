@@ -68,6 +68,21 @@ describe('deriveDriverStockOnHand', () => {
     expect(map.size).toBe(0);
   });
 
+  it('driver_stock_set (0095) encode DIRECTEMENT le delta en main, pas l’effet entrepôt inversé', () => {
+    // Contrairement à tous les autres types (contribution = -qty), driver_stock_set
+    // n'a aucune contrepartie entrepôt : qty positif = augmentation directe en main.
+    const map = deriveDriverStockOnHand([mv({ movement_type: 'driver_stock_set', qty: 12 })]);
+    expect(map.get(DRIVER)?.get(PROD_A)).toBe(12);
+  });
+
+  it('driver_stock_set négatif (retrait) diminue directement le stock en main', () => {
+    const map = deriveDriverStockOnHand([
+      mv({ movement_type: 'driver_stock_set', qty: 12 }),
+      mv({ movement_type: 'driver_stock_set', qty: -5 }),
+    ]);
+    expect(map.get(DRIVER)?.get(PROD_A)).toBe(7);
+  });
+
   it('sépare les livreurs et les produits', () => {
     const map = deriveDriverStockOnHand([
       mv({ driver_id: DRIVER, product_id: PROD_A, movement_type: 'dispatch', qty: -2 }),
@@ -159,6 +174,14 @@ describe('deriveDriverAvailableStock', () => {
     ]);
     expect(map.get(DRIVER)?.get(PROD_A)).toBe(0);
     expect(map.get(OTHER)?.get(PROD_A)).toBe(4);
+  });
+
+  it('driver_stock_set (0095) contribue directement au disponible (même convention que la main)', () => {
+    const map = deriveDriverAvailableStock([
+      mv({ movement_type: 'driver_stock_set', qty: 10 }),
+      mv({ movement_type: 'order_assignment_commit', qty: 4 }),
+    ]);
+    expect(map.get(DRIVER)?.get(PROD_A)).toBe(6);
   });
 
   it('reserve / release / purchase_in / manual_adjustment / advance_commit sont exclus', () => {
