@@ -2,10 +2,15 @@
  * Tests RLS / intégration du module Livreurs (Phase 4, migration 0031).
  *
  * Couvre : allocation de lot (allocate_to_courier) + retour (courier_return_lot)
- * via post_stock_movement avec driver_id, l'invariant stock (Σ stock en main
- * livreurs + entrepôt = total ledger), l'idempotence des allocations de lot,
+ * via post_stock_movement avec driver_id, l'idempotence des allocations de lot,
  * la contrainte « lot exige un livreur », et l'invisibilité du cash livreur
  * pour l'agent.
+ *
+ * Depuis la migration 0093 (Lot 4b+4c / PR 1), ces deux movement_type sont
+ * ledger-only : ils ne mutent plus product_stock.qty_on_hand. L'ancien
+ * invariant « Σ stock en main livreurs + entrepôt = total ledger » ne
+ * s'applique plus — le stock en main du livreur (driverStockRows) reste
+ * dérivé du ledger seul, découplé de product_stock.
  */
 
 import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
@@ -140,7 +145,7 @@ afterEach(async () => {
 
 describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', () => {
   skipIfNoServiceRole(
-    'allocation et retour de lot déplacent le stock entrepôt ↔ livreur ; invariant conservé',
+    'allocation et retour de lot sont ledger-only (0093) : entrepôt inchangé, stock en main dérivé du ledger',
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot');
       const productId = await createProduct(admin, merchantAccountId);
@@ -159,7 +164,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
         p_unit_cost: 5000,
       });
 
-      // allocate_to_courier -30 → entrepôt 70, en main 30
+      // allocate_to_courier -30 → ledger-only depuis 0093 : entrepôt reste 100
       const { error: allocErr } = await post('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
@@ -171,7 +176,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       });
       expect(allocErr).toBeNull();
 
-      // courier_return_lot +10 → entrepôt 80, en main 20
+      // courier_return_lot +10 → ledger-only depuis 0093 : entrepôt reste 100
       await post('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
@@ -187,9 +192,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
         .select('qty_on_hand')
         .eq('product_id', productId)
         .single();
-      expect(stock?.qty_on_hand).toBe(80);
+      // 0093 : allocate_to_courier / courier_return_lot ne mutent plus qty_on_hand.
+      expect(stock?.qty_on_hand).toBe(100);
 
-      // Stock en main du livreur dérivé du ledger
+      // Stock en main du livreur reste dérivé du ledger seul (inchangé par 0093,
+      // ce calcul n'a jamais dépendu de product_stock).
       const { data: movements } = await admin
         .from('stock_movement')
         .select('driver_id, product_id, movement_type, qty')
@@ -198,10 +205,6 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
 
       const hand = driverStockRows((movements ?? []) as DriverStockMovement[], driverId);
       expect(hand).toEqual([{ driverId, productId, qtyOnHand: 20 }]);
-
-      // INVARIANT : entrepôt (80) + en main livreur (20) = total acheté (100)
-      const driverHand = hand.reduce((sum, r) => sum + r.qtyOnHand, 0);
-      expect((stock?.qty_on_hand ?? 0) + driverHand).toBe(100);
 
       // Le mouvement d'allocation porte bien le livreur
       const alloc = (movements ?? []).find((m) => m.movement_type === 'allocate_to_courier');
@@ -218,7 +221,8 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       const ownerClient = await signIn(email);
       const post = postMovementRpc(ownerClient);
 
-      // purchase_in 100 puis allocate_to_courier -30 → entrepôt 70.
+      // purchase_in 100 puis allocate_to_courier -30 → ledger-only depuis 0093,
+      // entrepôt reste 100.
       await post('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
@@ -242,7 +246,8 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
         fn: string,
       ) => Promise<{ data: unknown; error: { message: string } | null }>;
 
-      // reconcile : allocate_to_courier est désormais compté (0032) → aucun écart.
+      // reconcile : allocate_to_courier est exclu de l'allowlist depuis 0094 (comme
+      // il ne mute plus qty_on_hand depuis 0093) → toujours aucun écart.
       const { data: discrepancies, error: reconErr } = await rpc('reconcile_product_stock');
       expect(reconErr).toBeNull();
       const productDiscrepancies = (discrepancies as { product_id: string }[] | null)?.filter(
@@ -250,8 +255,8 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       );
       expect(productDiscrepancies).toHaveLength(0);
 
-      // rebuild : on corrompt la projection, rebuild doit la ramener à 70
-      // (somme ledger incluant le lot), pas à 100.
+      // rebuild : on corrompt la projection, rebuild doit la ramener à 100
+      // (somme ledger purchase_in seul depuis 0094, le lot n'y figure plus).
       await admin.from('product_stock').update({ qty_on_hand: 999 }).eq('product_id', productId);
 
       const { error: rebuildErr } = await rpc('rebuild_product_stock');
@@ -262,7 +267,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
         .select('qty_on_hand')
         .eq('product_id', productId)
         .single();
-      expect(rebuilt?.qty_on_hand).toBe(70);
+      expect(rebuilt?.qty_on_hand).toBe(100);
     },
   );
 
@@ -311,7 +316,10 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       .select('qty_on_hand')
       .eq('product_id', productId)
       .single();
-    expect(stock?.qty_on_hand).toBe(30); // 50 - 20 une seule fois
+    // 0093 : allocate_to_courier ne mute plus qty_on_hand → reste 50, que
+    // l'idempotence ait joué ou non (l'assertion id2===null ci-dessus reste
+    // le test d'idempotence pertinent).
+    expect(stock?.qty_on_hand).toBe(50);
   });
 
   skipIfNoServiceRole('un lot sans livreur est rejeté (contrainte)', async () => {

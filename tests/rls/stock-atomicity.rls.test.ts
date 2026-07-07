@@ -1458,7 +1458,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       const owner = await signIn(email);
 
       await purchaseIn(owner, merchantAccountId, productId, userId, 50); // entrepôt 50 (via ledger)
-      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 6); // → 44
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 6); // ledger-only (0093) : entrepôt reste 50
 
       const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
         { productId, qty: 1 },
@@ -1486,7 +1486,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       // Après assign : avance couvre tout → advance_commit, AUCUN dispatch,
       // réserve libérée par advance_commit.
       const afterAssign = await readStock(admin, productId);
-      expect(afterAssign?.qty_on_hand).toBe(44); // 50 − 6 (allocate), pas de dispatch
+      expect(afterAssign?.qty_on_hand).toBe(50); // allocate ne mute plus qty_on_hand (0093), pas de dispatch
       expect(afterAssign?.qty_reserved).toBe(0); // reserve libéré par advance_commit
 
       const assignMovements = await admin
@@ -1511,13 +1511,14 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       expect(deliver.error).toBeNull();
 
       const final = await readStock(admin, productId);
-      expect(final?.qty_on_hand).toBe(44); // sold ne touche pas l’entrepôt
+      expect(final?.qty_on_hand).toBe(50); // sold ne touche pas l’entrepôt ; allocate non plus (0093)
       expect(final?.qty_reserved).toBe(0);
 
       expect(await driverHand(admin, productId, driverId)).toBe(5); // 6 avance − 1 vendu
       expect(await advanceAvailable(admin, productId, driverId)).toBe(5);
 
-      // advance_commit & sold exclus des allowlists qty_on_hand → aucun faux écart.
+      // advance_commit, sold, et désormais allocate_to_courier/courier_return_lot (0094)
+      // exclus des allowlists qty_on_hand → aucun faux écart.
       expect(await reconcileDiscrepancyFor(admin, productId)).toHaveLength(0);
     },
   );
@@ -1531,7 +1532,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       const owner = await signIn(email);
 
       await purchaseIn(owner, merchantAccountId, productId, userId, 50); // 50
-      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 2); // → 48
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 2); // ledger-only (0093) : reste 50
 
       const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
         { productId, qty: 3 },
@@ -1559,7 +1560,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       // Après assign : cover 2 (advance_commit libère 2) + remainder 1 (dispatch
       // libère 1) → reserved entièrement libéré.
       const afterAssign = await readStock(admin, productId);
-      expect(afterAssign?.qty_on_hand).toBe(47); // 48 − 1 (dispatch du complément)
+      expect(afterAssign?.qty_on_hand).toBe(49); // 50 − 1 (dispatch du complément) ; allocate ne compte plus (0093)
       expect(afterAssign?.qty_reserved).toBe(0); // 3 − 2 (commit) − 1 (dispatch)
 
       const assignMovements = await admin
@@ -1586,7 +1587,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       });
 
       const final = await readStock(admin, productId);
-      expect(final?.qty_on_hand).toBe(47);
+      expect(final?.qty_on_hand).toBe(49); // allocate ne mute plus qty_on_hand (0093)
       expect(final?.qty_reserved).toBe(0);
       expect(await driverHand(admin, productId, driverId)).toBe(0); // 2 avance + 1 dispatch − 3 vendu
       expect(await advanceAvailable(admin, productId, driverId)).toBe(0);
@@ -1603,7 +1604,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       const owner = await signIn(email);
 
       await purchaseIn(owner, merchantAccountId, productId, userId, 50); // 50
-      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 1); // → 49
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 1); // ledger-only (0093) : reste 50
 
       const client = await signIn(email);
 
@@ -1662,7 +1663,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       expect(movesB.data?.find((m) => m.movement_type === 'dispatch')?.qty).toBe(-1);
 
       const final = await readStock(admin, productId);
-      expect(final?.qty_on_hand).toBe(48); // 50 − 1 (allocate) − 1 (dispatch B)
+      expect(final?.qty_on_hand).toBe(49); // 50 − 1 (dispatch B) ; allocate ne compte plus (0093)
       expect(final?.qty_reserved).toBe(0);
       expect(await driverHand(admin, productId, driverId)).toBe(0); // 1 avance + 1 dispatch − 2 vendus
       expect(await advanceAvailable(admin, productId, driverId)).toBe(0);
@@ -1682,7 +1683,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       await purchaseIn(owner, merchantAccountId, prodA, userId, 50);
       await purchaseIn(owner, merchantAccountId, prodB, userId, 50);
       // Avance sur prodA seulement (3), rien sur prodB.
-      await allocateToCourier(owner, merchantAccountId, prodA, driverId, userId, 3); // A → 47
+      await allocateToCourier(owner, merchantAccountId, prodA, driverId, userId, 3); // ledger-only (0093) : A reste 50
 
       const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
         { productId: prodA, qty: 2 },
@@ -1727,7 +1728,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
 
       const stockA = await readStock(admin, prodA);
       const stockB = await readStock(admin, prodB);
-      expect(stockA?.qty_on_hand).toBe(47); // 50 − 3 (allocate), pas de dispatch
+      expect(stockA?.qty_on_hand).toBe(50); // allocate ne mute plus qty_on_hand (0093), pas de dispatch
       expect(stockA?.qty_reserved).toBe(0);
       expect(stockB?.qty_on_hand).toBe(48); // 50 − 2 (dispatch)
       expect(stockB?.qty_reserved).toBe(0);
@@ -1743,7 +1744,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       const owner = await signIn(email);
 
       await purchaseIn(owner, merchantAccountId, productId, userId, 50);
-      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 5); // → 45
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 5); // ledger-only (0093) : reste 50
 
       const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
         { productId, qty: 2 },
@@ -1804,7 +1805,7 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
       // PAS de réserve fantôme : la compensation négative ne touche pas qty_reserved.
       const afterDesann = await readStock(admin, productId);
       expect(afterDesann?.qty_reserved).toBe(0);
-      expect(afterDesann?.qty_on_hand).toBe(45); // 50 − 5 (allocate) ; advance_commit n’y touche pas
+      expect(afterDesann?.qty_on_hand).toBe(50); // allocate ne mute plus qty_on_hand (0093) ; advance_commit n’y touche pas non plus
 
       // Deux advance_commit (engagement +2, compensation −2), driver d’origine.
       const commits = await admin
