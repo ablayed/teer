@@ -39,10 +39,14 @@ test('logout on one device does not sign out other devices', async ({ browser })
     await pageB.waitForURL('**/tableau', { timeout: 45_000 });
 
     // The sidebar SignOutButton is desktop-only (`hidden md:flex`); /parametres
-    // renders SignOutButton unconditionally under the default "profile" tab, so it
-    // works on every viewport (chromium/pixel-7/iphone-14).
+    // renders a second SignOutButton unconditionally under the default "profile" tab,
+    // so on desktop both are present at once (strict-mode violation) — scope to
+    // main#main to target only the settings page's button on every viewport.
     await pageA.goto('/parametres');
-    await pageA.getByRole('button', { name: messages.nav.signOut, exact: true }).click();
+    await pageA
+      .locator('main#main')
+      .getByRole('button', { name: messages.nav.signOut, exact: true })
+      .click();
     await pageA.waitForURL((url) => url.pathname === '/', { timeout: 20_000 });
 
     await pageB.reload();
