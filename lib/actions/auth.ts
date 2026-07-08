@@ -264,6 +264,6 @@ export const signInAction = actionClient
 export const signOutAction = authActionClient
   .metadata({ actionName: 'auth.sign_out', section: 'auth' })
   .action(async ({ ctx }) => {
-    await ctx.supabase.auth.signOut();
+    await ctx.supabase.auth.signOut({ scope: 'local' });
     redirect('/');
   });
