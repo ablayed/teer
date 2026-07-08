@@ -6,6 +6,7 @@ import {
   createVisualFixture,
   seedAnalyticsVisualData,
   seedClientsVisualData,
+  seedDashboardCashByProductVisualData,
   seedDashboardVisualData,
   seedDriversVisualData,
   seedFinanceVisualData,
@@ -132,13 +133,65 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
 
     try {
       await seedDashboardVisualData(fixture);
-      await signInToRoute(page, fixture.email, '/tableau');
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
       await expect(page.getByText('Priorités à traiter')).toBeVisible({ timeout: 15_000 });
       await waitForFonts(page);
 
       await expect(page).toHaveScreenshot('tableau.png', {
         fullPage: false,
       });
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
+  test('tableau-cash-by-product-compact', async ({ page }) => {
+    test.setTimeout(60_000);
+    const fixture = await createVisualFixture('tableau-cash-by-product-compact');
+
+    try {
+      await seedDashboardCashByProductVisualData(fixture, 3);
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible({
+        timeout: 15_000,
+      });
+      await waitForFonts(page);
+
+      await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
+        'tableau-cash-by-product-compact.png',
+      );
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
+  test('tableau-cash-by-product-many', async ({ page }) => {
+    test.setTimeout(60_000);
+    const fixture = await createVisualFixture('tableau-cash-by-product-many');
+
+    try {
+      await seedDashboardCashByProductVisualData(fixture, 7);
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible({
+        timeout: 15_000,
+      });
+      await waitForFonts(page);
+
+      await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
+        'tableau-cash-by-product-many.png',
+      );
     } finally {
       await cleanupVisualFixture(fixture);
     }

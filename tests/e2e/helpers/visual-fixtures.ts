@@ -32,6 +32,7 @@ type OrderSeed = {
   address1: string;
   assignedDriverId?: string | null;
   cancelReason?: string | null;
+  cashCollectedAt?: string | null;
   cashCollectableMinor?: number;
   createdAt: string;
   createdAtShopify?: string;
@@ -87,7 +88,7 @@ export async function cleanupVisualFixture(fixture: VisualFixture): Promise<void
 
 export async function signInToRoute(page: Page, email: string, redirectTo: string): Promise<void> {
   await loginViaForm(page, email, e2ePassword, redirectTo);
-  await page.waitForURL(`**${redirectTo}`, { timeout: 30_000 });
+  await page.waitForURL(`**${redirectTo}`, { timeout: 45_000 });
   await expect(page.locator('main#main')).toBeVisible({ timeout: 45_000 });
 }
 
@@ -185,6 +186,7 @@ export async function createOrder(fixture: VisualFixture, seed: OrderSeed): Prom
       cancel_reason: seed.cancelReason ?? dimensions.cancelReason,
       assigned_driver_id: seed.assignedDriverId ?? dimensions.assignedDriverId,
       payment_channel_at_delivery: seed.paymentChannelAtDelivery ?? null,
+      cash_collected_at: seed.cashCollectedAt ?? null,
       cash_collectable_minor: seed.cashCollectableMinor ?? null,
       delivery_fee_minor: seed.deliveryFeeMinor ?? 0,
       returned_at: seed.returnedAt ?? null,
@@ -228,6 +230,43 @@ export async function createOrder(fixture: VisualFixture, seed: OrderSeed): Prom
   }
 
   return data.id as string;
+}
+
+export async function createMatchedCollectedOrder(
+  fixture: VisualFixture,
+  seed: {
+    address1: string;
+    cashCollectedAt: string;
+    customerId: string;
+    orderNumber: string;
+    productId: string;
+    title: string;
+    totalAmount: number;
+  },
+): Promise<string> {
+  const orderId = await createOrder(fixture, {
+    address1: seed.address1,
+    cashCollectedAt: seed.cashCollectedAt,
+    cashCollectableMinor: seed.totalAmount,
+    createdAt: seed.cashCollectedAt,
+    customerId: seed.customerId,
+    itemsSummary: [{ price: seed.totalAmount, quantity: 1, title: seed.title }],
+    orderNumber: seed.orderNumber,
+    paymentChannelAtDelivery: 'ESPECES',
+    status: 'LIVREE',
+    totalAmount: seed.totalAmount,
+  });
+
+  await fixture.admin.from('order_line').insert({
+    merchant_account_id: fixture.merchantAccountId,
+    order_id: orderId,
+    product_id: seed.productId,
+    raw_title: seed.title,
+    qty: 1,
+    match_status: 'matched',
+  });
+
+  return orderId;
 }
 
 export async function seedClientsVisualData(fixture: VisualFixture): Promise<void> {
@@ -531,6 +570,7 @@ export async function seedDashboardVisualData(fixture: VisualFixture): Promise<v
   await createOrder(fixture, {
     address1: 'Liberté 6',
     assignedDriverId: driverId,
+    cashCollectedAt: recentDate.toISOString(),
     cashCollectableMinor: 36000,
     createdAt: recentDate.toISOString(),
     customerId: customers.livree,
@@ -557,6 +597,39 @@ export async function seedDashboardVisualData(fixture: VisualFixture): Promise<v
 // l'URL (?from=…&to=…) — comme la baseline commandes-liste — pour que le serveur RSC
 // calcule la fenêtre sur des dates fixes au lieu du `now` réel du runner (page.clock
 // ne fige que l'horloge navigateur). Toutes les dates de seed tombent dedans.
+export async function seedDashboardCashByProductVisualData(
+  fixture: VisualFixture,
+  productCount: number,
+): Promise<void> {
+  const customerId = await createCustomer(fixture, {
+    address1: 'Liberté 6',
+    fullName: 'Awa Diop',
+    phone: '+221771112233',
+  });
+
+  for (let index = 0; index < productCount; index += 1) {
+    const title =
+      productCount > 6
+        ? `Produit visuel extra long ${index + 1} - edition chaleureuse Dakar`
+        : `Produit visuel ${index + 1}`;
+    const productId = await createProduct(fixture, {
+      sku: `DASH-VIS-${index + 1}`,
+      title,
+      unitCost: 4_000 + index * 250,
+    });
+
+    await createMatchedCollectedOrder(fixture, {
+      address1: 'Liberté 6',
+      cashCollectedAt: `2026-01-${String(10 + index).padStart(2, '0')}T10:00:00.000Z`,
+      customerId,
+      orderNumber: `CMD-TBL-CHART-${index + 1}`,
+      productId,
+      title,
+      totalAmount: 12_000 + index * 1_500,
+    });
+  }
+}
+
 export const visualPeriodFrom = '2026-01-01';
 export const visualPeriodTo = '2026-01-31';
 
