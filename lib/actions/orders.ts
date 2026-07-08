@@ -82,7 +82,14 @@ type GetOrdersInput = {
 };
 
 type SupabaseServerClient = SupabaseClient<Database>;
-const manualOrderSources = ['manual', 'whatsapp', 'instagram', 'tiktok', 'facebook'] as const;
+const manualOrderSources = [
+  'manual',
+  'whatsapp',
+  'instagram',
+  'tiktok',
+  'facebook',
+  'appel',
+] as const;
 const ORDERS_PAGE_SIZE = 25;
 
 type CurrentMember = {

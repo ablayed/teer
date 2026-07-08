@@ -737,3 +737,25 @@ describe('transition_order — cash_collected_at daté sur scheduled_for (migrat
     },
   );
 });
+
+describe('orders_source_check — source "appel" (migration 0097)', () => {
+  it.skipIf(!supabaseUrl || !serviceRoleKey)(
+    'accepte "appel" et rejette toujours une valeur hors liste',
+    async () => {
+      const fixture = await createOwnerFixture('source-appel');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+
+      const { error: acceptedError } = await fixture.admin
+        .from('orders')
+        .update({ source: 'appel' })
+        .eq('id', orderId);
+      expect(acceptedError).toBeNull();
+
+      const { error: rejectedError } = await fixture.admin
+        .from('orders')
+        .update({ source: 'not-a-real-source' })
+        .eq('id', orderId);
+      expect(rejectedError?.message).toContain('orders_source_check');
+    },
+  );
+});
