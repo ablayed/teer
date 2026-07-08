@@ -38,6 +38,10 @@ test('logout on one device does not sign out other devices', async ({ browser })
     await loginViaForm(pageB, email, e2ePassword);
     await pageB.waitForURL('**/tableau', { timeout: 45_000 });
 
+    // The sidebar SignOutButton is desktop-only (`hidden md:flex`); /parametres
+    // renders SignOutButton unconditionally under the default "profile" tab, so it
+    // works on every viewport (chromium/pixel-7/iphone-14).
+    await pageA.goto('/parametres');
     await pageA.getByRole('button', { name: messages.nav.signOut, exact: true }).click();
     await pageA.waitForURL((url) => url.pathname === '/', { timeout: 20_000 });
 
