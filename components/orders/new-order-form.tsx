@@ -18,6 +18,7 @@ const sourceOptions = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'tiktok', label: 'TikTok' },
   { value: 'facebook', label: 'Facebook' },
+  { value: 'appel', label: 'Appel' },
 ] as const;
 
 type ProductOption = {

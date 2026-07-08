@@ -9,7 +9,7 @@ export type Period = z.infer<typeof periodSchema>;
 
 // Canaux = valeurs autorisées de orders.source (cf. contrainte 0025).
 export const channelSchema = z
-  .enum(['shopify', 'whatsapp', 'manual', 'instagram', 'tiktok', 'facebook'])
+  .enum(['shopify', 'whatsapp', 'manual', 'instagram', 'tiktok', 'facebook', 'appel'])
   .describe('Canal de vente (orders.source).');
 
 export type Channel = z.infer<typeof channelSchema>;
