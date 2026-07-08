@@ -515,13 +515,14 @@ export type DriversCashTotal =
 // (collecté − frais encaissés − remis), via la RPC get_driver_cash_consolidation
 // (migration 0083) qui porte la même arithmétique agrégée que le panneau Livreurs
 // et le panneau Finances → aucun chiffre dupliqué. Owner/manager (garde côté RPC).
-export async function getDriversCashOnHandTotal(): Promise<DriversCashTotal> {
+export async function getDriversCashOnHandTotal(shopId?: string | null): Promise<DriversCashTotal> {
   const auth = await resolveOwnerManagerContext();
   if (!auth.ok) return { ok: false, message: auth.message };
   const { merchantAccountId, supabase } = auth;
 
   const { data, error } = await supabase.rpc('get_driver_cash_consolidation', {
     p_merchant_id: merchantAccountId,
+    ...(shopId ? { p_shop_id: shopId } : {}),
   });
   if (error) return { ok: false, message: error.message };
 
