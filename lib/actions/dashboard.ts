@@ -1,6 +1,7 @@
 'use server';
 
 import { authActionClient } from '@/lib/actions/safe-action';
+import { buildDashboardCashCollectedByProduct } from '@/lib/dashboard/cash-by-product';
 import { type SupabaseServerClient, getCachedDashboardContext } from '@/lib/dashboard/context';
 import {
   type DashboardRevenue30d,
@@ -12,10 +13,7 @@ import {
 } from '@/lib/dashboard/revenue-30d';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import { fetchAllPages, fetchFinanceCollectedJoins } from '@/lib/finance/finance-joins';
-import {
-  type FinanceRevenueByProductRow,
-  computeFinanceCollectedRevenueByProduct,
-} from '@/lib/finance/product-cost';
+import type { FinanceRevenueByProductRow } from '@/lib/finance/product-cost';
 import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -918,7 +916,7 @@ async function fetchDashboardCashCollectedByProductForUser({
   const ordersPage = (offset: number) => {
     let query = admin
       .from('orders')
-      .select('id, items_summary')
+      .select('id, items_summary, total_amount')
       .eq('merchant_account_id', merchantAccountId)
       .gte('cash_collected_at', from.toISOString())
       .lte('cash_collected_at', to.toISOString())
@@ -955,32 +953,26 @@ async function fetchDashboardCashCollectedByProductForUser({
     return { ok: false, errorCode: 'query_error' };
   }
 
-  const items = computeFinanceCollectedRevenueByProduct({
-    orderLines: collectedJoins.orderLines.map((line) => ({
-      orderId: line.order_id,
-      productId: line.product_id,
-      qty: line.qty,
-      rawTitle: line.raw_title,
-    })),
-    orders: ordersResult.data.map((order) => ({
-      deliveryFeeMinor: 0,
-      id: order.id,
-      itemsSummary: order.items_summary,
-      totalAmount: 0,
-    })),
-    products: productsResult.data.map((product) => ({
-      id: product.id,
-      title: product.title,
-      unitCost: product.unit_cost,
-    })),
-  }).slice(0, 10);
-
   return {
     ok: true,
-    data: {
-      items,
-      totalMinor: items.reduce((sum, item) => sum + item.revenueMinor, 0),
-    },
+    data: buildDashboardCashCollectedByProduct({
+      orderLines: collectedJoins.orderLines.map((line) => ({
+        orderId: line.order_id,
+        productId: line.product_id,
+        qty: line.qty,
+        rawTitle: line.raw_title,
+      })),
+      orders: ordersResult.data.map((order) => ({
+        id: order.id,
+        itemsSummary: order.items_summary,
+        totalAmount: order.total_amount,
+      })),
+      products: productsResult.data.map((product) => ({
+        id: product.id,
+        title: product.title,
+        unitCost: product.unit_cost,
+      })),
+    }),
   };
 }
 
