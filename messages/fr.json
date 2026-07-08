@@ -452,6 +452,19 @@
           "annuleesRetours": "Annulées / Retours (7 j)"
         }
       },
+      "periodMetrics": {
+        "sectionLabel": "CA encaissé et livraisons sur la période",
+        "empty": "Aucune commande à afficher sur cette période.",
+        "cashByProduct": {
+          "title": "CA par produit",
+          "subtitle": "Top 10 · commandes encaissées sur la période"
+        },
+        "deliveries": {
+          "title": "Livraisons",
+          "subtitle": "Top 10 · commandes LIVRÉE sur la période",
+          "total": "Total livraisons"
+        }
+      },
       "alerts": {
         "title": "Alertes",
         "empty": "Aucune alerte. Tout va bien.",

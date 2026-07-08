@@ -1853,6 +1853,28 @@ export type Database = {
         Args: { p_merchant_id: string; p_shop_id?: string };
         Returns: Json;
       };
+      get_dashboard_cash_collected_total: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: {
+          ca_encaisse_minor: number;
+          net_ca_minor: number;
+          return_contra_revenue_minor: number;
+        }[];
+      };
+      get_dashboard_deliveries_by_product: {
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
+        Returns: Json;
+      };
       get_dashboard_kpi: {
         Args: { p_merchant_id: string; p_shop_id?: string };
         Returns: Json;
@@ -1880,6 +1902,7 @@ export type Database = {
           p_merchant_id: string;
           p_period_from?: string;
           p_period_to?: string;
+          p_shop_id?: string;
         };
         Returns: {
           cash_on_hand_minor: number;

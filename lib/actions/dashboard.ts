@@ -11,6 +11,12 @@ import {
   revenue30dLowerBound,
 } from '@/lib/dashboard/revenue-30d';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
+import { fetchAllPages, fetchFinanceCollectedJoins } from '@/lib/finance/finance-joins';
+import {
+  type FinanceRevenueByProductRow,
+  computeFinanceCollectedRevenueByProduct,
+} from '@/lib/finance/product-cost';
+import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { z } from 'zod';
@@ -92,6 +98,26 @@ export type DashboardPriorityCounts = {
   aRappeler: number;
   enLivraison: number;
   annuleesRetours: number;
+};
+
+export type DashboardCashCollectedTotal = {
+  caMinor: number;
+};
+
+export type DashboardCashCollectedByProduct = {
+  items: FinanceRevenueByProductRow[];
+  totalMinor: number;
+};
+
+export type DashboardDeliveriesByProductItem = {
+  deliveredOrdersCount: number;
+  productId: string;
+  title: string;
+};
+
+export type DashboardDeliveriesByProduct = {
+  products: DashboardDeliveriesByProductItem[];
+  totalDeliveries: number;
 };
 
 export type DashboardReadonlyActionResult<T> =
@@ -208,6 +234,43 @@ function numberField(record: Record<string, unknown>, key: string): number {
 
 function asRecordArray(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function toDashboardDeliveriesByProduct(
+  value: unknown,
+): DashboardReadonlyActionResult<DashboardDeliveriesByProduct> {
+  if (!isRecord(value)) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const products = asRecordArray(value.products)
+    .map((row) => {
+      const productId = stringOrNull(row.product_id);
+      const title = stringOrNull(row.title);
+
+      if (!productId || !title) {
+        return null;
+      }
+
+      return {
+        deliveredOrdersCount: numberField(row, 'delivered_orders_count'),
+        productId,
+        title,
+      } satisfies DashboardDeliveriesByProductItem;
+    })
+    .filter((row): row is DashboardDeliveriesByProductItem => row !== null);
+
+  return {
+    ok: true,
+    data: {
+      products,
+      totalDeliveries: numberField(value, 'total_deliveries'),
+    },
+  };
 }
 
 async function fetchTopProductsForUser({
@@ -803,6 +866,151 @@ async function fetchPriorityCountsForUser({
   };
 }
 
+async function fetchDashboardCashCollectedTotalForUser({
+  from,
+  merchantAccountId,
+  shopId,
+  supabase,
+  to,
+}: {
+  from: Date;
+  merchantAccountId: string;
+  shopId?: string | null;
+  supabase: SupabaseServerClient;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardCashCollectedTotal>> {
+  const { data, error } = await supabase.rpc('get_dashboard_cash_collected_total', {
+    p_merchant_id: merchantAccountId,
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+    ...(shopId ? { p_shop_id: shopId } : {}),
+  });
+
+  if (error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) {
+    return { ok: true, data: { caMinor: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      caMinor: numberField(row, 'ca_encaisse_minor'),
+    },
+  };
+}
+
+async function fetchDashboardCashCollectedByProductForUser({
+  from,
+  merchantAccountId,
+  shopId,
+  to,
+}: {
+  from: Date;
+  merchantAccountId: string;
+  shopId?: string | null;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardCashCollectedByProduct>> {
+  const admin = createFinanceAdminClient();
+  const ordersPage = (offset: number) => {
+    let query = admin
+      .from('orders')
+      .select('id, items_summary')
+      .eq('merchant_account_id', merchantAccountId)
+      .gte('cash_collected_at', from.toISOString())
+      .lte('cash_collected_at', to.toISOString())
+      .order('id', { ascending: true });
+
+    if (shopId) {
+      query = query.eq('shop_id', shopId);
+    }
+
+    return query.range(offset, offset + 499);
+  };
+
+  const productsPage = (offset: number) =>
+    admin
+      .from('product')
+      .select('id, title, unit_cost')
+      .eq('merchant_account_id', merchantAccountId)
+      .order('id', { ascending: true })
+      .range(offset, offset + 499);
+
+  const [ordersResult, productsResult, collectedJoins] = await Promise.all([
+    fetchAllPages(ordersPage),
+    fetchAllPages(productsPage),
+    fetchFinanceCollectedJoins(
+      admin,
+      merchantAccountId,
+      from.toISOString(),
+      to.toISOString(),
+      shopId,
+    ),
+  ]);
+
+  if (ordersResult.error || productsResult.error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  const items = computeFinanceCollectedRevenueByProduct({
+    orderLines: collectedJoins.orderLines.map((line) => ({
+      orderId: line.order_id,
+      productId: line.product_id,
+      qty: line.qty,
+      rawTitle: line.raw_title,
+    })),
+    orders: ordersResult.data.map((order) => ({
+      deliveryFeeMinor: 0,
+      id: order.id,
+      itemsSummary: order.items_summary,
+      totalAmount: 0,
+    })),
+    products: productsResult.data.map((product) => ({
+      id: product.id,
+      title: product.title,
+      unitCost: product.unit_cost,
+    })),
+  }).slice(0, 10);
+
+  return {
+    ok: true,
+    data: {
+      items,
+      totalMinor: items.reduce((sum, item) => sum + item.revenueMinor, 0),
+    },
+  };
+}
+
+async function fetchDashboardDeliveriesByProductForUser({
+  from,
+  merchantAccountId,
+  shopId,
+  supabase,
+  to,
+}: {
+  from: Date;
+  merchantAccountId: string;
+  shopId?: string | null;
+  supabase: SupabaseServerClient;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardDeliveriesByProduct>> {
+  const { data, error } = await supabase.rpc('get_dashboard_deliveries_by_product', {
+    p_merchant_id: merchantAccountId,
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+    ...(shopId ? { p_shop_id: shopId } : {}),
+  });
+
+  if (error) {
+    return { ok: false, errorCode: 'query_error' };
+  }
+
+  return toDashboardDeliveriesByProduct(data);
+}
+
 export async function getPriorityCounts(
   shopId?: string | null,
 ): Promise<DashboardReadonlyActionResult<DashboardPriorityCounts>> {
@@ -816,5 +1024,80 @@ export async function getPriorityCounts(
     merchantAccountId: ctx.merchantAccountId,
     shopId,
     supabase: ctx.supabase,
+  });
+}
+
+export async function getDashboardCashCollectedTotal({
+  from,
+  shopId,
+  to,
+}: {
+  from: Date;
+  shopId?: string | null;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardCashCollectedTotal>> {
+  const ctx = await getCachedDashboardContext();
+
+  if (!ctx.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchDashboardCashCollectedTotalForUser({
+    from,
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+    to,
+  });
+}
+
+export async function getDashboardCashCollectedByProduct({
+  from,
+  shopId,
+  to,
+}: {
+  from: Date;
+  shopId?: string | null;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardCashCollectedByProduct>> {
+  const ctx = await getCachedDashboardContext();
+
+  if (!ctx.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  if (ctx.role !== 'owner' && ctx.role !== 'manager') {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchDashboardCashCollectedByProductForUser({
+    from,
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    to,
+  });
+}
+
+export async function getDashboardDeliveriesByProduct({
+  from,
+  shopId,
+  to,
+}: {
+  from: Date;
+  shopId?: string | null;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardDeliveriesByProduct>> {
+  const ctx = await getCachedDashboardContext();
+
+  if (!ctx.ok) {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
+  return fetchDashboardDeliveriesByProductForUser({
+    from,
+    merchantAccountId: ctx.merchantAccountId,
+    shopId,
+    supabase: ctx.supabase,
+    to,
   });
 }

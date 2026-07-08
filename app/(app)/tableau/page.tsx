@@ -5,13 +5,23 @@ import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
 import { TopProducts } from '@/components/dashboard/TopProducts';
+import {
+  TableauCashByProductChart,
+  TableauCashCollectedCard,
+  TableauDeliveriesCard,
+} from '@/components/dashboard/tableau-period-metrics';
+import { TableauPeriodPersistence } from '@/components/dashboard/tableau-period-persistence';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
 import { ActivationChecklist } from '@/components/onboarding/activation-checklist';
+import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { Card } from '@/components/ui/card';
 import {
   getCodBreakdown,
+  getDashboardCashCollectedByProduct,
+  getDashboardCashCollectedTotal,
+  getDashboardDeliveriesByProduct,
   getDashboardKpi,
   getPriorityCounts,
   getRecentActivity,
@@ -24,13 +34,17 @@ import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
 import { getCachedDashboardContext } from '@/lib/dashboard/context';
 import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
 import { formatMoney } from '@/lib/format/fcfa';
+import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import { getTranslations } from 'next-intl/server';
 import { Suspense, cache } from 'react';
 
 type TableauPageProps = {
   searchParams: Promise<{
+    from?: string;
+    period?: string;
     shop?: string;
+    to?: string;
     welcome?: string;
     role?: string;
   }>;
@@ -153,7 +167,7 @@ async function OperationsEssentialsSection({ shopId }: { shopId: string | null }
   from.setDate(from.getDate() - 29);
 
   const [cashTotal, lossResult] = await Promise.all([
-    getDriversCashOnHandTotal(),
+    getDriversCashOnHandTotal(shopId),
     getLossAnalyticsAction({ from: from.toISOString(), shopId, to: now.toISOString() }),
   ]);
 
@@ -163,11 +177,7 @@ async function OperationsEssentialsSection({ shopId }: { shopId: string | null }
   const deliveryRate =
     loss && loss.rtoDenominator > 0 ? loss.deliveredCount / loss.rtoDenominator : 0;
 
-  const cashHint = cashTotal.ok
-    ? [`${cashTotal.driverCount} livreur(s) concerné(s)`, shopId ? '· toutes boutiques' : null]
-        .filter(Boolean)
-        .join(' ')
-    : undefined;
+  const cashHint = cashTotal.ok ? `${cashTotal.driverCount} livreur(s) concerné(s)` : undefined;
 
   return (
     <section className="space-y-3">
@@ -182,6 +192,74 @@ async function OperationsEssentialsSection({ shopId }: { shopId: string | null }
         {essentialCard('Taux de livraison réussie', loss ? pct(deliveryRate) : '—')}
         {essentialCard('Taux de retour', loss ? pct(loss.returnRate) : '—')}
       </div>
+    </section>
+  );
+}
+
+type TableauPeriodRange = {
+  activePeriod: string;
+  from: Date;
+  to: Date;
+};
+
+async function PeriodMetricsSection({
+  period,
+  role,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  role: 'agent' | 'manager' | 'owner';
+  shopId: string | null;
+}) {
+  const [tTableau, tFinance, cashCollectedResult, deliveriesResult, cashByProductResult] =
+    await Promise.all([
+      getTranslations('tableau.blocks.periodMetrics'),
+      getTranslations('finance.profit'),
+      role === 'owner' || role === 'manager'
+        ? getDashboardCashCollectedTotal({ from: period.from, shopId, to: period.to })
+        : Promise.resolve(null),
+      getDashboardDeliveriesByProduct({ from: period.from, shopId, to: period.to }),
+      role === 'owner' || role === 'manager'
+        ? getDashboardCashCollectedByProduct({ from: period.from, shopId, to: period.to })
+        : Promise.resolve(null),
+    ]);
+
+  const cashCollected = cashCollectedResult?.ok ? cashCollectedResult.data.caMinor : 0;
+  const cashByProduct = cashByProductResult?.ok
+    ? cashByProductResult.data
+    : { items: [], totalMinor: 0 };
+  const deliveries = deliveriesResult.ok
+    ? deliveriesResult.data
+    : { products: [], totalDeliveries: 0 };
+  const showCash = role === 'owner' || role === 'manager';
+
+  return (
+    <section
+      aria-label={tTableau('sectionLabel')}
+      className={`grid gap-4 ${showCash ? 'xl:grid-cols-3' : 'xl:grid-cols-1'}`}
+    >
+      {showCash ? (
+        <>
+          <TableauCashCollectedCard
+            emptyLabel={tTableau('empty')}
+            title={tFinance('ca')}
+            valueMinor={cashCollected}
+          />
+          <TableauCashByProductChart
+            chart={cashByProduct}
+            emptyLabel={tTableau('empty')}
+            subtitle={tTableau('cashByProduct.subtitle')}
+            title={tTableau('cashByProduct.title')}
+          />
+        </>
+      ) : null}
+      <TableauDeliveriesCard
+        deliveries={deliveries}
+        emptyLabel={tTableau('empty')}
+        subtitle={tTableau('deliveries.subtitle')}
+        title={tTableau('deliveries.title')}
+        totalLabel={tTableau('deliveries.total')}
+      />
     </section>
   );
 }
@@ -341,6 +419,21 @@ function RevenueSkeleton() {
   );
 }
 
+function PeriodMetricsSkeleton({ showCash }: { showCash: boolean }) {
+  const keys = showCash ? ['cash', 'cash-by-product', 'deliveries'] : ['deliveries'];
+
+  return (
+    <section className={`grid gap-4 ${showCash ? 'xl:grid-cols-3' : 'xl:grid-cols-1'}`}>
+      {keys.map((key) => (
+        <Card className="rounded-lg" key={key} padding="lg">
+          <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
+          <div className="dashboard-shimmer h-[220px] rounded-md" />
+        </Card>
+      ))}
+    </section>
+  );
+}
+
 const skeletonRowKeys = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'] as const;
 
 function CardListSkeleton({ rows }: { rows: number }) {
@@ -393,12 +486,26 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
   const user = ctx.ok ? ctx.user : null;
   const shops = ctx.ok ? await listShopFilterOptions(ctx.supabase, ctx.merchantAccountId) : [];
   const selectedShopId = normalizeShopParam(params.shop, shops);
+  const period = resolvePeriodRange({
+    allowedPresets: PERIOD_PRESETS,
+    defaultPreset: '30j',
+    from: params.from,
+    period: params.period,
+    to: params.to,
+  });
+  const periodKey = [period.activePeriod, period.from.toISOString(), period.to.toISOString()].join(
+    '-',
+  );
   // Suffixe de boutique pour les clés Suspense : il DOIT être combiné a un prefixe
   // unique par bloc. Plusieurs Suspense freres partageant la meme clé littérale
   // (« all ») produisent des clés dupliquees (aggravé par le React.Children.map de
   // DashboardMotion) → au changement de boutique la réconciliation empile les blocs
   // au lieu de les remplacer. Cf. régression empilement KpiStrip.
   const shopKey = selectedShopId ?? 'all';
+  const role =
+    ctx.ok && (ctx.role === 'owner' || ctx.role === 'manager' || ctx.role === 'agent')
+      ? ctx.role
+      : 'agent';
   const firstName =
     displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
 
@@ -411,6 +518,9 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
       ) : null}
       <Suspense fallback={null}>
         <ShopFilterPersistence storageKey="teer.tableau.shop" />
+      </Suspense>
+      <Suspense fallback={null}>
+        <TableauPeriodPersistence />
       </Suspense>
       <DashboardMotion>
         <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -425,15 +535,23 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
               <CallQueueSubtitle shopId={selectedShopId} />
             </Suspense>
           </div>
-          <ShopFilterSelector
-            allLabel={t('shops.all')}
-            ariaLabel={t('shops.ariaLabel')}
-            label={t('shops.label')}
-            pathname="/tableau"
-            searchParams={{ shop: params.shop }}
-            selectedShopId={selectedShopId}
-            shops={shops}
-          />
+          <div className="flex flex-col gap-3 md:items-end">
+            <PeriodPicker />
+            <ShopFilterSelector
+              allLabel={t('shops.all')}
+              ariaLabel={t('shops.ariaLabel')}
+              label={t('shops.label')}
+              pathname="/tableau"
+              searchParams={{
+                from: params.from,
+                period: params.period,
+                shop: params.shop,
+                to: params.to,
+              }}
+              selectedShopId={selectedShopId}
+              shops={shops}
+            />
+          </div>
         </header>
 
         {/* Checklist d'activation — client component, se masque seul quand 100% ou dismissed */}
@@ -448,6 +566,13 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           key={`ops-${shopKey}`}
         >
           <OperationsEssentialsSection shopId={selectedShopId} />
+        </Suspense>
+
+        <Suspense
+          fallback={<PeriodMetricsSkeleton showCash={role === 'owner' || role === 'manager'} />}
+          key={`period-metrics-${shopKey}-${periodKey}`}
+        >
+          <PeriodMetricsSection period={period} role={role} shopId={selectedShopId} />
         </Suspense>
 
         <Suspense fallback={<ExceptionsSkeleton />} key={`exceptions-${shopKey}`}>
