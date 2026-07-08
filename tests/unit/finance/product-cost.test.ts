@@ -1,7 +1,49 @@
-import { computeFinanceProductCostReport } from '@/lib/finance/product-cost';
+import {
+  computeFinanceCollectedRevenueByProduct,
+  computeFinanceProductCostReport,
+} from '@/lib/finance/product-cost';
 import { describe, expect, it } from 'vitest';
 
 describe('computeFinanceProductCostReport', () => {
+  it('réutilise le même pairing Finances pour le CA par produit dashboard', () => {
+    const rows = computeFinanceCollectedRevenueByProduct({
+      orderLines: [
+        { orderId: 'o1', productId: 'p1', qty: 1, rawTitle: 'Sac' },
+        { orderId: 'o1', productId: 'p2', qty: 1, rawTitle: 'Ceinture' },
+        { orderId: 'o2', productId: 'p1', qty: 1, rawTitle: 'Sac' },
+      ],
+      orders: [
+        {
+          deliveryFeeMinor: 0,
+          id: 'o1',
+          itemsSummary: [
+            { price: 10_000, quantity: 1, title: 'Sac' },
+            { price: 5_000, quantity: 1, title: 'Ceinture' },
+          ],
+          totalAmount: 15_000,
+        },
+        {
+          deliveryFeeMinor: 0,
+          id: 'o2',
+          itemsSummary: [
+            { price: 9_500, quantity: 1, title: 'Sac' },
+            { price: 2_500, quantity: 1, title: 'Produit libre' },
+          ],
+          totalAmount: 12_000,
+        },
+      ],
+      products: [
+        { id: 'p1', title: 'Sac', unitCost: 0 },
+        { id: 'p2', title: 'Ceinture', unitCost: 0 },
+      ],
+    });
+
+    expect(rows).toEqual([
+      { productId: 'p1', qtySold: 2, revenueMinor: 19_500, title: 'Sac' },
+      { productId: 'p2', qtySold: 1, revenueMinor: 5_000, title: 'Ceinture' },
+    ]);
+  });
+
   it('coût total (B) = prix d’achat CUMP (A) + pub + livraison, bénéfices appariés', () => {
     const report = computeFinanceProductCostReport({
       expenses: [{ amountMinor: 3_000, categoryCode: 'ADS' }],

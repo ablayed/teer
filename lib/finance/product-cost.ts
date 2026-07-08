@@ -40,6 +40,13 @@ type ProductRow = {
   unitCost: number | null;
 };
 
+export type FinanceRevenueByProductRow = {
+  productId: string;
+  qtySold: number;
+  revenueMinor: number;
+  title: string;
+};
+
 type ProductPair = {
   productId: string | null;
   qty: number;
@@ -101,6 +108,11 @@ export type FinanceProductCostInput = {
   products: ProductRow[];
   soldMovements: SoldMovementRow[];
 };
+
+export type FinanceCollectedRevenueByProductInput = Pick<
+  FinanceProductCostInput,
+  'orderLines' | 'orders' | 'products'
+>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -183,6 +195,55 @@ function pairOrderLines(orderLines: OrderLineRow[], summaryLines: SummaryLine[])
       revenueMinor: summary.price * summary.quantity,
     };
   });
+}
+
+export function computeFinanceCollectedRevenueByProduct(
+  input: FinanceCollectedRevenueByProductInput,
+): FinanceRevenueByProductRow[] {
+  const titleByProductId = new Map(
+    input.products.map((product) => [product.id, product.title] as const),
+  );
+  const orderLinesByOrderId = new Map<string, OrderLineRow[]>();
+
+  for (const line of input.orderLines) {
+    const bucket = orderLinesByOrderId.get(line.orderId);
+    if (bucket) {
+      bucket.push(line);
+    } else {
+      orderLinesByOrderId.set(line.orderId, [line]);
+    }
+  }
+
+  const revenueByProduct = new Map<string, bigint>();
+  const qtyByProduct = new Map<string, bigint>();
+
+  for (const order of input.orders) {
+    const summaryLines = parseSummaryLines(order.itemsSummary);
+    const orderLines = orderLinesByOrderId.get(order.id) ?? [];
+    const pairs = pairOrderLines(orderLines, summaryLines);
+
+    for (const pair of pairs) {
+      if (!pair.productId) {
+        continue;
+      }
+
+      revenueByProduct.set(
+        pair.productId,
+        (revenueByProduct.get(pair.productId) ?? 0n) + toMinor(pair.revenueMinor),
+      );
+      qtyByProduct.set(pair.productId, (qtyByProduct.get(pair.productId) ?? 0n) + BigInt(pair.qty));
+    }
+  }
+
+  return [...revenueByProduct.entries()]
+    .map(([productId, revenueMinor]) => ({
+      productId,
+      qtySold: Number(qtyByProduct.get(productId) ?? 0n),
+      revenueMinor: Number(revenueMinor),
+      title: titleByProductId.get(productId) ?? productId,
+    }))
+    .filter((row) => row.qtySold > 0)
+    .sort((left, right) => right.revenueMinor - left.revenueMinor || right.qtySold - left.qtySold);
 }
 
 function allocateByWeights(totalMinor: bigint, weights: bigint[]): bigint[] {
