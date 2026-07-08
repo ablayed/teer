@@ -116,6 +116,7 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 ## Critical gotchas
 
+- **Le logout utilisateur (bouton "Se déconnecter", `signOutAction`) doit toujours utiliser `signOut({ scope: 'local' })`.** Ne jamais utiliser `signOut()` sans scope pour ce flux — Supabase le traite comme `scope: 'global'` par défaut et déconnecte l'utilisateur sur TOUS ses appareils, pas seulement l'appareil courant. `signOutAction` (`lib/actions/auth.ts`) est le seul point d'appel, partagé par `SignOutButton` et l'auto-logout `IdleTimeout` — les deux sont des flux de déconnexion mono-appareil standard, aucun flux de révocation globale n'existe dans le projet à ce jour.
 - Order status legacy column is `cod_status` (text), trigger-derived, **never written directly** — see Architecture. Order total column is `total_amount` (numeric).
 - All money is stored as minor-unit bigint (FCFA, 0 decimals). Never render a raw amount — always pass through `formatMoney(amount)`. The cash field is `cash_collectable_minor` (bigint).
 - **`formatMoney` intentionally ignores `orders.currency`** and always displays « F CFA » rounded to integer. Do not re-introduce currency reads from `orders.currency`.
