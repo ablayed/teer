@@ -65,9 +65,14 @@
 
 **Fix CA par produit + composant graphe partagé (mergée #85, aucune migration) :** suite directe de PR C1, aucun nouveau schéma.
 - **Bug** : `CA par produit` comptait des commandes que `CA total` excluait — une commande avec `cash_collected_at` dans la période mais `total_amount = 0` (ex. REFUSEE compensée) restait incluse dans le détail par produit (agrégation sur `items_summary`, indifférente à `total_amount`) alors que `CA total` (qui somme `total_amount`) l'ignorait. Fix : `buildDashboardCashCollectedByProduct` (`lib/dashboard/cash-by-product.ts`) filtre désormais sur les mêmes commandes éligibles (`total_amount > 0`) avant l'agrégation par produit — même univers de commandes pour les deux blocs.
-- **`ResponsiveBarChart`** (`components/charts/responsive-bar-chart.tsx`, nouveau composant partagé réutilisable) : bascule automatique vertical (≤6 catégories, seuil `RESPONSIVE_BAR_CHART_HORIZONTAL_THRESHOLD`) / horizontal avec libellés tronqués+désambiguïsés au-delà. `TableauCashByProductChart` migré depuis un `BarChart` Recharts local vers ce composant. Wrapper `ChartContainer`/`ChartTooltipContent` (`components/ui/chart.tsx`) prévu pour être réutilisé par de futurs graphes du projet.
+- **`ResponsiveBarChart`** (`components/charts/responsive-bar-chart.tsx`, nouveau composant partagé réutilisable) : bascule automatique vertical (≤6 catégories, seuil `RESPONSIVE_BAR_CHART_HORIZONTAL_THRESHOLD`) / horizontal avec libellés tronqués+désambiguïsés au-delà. Ce composant a alimenté `TableauCashByProductChart` dans PR #85, puis a été remplacé sur `/tableau` par le graphe horizontal local décrit dans la PR de refonte bloc KPI ci-dessous. Wrapper `ChartContainer`/`ChartTooltipContent` (`components/ui/chart.tsx`) prévu pour être réutilisé par de futurs graphes du projet.
 - **Piège recharts v3 (typecheck vert en local, rouge en CI)** : cf. gotcha dédié ci-dessous — `node_modules` local désynchronisé du lockfile a masqué une vraie erreur de types jusqu'au run CI (`--frozen-lockfile`).
 - **2 nouveaux tests visuels dédiés** (`tableau-cash-by-product-compact`/`-many`, `seedDashboardCashByProductVisualData`) couvrant respectivement le layout vertical (3 produits) et horizontal (7 produits, au-delà du seuil) via `data-testid="tableau-cash-by-product-card"` — indépendants du screenshot fold `tableau.png` existant qui ne capture pas ces blocs (hors du viewport `fullPage: false`).
+
+**Tableau — dette erreur métriques + refonte bloc KPI (PR en cours, aucune migration) :** les nouvelles métriques période restent owner/manager-only, par décision RBAC corrigée.
+- **Erreur technique ≠ vide métier** : `ok:false` des actions `getDashboardCashCollectedTotal`, `getDashboardDeliveriesByProduct` et `getDashboardCashCollectedByProduct` ne doit jamais être converti en `0`/liste vide côté UI. Pattern : helper pur `toMetricLoadState` (`loading`/`empty`/`error`/`ready`), erreur affichée « Impossible de charger cette donnée » + capture Sentry côté serveur.
+- **Essentiels opérations** : section toujours masquée en bloc à l'agent. `CA encaissé (période)` et `Livraisons réussies` y sont ajoutés en cartes compactes aux côtés de `Cash total chez les livreurs`, taux d'annulation, taux de livraison réussie et taux de retour. Grille : mobile 1 colonne, `sm/md` 2 colonnes, `lg+` 3 colonnes.
+- **CA par produit** : carte large owner/manager-only dans la grille des grandes cartes Tableau, histogramme horizontal Recharts local au composant, Top 7, labels tronqués proprement + tooltip nom complet/montant. L'agent ne déclenche aucun appel financier pour ces métriques.
 
 ## Commands
 
@@ -87,12 +92,13 @@ Single e2e spec: `pnpm exec playwright test tests/e2e/<spec>.ts --project=chromi
 1. **Invent NOTHING.** No table, column, function, action, route, or component that doesn't exist in the repo. Missing name → STOP and flag it.
 2. **Migration → STOP.** Write the `.sql` file and stop. Developer runs `pnpm exec supabase db push` then `pnpm db:types`. You never run `db push`.
 3. **Schema to prod BEFORE code.** No TS line references a table/column until its migration is confirmed applied in prod.
-4. **One commit per deliverable.** French message prefixed by phase (e.g. `phase3:`). No opportunistic refactors bundled in.
-5. **Sanity loop before every commit:** `pnpm typecheck && pnpm lint && pnpm test:unit && pnpm build`, plus `pnpm test:rls` **non-skipped**. Never commit red.
-6. **`performTransition` is the ONLY write gate for order state.** No applicative `.from('orders').update(...)` on state. The client never decides a transition; it only renders the `allowedActions` the server returns.
-7. **Stock is a SIDE EFFECT, never a precondition.** An unresolved order line never fails a transition — skip its stock movement.
-8. **RLS discipline:** RLS FORCE + deny-by-default; separate policies per operation; every `UPDATE` policy has `WITH CHECK`; new columns start nullable. `unit_cost`/margin hidden from `agent` at column level.
-9. **Never switch agents on a dirty tree.** Commit + push first; `git status` must be empty.
+4. **Tracker migrations : “prod” seulement après preuve.** Une migration ne se marque appliquée en prod qu'après confirmation explicite d'un `db push` réussi par le porteur et/ou lecture de `supabase_migrations.schema_migrations` sur la base liée. La CI exécute `supabase db reset --local`, elle ne pousse jamais le schéma prod.
+5. **One commit per deliverable.** French message prefixed by phase (e.g. `phase3:`). No opportunistic refactors bundled in.
+6. **Sanity loop before every commit:** `pnpm typecheck && pnpm lint && pnpm test:unit && pnpm build`, plus `pnpm test:rls` **non-skipped**. Never commit red.
+7. **`performTransition` is the ONLY write gate for order state.** No applicative `.from('orders').update(...)` on state. The client never decides a transition; it only renders the `allowedActions` the server returns.
+8. **Stock is a SIDE EFFECT, never a precondition.** An unresolved order line never fails a transition — skip its stock movement.
+9. **RLS discipline:** RLS FORCE + deny-by-default; separate policies per operation; every `UPDATE` policy has `WITH CHECK`; new columns start nullable. `unit_cost`/margin hidden from `agent` at column level.
+10. **Never switch agents on a dirty tree.** Commit + push first; `git status` must be empty.
 
 ## Architecture
 
