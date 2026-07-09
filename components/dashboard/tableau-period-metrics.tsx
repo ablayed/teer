@@ -1,13 +1,12 @@
 'use client';
 
+import { ResponsiveBarChart } from '@/components/charts/responsive-bar-chart';
 import { Card } from '@/components/ui/card';
-import { useIsDesktop } from '@/hooks/use-is-desktop';
 import type {
   DashboardCashCollectedByProduct,
   DashboardDeliveriesByProduct,
 } from '@/lib/actions/dashboard';
 import { formatMoney } from '@/lib/format/fcfa';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatDashboardCount } from './dashboard-format';
 
 type TableauCashCollectedCardProps = {
@@ -74,53 +73,27 @@ export function TableauCashByProductChart({
   subtitle,
   title,
 }: TableauCashByProductChartProps) {
-  const isDesktop = useIsDesktop();
   const hasData = chart.items.some((item) => item.revenueMinor > 0);
 
   return (
-    <Card className="rounded-lg" padding="lg">
+    <Card className="rounded-lg" data-testid="tableau-cash-by-product-card" padding="lg">
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold text-text">{title}</h2>
         <p className="mt-0.5 text-xs text-muted">{subtitle}</p>
       </div>
       {hasData ? (
-        <ResponsiveContainer height={260} width="100%">
-          <BarChart data={chart.items}>
-            <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-            <XAxis
-              axisLine={false}
-              dataKey="title"
-              interval={0}
-              minTickGap={isDesktop ? 8 : 20}
-              tick={{ fill: 'var(--muted)', fontSize: 12 }}
-              tickFormatter={(value: string) => value.slice(0, isDesktop ? 14 : 9)}
-              tickLine={false}
-            />
-            <YAxis
-              axisLine={false}
-              tick={{ fill: 'var(--muted)', fontFamily: 'var(--font-geist-mono)', fontSize: 12 }}
-              tickFormatter={(value) => compactCount(Number(value))}
-              tickLine={false}
-              width={52}
-            />
-            <Tooltip
-              contentStyle={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-md)',
-                boxShadow: 'var(--shadow-2)',
-              }}
-              formatter={(value) => formatMoney(Number(value))}
-              labelFormatter={(label) => String(label)}
-            />
-            <Bar
-              dataKey="revenueMinor"
-              fill="var(--success)"
-              isAnimationActive={false}
-              radius={8}
-            />
-          </BarChart>
-        </ResponsiveContainer>
+        <ResponsiveBarChart
+          ariaLabel={`${title}. ${subtitle}`}
+          axisValueFormatter={(value) => compactCount(value)}
+          color="var(--chart-1)"
+          data={chart.items.map((item) => ({
+            category: item.title,
+            value: item.revenueMinor,
+          }))}
+          dataTestId="tableau-cash-by-product-chart"
+          tooltipValueFormatter={(value) => formatMoney(value)}
+          valueLabel={title}
+        />
       ) : (
         <EmptyState label={emptyLabel} />
       )}

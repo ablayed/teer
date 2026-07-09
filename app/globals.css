@@ -20,6 +20,11 @@
   --accent-ink: #111111; /* texte/icône SUR orange = toujours #111, jamais blanc */
   --accent-fg: #111111;
   --accent-subtle: rgba(238, 130, 67, 0.1);
+  --chart-1: var(--accent);
+  --chart-2: #c9651d;
+  --chart-3: #f2bc97;
+  --chart-4: #b45309;
+  --chart-5: #7c6f5e;
 
   --success: #0e7c3a;
   --success-subtle: rgba(14, 124, 58, 0.1);
