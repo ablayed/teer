@@ -7,13 +7,17 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('resolveResponsiveBarChartPresentation', () => {
-  it('reste en rendu vertical pour un nombre compact de catégories', () => {
-    expect(
-      resolveResponsiveBarChartPresentation({ categoryCount: 3, isDesktop: false }).chartLayout,
-    ).toBe('horizontal');
+  it('reste en rendu vertical pour un nombre compact de categories', () => {
+    const presentation = resolveResponsiveBarChartPresentation({
+      categoryCount: 3,
+      isDesktop: true,
+    });
+
+    expect(presentation.chartLayout).toBe('horizontal');
+    expect(presentation.maxBarSize).toBe(120);
   });
 
-  it('bascule en rendu horizontal au-delà du seuil validé', () => {
+  it('bascule en rendu horizontal au-dela du seuil valide', () => {
     expect(
       resolveResponsiveBarChartPresentation({
         categoryCount: RESPONSIVE_BAR_CHART_HORIZONTAL_THRESHOLD + 1,
@@ -23,10 +27,10 @@ describe('resolveResponsiveBarChartPresentation', () => {
   });
 
   it('tronque les labels longs avec une ellipse', () => {
-    expect(truncateChartLabel('Ensemble wax indigo premium', 12)).toBe('Ensemble wa…');
+    expect(truncateChartLabel('Ensemble wax indigo premium', 12)).toBe('Ensemble wa\u2026');
   });
 
-  it('désambiguïse les libellés tronqués du mode horizontal pour éviter les superpositions', () => {
+  it('desambigue les libelles tronques du mode horizontal pour eviter les superpositions', () => {
     expect(
       buildShortCategoryLabels(
         [
@@ -35,6 +39,6 @@ describe('resolveResponsiveBarChartPresentation', () => {
         ],
         22,
       ),
-    ).toEqual(['Produit visuel extra…', 'Produit visuel extr… 2']);
+    ).toEqual(['Produit visuel extra\u2026', 'Produit visuel extr\u2026 2']);
   });
 });

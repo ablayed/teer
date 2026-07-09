@@ -53,6 +53,7 @@ export function resolveResponsiveBarChartPresentation(input: {
       barCategoryGap: input.isDesktop ? '18%' : '24%',
       chartLayout: 'vertical' as const,
       maxLabelLength: input.isDesktop ? 30 : 22,
+      maxBarSize: 22,
       xAxisHeight: 32,
       yAxisWidth: input.isDesktop ? 180 : 132,
     };
@@ -62,6 +63,7 @@ export function resolveResponsiveBarChartPresentation(input: {
     barCategoryGap: input.isDesktop ? '18%' : '28%',
     chartLayout: 'horizontal' as const,
     maxLabelLength: 12,
+    maxBarSize: input.isDesktop ? 120 : 64,
     xAxisHeight: 84,
     yAxisWidth: 56,
   };
@@ -229,7 +231,13 @@ export function ResponsiveBarChart({
             }
             cursor={{ fill: 'color-mix(in oklab, var(--chart-1) 10%, transparent)' }}
           />
-          <Bar dataKey="value" fill={color} isAnimationActive={false} radius={4}>
+          <Bar
+            dataKey="value"
+            fill={color}
+            isAnimationActive={false}
+            maxBarSize={presentation.maxBarSize}
+            radius={4}
+          >
             {isHorizontalLayout ? null : (
               <LabelList
                 className="fill-muted"
