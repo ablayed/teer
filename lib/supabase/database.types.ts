@@ -1849,10 +1849,6 @@ export type Database = {
           tier: string;
         }[];
       };
-      get_dashboard_cod_breakdown: {
-        Args: { p_merchant_id: string; p_shop_id?: string };
-        Returns: Json;
-      };
       get_dashboard_cash_collected_total: {
         Args: {
           p_from: string;
@@ -1865,6 +1861,10 @@ export type Database = {
           net_ca_minor: number;
           return_contra_revenue_minor: number;
         }[];
+      };
+      get_dashboard_cod_breakdown: {
+        Args: { p_merchant_id: string; p_shop_id?: string };
+        Returns: Json;
       };
       get_dashboard_deliveries_by_product: {
         Args: {
