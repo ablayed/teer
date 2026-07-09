@@ -388,7 +388,7 @@
     "kpi": {
       "a_appeler": "À appeler (7 j)",
       "ca_collecte": "CA collecté (7 j)",
-      "ca_collecte_def": "Le chiffre d'affaires : l'argent des commandes livrées et encaissées sur les 7 derniers jours.",
+      "ca_collecte_def": "Le chiffre d'affaires réellement encaissé sur les 7 derniers jours. Il peut être différent du CA encaissé plus bas si la période sélectionnée n'est pas de 7 jours.",
       "ca_collecte_formula": "CA collecté = somme des montants des commandes encaissées (7 derniers jours)",
       "ca_attente": "CA à livrer",
       "ca_attente_def": "Le chiffre d'affaires attendu : l'argent des commandes confirmées pas encore livrées.",
@@ -452,12 +452,31 @@
           "annuleesRetours": "Annulées / Retours (7 j)"
         }
       },
+      "operationsEssentials": {
+        "title": "Essentiels opérations",
+        "periodHint": "Période sélectionnée",
+        "cashCollected": {
+          "label": "CA encaissé (période)",
+          "definition": "Le chiffre d'affaires réellement encaissé sur la période sélectionnée. Il mesure la même chose que « CA collecté (7 j) », mais avec la période choisie dans le filtre."
+        },
+        "deliveries": {
+          "label": "Livraisons réussies"
+        },
+        "cashDrivers": {
+          "label": "Cash total chez les livreurs",
+          "hint": "{count, plural, =0 {Aucun livreur concerné} one {# livreur concerné} other {# livreurs concernés}}"
+        },
+        "cancellationRate": "Taux d'annulation",
+        "deliveryRate": "Taux de livraison réussie",
+        "returnRate": "Taux de retour"
+      },
       "periodMetrics": {
         "sectionLabel": "CA encaissé et livraisons sur la période",
-        "empty": "Aucune commande à afficher sur cette période.",
+        "empty": "Aucune commande sur cette période.",
+        "error": "Impossible de charger cette donnée.",
         "cashByProduct": {
           "title": "CA par produit",
-          "subtitle": "Top 10 · commandes encaissées sur la période"
+          "subtitle": "Top 7 · CA encaissé sur la période"
         },
         "deliveries": {
           "title": "Livraisons",
