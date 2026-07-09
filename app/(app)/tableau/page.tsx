@@ -202,6 +202,84 @@ type TableauPeriodRange = {
   to: Date;
 };
 
+function periodRangeKey(period: TableauPeriodRange): string {
+  return [period.activePeriod, period.from.toISOString(), period.to.toISOString()].join('-');
+}
+
+async function CashCollectedPeriodMetric({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
+  const [tTableau, tFinance, cashCollectedResult] = await Promise.all([
+    getTranslations('tableau.blocks.periodMetrics'),
+    getTranslations('finance.profit'),
+    getDashboardCashCollectedTotal({ from: period.from, shopId, to: period.to }),
+  ]);
+  const cashCollected = cashCollectedResult.ok ? cashCollectedResult.data.caMinor : 0;
+
+  return (
+    <TableauCashCollectedCard
+      emptyLabel={tTableau('empty')}
+      title={tFinance('ca')}
+      valueMinor={cashCollected}
+    />
+  );
+}
+
+async function CashByProductPeriodMetric({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
+  const [tTableau, cashByProductResult] = await Promise.all([
+    getTranslations('tableau.blocks.periodMetrics'),
+    getDashboardCashCollectedByProduct({ from: period.from, shopId, to: period.to }),
+  ]);
+  const cashByProduct = cashByProductResult?.ok
+    ? cashByProductResult.data
+    : { items: [], totalMinor: 0 };
+
+  return (
+    <TableauCashByProductChart
+      chart={cashByProduct}
+      emptyLabel={tTableau('empty')}
+      subtitle={tTableau('cashByProduct.subtitle')}
+      title={tTableau('cashByProduct.title')}
+    />
+  );
+}
+
+async function DeliveriesPeriodMetric({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
+  const [tTableau, deliveriesResult] = await Promise.all([
+    getTranslations('tableau.blocks.periodMetrics'),
+    getDashboardDeliveriesByProduct({ from: period.from, shopId, to: period.to }),
+  ]);
+  const deliveries = deliveriesResult.ok
+    ? deliveriesResult.data
+    : { products: [], totalDeliveries: 0 };
+
+  return (
+    <TableauDeliveriesCard
+      deliveries={deliveries}
+      emptyLabel={tTableau('empty')}
+      subtitle={tTableau('deliveries.subtitle')}
+      title={tTableau('deliveries.title')}
+      totalLabel={tTableau('deliveries.total')}
+    />
+  );
+}
+
 async function PeriodMetricsSection({
   period,
   role,
@@ -211,55 +289,47 @@ async function PeriodMetricsSection({
   role: 'agent' | 'manager' | 'owner';
   shopId: string | null;
 }) {
-  const [tTableau, tFinance, cashCollectedResult, deliveriesResult, cashByProductResult] =
-    await Promise.all([
-      getTranslations('tableau.blocks.periodMetrics'),
-      getTranslations('finance.profit'),
-      role === 'owner' || role === 'manager'
-        ? getDashboardCashCollectedTotal({ from: period.from, shopId, to: period.to })
-        : Promise.resolve(null),
-      getDashboardDeliveriesByProduct({ from: period.from, shopId, to: period.to }),
-      role === 'owner' || role === 'manager'
-        ? getDashboardCashCollectedByProduct({ from: period.from, shopId, to: period.to })
-        : Promise.resolve(null),
-    ]);
-
-  const cashCollected = cashCollectedResult?.ok ? cashCollectedResult.data.caMinor : 0;
-  const cashByProduct = cashByProductResult?.ok
-    ? cashByProductResult.data
-    : { items: [], totalMinor: 0 };
-  const deliveries = deliveriesResult.ok
-    ? deliveriesResult.data
-    : { products: [], totalDeliveries: 0 };
+  const tTableau = await getTranslations('tableau.blocks.periodMetrics');
   const showCash = role === 'owner' || role === 'manager';
+  const metricKey = `${shopId ?? 'all'}-${periodRangeKey(period)}`;
+  const cashByProduct = (
+    <Suspense
+      fallback={<PeriodMetricCardSkeleton heightClassName="h-[260px]" />}
+      key={`cash-by-product-${metricKey}`}
+    >
+      <CashByProductPeriodMetric period={period} shopId={shopId} />
+    </Suspense>
+  );
+  const cashCollected = (
+    <Suspense
+      fallback={<PeriodMetricCardSkeleton heightClassName="h-16" />}
+      key={`cash-collected-${metricKey}`}
+    >
+      <CashCollectedPeriodMetric period={period} shopId={shopId} />
+    </Suspense>
+  );
+  const deliveries = (
+    <Suspense
+      fallback={<PeriodMetricCardSkeleton heightClassName="h-[220px]" />}
+      key={`deliveries-${metricKey}`}
+    >
+      <DeliveriesPeriodMetric period={period} shopId={shopId} />
+    </Suspense>
+  );
 
   return (
-    <section
-      aria-label={tTableau('sectionLabel')}
-      className={`grid gap-4 ${showCash ? 'xl:grid-cols-3' : 'xl:grid-cols-1'}`}
-    >
+    <section aria-label={tTableau('sectionLabel')} className="space-y-4">
       {showCash ? (
         <>
-          <TableauCashCollectedCard
-            emptyLabel={tTableau('empty')}
-            title={tFinance('ca')}
-            valueMinor={cashCollected}
-          />
-          <TableauCashByProductChart
-            chart={cashByProduct}
-            emptyLabel={tTableau('empty')}
-            subtitle={tTableau('cashByProduct.subtitle')}
-            title={tTableau('cashByProduct.title')}
-          />
+          <div className="w-full">{cashByProduct}</div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {cashCollected}
+            {deliveries}
+          </div>
         </>
-      ) : null}
-      <TableauDeliveriesCard
-        deliveries={deliveries}
-        emptyLabel={tTableau('empty')}
-        subtitle={tTableau('deliveries.subtitle')}
-        title={tTableau('deliveries.title')}
-        totalLabel={tTableau('deliveries.total')}
-      />
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-1">{deliveries}</div>
+      )}
     </section>
   );
 }
@@ -420,17 +490,31 @@ function RevenueSkeleton() {
 }
 
 function PeriodMetricsSkeleton({ showCash }: { showCash: boolean }) {
-  const keys = showCash ? ['cash', 'cash-by-product', 'deliveries'] : ['deliveries'];
-
   return (
-    <section className={`grid gap-4 ${showCash ? 'xl:grid-cols-3' : 'xl:grid-cols-1'}`}>
-      {keys.map((key) => (
-        <Card className="rounded-lg" key={key} padding="lg">
-          <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
-          <div className="dashboard-shimmer h-[220px] rounded-md" />
-        </Card>
-      ))}
+    <section className="space-y-4">
+      {showCash ? (
+        <>
+          <PeriodMetricCardSkeleton heightClassName="h-[260px]" />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <PeriodMetricCardSkeleton heightClassName="h-16" />
+            <PeriodMetricCardSkeleton heightClassName="h-[220px]" />
+          </div>
+        </>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-1">
+          <PeriodMetricCardSkeleton heightClassName="h-[220px]" />
+        </div>
+      )}
     </section>
+  );
+}
+
+function PeriodMetricCardSkeleton({ heightClassName }: { heightClassName: string }) {
+  return (
+    <Card className="rounded-lg" padding="lg">
+      <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
+      <div className={`dashboard-shimmer rounded-md ${heightClassName}`} />
+    </Card>
   );
 }
 
@@ -493,9 +577,6 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
     period: params.period,
     to: params.to,
   });
-  const periodKey = [period.activePeriod, period.from.toISOString(), period.to.toISOString()].join(
-    '-',
-  );
   // Suffixe de boutique pour les clés Suspense : il DOIT être combiné a un prefixe
   // unique par bloc. Plusieurs Suspense freres partageant la meme clé littérale
   // (« all ») produisent des clés dupliquees (aggravé par le React.Children.map de
@@ -570,7 +651,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
 
         <Suspense
           fallback={<PeriodMetricsSkeleton showCash={role === 'owner' || role === 'manager'} />}
-          key={`period-metrics-${shopKey}-${periodKey}`}
+          key={`period-metrics-layout-${role}`}
         >
           <PeriodMetricsSection period={period} role={role} shopId={selectedShopId} />
         </Suspense>

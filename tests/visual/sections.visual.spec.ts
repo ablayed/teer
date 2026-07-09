@@ -1,5 +1,5 @@
 import messages from '@/messages/fr.json';
-import { expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 import { hasSupabaseAdmin } from '../e2e/helpers/auth';
 import {
   cleanupVisualFixture,
@@ -18,6 +18,33 @@ import {
   visualPeriodTo,
   waitForFonts,
 } from '../e2e/helpers/visual-fixtures';
+
+const visualOverlaySelector = [
+  'nav[aria-label="Navigation principale"]',
+  'nextjs-portal',
+  '[data-nextjs-toast]',
+  '[data-nextjs-dialog-overlay]',
+].join(', ');
+
+async function preparePeriodMetricsScreenshot(page: Page, periodMetrics: Locator) {
+  await page.locator(visualOverlaySelector).evaluateAll((nodes) => {
+    for (const node of nodes) {
+      (node as HTMLElement).style.setProperty('display', 'none', 'important');
+    }
+  });
+
+  await periodMetrics.evaluate((node) => node.scrollIntoView({ block: 'start' }));
+
+  const viewport = page.viewportSize();
+  const box = await periodMetrics.boundingBox();
+  if (viewport && box && box.height > viewport.height) {
+    await page.setViewportSize({
+      height: Math.ceil(box.height) + 16,
+      width: viewport.width,
+    });
+    await periodMetrics.evaluate((node) => node.scrollIntoView({ block: 'start' }));
+  }
+}
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les baselines visuelles');
 
@@ -163,11 +190,15 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
       await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible({
         timeout: 15_000,
       });
+      await expect(page.getByText(messages.finance.profit.ca, { exact: true })).toBeVisible();
+      await expect(page.getByText('Livraisons', { exact: true })).toBeVisible();
       await waitForFonts(page);
+      const periodMetrics = page.getByRole('region', {
+        name: messages.tableau.blocks.periodMetrics.sectionLabel,
+      });
+      await preparePeriodMetricsScreenshot(page, periodMetrics);
 
-      await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
-        'tableau-cash-by-product-compact.png',
-      );
+      await expect(periodMetrics).toHaveScreenshot('tableau-cash-by-product-compact.png');
     } finally {
       await cleanupVisualFixture(fixture);
     }
@@ -187,11 +218,15 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
       await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible({
         timeout: 15_000,
       });
+      await expect(page.getByText(messages.finance.profit.ca, { exact: true })).toBeVisible();
+      await expect(page.getByText('Livraisons', { exact: true })).toBeVisible();
       await waitForFonts(page);
+      const periodMetrics = page.getByRole('region', {
+        name: messages.tableau.blocks.periodMetrics.sectionLabel,
+      });
+      await preparePeriodMetricsScreenshot(page, periodMetrics);
 
-      await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
-        'tableau-cash-by-product-many.png',
-      );
+      await expect(periodMetrics).toHaveScreenshot('tableau-cash-by-product-many.png');
     } finally {
       await cleanupVisualFixture(fixture);
     }
