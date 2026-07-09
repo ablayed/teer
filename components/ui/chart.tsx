@@ -1,7 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Tooltip as RechartsTooltip, ResponsiveContainer, type TooltipProps } from 'recharts';
+import {
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  type TooltipContentProps,
+} from 'recharts';
 
 import { cn } from '@/lib/utils';
 
@@ -92,7 +96,9 @@ type ChartValueType = number | string | Array<number | string>;
 type ChartNameType = number | string;
 
 type ChartTooltipContentProps = React.HTMLAttributes<HTMLDivElement> &
-  Pick<TooltipProps<ChartValueType, ChartNameType>, 'active' | 'label' | 'payload'> & {
+  Partial<
+    Pick<TooltipContentProps<ChartValueType, ChartNameType>, 'active' | 'label' | 'payload'>
+  > & {
     config?: ChartConfig;
     hideIndicator?: boolean;
     hideLabel?: boolean;
@@ -139,7 +145,7 @@ export const ChartTooltipContent = React.forwardRef<HTMLDivElement, ChartTooltip
         ) : null}
         <div className="space-y-2">
           {payload.map((entry, index) => {
-            const item = entry as Record<string, unknown>;
+            const item = entry as unknown as Record<string, unknown>;
             const key = getPayloadKey(item);
             const configItem = key ? resolvedConfig[key] : undefined;
             const Icon = configItem?.icon;
