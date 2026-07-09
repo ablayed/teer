@@ -268,12 +268,24 @@ test.describe('Tableau période + CA/livraisons', () => {
     await expect(page).toHaveURL(
       new RegExp(`/tableau\\?(?=[^#]*shop=${shopA})(?=[^#]*period=30j)`),
     );
-    await expect(page.getByText(messages.finance.profit.ca, { exact: true })).toHaveCount(1);
+    const cashPeriodCard = page.locator('section.rounded-lg').filter({
+      has: page.getByText(messages.tableau.blocks.operationsEssentials.cashCollected.label, {
+        exact: true,
+      }),
+    });
+    const deliveriesCard = page.locator('section.rounded-lg').filter({
+      has: page.getByText(messages.tableau.blocks.operationsEssentials.deliveries.label, {
+        exact: true,
+      }),
+    });
+
+    await expect(cashPeriodCard).toContainText(/10.?000/);
+    await expect(deliveriesCard).toContainText('1');
     await expect(page.getByText('CA par produit', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('Livraisons', { exact: true })).toHaveCount(1);
+    await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible();
   });
 
-  test('manager : voit tous les blocs (CA total, CA par produit, Livraisons)', async ({ page }) => {
+  test('manager : voit les métriques financières et opérationnelles du bloc', async ({ page }) => {
     const { admin, merchantAccountId } = await createOwnerFixture('manager-visibility');
     const { email: managerEmail } = await addManager(admin, merchantAccountId);
     const shopId = await createShop(
@@ -295,12 +307,20 @@ test.describe('Tableau période + CA/livraisons', () => {
 
     await signIn(page, managerEmail, '/tableau?period=30j');
 
-    await expect(page.getByText(messages.finance.profit.ca, { exact: true })).toHaveCount(1);
+    await expect(
+      page.getByText(messages.tableau.blocks.operationsEssentials.cashCollected.label, {
+        exact: true,
+      }),
+    ).toHaveCount(1);
     await expect(page.getByText('CA par produit', { exact: true })).toHaveCount(1);
-    await expect(page.getByText('Livraisons', { exact: true })).toHaveCount(1);
+    await expect(
+      page.getByText(messages.tableau.blocks.operationsEssentials.deliveries.label, {
+        exact: true,
+      }),
+    ).toHaveCount(1);
   });
 
-  test('agent : blocs CA masqués, Livraisons visible', async ({ page }) => {
+  test('agent : nouvelles métriques owner/manager masquées sans état erreur', async ({ page }) => {
     const { admin, merchantAccountId } = await createOwnerFixture('agent-visibility');
     const { email: agentEmail } = await addAgent(admin, merchantAccountId);
     const shopId = await createShop(admin, merchantAccountId, `agent-${Date.now()}.myshopify.com`);
@@ -316,9 +336,18 @@ test.describe('Tableau période + CA/livraisons', () => {
 
     await signIn(page, agentEmail, '/tableau?period=30j');
 
-    await expect(page.getByText(messages.finance.profit.ca, { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText(messages.tableau.blocks.operationsEssentials.cashCollected.label, {
+        exact: true,
+      }),
+    ).toHaveCount(0);
     await expect(page.getByText('CA par produit', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('Livraisons', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(messages.tableau.blocks.operationsEssentials.deliveries.label, {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(page.getByText(messages.tableau.blocks.periodMetrics.error)).toHaveCount(0);
   });
 
   test('owner : le cash livreurs du Tableau respecte le filtre shop', async ({ page }) => {
@@ -347,9 +376,11 @@ test.describe('Tableau période + CA/livraisons', () => {
 
     await signIn(page, email, '/tableau');
 
-    const cashCard = page
-      .locator('section.rounded-lg')
-      .filter({ has: page.getByText('Cash total chez les livreurs', { exact: true }) });
+    const cashCard = page.locator('section.rounded-lg').filter({
+      has: page.getByText(messages.tableau.blocks.operationsEssentials.cashDrivers.label, {
+        exact: true,
+      }),
+    });
     await expect(cashCard).toContainText(/17.?000/);
 
     const selector = page.getByRole('navigation', { name: messages.tableau.shops.ariaLabel });

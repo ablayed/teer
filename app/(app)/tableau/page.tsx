@@ -5,11 +5,7 @@ import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
 import { TopProducts } from '@/components/dashboard/TopProducts';
-import {
-  TableauCashByProductChart,
-  TableauCashCollectedCard,
-  TableauDeliveriesCard,
-} from '@/components/dashboard/tableau-period-metrics';
+import { TableauCashByProductChart } from '@/components/dashboard/tableau-period-metrics';
 import { TableauPeriodPersistence } from '@/components/dashboard/tableau-period-persistence';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
 import { ActivationChecklist } from '@/components/onboarding/activation-checklist';
@@ -17,6 +13,7 @@ import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { Card } from '@/components/ui/card';
+import { DefinitionToggle } from '@/components/ui/definition-card';
 import {
   getCodBreakdown,
   getDashboardCashCollectedByProduct,
@@ -32,10 +29,13 @@ import {
 import { getDriversCashOnHandTotal } from '@/lib/actions/drivers';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
 import { getCachedDashboardContext } from '@/lib/dashboard/context';
+import { type MetricLoadState, toMetricLoadState } from '@/lib/dashboard/metric-load-state';
 import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
 import { formatMoney } from '@/lib/format/fcfa';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
+import { cn } from '@/lib/utils';
+import * as Sentry from '@sentry/nextjs';
 import { getTranslations } from 'next-intl/server';
 import { Suspense, cache } from 'react';
 
@@ -143,20 +143,84 @@ async function ExceptionsSection({ shopId }: { shopId: string | null }) {
   return <OrderExceptionsGrid cards={exceptionCards} title={t('title')} />;
 }
 
-function essentialCard(label: string, value: string, hint?: string) {
+function isCashCollectedEmpty(data: { caMinor: number }): boolean {
+  return data.caMinor <= 0;
+}
+
+function isCashByProductEmpty(data: { items: { revenueMinor: number }[]; totalMinor: number }) {
+  return data.totalMinor <= 0 || !data.items.some((item) => item.revenueMinor > 0);
+}
+
+function isDeliveriesEmpty(data: { totalDeliveries: number }): boolean {
+  return data.totalDeliveries <= 0;
+}
+
+function logMetricLoadError(metric: string, state: MetricLoadState<unknown>) {
+  if (state.status !== 'error') {
+    return;
+  }
+
+  Sentry.captureMessage('Tableau metric load failed', {
+    extra: { errorCode: state.errorCode },
+    level: 'error',
+    tags: {
+      metric,
+      page: 'tableau',
+    },
+  });
+}
+
+function EssentialMetricCard({
+  definition,
+  errorLabel,
+  hint,
+  label,
+  stateLabel,
+  stateTone = 'neutral',
+  value,
+}: {
+  definition?: string;
+  errorLabel?: string;
+  hint?: string;
+  label: string;
+  stateLabel?: string;
+  stateTone?: 'danger' | 'neutral';
+  value?: string;
+}) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
-      <p className="text-[13px] font-medium text-muted">{label}</p>
-      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[13px] font-medium text-muted">{label}</p>
+        {definition ? <DefinitionToggle definition={definition} /> : null}
+      </div>
+      {value ? (
+        <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{value}</p>
+      ) : (
+        <p
+          className={cn(
+            'mt-3 rounded-md border border-dashed p-3 text-sm font-medium',
+            stateTone === 'danger'
+              ? 'border-danger/20 bg-danger-subtle text-danger'
+              : 'border-border bg-canvas text-muted',
+          )}
+        >
+          {stateLabel ?? errorLabel}
+        </p>
+      )}
+      {hint && value ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
     </section>
   );
 }
 
-// Essentiels opérations (owner/manager) : cash total chez tous les livreurs (réutilise
-// cash-consolidation) + taux d'annulation / livraison réussie / retour (réutilise
-// getLossAnalyticsAction, période-aware 30 j). /analyses reste la vue détaillée.
-async function OperationsEssentialsSection({ shopId }: { shopId: string | null }) {
+// Essentiels opérations reste masqué en bloc à l'agent. Les nouvelles métriques CA/livraisons
+// héritent de ce RBAC et ne déclenchent aucun appel financier pour ce rôle.
+async function OperationsEssentialsSection({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
   const ctx = await getCachedDashboardContext();
   if (!ctx.ok) return null;
   if (ctx.role !== 'owner' && ctx.role !== 'manager') return null;
@@ -166,31 +230,92 @@ async function OperationsEssentialsSection({ shopId }: { shopId: string | null }
   from.setHours(0, 0, 0, 0);
   from.setDate(from.getDate() - 29);
 
-  const [cashTotal, lossResult] = await Promise.all([
-    getDriversCashOnHandTotal(shopId),
-    getLossAnalyticsAction({ from: from.toISOString(), shopId, to: now.toISOString() }),
-  ]);
+  const [tOps, tPeriodMetrics, cashTotal, lossResult, cashCollectedResult, deliveriesResult] =
+    await Promise.all([
+      getTranslations('tableau.blocks.operationsEssentials'),
+      getTranslations('tableau.blocks.periodMetrics'),
+      getDriversCashOnHandTotal(shopId),
+      getLossAnalyticsAction({ from: from.toISOString(), shopId, to: now.toISOString() }),
+      getDashboardCashCollectedTotal({ from: period.from, shopId, to: period.to }),
+      getDashboardDeliveriesByProduct({ from: period.from, shopId, to: period.to }),
+    ]);
 
+  const cashCollectedState = toMetricLoadState(cashCollectedResult, isCashCollectedEmpty);
+  const deliveriesState = toMetricLoadState(deliveriesResult, isDeliveriesEmpty);
+  logMetricLoadError('cash_collected_total', cashCollectedState);
+  logMetricLoadError('deliveries_total', deliveriesState);
   const loss = lossResult?.data?.ok ? lossResult.data.analytics.summary : null;
+  const hasCashTotalError = !cashTotal.ok;
+  const hasLossError = !loss;
   const pct = (ratio: number) =>
     new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1, style: 'percent' }).format(ratio);
   const deliveryRate =
     loss && loss.rtoDenominator > 0 ? loss.deliveredCount / loss.rtoDenominator : 0;
 
-  const cashHint = cashTotal.ok ? `${cashTotal.driverCount} livreur(s) concerné(s)` : undefined;
+  const cashHint = cashTotal.ok
+    ? tOps('cashDrivers.hint', { count: cashTotal.driverCount })
+    : undefined;
 
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold">Essentiels opérations (30 j)</h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {essentialCard(
-          'Cash total chez les livreurs',
-          formatMoney(cashTotal.ok ? cashTotal.totalMinor : 0, 'XOF'),
-          cashHint,
-        )}
-        {essentialCard("Taux d'annulation", loss ? pct(loss.cancellationRate) : '—')}
-        {essentialCard('Taux de livraison réussie', loss ? pct(deliveryRate) : '—')}
-        {essentialCard('Taux de retour', loss ? pct(loss.returnRate) : '—')}
+      <h2 className="text-lg font-semibold">{tOps('title')}</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <EssentialMetricCard
+          definition={tOps('cashCollected.definition')}
+          hint={cashCollectedState.status === 'ready' ? tOps('periodHint') : undefined}
+          label={tOps('cashCollected.label')}
+          stateLabel={
+            cashCollectedState.status === 'error'
+              ? tPeriodMetrics('error')
+              : tPeriodMetrics('empty')
+          }
+          stateTone={cashCollectedState.status === 'error' ? 'danger' : 'neutral'}
+          value={
+            cashCollectedState.status === 'ready'
+              ? formatMoney(cashCollectedState.data.caMinor)
+              : undefined
+          }
+        />
+        <EssentialMetricCard
+          hint={deliveriesState.status === 'ready' ? tOps('periodHint') : undefined}
+          label={tOps('deliveries.label')}
+          stateLabel={
+            deliveriesState.status === 'error' ? tPeriodMetrics('error') : tPeriodMetrics('empty')
+          }
+          stateTone={deliveriesState.status === 'error' ? 'danger' : 'neutral'}
+          value={
+            deliveriesState.status === 'ready'
+              ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(
+                  deliveriesState.data.totalDeliveries,
+                )
+              : undefined
+          }
+        />
+        <EssentialMetricCard
+          hint={cashHint}
+          label={tOps('cashDrivers.label')}
+          stateLabel={hasCashTotalError ? tPeriodMetrics('error') : undefined}
+          stateTone={hasCashTotalError ? 'danger' : 'neutral'}
+          value={cashTotal.ok ? formatMoney(cashTotal.totalMinor, 'XOF') : undefined}
+        />
+        <EssentialMetricCard
+          label={tOps('cancellationRate')}
+          stateLabel={hasLossError ? tPeriodMetrics('error') : undefined}
+          stateTone={hasLossError ? 'danger' : 'neutral'}
+          value={loss ? pct(loss.cancellationRate) : undefined}
+        />
+        <EssentialMetricCard
+          label={tOps('deliveryRate')}
+          stateLabel={hasLossError ? tPeriodMetrics('error') : undefined}
+          stateTone={hasLossError ? 'danger' : 'neutral'}
+          value={loss ? pct(deliveryRate) : undefined}
+        />
+        <EssentialMetricCard
+          label={tOps('returnRate')}
+          stateLabel={hasLossError ? tPeriodMetrics('error') : undefined}
+          stateTone={hasLossError ? 'danger' : 'neutral'}
+          value={loss ? pct(loss.returnRate) : undefined}
+        />
       </div>
     </section>
   );
@@ -202,65 +327,28 @@ type TableauPeriodRange = {
   to: Date;
 };
 
-async function PeriodMetricsSection({
+async function CashByProductPeriodMetric({
   period,
-  role,
   shopId,
 }: {
   period: TableauPeriodRange;
-  role: 'agent' | 'manager' | 'owner';
   shopId: string | null;
 }) {
-  const [tTableau, tFinance, cashCollectedResult, deliveriesResult, cashByProductResult] =
-    await Promise.all([
-      getTranslations('tableau.blocks.periodMetrics'),
-      getTranslations('finance.profit'),
-      role === 'owner' || role === 'manager'
-        ? getDashboardCashCollectedTotal({ from: period.from, shopId, to: period.to })
-        : Promise.resolve(null),
-      getDashboardDeliveriesByProduct({ from: period.from, shopId, to: period.to }),
-      role === 'owner' || role === 'manager'
-        ? getDashboardCashCollectedByProduct({ from: period.from, shopId, to: period.to })
-        : Promise.resolve(null),
-    ]);
-
-  const cashCollected = cashCollectedResult?.ok ? cashCollectedResult.data.caMinor : 0;
-  const cashByProduct = cashByProductResult?.ok
-    ? cashByProductResult.data
-    : { items: [], totalMinor: 0 };
-  const deliveries = deliveriesResult.ok
-    ? deliveriesResult.data
-    : { products: [], totalDeliveries: 0 };
-  const showCash = role === 'owner' || role === 'manager';
+  const [tTableau, cashByProductResult] = await Promise.all([
+    getTranslations('tableau.blocks.periodMetrics'),
+    getDashboardCashCollectedByProduct({ from: period.from, shopId, to: period.to }),
+  ]);
+  const cashByProductState = toMetricLoadState(cashByProductResult, isCashByProductEmpty);
+  logMetricLoadError('cash_by_product', cashByProductState);
 
   return (
-    <section
-      aria-label={tTableau('sectionLabel')}
-      className={`grid gap-4 ${showCash ? 'xl:grid-cols-3' : 'xl:grid-cols-1'}`}
-    >
-      {showCash ? (
-        <>
-          <TableauCashCollectedCard
-            emptyLabel={tTableau('empty')}
-            title={tFinance('ca')}
-            valueMinor={cashCollected}
-          />
-          <TableauCashByProductChart
-            chart={cashByProduct}
-            emptyLabel={tTableau('empty')}
-            subtitle={tTableau('cashByProduct.subtitle')}
-            title={tTableau('cashByProduct.title')}
-          />
-        </>
-      ) : null}
-      <TableauDeliveriesCard
-        deliveries={deliveries}
-        emptyLabel={tTableau('empty')}
-        subtitle={tTableau('deliveries.subtitle')}
-        title={tTableau('deliveries.title')}
-        totalLabel={tTableau('deliveries.total')}
-      />
-    </section>
+    <TableauCashByProductChart
+      emptyLabel={tTableau('empty')}
+      errorLabel={tTableau('error')}
+      state={cashByProductState}
+      subtitle={tTableau('cashByProduct.subtitle')}
+      title={tTableau('cashByProduct.title')}
+    />
   );
 }
 
@@ -419,17 +507,18 @@ function RevenueSkeleton() {
   );
 }
 
-function PeriodMetricsSkeleton({ showCash }: { showCash: boolean }) {
-  const keys = showCash ? ['cash', 'cash-by-product', 'deliveries'] : ['deliveries'];
-
+function OperationsEssentialsSkeleton() {
   return (
-    <section className={`grid gap-4 ${showCash ? 'xl:grid-cols-3' : 'xl:grid-cols-1'}`}>
-      {keys.map((key) => (
-        <Card className="rounded-lg" key={key} padding="lg">
-          <div className="dashboard-shimmer mb-5 h-5 w-40 rounded-sm" />
-          <div className="dashboard-shimmer h-[220px] rounded-md" />
-        </Card>
-      ))}
+    <section className="space-y-3">
+      <div className="dashboard-shimmer h-7 w-48 rounded-sm" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {['op1', 'op2', 'op3', 'op4', 'op5', 'op6'].map((key) => (
+          <div className="rounded-lg border border-border bg-surface p-4 shadow-1" key={key}>
+            <div className="dashboard-shimmer h-4 w-28 rounded-sm" />
+            <div className="dashboard-shimmer mt-3 h-8 w-32 rounded-sm" />
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -506,6 +595,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
     ctx.ok && (ctx.role === 'owner' || ctx.role === 'manager' || ctx.role === 'agent')
       ? ctx.role
       : 'agent';
+  const showFinancialMetrics = role === 'owner' || role === 'manager';
   const firstName =
     displayNameFromMetadata(user?.user_metadata ?? {}) || firstToken(user?.email?.split('@')[0]);
 
@@ -561,18 +651,8 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           <KpiStrip shopId={selectedShopId} />
         </Suspense>
 
-        <Suspense
-          fallback={<div className="dashboard-shimmer h-36 rounded-md" />}
-          key={`ops-${shopKey}`}
-        >
-          <OperationsEssentialsSection shopId={selectedShopId} />
-        </Suspense>
-
-        <Suspense
-          fallback={<PeriodMetricsSkeleton showCash={role === 'owner' || role === 'manager'} />}
-          key={`period-metrics-${shopKey}-${periodKey}`}
-        >
-          <PeriodMetricsSection period={period} role={role} shopId={selectedShopId} />
+        <Suspense fallback={<OperationsEssentialsSkeleton />} key={`ops-${shopKey}-${periodKey}`}>
+          <OperationsEssentialsSection period={period} shopId={selectedShopId} />
         </Suspense>
 
         <Suspense fallback={<ExceptionsSkeleton />} key={`exceptions-${shopKey}`}>
@@ -583,7 +663,20 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           <RevenueSection shopId={selectedShopId} />
         </Suspense>
 
-        <section className="grid gap-4 xl:grid-cols-3">
+        <section
+          className={cn(
+            'grid gap-4',
+            showFinancialMetrics ? 'xl:grid-cols-2 2xl:grid-cols-4' : 'xl:grid-cols-3',
+          )}
+        >
+          {showFinancialMetrics ? (
+            <Suspense
+              fallback={<CardListSkeleton rows={5} />}
+              key={`cash-by-product-${shopKey}-${periodKey}`}
+            >
+              <CashByProductPeriodMetric period={period} shopId={selectedShopId} />
+            </Suspense>
+          ) : null}
           <Suspense fallback={<CardListSkeleton rows={5} />} key={`top-${shopKey}`}>
             <TopProductsSection shopId={selectedShopId} />
           </Suspense>
