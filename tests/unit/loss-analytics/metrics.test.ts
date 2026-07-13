@@ -158,11 +158,72 @@ describe('computeLossAnalytics', () => {
     expect(result.summary.totalOrders).toBe(4);
     expect(result.summary.cancellationCount).toBe(1);
     expect(result.summary.cancellationRate).toBeCloseTo(0.25, 5);
+    expect(result.summary.globalDeliveryRate).toBeCloseTo(0.25, 5);
     expect(result.summary.returnCount).toBe(1);
     expect(result.summary.returnRate).toBeCloseTo(0.5, 5);
     expect(result.summary.rtoCount).toBe(1);
     expect(result.summary.rtoDenominator).toBe(2);
     expect(result.summary.rtoRate).toBeCloseTo(0.5, 5);
+  });
+
+  it('builds delivery-rate cohorts and marks recent cohorts as immature from observed delays', () => {
+    const result = computeLossAnalytics({
+      auditLogs: [
+        audit({
+          createdAt: '2026-06-03T09:00:00.000Z',
+          payload: {
+            nextDimensions: { delivery_state: 'delivered', order_state: 'completed' },
+            priorDimensions: { delivery_state: 'assigned', order_state: 'open' },
+          },
+          resourceId: 'order-delivered',
+        }),
+      ],
+      customers: [],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          createdAt: '2026-06-01T09:00:00.000Z',
+          deliveryState: 'delivered',
+          id: 'order-delivered',
+          orderState: 'completed',
+        }),
+        order({ createdAt: '2026-06-06T09:00:00.000Z', id: 'order-recent' }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    expect(result.cohortMaturityDays).toBe(2);
+    expect(result.trends.find((point) => point.date === '2026-06-01')).toMatchObject({
+      cohortDeliveryRate: 1,
+      deliveredOrders: 1,
+      isMature: true,
+      totalOrders: 1,
+    });
+    expect(result.trends.find((point) => point.date === '2026-06-06')).toMatchObject({
+      cohortDeliveryRate: 0,
+      deliveredOrders: 0,
+      isMature: false,
+      totalOrders: 1,
+    });
+  });
+
+  it('uses a three-day maturity fallback when no delivered transition is available', () => {
+    const result = computeLossAnalytics({
+      auditLogs: [],
+      customers: [],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [],
+      reliability: [],
+      toISO: '2026-06-01T23:59:59.999Z',
+    });
+
+    expect(result.summary.globalDeliveryRate).toBe(0);
+    expect(result.cohortMaturityDays).toBe(3);
   });
 
   it('builds source scorecards and trends from the retained definitions', () => {

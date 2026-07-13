@@ -34,6 +34,17 @@ describe('toMetricLoadState', () => {
     });
   });
 
+  it('distingue le vrai vide du graphe de taux de livraison', () => {
+    expect(
+      toMetricLoadState({ ok: true, data: { trends: [{ totalOrders: 0 }] } }, (data) =>
+        data.trends.every((point) => point.totalOrders === 0),
+      ),
+    ).toEqual({
+      data: { trends: [{ totalOrders: 0 }] },
+      status: 'empty',
+    });
+  });
+
   it('distingue le vrai vide pour CA par produit', () => {
     expect(
       toMetricLoadState(

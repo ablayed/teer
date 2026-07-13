@@ -1,6 +1,7 @@
 import { LossAnalyticsChartsLoader } from '@/components/loss-analytics/loss-analytics-charts-loader';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { AnalyticsSkeleton } from '@/components/ui/analytics-skeleton';
+import { DefinitionToggle } from '@/components/ui/definition-card';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -32,10 +33,13 @@ function count(value: number): string {
   return new Intl.NumberFormat('fr-FR').format(value);
 }
 
-function summaryCard(label: string, value: string, description: string) {
+function summaryCard(label: string, value: string, description: string, definition?: string) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
-      <p className="text-[13px] font-medium text-muted">{label}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[13px] font-medium text-muted">{label}</p>
+        {definition ? <DefinitionToggle definition={definition} /> : null}
+      </div>
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums md:text-3xl">{value}</p>
       <p className="mt-2 text-sm text-muted">{description}</p>
     </section>
@@ -131,7 +135,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       </header>
 
       <Suspense
-        fallback={<AnalyticsSkeleton cards={5} />}
+        fallback={<AnalyticsSkeleton cards={6} />}
         key={`${activePeriod}-${from.toISOString()}-${to.toISOString()}`}
       >
         <AnalyticsContent fromISO={from.toISOString()} toISO={to.toISOString()} />
@@ -174,6 +178,12 @@ async function AnalyticsContent({ fromISO, toISO }: { fromISO: string; toISO: st
           t('summary.totalOrders'),
           count(analytics.summary.totalOrders),
           t('summary.totalOrders'),
+        )}
+        {summaryCard(
+          t('summary.globalDeliveryRate'),
+          percent(analytics.summary.globalDeliveryRate),
+          `${count(analytics.summary.deliveredCount)} / ${count(analytics.summary.totalOrders)}`,
+          t('summary.globalDeliveryRateDefinition'),
         )}
         {summaryCard(
           t('summary.cancellationRate'),

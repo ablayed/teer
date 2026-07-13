@@ -105,6 +105,7 @@ export type LossAnalyticsSummary = {
   cancellationCount: number;
   cancellationRate: number;
   deliveredCount: number;
+  globalDeliveryRate: number;
   returnCount: number;
   returnRate: number;
   rtoCount: number;
@@ -128,13 +129,17 @@ export type LossAnalyticsSourceScorecard = {
 };
 
 export type LossAnalyticsTrendPoint = {
+  cohortDeliveryRate: number;
   cancellationCount: number;
   date: string;
   deliveredCount: number;
+  deliveredOrders: number;
+  isMature: boolean;
   returnCount: number;
   rtoCount: number;
   rtoDenominator: number;
   rtoRate: number;
+  totalOrders: number;
 };
 
 export type LossAnalyticsProductLoss = {
@@ -195,6 +200,7 @@ export type LossAnalyticsRepeatedRefuser = {
 };
 
 export type LossAnalyticsResult = {
+  cohortMaturityDays: number;
   driverPerformance: LossAnalyticsDriverLoss[];
   productLosses: LossAnalyticsProductLoss[];
   reasonBreakdown: LossAnalyticsReason[];
@@ -337,6 +343,7 @@ function rateSummary(
     cancellationCount,
     cancellationRate: ratio(cancellationCount, totalOrders),
     deliveredCount,
+    globalDeliveryRate: ratio(deliveredCount, totalOrders),
     returnCount,
     returnRate: ratio(returnCount, returnDenominator),
     rtoCount,
@@ -344,6 +351,37 @@ function rateSummary(
     rtoRate: ratio(rtoCount, rtoDenominator),
     totalOrders,
   };
+}
+
+const DEFAULT_COHORT_MATURITY_DAYS = 3;
+const MAX_COHORT_MATURITY_DAYS = 14;
+
+export function deriveCohortMaturityDays(
+  orders: LossAnalyticsOrder[],
+  events: LossEvent[],
+): number {
+  const createdAtByOrderId = new Map(orders.map((order) => [order.id, order.createdAt]));
+  const deliveryDelays = events.flatMap((event) => {
+    if (event.type !== 'delivered_outcome') {
+      return [];
+    }
+
+    const createdAt = createdAtByOrderId.get(event.orderId);
+    if (!createdAt) {
+      return [];
+    }
+
+    const delayInDays = (Date.parse(event.createdAt) - Date.parse(createdAt)) / 86_400_000;
+    return Number.isFinite(delayInDays) && delayInDays >= 0 ? [delayInDays] : [];
+  });
+
+  if (deliveryDelays.length === 0) {
+    return DEFAULT_COHORT_MATURITY_DAYS;
+  }
+
+  const averageDelay =
+    deliveryDelays.reduce((total, delay) => total + delay, 0) / deliveryDelays.length;
+  return Math.min(MAX_COHORT_MATURITY_DAYS, Math.max(1, Math.ceil(averageDelay)));
 }
 
 function hasReturnEvent(orderEvents: Set<LossEventType>): boolean {
@@ -392,6 +430,7 @@ export function computeLossAnalytics({
   toISO: string;
 }): LossAnalyticsResult {
   const events = parseLossEvents(auditLogs);
+  const cohortMaturityDays = deriveCohortMaturityDays(orders, events);
   const eventsByOrderId = new Map<string, Set<LossEventType>>();
   const customerById = new Map(customers.map((customer) => [customer.id, customer]));
   const driverNameById = new Map(drivers.map((driver) => [driver.id, driver.fullName]));
@@ -530,15 +569,30 @@ export function computeLossAnalytics({
   }
 
   const trends = dayWindow(fromISO, toISO).map((date) => ({
+    cohortDeliveryRate: 0,
     cancellationCount: 0,
     date,
     deliveredCount: 0,
+    deliveredOrders: 0,
+    isMature: false,
     returnCount: 0,
     rtoCount: 0,
     rtoDenominator: 0,
     rtoRate: 0,
+    totalOrders: 0,
   }));
   const trendIndex = new Map(trends.map((point, index) => [point.date, index]));
+
+  for (const order of orders) {
+    const index = trendIndex.get(eventDay(order.createdAt));
+    if (index === undefined) {
+      continue;
+    }
+
+    const point = trends[index];
+    point.totalOrders += 1;
+    point.deliveredOrders += order.deliveryState === 'delivered' ? 1 : 0;
+  }
 
   for (const event of events) {
     const index = trendIndex.get(eventDay(event.createdAt));
@@ -564,10 +618,15 @@ export function computeLossAnalytics({
   }
 
   for (const point of trends) {
+    point.cohortDeliveryRate = ratio(point.deliveredOrders, point.totalOrders);
+    const maturityBoundary = new Date(`${toISO.slice(0, 10)}T00:00:00.000Z`);
+    maturityBoundary.setUTCDate(maturityBoundary.getUTCDate() - cohortMaturityDays);
+    point.isMature = new Date(`${point.date}T00:00:00.000Z`) <= maturityBoundary;
     point.rtoRate = ratio(point.rtoCount, point.rtoDenominator);
   }
 
   return {
+    cohortMaturityDays,
     driverPerformance: [...driverAggregates.values()]
       .map((driver) => ({
         deliveredOrders: driver.deliveredOrders,
