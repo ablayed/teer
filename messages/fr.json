@@ -470,6 +470,14 @@
         "deliveryRate": "Taux de livraison réussie",
         "returnRate": "Taux de retour"
       },
+      "deliveryRateTrend": {
+        "title": "Taux de livraison dans le temps",
+        "definition": "Le taux de livraison global montre la part de toutes les commandes créées qui sont maintenant livrées. Il diffère du « Taux de livraison réussie », qui regarde seulement les commandes déjà livrées ou refusées pour mesurer la qualité des commandes résolues.",
+        "deliveryCount": "{delivered} livrées sur {total} commandes",
+        "empty": "Aucune commande créée sur cette période.",
+        "error": "Impossible de charger le taux de livraison.",
+        "maturityNotice": "Les {days, plural, =0 {cohortes récentes sont en maturation} one {cohortes des {days} dernier jour en maturation, en pointillé} other {cohortes des {days} derniers jours en maturation, en pointillé}}."
+      },
       "periodMetrics": {
         "sectionLabel": "CA encaissé et livraisons sur la période",
         "empty": "Aucune commande sur cette période.",
@@ -1168,6 +1176,8 @@
     },
     "summary": {
       "totalOrders": "Commandes analysées",
+      "globalDeliveryRate": "Taux de livraison global",
+      "globalDeliveryRateDefinition": "La part de toutes les commandes créées sur la période qui sont maintenant livrées. Il diffère du « Taux de livraison réussie », qui regarde seulement les commandes déjà livrées ou refusées pour mesurer la qualité des commandes résolues.",
       "cancellationRate": "Taux d'annulation",
       "rtoRate": "Taux de refus / RTO",
       "returnRate": "Taux de retour",

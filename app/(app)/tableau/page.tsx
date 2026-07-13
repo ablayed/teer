@@ -5,6 +5,7 @@ import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
 import { TopProducts } from '@/components/dashboard/TopProducts';
+import { DeliveryRateTrend } from '@/components/dashboard/delivery-rate-trend';
 import { TableauCashByProductChart } from '@/components/dashboard/tableau-period-metrics';
 import { TableauPeriodPersistence } from '@/components/dashboard/tableau-period-persistence';
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
@@ -29,9 +30,14 @@ import {
 import { getDriversCashOnHandTotal } from '@/lib/actions/drivers';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
 import { getCachedDashboardContext } from '@/lib/dashboard/context';
-import { type MetricLoadState, toMetricLoadState } from '@/lib/dashboard/metric-load-state';
+import {
+  type MetricLoadState,
+  type ReadonlyMetricResult,
+  toMetricLoadState,
+} from '@/lib/dashboard/metric-load-state';
 import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
 import { formatMoney } from '@/lib/format/fcfa';
+import type { LossAnalyticsTrendPoint } from '@/lib/loss-analytics/metrics';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import { cn } from '@/lib/utils';
@@ -153,6 +159,15 @@ function isCashByProductEmpty(data: { items: { revenueMinor: number }[]; totalMi
 
 function isDeliveriesEmpty(data: { totalDeliveries: number }): boolean {
   return data.totalDeliveries <= 0;
+}
+
+type DeliveryRateTrendData = {
+  cohortMaturityDays: number;
+  trends: LossAnalyticsTrendPoint[];
+};
+
+function isDeliveryRateTrendEmpty(data: DeliveryRateTrendData): boolean {
+  return data.trends.every((point) => point.totalOrders === 0);
 }
 
 function logMetricLoadError(metric: string, state: MetricLoadState<unknown>) {
@@ -318,6 +333,54 @@ async function OperationsEssentialsSection({
         />
       </div>
     </section>
+  );
+}
+
+async function DeliveryRateTrendSection({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
+  const ctx = await getCachedDashboardContext();
+  if (!ctx.ok || (ctx.role !== 'owner' && ctx.role !== 'manager')) {
+    return null;
+  }
+
+  const [t, lossResult] = await Promise.all([
+    getTranslations('tableau.blocks.deliveryRateTrend'),
+    getLossAnalyticsAction({
+      from: period.from.toISOString(),
+      shopId,
+      to: period.to.toISOString(),
+    }),
+  ]);
+  const lossData = lossResult?.data;
+  const result: ReadonlyMetricResult<DeliveryRateTrendData> = lossData?.ok
+    ? {
+        data: {
+          cohortMaturityDays: lossData.analytics.cohortMaturityDays,
+          trends: lossData.analytics.trends,
+        },
+        ok: true,
+      }
+    : { errorCode: lossData?.errorCode ?? 'data_error', ok: false };
+  const state = toMetricLoadState(result, isDeliveryRateTrendEmpty);
+  logMetricLoadError('delivery_rate_trend', state);
+
+  return (
+    <DeliveryRateTrend
+      deliveryCountLabel={t('deliveryCount', { delivered: '{delivered}', total: '{total}' })}
+      definition={t('definition')}
+      emptyLabel={t('empty')}
+      errorLabel={t('error')}
+      maturityNotice={t('maturityNotice', {
+        days: state.status === 'ready' ? state.data.cohortMaturityDays : 0,
+      })}
+      state={state}
+      title={t('title')}
+    />
   );
 }
 
@@ -653,6 +716,13 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
 
         <Suspense fallback={<OperationsEssentialsSkeleton />} key={`ops-${shopKey}-${periodKey}`}>
           <OperationsEssentialsSection period={period} shopId={selectedShopId} />
+        </Suspense>
+
+        <Suspense
+          fallback={<div className="dashboard-shimmer h-[340px] rounded-lg" />}
+          key={`delivery-rate-trend-${shopKey}-${periodKey}`}
+        >
+          <DeliveryRateTrendSection period={period} shopId={selectedShopId} />
         </Suspense>
 
         <Suspense fallback={<ExceptionsSkeleton />} key={`exceptions-${shopKey}`}>
