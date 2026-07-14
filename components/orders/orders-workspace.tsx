@@ -15,7 +15,7 @@ import {
 } from '@/lib/domain/order-saved-views';
 import { normalizeOrderSearch } from '@/lib/orders/search';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 
 type OrderViewCount = {
   count: number;
@@ -120,6 +120,15 @@ export function OrdersWorkspace({
   const [searchResult, setSearchResult] = useState<(OrdersOverlay & { search: string }) | null>(
     null,
   );
+  // Fix de triage (freeze /commandes à la recherche) : getOrdersPageData est une Server Action
+  // (simple appel async, pas un fetch exposant un `signal` — Next.js ne fournit aucune API
+  // d'annulation cliente pour une Server Action en vol). On ne peut donc pas annuler la requête
+  // déjà partie sur le serveur ; l'annulation se fait côté client par invalidation : un compteur
+  // de génération incrémenté à chaque déclenchement, la réponse n'est appliquée que si elle
+  // correspond toujours à la génération la plus récente au moment où elle résout. Une frappe
+  // suivie d'une pause puis d'une nouvelle frappe avant résolution ne laisse donc plus jamais
+  // une réponse obsolète écraser un résultat plus récent.
+  const searchRequestGenerationRef = useRef(0);
 
   const displayedView = pendingViewId ?? activeView;
   const isBusy = isTransitionPending || isSearchPending || pendingViewId !== null;
@@ -234,6 +243,7 @@ export function OrdersWorkspace({
   // chargées ; ce refetch étend la recherche à TOUTE la période (au-delà de la page 1).
   function handleDebouncedSearch(value: string) {
     setInjectedView(null);
+    const requestGeneration = ++searchRequestGenerationRef.current;
     startSearchTransition(async () => {
       const fresh = await getOrdersPageData({
         dateFrom,
@@ -242,6 +252,14 @@ export function OrdersWorkspace({
         shopId: selectedShopId,
         view: activeView,
       });
+
+      if (requestGeneration !== searchRequestGenerationRef.current) {
+        // Une recherche plus récente a été déclenchée entre-temps : cette réponse est obsolète,
+        // on l'ignore pour ne jamais écraser un résultat plus frais (cf. commentaire sur
+        // searchRequestGenerationRef).
+        return;
+      }
+
       setSearchResult({
         search: value,
         hasMore: fresh.hasMore,
