@@ -27,7 +27,7 @@ import {
   callOutcomes,
   logCallInputSchema,
 } from '@/lib/orders/call-log-validation';
-import { filterOrdersBySearch } from '@/lib/orders/search';
+import { filterOrdersBySearch, legacySearchLookbackIso } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
@@ -398,6 +398,20 @@ function paginateOrders(
   };
 }
 
+// Fix de triage (freeze /commandes à la recherche) : ce chemin (fetchOrdersPageDataLegacy,
+// déclenché dès qu'une recherche texte est active) chargeait TOUT l'historique de commandes
+// du marchand sans aucun filtre de date, en boucle .range(500) séquentielle, avant de faire
+// ~9 passes JS de filtrage/tri dessus — sur un gros tenant, chaque frappe déclenchait un scan
+// non borné proportionnel au volume all-time, pas à la période sélectionnée. Bornage TEMPORAIRE
+// à 12 mois glissants sur `sort_at` (colonne générée = coalesce(created_at_shopify, created_at),
+// migration 0044 — strictement équivalente à `orderQueueDate`, déjà indexée par Lot 7, aucun
+// nouvel index nécessaire). Volontairement INDÉPENDANT de `filters.dateFrom`/`dateTo` (le filtre
+// période de l'UI) : la recherche doit pouvoir retrouver une commande hors période affichée,
+// juste pas au-delà de 12 mois. Solution définitive prévue : RPC de recherche SQL paginée
+// (fusionnée avec la recherche par numéro de commande, lot séparé) — ne pas considérer ce
+// bornage comme un comportement produit final. `legacySearchLookbackIso` vit dans
+// `lib/orders/search.ts` (fichier pur, testé isolément) — cf. gotcha CLAUDE.md sur l'import
+// de `lib/env.ts` qui rend ce fichier impossible à unit-tester directement.
 async function listOrdersForPageData({
   filters,
   member,
@@ -407,6 +421,8 @@ async function listOrdersForPageData({
   member: CurrentMember;
   supabase: SupabaseServerClient;
 }): Promise<OrderListItem[]> {
+  const lookbackIso = legacySearchLookbackIso();
+
   const baseQuery = () => {
     let query = supabase
       .from('orders')
@@ -414,6 +430,7 @@ async function listOrdersForPageData({
         'id, customer_id, order_number, total_amount, currency, cod_status, order_state, call_state, delivery_state, cash_state, assigned_driver_id, items_summary, shipping_address, created_at, created_at_shopify, next_contact_at, scheduled_for, source, sort_at, next_action_at, customer:customer_id(full_name, phone)',
       )
       .eq('merchant_account_id', member.merchantAccountId)
+      .gte('sort_at', lookbackIso)
       .order('sort_at', { ascending: false, nullsFirst: false })
       .order('id', { ascending: false });
 
