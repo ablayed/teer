@@ -85,3 +85,16 @@ export function matchesOrderSearch(order: OrderSearchShape, rawSearch: string): 
 export function filterOrdersBySearch<T extends OrderSearchShape>(orders: T[], search: string): T[] {
   return orders.filter((order) => matchesOrderSearch(order, search));
 }
+
+// Fix de triage (freeze /commandes à la recherche) : le chemin de recherche legacy
+// (lib/actions/orders.ts:listOrdersForPageData) bornait auparavant zéro date et chargeait tout
+// l'historique du marchand — cf. gotcha CLAUDE.md dédié. Bornage temporaire à 12 mois glissants,
+// en attendant la RPC de recherche SQL paginée (lot séparé). Isolé ici (fichier pur, aucun import
+// de `lib/env.ts`/client Supabase) pour rester unit-testable sans mocker tout l'environnement.
+export const LEGACY_SEARCH_LOOKBACK_MONTHS = 12;
+
+export function legacySearchLookbackIso(referenceDate: Date = new Date()): string {
+  const cutoff = new Date(referenceDate);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - LEGACY_SEARCH_LOOKBACK_MONTHS);
+  return cutoff.toISOString();
+}
