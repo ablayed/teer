@@ -170,21 +170,31 @@ async function getCurrentMemberRole(supabase: SupabaseServerClient): Promise<Tea
   return member?.role ?? null;
 }
 
-async function getCurrentMember(supabase: SupabaseServerClient): Promise<CurrentMember | null> {
+async function getCurrentMember(
+  supabase: SupabaseServerClient,
+  signal?: AbortSignal,
+): Promise<CurrentMember | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  signal?.throwIfAborted();
 
   if (!user) {
     return null;
   }
 
-  const { data: member, error } = await supabase
+  let memberQuery = supabase
     .from('merchant_member')
     .select('merchant_account_id, role')
     .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (signal) {
+    memberQuery = memberQuery.abortSignal(signal);
+  }
+
+  const { data: member, error } = await memberQuery.maybeSingle();
+  signal?.throwIfAborted();
 
   if (error || !member || !isTeamRole(member.role)) {
     return null;
@@ -266,11 +276,12 @@ async function fetchTransitionOrderIds(
   toStatuses: readonly string[],
   dateFrom: string,
   dateTo: string,
+  signal?: AbortSignal,
 ): Promise<Set<string>> {
   const orderIds = new Set<string>();
 
   for (let offset = 0; ; offset += TRANSITION_ID_SETS_PAGE_SIZE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('order_state_transition')
       .select('order_id')
       .eq('merchant_account_id', merchantAccountId)
@@ -279,6 +290,12 @@ async function fetchTransitionOrderIds(
       .lte('created_at', dateTo)
       .order('id', { ascending: true })
       .range(offset, offset + TRANSITION_ID_SETS_PAGE_SIZE - 1);
+
+    if (signal) {
+      query = query.abortSignal(signal);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw error;
@@ -302,6 +319,7 @@ async function fetchTransitionOrderIdSets(
   merchantAccountId: string,
   dateFrom: string | undefined,
   dateTo: string | undefined,
+  signal?: AbortSignal,
 ): Promise<Partial<Record<OrderSavedViewId, Set<string>>>> {
   if (!dateFrom || !dateTo) {
     return {};
@@ -316,6 +334,7 @@ async function fetchTransitionOrderIdSets(
           toStatuses,
           dateFrom,
           dateTo,
+          signal,
         );
 
         return [viewId, orderIds] as const;
@@ -415,10 +434,12 @@ function paginateOrders(
 async function listOrdersForPageData({
   filters,
   member,
+  signal,
   supabase,
 }: {
   filters: OrdersPageFilters;
   member: CurrentMember;
+  signal?: AbortSignal;
   supabase: SupabaseServerClient;
 }): Promise<OrderListItem[]> {
   const lookbackIso = legacySearchLookbackIso();
@@ -445,7 +466,13 @@ async function listOrdersForPageData({
   const batchSize = 500;
 
   for (let offset = 0; ; offset += batchSize) {
-    const { data, error } = await baseQuery().range(offset, offset + batchSize - 1);
+    let query = baseQuery().range(offset, offset + batchSize - 1);
+
+    if (signal) {
+      query = query.abortSignal(signal);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw error;
@@ -473,6 +500,7 @@ async function getReliabilityTiersForOrders(
   supabase: SupabaseServerClient,
   merchantAccountId: string,
   customerIds: string[],
+  signal?: AbortSignal,
 ): Promise<Record<string, ReliabilityTier>> {
   const uniqueCustomerIds = [...new Set(customerIds)];
 
@@ -482,10 +510,16 @@ async function getReliabilityTiersForOrders(
 
   const entries = await Promise.all(
     uniqueCustomerIds.map(async (customerId) => {
-      const { data, error } = await supabase.rpc('get_customer_reliability', {
+      let query = supabase.rpc('get_customer_reliability', {
         p_customer_id: customerId,
         p_merchant_id: merchantAccountId,
       });
+
+      if (signal) {
+        query = query.abortSignal(signal);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw error;
@@ -511,13 +545,20 @@ async function fetchOrderViewCountsFromRpc(
   supabase: SupabaseServerClient,
   merchantAccountId: string,
   filters: { dateFrom: string; dateTo: string; shopId?: string | null },
+  signal?: AbortSignal,
 ): Promise<OrdersViewCounts> {
-  const { data, error } = await supabase.rpc('get_order_view_counts', {
+  let query = supabase.rpc('get_order_view_counts', {
     p_from: filters.dateFrom,
     p_merchant_id: merchantAccountId,
     p_shop_id: filters.shopId ?? undefined,
     p_to: filters.dateTo,
   });
+
+  if (signal) {
+    query = query.abortSignal(signal);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;
@@ -538,15 +579,17 @@ async function fetchOrdersKeysetPage({
   cursor,
   filters,
   member,
+  signal,
   supabase,
 }: {
   activeView: OrderSavedViewId;
   cursor: OrderListCursor | null;
   filters: { dateFrom: string; dateTo: string; shopId?: string | null };
   member: CurrentMember;
+  signal?: AbortSignal;
   supabase: SupabaseServerClient;
 }): Promise<{ hasMore: boolean; nextCursor: OrderListCursor | null; orders: OrderListItem[] }> {
-  const { data, error } = await supabase.rpc('list_orders_keyset', {
+  let query = supabase.rpc('list_orders_keyset', {
     p_cursor_id: cursor?.id,
     p_cursor_sort: cursor?.sort,
     p_from: filters.dateFrom,
@@ -556,6 +599,12 @@ async function fetchOrdersKeysetPage({
     p_to: filters.dateTo,
     p_view: activeView,
   });
+
+  if (signal) {
+    query = query.abortSignal(signal);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;
@@ -590,6 +639,7 @@ async function fetchOrdersPageData({
   filters,
   member,
   search,
+  signal,
   supabase,
 }: {
   activeView: OrderSavedViewId;
@@ -597,6 +647,7 @@ async function fetchOrdersPageData({
   filters: OrdersPageFilters;
   member: CurrentMember;
   search: string;
+  signal?: AbortSignal;
   supabase: SupabaseServerClient;
 }): Promise<OrdersPageData> {
   if (!search && filters.dateFrom && filters.dateTo) {
@@ -606,16 +657,22 @@ async function fetchOrdersPageData({
     const [viewCounts, keysetPage] = await Promise.all([
       cursor
         ? Promise.resolve(emptyOrdersViewCounts())
-        : fetchOrderViewCountsFromRpc(supabase, member.merchantAccountId, {
-            dateFrom,
-            dateTo,
-            shopId: filters.shopId,
-          }),
+        : fetchOrderViewCountsFromRpc(
+            supabase,
+            member.merchantAccountId,
+            {
+              dateFrom,
+              dateTo,
+              shopId: filters.shopId,
+            },
+            signal,
+          ),
       fetchOrdersKeysetPage({
         activeView,
         cursor,
         filters: { dateFrom, dateTo, shopId: filters.shopId },
         member,
+        signal,
         supabase,
       }),
     ]);
@@ -628,6 +685,7 @@ async function fetchOrdersPageData({
             keysetPage.orders
               .map((order) => order.customer_id)
               .filter((customerId): customerId is string => Boolean(customerId)),
+            signal,
           )
         : {};
 
@@ -643,7 +701,15 @@ async function fetchOrdersPageData({
     };
   }
 
-  return fetchOrdersPageDataLegacy({ activeView, cursor, filters, member, search, supabase });
+  return fetchOrdersPageDataLegacy({
+    activeView,
+    cursor,
+    filters,
+    member,
+    search,
+    signal,
+    supabase,
+  });
 }
 
 // Chemin TS legacy — INCHANGÉ, utilisé quand une recherche texte est active (matching flou
@@ -655,6 +721,7 @@ async function fetchOrdersPageDataLegacy({
   filters,
   member,
   search,
+  signal,
   supabase,
 }: {
   activeView: OrderSavedViewId;
@@ -662,14 +729,16 @@ async function fetchOrdersPageDataLegacy({
   filters: OrdersPageFilters;
   member: CurrentMember;
   search: string;
+  signal?: AbortSignal;
   supabase: SupabaseServerClient;
 }): Promise<OrdersPageData> {
-  const scopedOrders = await listOrdersForPageData({ filters, member, supabase });
+  const scopedOrders = await listOrdersForPageData({ filters, member, signal, supabase });
   const transitionOrderIdsByView = await fetchTransitionOrderIdSets(
     supabase,
     member.merchantAccountId,
     filters.dateFrom,
     filters.dateTo,
+    signal,
   );
 
   const periodFilteredFor = (viewId: OrderSavedViewId) =>
@@ -704,11 +773,16 @@ async function fetchOrdersPageDataLegacy({
     // search === '' : compteurs via get_order_view_counts (Lot 6, migration 0088). totalCount
     // ignore déjà la recherche dans l'ancien calcul TS (periodFilteredToutes n'était jamais
     // search-filtré) → la ligne 'toutes' de la RPC est strictement équivalente ici.
-    viewCounts = await fetchOrderViewCountsFromRpc(supabase, member.merchantAccountId, {
-      dateFrom: filters.dateFrom,
-      dateTo: filters.dateTo,
-      shopId: filters.shopId,
-    });
+    viewCounts = await fetchOrderViewCountsFromRpc(
+      supabase,
+      member.merchantAccountId,
+      {
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        shopId: filters.shopId,
+      },
+      signal,
+    );
     totalCount = viewCounts.toutes;
   }
 
@@ -724,6 +798,7 @@ async function fetchOrdersPageDataLegacy({
           paginated.orders
             .map((order) => order.customer_id)
             .filter((customerId): customerId is string => Boolean(customerId)),
+          signal,
         )
       : {};
 
@@ -905,23 +980,26 @@ export async function getOrders({
   }));
 }
 
-export async function getOrdersPageData({
-  cursor = null,
-  dateFrom,
-  dateTo,
-  search = '',
-  shopId = null,
-  view,
-}: {
-  cursor?: OrderListCursor | null;
-  dateFrom?: string;
-  dateTo?: string;
-  search?: string;
-  shopId?: string | null;
-  view?: string;
-} = {}): Promise<OrdersPageData> {
+export async function getOrdersPageData(
+  {
+    cursor = null,
+    dateFrom,
+    dateTo,
+    search = '',
+    shopId = null,
+    view,
+  }: {
+    cursor?: OrderListCursor | null;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    shopId?: string | null;
+    view?: string;
+  } = {},
+  signal?: AbortSignal,
+): Promise<OrdersPageData> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const member = await getCurrentMember(supabase);
+  const member = await getCurrentMember(supabase, signal);
 
   if (!member) {
     return {
@@ -942,6 +1020,7 @@ export async function getOrdersPageData({
     filters: { dateFrom, dateTo, shopId },
     member,
     search,
+    signal,
     supabase,
   });
 }

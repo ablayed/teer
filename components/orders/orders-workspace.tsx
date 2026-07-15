@@ -13,7 +13,9 @@ import {
   matchesOrderSavedView,
   orderSavedViewIds,
 } from '@/lib/domain/order-saved-views';
+import { getClientErrorMessage, isAbortError } from '@/lib/monitoring/client-error-classification';
 import { normalizeOrderSearch } from '@/lib/orders/search';
+import { fetchOrdersSearchPageData } from '@/lib/orders/search-client';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 
@@ -38,6 +40,38 @@ type SearchLabels = {
   clear: string;
   placeholder: string;
 };
+
+function captureOrdersSearchFailure(
+  error: unknown,
+  context: {
+    hasShopFilter: boolean;
+    requestGeneration: number;
+    searchLength: number;
+    view: OrderSavedViewId;
+  },
+) {
+  const exception = error instanceof Error ? error : new Error(getClientErrorMessage(error));
+
+  void import('@sentry/nextjs')
+    .then((Sentry) => {
+      Sentry.captureException(exception, {
+        tags: {
+          operation: 'orders.search',
+          ordersSearchFailure: true,
+        },
+        extra: {
+          endpoint: '/api/orders/search',
+          hasShopFilter: context.hasShopFilter,
+          navigatorOnline: navigator.onLine,
+          requestGeneration: context.requestGeneration,
+          searchLength: context.searchLength,
+          visibilityState: document.visibilityState,
+          view: context.view,
+        },
+      });
+    })
+    .catch(() => undefined);
+}
 
 // Applique le delta d'une transition aux compteurs d'une surcouche (Record), comme
 // applyOrderSavedViewCountTransition le fait pour displayedViews. Sans ça, une mutation
@@ -104,7 +138,8 @@ export function OrdersWorkspace({
   const [displayedViews, setDisplayedViews] = useState(views);
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const [isTransitionPending, startTransition] = useTransition();
-  const [isSearchPending, startSearchTransition] = useTransition();
+  const [isSearchTransitionPending, startSearchTransition] = useTransition();
+  const [isSearching, setIsSearching] = useState(false);
   const board = useOrdersBoard();
   // Paradigm A (PR #17) : après création, on relit la liste FRAÎCHE côté serveur et on
   // la stocke ici, en surcouche des props issues du RSC — qui, post-navigation, étaient
@@ -120,18 +155,15 @@ export function OrdersWorkspace({
   const [searchResult, setSearchResult] = useState<(OrdersOverlay & { search: string }) | null>(
     null,
   );
-  // Fix de triage (freeze /commandes à la recherche) : getOrdersPageData est une Server Action
-  // (simple appel async, pas un fetch exposant un `signal` — Next.js ne fournit aucune API
-  // d'annulation cliente pour une Server Action en vol). On ne peut donc pas annuler la requête
-  // déjà partie sur le serveur ; l'annulation se fait côté client par invalidation : un compteur
-  // de génération incrémenté à chaque déclenchement, la réponse n'est appliquée que si elle
-  // correspond toujours à la génération la plus récente au moment où elle résout. Une frappe
-  // suivie d'une pause puis d'une nouvelle frappe avant résolution ne laisse donc plus jamais
-  // une réponse obsolète écraser un résultat plus récent.
+  // Chaque recherche passe par un fetch explicite afin d'exposer un AbortSignal. Le compteur de
+  // génération reste une seconde défense : même si un environnement serveur termine malgré tout
+  // une requête après la déconnexion, sa réponse ne peut jamais écraser la génération courante.
   const searchRequestGenerationRef = useRef(0);
+  const searchAbortControllerRef = useRef<AbortController | null>(null);
 
   const displayedView = pendingViewId ?? activeView;
-  const isBusy = isTransitionPending || isSearchPending || pendingViewId !== null;
+  const isBusy =
+    isTransitionPending || isSearchTransitionPending || isSearching || pendingViewId !== null;
   const driverOptions: DriverOption[] = drivers.map((driver) => ({
     id: driver.id,
     fullName: driver.fullName,
@@ -159,9 +191,20 @@ export function OrdersWorkspace({
   // que vue / période / boutique change — c'est l'intention recherchée.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps = signal de navigation volontaire
   useEffect(() => {
+    searchAbortControllerRef.current?.abort();
+    searchAbortControllerRef.current = null;
+    searchRequestGenerationRef.current += 1;
+    setIsSearching(false);
     setInjectedView(null);
     setSearchResult(null);
   }, [activeView, activePeriod, selectedShopId]);
+
+  useEffect(
+    () => () => {
+      searchAbortControllerRef.current?.abort();
+    },
+    [],
+  );
 
   // Enregistre le rafraîchisseur déclenché par NewOrderForm après création (frère via
   // le contexte). Relit getOrdersPageData(vue=toutes) — MÊME source serveur que le RSC —
@@ -171,6 +214,10 @@ export function OrdersWorkspace({
       return;
     }
     return board.registerRefresh((createdOrderId) => {
+      searchAbortControllerRef.current?.abort();
+      searchAbortControllerRef.current = null;
+      searchRequestGenerationRef.current += 1;
+      setIsSearching(false);
       setPendingViewId(null);
       setLocalSearchQuery('');
       setSearchResult(null);
@@ -243,32 +290,61 @@ export function OrdersWorkspace({
   // chargées ; ce refetch étend la recherche à TOUTE la période (au-delà de la page 1).
   function handleDebouncedSearch(value: string) {
     setInjectedView(null);
+    searchAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    searchAbortControllerRef.current = abortController;
     const requestGeneration = ++searchRequestGenerationRef.current;
-    startSearchTransition(async () => {
-      const fresh = await getOrdersPageData({
-        dateFrom,
-        dateTo,
-        search: value,
-        shopId: selectedShopId,
-        view: activeView,
-      });
+    setIsSearching(true);
 
-      if (requestGeneration !== searchRequestGenerationRef.current) {
-        // Une recherche plus récente a été déclenchée entre-temps : cette réponse est obsolète,
-        // on l'ignore pour ne jamais écraser un résultat plus frais (cf. commentaire sur
-        // searchRequestGenerationRef).
-        return;
+    void (async () => {
+      try {
+        const fresh = await fetchOrdersSearchPageData(
+          {
+            dateFrom,
+            dateTo,
+            search: value,
+            shopId: selectedShopId,
+            view: activeView,
+          },
+          abortController.signal,
+        );
+
+        if (requestGeneration !== searchRequestGenerationRef.current) {
+          return;
+        }
+
+        searchAbortControllerRef.current = null;
+        setIsSearching(false);
+        startSearchTransition(() => {
+          setSearchResult({
+            search: value,
+            hasMore: fresh.hasMore,
+            nextCursor: fresh.nextCursor,
+            orders: fresh.orders,
+            reliabilityTiers: fresh.reliabilityTiers as Record<string, ReliabilityTier>,
+            viewCounts: fresh.viewCounts,
+          });
+        });
+      } catch (error) {
+        if (requestGeneration === searchRequestGenerationRef.current) {
+          // Reset explicite avant d'absorber l'erreur : la page ne doit jamais rester dans un
+          // état visuel pending après une interruption réseau Safari/iOS.
+          searchAbortControllerRef.current = null;
+          setIsSearching(false);
+        }
+
+        if (abortController.signal.aborted || isAbortError(error)) {
+          return;
+        }
+
+        captureOrdersSearchFailure(error, {
+          hasShopFilter: selectedShopId !== null,
+          requestGeneration,
+          searchLength: value.length,
+          view: activeView,
+        });
       }
-
-      setSearchResult({
-        search: value,
-        hasMore: fresh.hasMore,
-        nextCursor: fresh.nextCursor,
-        orders: fresh.orders,
-        reliabilityTiers: fresh.reliabilityTiers as Record<string, ReliabilityTier>,
-        viewCounts: fresh.viewCounts,
-      });
-    });
+    })();
   }
 
   function handleSelect(viewId: OrderSavedViewId) {

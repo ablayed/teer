@@ -178,6 +178,7 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
     }
 
     const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
     page.on('console', (message) => {
       if (message.type() === 'error') {
         consoleErrors.push(message.text());
@@ -185,6 +186,7 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
     });
     page.on('pageerror', (error) => {
       consoleErrors.push(error.message);
+      pageErrors.push(error.message);
     });
 
     // Une requête de PRECHARGEMENT (pas une navigation cliquée) vers une page de détail de
@@ -204,6 +206,17 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
 
     await signIn(page, email, '/commandes');
 
+    let injectedSearchFailure = false;
+    await page.route('**/api/orders/search**', async (route) => {
+      const url = new URL(route.request().url());
+      if (!injectedSearchFailure && url.searchParams.get('q') === `${sharedToken} Client 1`) {
+        injectedSearchFailure = true;
+        await route.abort('failed');
+        return;
+      }
+      await route.continue();
+    });
+
     const searchBox = page.getByRole('searchbox');
 
     // Rétrécissement progressif puis effacement complet — reproduit le détail rapporté en
@@ -211,7 +224,10 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
     await searchBox.fill(sharedToken);
     await page.waitForTimeout(400);
     await searchBox.fill(`${sharedToken} Client 1`);
-    await page.waitForTimeout(400);
+    await expect.poll(() => injectedSearchFailure).toBe(true);
+    const results = page.getByTestId('orders-results');
+    await expect(results).not.toHaveAttribute('aria-busy', 'true');
+    await expect(results).not.toHaveClass(/pointer-events-none/);
     await searchBox.fill('');
     await page.waitForTimeout(400);
     await searchBox.fill(sharedToken);
@@ -223,6 +239,7 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
     expect(
       consoleErrors.filter((text) => /Minified React error #4(18|19|21|25)/.test(text)),
     ).toEqual([]);
+    expect(pageErrors).toEqual([]);
 
     // Non-régression : le clic normal sur une ligne doit toujours ouvrir le détail (modale
     // interceptée) — seul le PRÉCHARGEMENT anticipé disparaît, pas la navigation au clic.
@@ -235,5 +252,6 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
     await firstRowLink.scrollIntoViewIfNeeded();
     await firstRowLink.click();
     await expect(page).toHaveURL(new RegExp(`${orderHref}$`), { timeout: 15_000 });
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
   });
 });
