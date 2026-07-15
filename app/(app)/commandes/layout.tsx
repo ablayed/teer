@@ -1,3 +1,4 @@
+import { HydrationCrashRecoveryBanner } from '@/components/orders/hydration-crash-recovery-banner';
 import type { ReactNode } from 'react';
 
 type CommandesLayoutProps = {
@@ -10,6 +11,7 @@ export default function CommandesLayout({ children, modal }: CommandesLayoutProp
     <>
       {children}
       {modal}
+      <HydrationCrashRecoveryBanner />
     </>
   );
 }

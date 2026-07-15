@@ -14,8 +14,22 @@ type ResourceRowBase = {
   className?: string;
 };
 
-type ResourceRowWithHref = ResourceRowBase & { href: string; onActivate?: never };
-type ResourceRowWithActivate = ResourceRowBase & { href?: never; onActivate?: () => void };
+type ResourceRowWithHref = ResourceRowBase & {
+  href: string;
+  onActivate?: never;
+  /**
+   * Passe `false` pour désactiver le prefetch Next (défaut: comportement natif = true).
+   * Utile quand le jeu de lignes/liens change à haute fréquence (ex. recherche instantanée
+   * `/commandes`) : sans ça, chaque frappe monte de nouveaux `<Link>` qui déclenchent chacun
+   * un prefetch RSC concurrent, souvent annulé avant résolution.
+   */
+  prefetch?: boolean;
+};
+type ResourceRowWithActivate = ResourceRowBase & {
+  href?: never;
+  onActivate?: () => void;
+  prefetch?: never;
+};
 
 export type ResourceRowProps = ResourceRowWithHref | ResourceRowWithActivate;
 
@@ -29,6 +43,7 @@ export function ResourceRow({
   primaryAction,
   overflow,
   className,
+  prefetch,
 }: ResourceRowProps) {
   const mainContent = (
     <span className="flex min-w-0 flex-1 items-center gap-3">
@@ -54,7 +69,7 @@ export function ResourceRow({
       )}
     >
       {href ? (
-        <Link className={linkClasses} href={href}>
+        <Link className={linkClasses} href={href} prefetch={prefetch}>
           {mainContent}
         </Link>
       ) : onActivate ? (
