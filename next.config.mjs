@@ -6,6 +6,17 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
+// Expérience Preview A-N uniquement : preuve empirique des variables système
+// disponibles pendant le build Vercel. Aucun deploymentId n'est configuré ici.
+if (process.env.VERCEL === '1') {
+  process.stdout.write(
+    `[deployment-skew:A-N] VERCEL_DEPLOYMENT_ID=${process.env.VERCEL_DEPLOYMENT_ID ?? '<undefined>'}\n`,
+  );
+  process.stdout.write(
+    `[deployment-skew:A-N] VERCEL_GIT_COMMIT_SHA=${process.env.VERCEL_GIT_COMMIT_SHA ?? '<undefined>'}\n`,
+  );
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: projectRoot,
