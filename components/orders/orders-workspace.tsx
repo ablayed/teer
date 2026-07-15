@@ -316,7 +316,7 @@ export function OrdersWorkspace({
   const effectiveServerSearch = searchResult?.search ?? searchQuery;
 
   return (
-    <div className="space-y-4" data-skew-probe="a-n">
+    <div className="space-y-4">
       <SearchInput
         ariaLabel={searchLabels.ariaLabel}
         clearLabel={searchLabels.clear}
