@@ -127,7 +127,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
 
   return (
     <OrdersBoardProvider>
-      <main className="space-y-6" data-skew-probe="a-n" id="main">
+      <main className="space-y-6" data-skew-probe="a-n1" id="main">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
             <h1 className="font-display text-4xl md:text-5xl">{t('title')}</h1>
