@@ -230,20 +230,24 @@ test.describe('Fix triage — invalidation des réponses de recherche obsolètes
 
     await signIn(page, email, '/commandes');
 
-    // Retarde toute requête de Server Action dont le corps mentionne la 1ère recherche, pour
-    // qu'elle résolve APRÈS la 2ème (déclenchée sans délai) — reproduit la course décrite dans
-    // CLAUDE.md (frappe → pause → nouvelle frappe avant résolution de la première requête).
-    await page.route('**/commandes**', async (route) => {
-      const request = route.request();
-      if (request.method() !== 'POST') {
-        await route.continue();
-        return;
+    let firstRequestFailed = false;
+    page.on('requestfailed', (request) => {
+      const url = new URL(request.url());
+      if (
+        url.pathname === '/api/orders/search' &&
+        url.searchParams.get('q') === 'Premiere Recherche'
+      ) {
+        firstRequestFailed = true;
       }
-      const body = request.postData() ?? '';
-      if (body.includes('Premiere Recherche')) {
+    });
+
+    // La seconde génération doit interrompre le fetch GET, pas seulement ignorer sa réponse.
+    await page.route('**/api/orders/search**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('q') === 'Premiere Recherche') {
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
-      await route.continue();
+      await route.continue().catch(() => undefined);
     });
 
     const searchBox = page.getByRole('searchbox');
@@ -254,14 +258,112 @@ test.describe('Fix triage — invalidation des réponses de recherche obsolètes
     await searchBox.fill('');
     await searchBox.fill('Seconde Recherche');
 
-    // La 2ème requête (rapide) doit résoudre en premier ; la 1ère (ralentie) résout ensuite
-    // mais doit être ignorée grâce à searchRequestGenerationRef.
+    // La 2ème requête résout et la première est réellement annulée par AbortController.
     await expect(page.getByText('Seconde Recherche Client')).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => firstRequestFailed).toBe(true);
 
     // Laisse le temps à la requête ralentie de résoudre après coup, puis vérifie qu'elle n'a
     // pas écrasé le résultat affiché (pas de retour silencieux à "Premiere Recherche Client").
     await page.waitForTimeout(2000);
     await expect(page.getByText('Seconde Recherche Client')).toBeVisible();
     await expect(page.getByText('Premiere Recherche Client')).toHaveCount(0);
+  });
+
+  test('un échec réseau est absorbé et réinitialise explicitement le pending', async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'interception réseau : desktop only');
+
+    const { admin, email, merchantAccountId } = await createOwnerFixture('network-failure');
+    const shopId = await createShop(admin, merchantAccountId, `nf-${Date.now()}.myshopify.com`);
+    const customerName = `Reseau Interrompu ${Date.now()}`;
+
+    await seedOrder(admin, {
+      createdAt: new Date().toISOString(),
+      customerName,
+      merchantAccountId,
+      shopId,
+    });
+    await signIn(page, email, '/commandes');
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.route('**/api/orders/search**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('q') === customerName) {
+        await route.abort('failed');
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.getByRole('searchbox').fill(customerName);
+    await page.waitForURL(/\/commandes\?.*q=/);
+
+    const results = page.getByTestId('orders-results');
+    await expect(results).not.toHaveAttribute('aria-busy', 'true');
+    await expect(results).toHaveClass(/opacity-100/);
+    await expect(results).not.toHaveClass(/pointer-events-none/);
+    expect(pageErrors).toEqual([]);
+    await expect(page.getByText(customerName)).toBeVisible();
+  });
+});
+
+test.describe('RLS — endpoint GET /api/orders/search', () => {
+  test.skip(!hasSupabaseAdmin, 'SUPABASE service role requis pour seeder les fixtures');
+
+  test('un marchand ne peut jamais lire le résultat unique d’un autre tenant', async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'preuve RLS exécutée une seule fois');
+
+    const tenantA = await createOwnerFixture('endpoint-rls-a');
+    const tenantB = await createOwnerFixture('endpoint-rls-b');
+    const shopA = await createShop(
+      tenantA.admin,
+      tenantA.merchantAccountId,
+      `rls-a-${Date.now()}.myshopify.com`,
+    );
+    const shopB = await createShop(
+      tenantB.admin,
+      tenantB.merchantAccountId,
+      `rls-b-${Date.now()}.myshopify.com`,
+    );
+    const ownCustomer = `Tenant A Visible ${Date.now()}`;
+    const foreignCustomer = `Tenant B Interdit ${Date.now()}`;
+
+    await seedOrder(tenantA.admin, {
+      createdAt: new Date().toISOString(),
+      customerName: ownCustomer,
+      merchantAccountId: tenantA.merchantAccountId,
+      shopId: shopA,
+    });
+    await seedOrder(tenantB.admin, {
+      createdAt: new Date().toISOString(),
+      customerName: foreignCustomer,
+      merchantAccountId: tenantB.merchantAccountId,
+      shopId: shopB,
+    });
+    await signIn(page, tenantA.email, '/commandes');
+
+    const fetchSearch = async (q: string) => {
+      const params = new URLSearchParams({
+        dateFrom: new Date(Date.now() - 86_400_000).toISOString(),
+        dateTo: new Date(Date.now() + 86_400_000).toISOString(),
+        q,
+        view: 'toutes',
+      });
+      const response = await page.request.get(`/api/orders/search?${params.toString()}`);
+      expect(response.status()).toBe(200);
+      return (await response.json()) as {
+        orders: Array<{ customer: { full_name: string | null } | null }>;
+      };
+    };
+
+    const ownResult = await fetchSearch(ownCustomer);
+    expect(ownResult.orders.map((order) => order.customer?.full_name)).toContain(ownCustomer);
+
+    const crossTenantAttempt = await fetchSearch(foreignCustomer);
+    expect(crossTenantAttempt.orders).toEqual([]);
   });
 });

@@ -1,3 +1,8 @@
+import {
+  getClientErrorMessage,
+  isNetworkRequestError,
+} from '@/lib/monitoring/client-error-classification';
+
 // Sentry client chargé en import DYNAMIQUE : le SDK sort du bundle initial
 // (chunk async) au lieu d'être livré à toutes les pages. Bénéfices :
 // - pages marketing/statiques (/, /confidentialite) : le SDK n'est jamais chargé
@@ -6,8 +11,9 @@
 //   critique (petite fenêtre avant capture, acceptable).
 const MARKETING_PATHS = new Set(['/', '/confidentialite']);
 
-// Signature des erreurs de recovery React consommées par le mécanisme d'hydratation
-// (mismatch SSR/client) : #418/#419/#421/#425. Next.js App Router n'expose PAS de moyen
+// Signatures diagnostiques enrichies : erreurs de recovery React (#418/#419/#421/#425)
+// et rejets réseau génériques observés par Safari/Firefox/Chromium. Next.js App Router
+// n'expose PAS de moyen
 // supporté d'intercepter son `onRecoverableError` interne (câblé en dur dans
 // `next/dist/client/app-index.js`, non substituable depuis le code applicatif) — il
 // route ces erreurs via `window.reportError(cause)` (API standard qui émule une
@@ -19,7 +25,9 @@ const MARKETING_PATHS = new Set(['/', '/confidentialite']);
 // prefetch={false} sur les liens de ligne `/commandes` réduit/élimine le suspect n°1
 // (avalanche de prefetch RSC annulés), ce capteur garantit la preuve complète (stack +
 // message intégral, démini par les sourcemaps déjà configurées dans next.config.mjs) si
-// le crash survient encore malgré la mitigation.
+// le crash survient encore malgré la mitigation. Les échecs de recherche explicitement
+// catchés dans OrdersWorkspace sont envoyés avec l'opération `orders.search`; ce filtre
+// couvre aussi leurs équivalents issus des GlobalHandlers sur d'autres chemins clients.
 const REACT_RECOVERABLE_ERROR_PATTERN = /Minified React error #(418|419|421|425)\b/;
 
 if (
@@ -34,20 +42,35 @@ if (
       tracesSampleRate: 0.1,
       beforeSend(event, hint) {
         const message =
-          hint.originalException instanceof Error
-            ? hint.originalException.message
-            : (event.exception?.values?.[0]?.value ?? '');
+          getClientErrorMessage(hint.originalException) ||
+          event.exception?.values?.[0]?.value ||
+          '';
+        const isReactRecoverableError = REACT_RECOVERABLE_ERROR_PATTERN.test(message);
+        const isNetworkError = isNetworkRequestError(message);
 
-        if (REACT_RECOVERABLE_ERROR_PATTERN.test(message)) {
+        if (isReactRecoverableError || isNetworkError) {
           event.tags = {
             ...event.tags,
-            reactRecoverableError: true,
-            mitigation: 'orders-hydration-crash-b84',
+            ...(isReactRecoverableError
+              ? {
+                  mitigation: 'orders-hydration-crash-b84',
+                  reactRecoverableError: true,
+                }
+              : {}),
+            ...(isNetworkError
+              ? {
+                  mitigation: 'orders-search-network-failure-b85',
+                  networkRequestError: true,
+                }
+              : {}),
           };
           event.extra = {
             ...event.extra,
+            documentVisibilityState: document.visibilityState,
+            navigatorOnline: navigator.onLine,
             pathname: window.location.pathname,
             search: window.location.search,
+            userAgent: navigator.userAgent,
           };
         }
 
