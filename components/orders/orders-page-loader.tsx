@@ -222,6 +222,7 @@ export function OrdersPageLoader({
             >
               <ResourceRow
                 href={`/commandes/${order.id}`}
+                prefetch={false}
                 meta={
                   <span className="inline-flex flex-wrap items-center gap-x-1.5">
                     <span className="font-mono">{order.order_number ?? emptyValueLabel}</span>
