@@ -377,6 +377,9 @@
     },
     "from": "Du",
     "to": "Au",
+    "datePlaceholder": "JJ/MM/AAAA",
+    "invalidDate": "Saisissez une date valide au format JJ/MM/AAAA.",
+    "invalidRange": "La date de début doit être antérieure ou égale à la date de fin.",
     "apply": "Appliquer",
     "rangeSeparator": "–"
   },

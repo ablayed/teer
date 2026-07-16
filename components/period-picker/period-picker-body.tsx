@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import type { ActivePeriod, PeriodPreset } from '@/lib/periods/date-range';
+import { frenchDateInputToIso, isoDateToFrenchDateInput } from '@/lib/periods/french-date-input';
 import { cn } from '@/lib/utils';
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -28,16 +29,22 @@ export function PeriodPickerBody({
 }: PeriodPickerBodyProps) {
   const t = useTranslations('periodPicker');
   const [showCustom, setShowCustom] = useState(active === 'custom');
-  const [draftFrom, setDraftFrom] = useState(from ?? '');
-  const [draftTo, setDraftTo] = useState(to ?? '');
+  const [draftFrom, setDraftFrom] = useState(isoDateToFrenchDateInput(from));
+  const [draftTo, setDraftTo] = useState(isoDateToFrenchDateInput(to));
 
-  const canApply = Boolean(draftFrom && draftTo && draftFrom <= draftTo);
+  const draftFromIso = frenchDateInputToIso(draftFrom);
+  const draftToIso = frenchDateInputToIso(draftTo);
+  const fromError = draftFrom && !draftFromIso ? t('invalidDate') : null;
+  const toError = draftTo && !draftToIso ? t('invalidDate') : null;
+  const rangeError =
+    draftFromIso && draftToIso && draftFromIso > draftToIso ? t('invalidRange') : null;
+  const canApply = Boolean(draftFromIso && draftToIso && !rangeError);
 
   const handleApplyCustom = () => {
-    if (!canApply) {
+    if (!draftFromIso || !draftToIso || rangeError) {
       return;
     }
-    onSelectCustom(draftFrom, draftTo);
+    onSelectCustom(draftFromIso, draftToIso);
     onApplied();
   };
 
@@ -88,24 +95,60 @@ export function PeriodPickerBody({
             <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-muted">
               {t('from')}
               <input
+                aria-describedby={
+                  fromError
+                    ? 'period-picker-from-error'
+                    : rangeError
+                      ? 'period-picker-range-error'
+                      : undefined
+                }
+                aria-invalid={Boolean(fromError || rangeError)}
                 className="h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-                max={draftTo || undefined}
                 onChange={(event) => setDraftFrom(event.target.value)}
-                type="date"
+                inputMode="numeric"
+                placeholder={t('datePlaceholder')}
+                type="text"
                 value={draftFrom}
               />
+              {fromError ? (
+                <span
+                  className="text-xs font-normal text-destructive"
+                  id="period-picker-from-error"
+                >
+                  {fromError}
+                </span>
+              ) : null}
             </label>
             <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-muted">
               {t('to')}
               <input
+                aria-describedby={
+                  toError
+                    ? 'period-picker-to-error'
+                    : rangeError
+                      ? 'period-picker-range-error'
+                      : undefined
+                }
+                aria-invalid={Boolean(toError || rangeError)}
                 className="h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
-                min={draftFrom || undefined}
                 onChange={(event) => setDraftTo(event.target.value)}
-                type="date"
+                inputMode="numeric"
+                placeholder={t('datePlaceholder')}
+                type="text"
                 value={draftTo}
               />
+              {toError ? (
+                <span className="text-xs font-normal text-destructive" id="period-picker-to-error">
+                  {toError}
+                </span>
+              ) : null}
             </label>
           </div>
+          {rangeError ? (
+            <p className="mt-2 text-xs text-destructive" id="period-picker-range-error">
+              {rangeError}
+            </p>
+          ) : null}
           <Button
             className="mt-3 w-full"
             disabled={!canApply}
