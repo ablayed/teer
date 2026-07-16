@@ -323,7 +323,11 @@
       "collectedTotal": "Cash total collecté",
       "deliveryFees": "Frais de livraison",
       "remitted": "Remis",
-      "cashOnHand": "Cash chez le livreur",
+      "cashOnHand": "Cash chez le livreur (live)",
+      "cashOnHandLiveDefinition": "Ce solde ne se remet jamais à zéro tout seul : c'est tout le cash que le livreur a encore en main depuis le début, moins ce qu'il a déjà remis. Il peut différer de la carte « (période) » ci-contre, qui ne regarde que la fenêtre de dates choisie — ce n'est pas une erreur.",
+      "cashOnHandPeriod": "Cash chez le livreur (période)",
+      "cashOnHandPeriodDefinition": "Cette carte est un instantané de l'activité sur la période choisie : le cash collecté sur ces commandes, moins les frais et les versements enregistrés sur cette même fenêtre. Un versement peut couvrir des commandes hors de cette période, donc ce chiffre peut différer du solde « (live) » ci-contre — ce n'est pas une erreur.",
+      "resetPeriod": "Réinitialiser",
       "remittanceTitle": "Enregistrer un versement (remise globale)",
       "discrepancy": "Écart non résolu : {amount}"
     },

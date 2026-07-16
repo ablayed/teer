@@ -303,7 +303,7 @@ export async function getDriverAvailableStock(driverId: string): Promise<DriverA
 }
 
 export type DriverCashData =
-  | { ok: true; consolidation: DriverCashConsolidation }
+  | { ok: true; consolidation: DriverCashConsolidation; periodRemittedMinor: number }
   | { ok: false; message: string };
 
 const emptyDriverCashConsolidation: DriverCashConsolidation = {
@@ -349,7 +349,7 @@ export async function getDriverCashConsolidation(
   if (!row) {
     // Livreur sans commande assignée : mêmes zéros que l'ancien code (tableau
     // d'orders vide → deriveDriverCashConsolidation renvoyait déjà des zéros).
-    return { ok: true, consolidation: emptyDriverCashConsolidation };
+    return { ok: true, consolidation: emptyDriverCashConsolidation, periodRemittedMinor: 0 };
   }
 
   return {
@@ -365,6 +365,10 @@ export async function getDriverCashConsolidation(
       discrepancyMinor: row.cash_on_hand_minor,
       cashOnHandMinor: row.cash_on_hand_minor,
     },
+    // Carte "(période)" (migration 0100) : versements enregistrés sur la fenêtre
+    // sélectionnée (settlement_allocation.created_at), distinct de remittedMinor
+    // (all-time). Zéro si aucune période n'est fournie (garde SQL sur p_period_from/to).
+    periodRemittedMinor: row.period_remitted_minor,
   };
 }
 
