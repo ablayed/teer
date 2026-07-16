@@ -7,6 +7,7 @@ type OrderSearchShape = {
     phone: string | null;
   } | null;
   items_summary: Json | null;
+  order_number: string | null;
 };
 
 function digitsOnly(value: string): string {
@@ -43,6 +44,10 @@ export function normalizeOrderSearch(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? '';
 }
 
+export function normalizeOrderNumberSearch(value: string | null | undefined): string {
+  return value?.replace(/[#\s]/g, '').toLowerCase() ?? '';
+}
+
 export function matchesOrderSearch(order: OrderSearchShape, rawSearch: string): boolean {
   const search = normalizeOrderSearch(rawSearch);
 
@@ -52,10 +57,16 @@ export function matchesOrderSearch(order: OrderSearchShape, rawSearch: string): 
 
   const searchDigits = digitsOnly(rawSearch);
   const normalizedSearchPhone = normalizeSenegalPhone(rawSearch);
+  const normalizedSearchOrderNumber = normalizeOrderNumberSearch(rawSearch);
+  const normalizedOrderNumber = normalizeOrderNumberSearch(order.order_number);
   const customerName = order.customer?.full_name?.toLowerCase() ?? '';
   const productText = orderItemsSearchText(order.items_summary);
 
-  if (customerName.includes(search) || productText.includes(search)) {
+  if (
+    customerName.includes(search) ||
+    productText.includes(search) ||
+    (normalizedSearchOrderNumber !== '' && normalizedOrderNumber === normalizedSearchOrderNumber)
+  ) {
     return true;
   }
 

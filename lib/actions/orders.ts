@@ -1290,7 +1290,20 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
     });
     const totalAmount = parsedInput.lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
 
-    const orderNumber = `MAN-${Date.now()}`;
+    // Migration 0101 : réservation atomique et strictement scopée au marchand.
+    const { data: orderNumber, error: reservationError } = await supabase.rpc(
+      'reserve_manual_order_number',
+      { p_merchant_account_id: merchantAccountId },
+    );
+
+    if (reservationError || !orderNumber) {
+      return {
+        ok: false as const,
+        errorCode: 'update_failed' as const,
+        message: "Le numéro de la commande manuelle n'a pas pu être réservé.",
+      };
+    }
+
     const { data: order, error: insertError } = await supabase
       .from('orders')
       .insert({

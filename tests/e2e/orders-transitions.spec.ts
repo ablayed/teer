@@ -170,6 +170,7 @@ async function createOrderWithCustomer(
   {
     customerName = 'Client Phase Zero',
     merchantAccountId,
+    orderNumber,
     phone = '+221771234567',
     productName = 'Produit E2E',
     status,
@@ -177,6 +178,7 @@ async function createOrderWithCustomer(
   }: {
     customerName?: string;
     merchantAccountId: string;
+    orderNumber?: string;
     phone?: string;
     productName?: string;
     status: string;
@@ -216,7 +218,7 @@ async function createOrderWithCustomer(
     .insert({
       merchant_account_id: merchantAccountId,
       customer_id: customer.id,
-      order_number: `E2E-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      order_number: orderNumber ?? `E2E-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       total_amount: totalAmount,
       currency: 'XOF',
       cod_status: status,
@@ -1576,13 +1578,19 @@ test('un agent est refuse sur la page finances cote serveur', async ({ page }) =
   }
 });
 
-test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', async ({
+test('Commandes : creer une commande manuelle la fait apparaitre dans Toutes et A appeler', async ({
   page,
 }) => {
   const fixture = await createOwnerFixture('manual-list');
   // Products must exist before page load (server-rendered props).
   await createProductInCatalog(fixture.admin, fixture.merchantAccountId, 'Sac Dakar E2E');
   await createShop(fixture.admin, fixture.merchantAccountId, `manual-${Date.now()}.myshopify.com`);
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Ancienne commande manuelle',
+    orderNumber: 'MAN-1784224328347',
+  });
 
   try {
     await signIn(page, fixture.email, '/commandes');
@@ -1602,6 +1610,38 @@ test('creer une commande manuelle la fait apparaitre dans Toutes et A appeler', 
 
     await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Awa Manuelle')).toBeVisible({ timeout: 15_000 });
+
+    // Le numéro est une méta masquée par la container query sur un rail iPhone étroit.
+    // La non-régression demandée est la persistance du numéro historique, vérifiée ici
+    // directement plutôt que par une visibilité qui varie selon le viewport.
+    const { data: legacyManualOrder, error: legacyManualOrderError } = await fixture.admin
+      .from('orders')
+      .select('order_number')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('order_number', 'MAN-1784224328347')
+      .single();
+
+    expect(legacyManualOrderError).toBeNull();
+    expect(legacyManualOrder?.order_number).toBe('MAN-1784224328347');
+
+    const { data: createdManualCustomer, error: createdManualCustomerError } = await fixture.admin
+      .from('customer')
+      .select('id')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('full_name', 'Awa Manuelle')
+      .single();
+
+    expect(createdManualCustomerError).toBeNull();
+
+    const { data: createdManualOrder, error: createdManualOrderError } = await fixture.admin
+      .from('orders')
+      .select('order_number')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('customer_id', createdManualCustomer?.id ?? '')
+      .single();
+
+    expect(createdManualOrderError).toBeNull();
+    expect(createdManualOrder?.order_number).toMatch(/^M-\d+$/);
 
     await savedViewButton(page, 'À appeler').click();
     await expect(page).toHaveURL(/\/commandes\?(.*&)?vue=a-appeler(&.*)?$/);
@@ -1797,6 +1837,39 @@ test('la recherche retrouve une commande par nom puis par telephone', async ({ p
 
     await searchInput.fill('771998877');
     await expect(page.getByText('Recherche Nadia')).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('Commandes : la recherche par order-number retrouve Shopify avec ou sans # sans confondre le format manuel', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('search-order-number');
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Recherche numero Shopify',
+    orderNumber: '#2803',
+  });
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'A_APPELER',
+    customerName: 'Recherche numero manuel',
+    orderNumber: 'M-2803',
+  });
+
+  try {
+    await signIn(page, fixture.email, '/commandes');
+
+    const searchInput = page.getByPlaceholder('Nom, telephone ou produit');
+    await searchInput.fill('# 2803');
+    await expect(page.getByText('Recherche numero Shopify')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Recherche numero manuel')).toHaveCount(0);
+
+    await searchInput.fill('2803');
+    await expect(page.getByText('Recherche numero Shopify')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Recherche numero manuel')).toHaveCount(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
