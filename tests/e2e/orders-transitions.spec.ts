@@ -1610,7 +1610,19 @@ test('Commandes : creer une commande manuelle la fait apparaitre dans Toutes et 
 
     await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Awa Manuelle')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('MAN-1784224328347')).toBeVisible();
+
+    // Le numéro est une méta masquée par la container query sur un rail iPhone étroit.
+    // La non-régression demandée est la persistance du numéro historique, vérifiée ici
+    // directement plutôt que par une visibilité qui varie selon le viewport.
+    const { data: legacyManualOrder, error: legacyManualOrderError } = await fixture.admin
+      .from('orders')
+      .select('order_number')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('order_number', 'MAN-1784224328347')
+      .single();
+
+    expect(legacyManualOrderError).toBeNull();
+    expect(legacyManualOrder?.order_number).toBe('MAN-1784224328347');
 
     const { data: createdManualCustomer, error: createdManualCustomerError } = await fixture.admin
       .from('customer')
