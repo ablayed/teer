@@ -792,6 +792,18 @@ test('cash livreur: cliquer un preset du PeriodPicker recharge réellement les c
       /20\s*000\s*F\s*CFA/,
       { timeout: 15_000 },
     );
+
+    await trigger.click();
+    await page.getByRole('button', { name: presets.custom, exact: true }).click();
+    await page
+      .getByRole('textbox', { name: messages.periodPicker.from, exact: true })
+      .fill('30/06/2026');
+    await page
+      .getByRole('textbox', { name: messages.periodPicker.to, exact: true })
+      .fill('15/07/2026');
+    await page.getByRole('button', { name: messages.periodPicker.apply, exact: true }).click();
+    await expect(page).toHaveURL(/from=2026-06-30/);
+    await expect(page).toHaveURL(/to=2026-07-15/);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

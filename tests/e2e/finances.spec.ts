@@ -509,6 +509,64 @@ test('filtres période : les presets du PeriodPicker rechargent réellement', as
   }
 });
 
+test('filtres période : une plage personnalisée DD/MM/YYYY est transmise en ISO', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('custom-period');
+  try {
+    await signIn(page, fixture.email, '/finances');
+    await expect(
+      page.getByText(messages.finance.kpis.caUnified, { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /Choisir la période/ }).click();
+    await page
+      .getByRole('button', { name: messages.periodPicker.presets.custom, exact: true })
+      .click();
+    await page.getByRole('textbox', { name: /^Du(?:\s|$)/ }).fill('30/06/2026');
+    await page.getByRole('textbox', { name: /^Au(?:\s|$)/ }).fill('15/07/2026');
+    await page.getByRole('button', { name: messages.periodPicker.apply, exact: true }).click();
+
+    await expect(page).toHaveURL(/from=2026-06-30/);
+    await expect(page).toHaveURL(/to=2026-07-15/);
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test('filtres période : une date personnalisée invalide bloque l’application', async ({ page }) => {
+  const fixture = await createOwnerFixture('invalid-custom-period');
+  try {
+    await signIn(page, fixture.email, '/finances');
+    await expect(
+      page.getByText(messages.finance.kpis.caUnified, { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /Choisir la période/ }).click();
+    await page
+      .getByRole('button', { name: messages.periodPicker.presets.custom, exact: true })
+      .click();
+    await page.getByRole('textbox', { name: /^Du(?:\s|$)/ }).fill('31/02/2026');
+    await page.getByRole('textbox', { name: /^Au(?:\s|$)/ }).fill('15/07/2026');
+
+    await expect(page.getByText(messages.periodPicker.invalidDate, { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: messages.periodPicker.apply, exact: true }),
+    ).toBeDisabled();
+    await expect(page).not.toHaveURL(/from=/);
+    await expect(page).not.toHaveURL(/to=/);
+
+    await page.getByRole('textbox', { name: /^Du(?:\s|$)/ }).fill('15/07/2026');
+    await page.getByRole('textbox', { name: /^Au(?:\s|$)/ }).fill('30/06/2026');
+    await expect(page.getByText(messages.periodPicker.invalidRange, { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: messages.periodPicker.apply, exact: true }),
+    ).toBeDisabled();
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
 test('vue globale sans « Versements par livreur », présent sur l’onglet livreurs', async ({
   page,
 }) => {
