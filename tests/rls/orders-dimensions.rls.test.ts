@@ -49,6 +49,7 @@ type SearchVisibleOrder = {
   } | null;
   id: string;
   items_summary: Database['public']['Tables']['orders']['Row']['items_summary'];
+  order_number: string | null;
 };
 
 function adminClient(): AdminClient {
@@ -451,6 +452,61 @@ describe('orders dimensions RLS', () => {
   );
 
   it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'isole la reservation des numeros manuels et interdit l acces direct au compteur',
+    async () => {
+      const fixtureA = await createOwnerFixture('manual-counter-a');
+      const fixtureB = await createOwnerFixture('manual-counter-b');
+      const ownerA = await signIn(fixtureA.email);
+      const ownerB = await signIn(fixtureB.email);
+      const firstA = await ownerA.rpc('reserve_manual_order_number', {
+        p_merchant_account_id: fixtureA.merchantAccountId,
+      });
+      expect(firstA.error).toBeNull();
+      expect(firstA.data).toBe('M-1');
+
+      // Un owner du marchand A ne peut ni lire ni avancer le compteur du marchand B.
+      const forbiddenB = await ownerA.rpc('reserve_manual_order_number', {
+        p_merchant_account_id: fixtureB.merchantAccountId,
+      });
+      expect(forbiddenB.data).toBeNull();
+      expect(forbiddenB.error).not.toBeNull();
+
+      // B démarre donc à M-1 : l'appel refusé de A n'a eu aucun effet de bord cross-tenant.
+      const firstB = await ownerB.rpc('reserve_manual_order_number', {
+        p_merchant_account_id: fixtureB.merchantAccountId,
+      });
+      expect(firstB.error).toBeNull();
+      expect(firstB.data).toBe('M-1');
+
+      const secondA = await ownerA.rpc('reserve_manual_order_number', {
+        p_merchant_account_id: fixtureA.merchantAccountId,
+      });
+      expect(secondA.error).toBeNull();
+      expect(secondA.data).toBe('M-2');
+
+      const concurrentReservations = await Promise.all([
+        ownerA.rpc('reserve_manual_order_number', {
+          p_merchant_account_id: fixtureA.merchantAccountId,
+        }),
+        ownerA.rpc('reserve_manual_order_number', {
+          p_merchant_account_id: fixtureA.merchantAccountId,
+        }),
+      ]);
+      expect(concurrentReservations.map((result) => result.error)).toEqual([null, null]);
+      expect(concurrentReservations.map((result) => result.data).sort()).toEqual(['M-3', 'M-4']);
+
+      const directRead = await ownerA.from('manual_order_number_counter').select('*');
+      const directWrite = await ownerA.from('manual_order_number_counter').insert({
+        merchant_account_id: fixtureA.merchantAccountId,
+        next_value: 999,
+      });
+
+      expect(directRead.error).not.toBeNull();
+      expect(directWrite.error).not.toBeNull();
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
     'garde la recherche isolee par tenant sur le dataset visible',
     async () => {
       const fixtureA = await createOwnerFixture('search-a');
@@ -504,7 +560,7 @@ describe('orders dimensions RLS', () => {
       const outsider = await signIn(fixtureB.email);
       const { data, error } = await outsider
         .from('orders')
-        .select('id, items_summary, customer:customer_id(full_name, phone)');
+        .select('id, order_number, items_summary, customer:customer_id(full_name, phone)');
 
       expect(error).toBeNull();
 

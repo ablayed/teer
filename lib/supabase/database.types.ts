@@ -762,6 +762,29 @@ export type Database = {
         };
         Relationships: [];
       };
+      manual_order_number_counter: {
+        Row: {
+          merchant_account_id: string;
+          next_value: number;
+        };
+        Insert: {
+          merchant_account_id: string;
+          next_value?: number;
+        };
+        Update: {
+          merchant_account_id?: string;
+          next_value?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'manual_order_number_counter_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: true;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       merchant_account: {
         Row: {
           country_code: string;
@@ -2261,6 +2284,10 @@ export type Database = {
           p_note: string;
         };
         Returns: Json;
+      };
+      reserve_manual_order_number: {
+        Args: { p_merchant_account_id: string };
+        Returns: string;
       };
       sn_phone_e164: { Args: { p_value: string }; Returns: string };
       transition_order:
