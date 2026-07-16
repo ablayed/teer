@@ -6,7 +6,11 @@ import {
   matchesOrderSavedView,
   orderSavedViews,
 } from '@/lib/domain/order-saved-views';
-import { filterOrdersBySearch, orderItemsSearchText } from '@/lib/orders/search';
+import {
+  filterOrdersBySearch,
+  normalizeOrderNumberSearch,
+  orderItemsSearchText,
+} from '@/lib/orders/search';
 import { describe, expect, it } from 'vitest';
 
 type OrderFixture = {
@@ -28,6 +32,7 @@ type OrderFixture = {
     | 'unassigned';
   items_summary: Array<{ title: string }> | null;
   next_contact_at: string | null;
+  order_number: string | null;
   order_state: 'cancelled' | 'completed' | 'open' | 'returned';
   scheduled_for: string | null;
 };
@@ -45,6 +50,7 @@ function orderFixture(overrides: Partial<OrderFixture> = {}): OrderFixture {
     delivery_state: 'unassigned',
     items_summary: [{ title: 'Sac cuir' }],
     next_contact_at: null,
+    order_number: '#2921',
     order_state: 'open',
     scheduled_for: null,
     ...overrides,
@@ -236,6 +242,24 @@ describe('order search helpers', () => {
     expect(filterOrdersBySearch(orders, '771234567')).toHaveLength(1);
     expect(filterOrdersBySearch(orders, 'montre')).toHaveLength(1);
     expect(filterOrdersBySearch(orders, 'introuvable')).toHaveLength(0);
+  });
+
+  it.each(['2921', '#2921', '# 2921', '#  2921  '])(
+    'normalise le numero Shopify %s et retrouve la commande',
+    (search) => {
+      const shopifyOrder = orderFixture({ order_number: '#2921' });
+
+      expect(normalizeOrderNumberSearch(search)).toBe('2921');
+      expect(filterOrdersBySearch([shopifyOrder], search)).toEqual([shopifyOrder]);
+    },
+  );
+
+  it('ne confond pas un numero manuel M-2921 et un numero Shopify #2921', () => {
+    const shopifyOrder = orderFixture({ order_number: '#2921' });
+    const manualOrder = orderFixture({ order_number: 'M-2921' });
+
+    expect(filterOrdersBySearch([shopifyOrder, manualOrder], '2921')).toEqual([shopifyOrder]);
+    expect(filterOrdersBySearch([shopifyOrder, manualOrder], 'm-2921')).toEqual([manualOrder]);
   });
 });
 
