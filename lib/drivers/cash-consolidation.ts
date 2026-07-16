@@ -85,6 +85,25 @@ export function deriveDriverCashConsolidation({
   };
 }
 
+// Carte "Cash chez le livreur (période)" (/livreurs, migration 0100) — même
+// clamp que deriveDriverCashConsolidation.cashOnHandMinor, mais appliqué aux
+// 3 grandeurs déjà bornées à la période choisie (period_collected_minor,
+// period_collected_delivery_fees_minor, period_remitted_minor). Distincte du
+// solde live (all-time, jamais périodable — cf. commentaire getDriverCashConsolidation) :
+// cette carte est un instantané d'activité sur la fenêtre choisie, pas une
+// réconciliation de solde, donc peut légitimement diverger du live.
+export function derivePeriodCashOnHand({
+  periodCollectedMinor,
+  periodCollectedDeliveryFeesMinor,
+  periodRemittedMinor,
+}: {
+  periodCollectedMinor: number;
+  periodCollectedDeliveryFeesMinor: number;
+  periodRemittedMinor: number;
+}): number {
+  return Math.max(periodCollectedMinor - periodCollectedDeliveryFeesMinor - periodRemittedMinor, 0);
+}
+
 export type DriverConsolidationInput = ConsolidationOrder & {
   driverId: string;
   orderId: string;

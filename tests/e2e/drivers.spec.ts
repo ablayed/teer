@@ -194,6 +194,21 @@ async function cleanupUsers(admin: AdminClient, userIds: string[]) {
   await Promise.all(userIds.map((userId) => admin.auth.admin.deleteUser(userId)));
 }
 
+// Le trigger de signup (sans invitation pending) crée toujours une org + owner
+// pour le nouvel utilisateur — on la supprime avant de le rattacher comme agent
+// au tenant de test, même pattern que tableau-period.spec.ts:addAgent.
+async function addAgent(admin: AdminClient, merchantAccountId: string) {
+  const email = e2eEmail('agent');
+  const userId = await createConfirmedUser(admin, email);
+  await admin.from('merchant_account').delete().eq('owner_user_id', userId);
+  await admin.from('merchant_member').insert({
+    merchant_account_id: merchantAccountId,
+    role: 'agent',
+    user_id: userId,
+  });
+  return { email, userId };
+}
+
 async function signIn(page: Page, email: string, redirectTo: string) {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
@@ -964,5 +979,71 @@ test('stock disponible: un engagement (order_assignment_commit) au-delà de la m
     expect(net).toBe(-3);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('cash livreur (période): diverge légitimement du live sur une commande hors fenêtre, puis le reset recharge la carte', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cash-period-card');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Ibrahima Période');
+  // Collectée il y a 10 jours : dans la fenêtre 30j (défaut), hors de "Aujourd'hui".
+  const tenDaysAgo = new Date();
+  tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+  await seedDeliveredCashOrder(
+    fixture.admin,
+    fixture.merchantAccountId,
+    driverId,
+    18000,
+    tenDaysAgo.toISOString(),
+  );
+
+  try {
+    // period=today exclut la commande de la carte "(période)" (period_collected_minor=0),
+    // mais la carte "(live)" reste all-time (18 000, inchangée par la période) — les deux
+    // cartes DOIVENT diverger ici, ce n'est pas une régression (cf. DefinitionToggle mutuel).
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=today`);
+    await expect(page.getByRole('heading', { name: 'Ibrahima Période' })).toBeVisible();
+
+    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
+      /18\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+    await expect(statValue(page, messages.livreurs.cash.cashOnHandPeriod)).toContainText(
+      /^0\s*F\s*CFA$/,
+      { timeout: 15_000 },
+    );
+
+    // Bouton reset (purement client, usePeriodParams().selectPreset) : ramène l'URL au
+    // preset par défaut (30j) — même mécanisme que recliquer ce preset dans le
+    // PeriodPicker déjà monté sur la page. La commande de 10 jours entre alors dans la
+    // fenêtre : la carte "(période)" rejoint la carte "(live)" (plus aucune commande hors
+    // fenêtre pour ce jeu de données), preuve que le reset recharge réellement la carte.
+    await page
+      .getByRole('button', { name: messages.livreurs.cash.resetPeriod, exact: true })
+      .click();
+    await expect(page).toHaveURL(/period=30j/);
+    await expect(statValue(page, messages.livreurs.cash.cashOnHandPeriod)).toContainText(
+      /18\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('agent: /livreurs reste inaccessible (RBAC owner/manager inchangé)', async ({ page }) => {
+  const fixture = await createOwnerFixture('cash-period-rbac');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Coumba RBAC');
+  const agent = await addAgent(fixture.admin, fixture.merchantAccountId);
+
+  try {
+    await signIn(page, agent.email, `/livreurs?driver=${driverId}&period=30j`);
+    await expect(
+      page.getByText('Cette section est réservée au propriétaire et aux managers.'),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Coumba RBAC')).toHaveCount(0);
+  } finally {
+    await cleanupUsers(fixture.admin, [...fixture.userIds, agent.userId]);
   }
 });

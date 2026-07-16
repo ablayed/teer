@@ -3,8 +3,57 @@ import {
   type DriverConsolidationInput,
   consolidateCashByDriver,
   deriveDriverCashConsolidation,
+  derivePeriodCashOnHand,
 } from '@/lib/drivers/cash-consolidation';
 import { describe, expect, it } from 'vitest';
+
+// Carte "Cash chez le livreur (période)" (/livreurs, migration 0100) — même clamp que
+// deriveDriverCashConsolidation.cashOnHandMinor, appliqué aux 3 grandeurs bornées à la
+// période (period_collected_minor/period_collected_delivery_fees_minor/period_remitted_minor).
+describe('derivePeriodCashOnHand', () => {
+  it('collecté − frais − remis, tous bornés à la période', () => {
+    expect(
+      derivePeriodCashOnHand({
+        periodCollectedMinor: 8000,
+        periodCollectedDeliveryFeesMinor: 500,
+        periodRemittedMinor: 3000,
+      }),
+    ).toBe(4500);
+  });
+
+  it('clampé à 0 si remis (période) > collecté (période) − frais (période)', () => {
+    expect(
+      derivePeriodCashOnHand({
+        periodCollectedMinor: 1000,
+        periodCollectedDeliveryFeesMinor: 100,
+        periodRemittedMinor: 5000,
+      }),
+    ).toBe(0);
+  });
+
+  it('zéro collecte sur la période, un versement couvrant des commandes hors période → clampé à 0, pas négatif', () => {
+    // Cas typique de divergence légitime avec la carte live : un versement peut couvrir des
+    // commandes collectées AVANT la période sélectionnée (period_remitted_minor > 0 sans
+    // period_collected_minor correspondant).
+    expect(
+      derivePeriodCashOnHand({
+        periodCollectedMinor: 0,
+        periodCollectedDeliveryFeesMinor: 0,
+        periodRemittedMinor: 2000,
+      }),
+    ).toBe(0);
+  });
+
+  it('aucune activité sur la période → 0', () => {
+    expect(
+      derivePeriodCashOnHand({
+        periodCollectedMinor: 0,
+        periodCollectedDeliveryFeesMinor: 0,
+        periodRemittedMinor: 0,
+      }),
+    ).toBe(0);
+  });
+});
 
 // Réplique PURE de l'arithmétique SQL finance_kpis.outstanding_by_driver (migration 0065) :
 // collecté (cash_state ∈ {collected,remitted,discrepancy}) − frais − remis (Σ allocations du

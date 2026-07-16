@@ -1915,6 +1915,7 @@ export type Database = {
           period_collected_delivery_fees_minor: number;
           period_collected_minor: number;
           period_delivery_fees_minor: number;
+          period_remitted_minor: number;
           remitted_minor: number;
         }[];
       };
