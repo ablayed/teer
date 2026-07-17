@@ -25,6 +25,11 @@ const dashboardShopFilterSchema = z
     shopId: z.string().uuid().nullable().optional(),
   })
   .optional();
+const dashboardPeriodSchema = z.object({
+  from: z.string().datetime(),
+  shopId: z.string().uuid().nullable().optional(),
+  to: z.string().datetime(),
+});
 
 export type DashboardSparklinePoint = {
   date: string;
@@ -272,20 +277,26 @@ function toDashboardDeliveriesByProduct(
 }
 
 async function fetchTopProductsForUser({
+  from,
   merchantAccountId,
   shopId,
   supabase,
+  to,
 }: {
+  from: Date;
   merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
+  to: Date;
 }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
   // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version parsait items_summary côté JS
   // sur les 500 commandes les plus récentes (.limit(500)) → top faux. La RPC agrège
   // items_summary sur tout le périmètre (mêmes 4 statuts) et renvoie le top 5 déjà trié.
   const { data, error } = await supabase.rpc('get_dashboard_top_products', {
+    p_from: from.toISOString(),
     p_merchant_id: merchantAccountId,
     ...(shopId ? { p_shop_id: shopId } : {}),
+    p_to: to.toISOString(),
   });
 
   if (error) {
@@ -305,21 +316,27 @@ async function fetchTopProductsForUser({
 }
 
 async function fetchShopPerformanceForUser({
+  from,
   merchantAccountId,
   shopId,
   supabase,
+  to,
 }: {
+  from: Date;
   merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
+  to: Date;
 }): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
   // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version rapatriait orders(shop_id,
   // total_amount) sans .limit → tronqué à 1000 (max_rows) → « 1000 commandes » pile. La RPC
-  // compte/somme par boutique côté SQL (all-time, sans filtre de statut), LEFT JOIN shop →
+  // compte/somme par boutique côté SQL sur la période sélectionnée (sans filtre de statut), LEFT JOIN shop →
   // boutiques à 0 incluses, ordre installed_at asc (sémantique identique, chiffres exacts).
   const { data, error } = await supabase.rpc('get_dashboard_shop_performance', {
+    p_from: from.toISOString(),
     p_merchant_id: merchantAccountId,
     ...(shopId ? { p_shop_id: shopId } : {}),
+    p_to: to.toISOString(),
   });
 
   if (error) {
@@ -339,21 +356,27 @@ async function fetchShopPerformanceForUser({
 }
 
 async function fetchCodBreakdownForUser({
+  from,
   merchantAccountId,
   shopId,
   supabase,
+  to,
 }: {
+  from: Date;
   merchantAccountId: string;
   shopId?: string | null;
   supabase: SupabaseServerClient;
+  to: Date;
 }): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
   // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version rapatriait orders(cod_status)
   // sans .limit → tronqué à 1000 (max_rows) → « À appeler 1000 / reste 0 ». La RPC compte
-  // par cod_status côté SQL (all-time). On remappe sur orderStatuses (8 catégories, 0 par
+  // par cod_status côté SQL sur la période sélectionnée. On remappe sur orderStatuses (8 catégories, 0 par
   // défaut) → contrat UI inchangé.
   const { data, error } = await supabase.rpc('get_dashboard_cod_breakdown', {
+    p_from: from.toISOString(),
     p_merchant_id: merchantAccountId,
     ...(shopId ? { p_shop_id: shopId } : {}),
+    p_to: to.toISOString(),
   });
 
   if (error) {
@@ -676,9 +699,15 @@ export const getRevenue30dAction = authActionClient
     return fetchRevenue30dForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
   });
 
-export async function getTopProducts(
-  shopId?: string | null,
-): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
+export async function getTopProducts({
+  from,
+  shopId,
+  to,
+}: {
+  from: Date;
+  shopId?: string | null;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
   const ctx = await getCachedDashboardContext();
 
   if (!ctx.ok) {
@@ -686,28 +715,45 @@ export async function getTopProducts(
   }
 
   return fetchTopProductsForUser({
+    from,
     merchantAccountId: ctx.merchantAccountId,
     shopId,
     supabase: ctx.supabase,
+    to,
   });
 }
 
 export const getTopProductsAction = authActionClient
   .metadata({ actionName: 'dashboard.get_top_products', section: 'dashboard' })
-  .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> => {
-    const supabase = asTypedSupabaseClient(ctx.supabase);
-    const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+  .inputSchema(dashboardPeriodSchema)
+  .action(
+    async ({ ctx, parsedInput }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> => {
+      const supabase = asTypedSupabaseClient(ctx.supabase);
+      const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
 
-    if (!merchant.ok) {
-      return { ok: false, errorCode: 'not_found' };
-    }
+      if (!merchant.ok) {
+        return { ok: false, errorCode: 'not_found' };
+      }
 
-    return fetchTopProductsForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
-  });
+      return fetchTopProductsForUser({
+        from: new Date(parsedInput.from),
+        merchantAccountId: merchant.merchantAccountId,
+        shopId: parsedInput.shopId,
+        supabase,
+        to: new Date(parsedInput.to),
+      });
+    },
+  );
 
-export async function getShopPerformance(
-  shopId?: string | null,
-): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
+export async function getShopPerformance({
+  from,
+  shopId,
+  to,
+}: {
+  from: Date;
+  shopId?: string | null;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> {
   const ctx = await getCachedDashboardContext();
 
   if (!ctx.ok) {
@@ -715,28 +761,48 @@ export async function getShopPerformance(
   }
 
   return fetchShopPerformanceForUser({
+    from,
     merchantAccountId: ctx.merchantAccountId,
     shopId,
     supabase: ctx.supabase,
+    to,
   });
 }
 
 export const getShopPerformanceAction = authActionClient
   .metadata({ actionName: 'dashboard.get_shop_performance', section: 'dashboard' })
-  .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> => {
-    const supabase = asTypedSupabaseClient(ctx.supabase);
-    const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+  .inputSchema(dashboardPeriodSchema)
+  .action(
+    async ({
+      ctx,
+      parsedInput,
+    }): Promise<DashboardReadonlyActionResult<DashboardShopPerformance[]>> => {
+      const supabase = asTypedSupabaseClient(ctx.supabase);
+      const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
 
-    if (!merchant.ok) {
-      return { ok: false, errorCode: 'not_found' };
-    }
+      if (!merchant.ok) {
+        return { ok: false, errorCode: 'not_found' };
+      }
 
-    return fetchShopPerformanceForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
-  });
+      return fetchShopPerformanceForUser({
+        from: new Date(parsedInput.from),
+        merchantAccountId: merchant.merchantAccountId,
+        shopId: parsedInput.shopId,
+        supabase,
+        to: new Date(parsedInput.to),
+      });
+    },
+  );
 
-export async function getCodBreakdown(
-  shopId?: string | null,
-): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
+export async function getCodBreakdown({
+  from,
+  shopId,
+  to,
+}: {
+  from: Date;
+  shopId?: string | null;
+  to: Date;
+}): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> {
   const ctx = await getCachedDashboardContext();
 
   if (!ctx.ok) {
@@ -744,24 +810,38 @@ export async function getCodBreakdown(
   }
 
   return fetchCodBreakdownForUser({
+    from,
     merchantAccountId: ctx.merchantAccountId,
     shopId,
     supabase: ctx.supabase,
+    to,
   });
 }
 
 export const getCodBreakdownAction = authActionClient
   .metadata({ actionName: 'dashboard.get_cod_breakdown', section: 'dashboard' })
-  .action(async ({ ctx }): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> => {
-    const supabase = asTypedSupabaseClient(ctx.supabase);
-    const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
+  .inputSchema(dashboardPeriodSchema)
+  .action(
+    async ({
+      ctx,
+      parsedInput,
+    }): Promise<DashboardReadonlyActionResult<DashboardCodBreakdownItem[]>> => {
+      const supabase = asTypedSupabaseClient(ctx.supabase);
+      const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
 
-    if (!merchant.ok) {
-      return { ok: false, errorCode: 'not_found' };
-    }
+      if (!merchant.ok) {
+        return { ok: false, errorCode: 'not_found' };
+      }
 
-    return fetchCodBreakdownForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
-  });
+      return fetchCodBreakdownForUser({
+        from: new Date(parsedInput.from),
+        merchantAccountId: merchant.merchantAccountId,
+        shopId: parsedInput.shopId,
+        supabase,
+        to: new Date(parsedInput.to),
+      });
+    },
+  );
 
 export async function getRecentActivity(
   shopId?: string | null,

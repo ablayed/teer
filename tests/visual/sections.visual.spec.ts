@@ -197,6 +197,27 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
     }
   });
 
+  test('tableau-top-products-spacing', async ({ page }) => {
+    const fixture = await createVisualFixture('tableau-top-products-spacing');
+
+    try {
+      await seedDashboardCashByProductVisualData(fixture, 3);
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      await expect(page.getByTestId('tableau-top-products-card')).toBeVisible({ timeout: 15_000 });
+      await waitForFonts(page);
+
+      await expect(page.getByTestId('tableau-top-products-card')).toHaveScreenshot(
+        'tableau-top-products-spacing.png',
+      );
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
   test('finances', async ({ page }) => {
     const fixture = await createVisualFixture('finances');
 

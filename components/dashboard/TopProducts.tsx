@@ -20,7 +20,7 @@ export function TopProducts({
   unitsLabel,
 }: TopProductsProps) {
   return (
-    <Card className="rounded-lg" padding="lg">
+    <Card className="rounded-lg" data-testid="tableau-top-products-card" padding="lg">
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold text-text">{title}</h2>
         {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
@@ -30,7 +30,7 @@ export function TopProducts({
           {emptyLabel}
         </p>
       ) : (
-        <ol className="space-y-3">
+        <ol className="space-y-4">
           {items.map((item, index) => (
             <li className="grid grid-cols-[auto_1fr] gap-3" key={item.name}>
               <span className="flex size-7 items-center justify-center rounded-sm bg-canvas font-mono text-xs font-semibold text-muted tabular-nums">
