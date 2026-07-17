@@ -4,7 +4,7 @@ import { KPICard } from '@/components/kpi/KPICard';
 import { type DashboardKpi, getDashboardKpiAction } from '@/lib/actions/dashboard';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 type DashboardKpiRefreshProps = {
   initialKpi: DashboardKpi | null;
@@ -53,12 +53,11 @@ export function DashboardKpiRefresh({
     }
   }, [kpiAction.result.data]);
 
-  const sparkline = useMemo(() => kpi?.sparkline_7j ?? [], [kpi]);
   const unavailableLabel = t('kpi.unavailable');
 
   return (
     <section className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="col-span-2 xl:col-span-1">
           <KPICard
             deltaAbs={kpi?.a_appeler_delta}
@@ -73,19 +72,6 @@ export function DashboardKpiRefresh({
             value={kpi?.a_appeler_count ?? 0}
           />
         </div>
-        <KPICard
-          currency={kpi?.currency}
-          definition={t('kpi.ca_collecte_def')}
-          definitionFormula={t('kpi.ca_collecte_formula')}
-          error={hasError}
-          errorLabel={unavailableLabel}
-          label={t('kpi.ca_collecte')}
-          loading={isLoading}
-          sparkline={sparkline ?? []}
-          tone="success"
-          unit="currency"
-          value={kpi?.ca_collecte_7j ?? 0}
-        />
         <KPICard
           currency={kpi?.currency}
           definition={t('kpi.ca_attente_def')}

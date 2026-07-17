@@ -2,14 +2,13 @@ import messages from '@/messages/fr.json';
 import { describe, expect, it } from 'vitest';
 
 describe('textes Tableau CA', () => {
-  it('distingue la définition CA collecté 7 j de CA encaissé période', () => {
-    const ca7j = messages.tableau.kpi.ca_collecte_def;
-    const caPeriod = messages.tableau.blocks.operationsEssentials.cashCollected.definition;
+  it("ne réintroduit pas de carte KPI 'CA collecté (7 j)' redondante avec CA encaissé (période)", () => {
+    expect('ca_collecte' in messages.tableau.kpi).toBe(false);
+    expect('ca_collecte_def' in messages.tableau.kpi).toBe(false);
+    expect('ca_collecte_formula' in messages.tableau.kpi).toBe(false);
 
-    expect(ca7j).not.toBe(caPeriod);
-    expect(ca7j).toContain('7 derniers jours');
+    const caPeriod = messages.tableau.blocks.operationsEssentials.cashCollected.definition;
     expect(caPeriod).toContain('période sélectionnée');
-    expect(ca7j).toContain('réellement encaissé');
-    expect(caPeriod).toContain('réellement encaissé');
+    expect(caPeriod).not.toContain('CA collecté (7 j)');
   });
 });

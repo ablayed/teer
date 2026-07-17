@@ -394,9 +394,6 @@
     },
     "kpi": {
       "a_appeler": "À appeler (7 j)",
-      "ca_collecte": "CA collecté (7 j)",
-      "ca_collecte_def": "Le chiffre d'affaires réellement encaissé sur les 7 derniers jours. Il peut être différent du CA encaissé plus bas si la période sélectionnée n'est pas de 7 jours.",
-      "ca_collecte_formula": "CA collecté = somme des montants des commandes encaissées (7 derniers jours)",
       "ca_attente": "CA à livrer",
       "ca_attente_def": "Le chiffre d'affaires attendu : l'argent des commandes confirmées pas encore livrées.",
       "ca_attente_formula": "CA à livrer = somme des montants des commandes en attente de livraison",
@@ -464,7 +461,7 @@
         "periodHint": "Période sélectionnée",
         "cashCollected": {
           "label": "CA encaissé (période)",
-          "definition": "Le chiffre d'affaires réellement encaissé sur la période sélectionnée. Il mesure la même chose que « CA collecté (7 j) », mais avec la période choisie dans le filtre."
+          "definition": "Le chiffre d'affaires réellement encaissé sur la période sélectionnée (filtrable via le sélecteur de période)."
         },
         "deliveries": {
           "label": "Livraisons réussies"
@@ -482,8 +479,7 @@
         "definition": "Le taux de livraison global montre la part de toutes les commandes créées qui sont maintenant livrées. Il diffère du « Taux de livraison réussie », qui regarde seulement les commandes déjà livrées ou refusées pour mesurer la qualité des commandes résolues.",
         "deliveryCount": "{delivered} livrées sur {total} commandes",
         "empty": "Aucune commande créée sur cette période.",
-        "error": "Impossible de charger le taux de livraison.",
-        "maturityNotice": "Les {days, plural, =0 {cohortes récentes sont en maturation} one {cohortes des {days} dernier jour en maturation, en pointillé} other {cohortes des {days} derniers jours en maturation, en pointillé}}."
+        "error": "Impossible de charger le taux de livraison."
       },
       "periodMetrics": {
         "sectionLabel": "CA encaissé et livraisons sur la période",

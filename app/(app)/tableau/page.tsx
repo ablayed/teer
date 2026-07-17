@@ -162,7 +162,6 @@ function isDeliveriesEmpty(data: { totalDeliveries: number }): boolean {
 }
 
 type DeliveryRateTrendData = {
-  cohortMaturityDays: number;
   trends: LossAnalyticsTrendPoint[];
 };
 
@@ -240,17 +239,16 @@ async function OperationsEssentialsSection({
   if (!ctx.ok) return null;
   if (ctx.role !== 'owner' && ctx.role !== 'manager') return null;
 
-  const now = new Date();
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  from.setDate(from.getDate() - 29);
-
   const [tOps, tPeriodMetrics, cashTotal, lossResult, cashCollectedResult, deliveriesResult] =
     await Promise.all([
       getTranslations('tableau.blocks.operationsEssentials'),
       getTranslations('tableau.blocks.periodMetrics'),
       getDriversCashOnHandTotal(shopId),
-      getLossAnalyticsAction({ from: from.toISOString(), shopId, to: now.toISOString() }),
+      getLossAnalyticsAction({
+        from: period.from.toISOString(),
+        shopId,
+        to: period.to.toISOString(),
+      }),
       getDashboardCashCollectedTotal({ from: period.from, shopId, to: period.to }),
       getDashboardDeliveriesByProduct({ from: period.from, shopId, to: period.to }),
     ]);
@@ -360,7 +358,6 @@ async function DeliveryRateTrendSection({
   const result: ReadonlyMetricResult<DeliveryRateTrendData> = lossData?.ok
     ? {
         data: {
-          cohortMaturityDays: lossData.analytics.cohortMaturityDays,
           trends: lossData.analytics.trends,
         },
         ok: true,
@@ -375,9 +372,6 @@ async function DeliveryRateTrendSection({
       definition={t('definition')}
       emptyLabel={t('empty')}
       errorLabel={t('error')}
-      maturityNotice={t('maturityNotice', {
-        days: state.status === 'ready' ? state.data.cohortMaturityDays : 0,
-      })}
       state={state}
       title={t('title')}
     />
