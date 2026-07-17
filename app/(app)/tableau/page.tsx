@@ -434,10 +434,16 @@ async function RevenueSection({ shopId }: { shopId: string | null }) {
   );
 }
 
-async function TopProductsSection({ shopId }: { shopId: string | null }) {
+async function TopProductsSection({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
   const [t, topProductsResult, kpiResult] = await Promise.all([
     getTranslations('tableau'),
-    getTopProducts(shopId),
+    getTopProducts({ from: period.from, shopId, to: period.to }),
     loadDashboardKpi(shopId),
   ]);
   const topProducts = topProductsResult.ok ? topProductsResult.data : [];
@@ -455,10 +461,16 @@ async function TopProductsSection({ shopId }: { shopId: string | null }) {
   );
 }
 
-async function ShopPerformanceSection({ shopId }: { shopId: string | null }) {
+async function ShopPerformanceSection({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
   const [t, shopPerformanceResult, kpiResult] = await Promise.all([
     getTranslations('tableau'),
-    getShopPerformance(shopId),
+    getShopPerformance({ from: period.from, shopId, to: period.to }),
     loadDashboardKpi(shopId),
   ]);
   const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
@@ -478,10 +490,16 @@ async function ShopPerformanceSection({ shopId }: { shopId: string | null }) {
   );
 }
 
-async function CodBreakdownSection({ shopId }: { shopId: string | null }) {
+async function CodBreakdownSection({
+  period,
+  shopId,
+}: {
+  period: TableauPeriodRange;
+  shopId: string | null;
+}) {
   const [t, codBreakdownResult] = await Promise.all([
     getTranslations('tableau'),
-    getCodBreakdown(shopId),
+    getCodBreakdown({ from: period.from, shopId, to: period.to }),
   ]);
   const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
 
@@ -747,14 +765,17 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
               <CashByProductPeriodMetric period={period} shopId={selectedShopId} />
             </Suspense>
           ) : null}
-          <Suspense fallback={<CardListSkeleton rows={5} />} key={`top-${shopKey}`}>
-            <TopProductsSection shopId={selectedShopId} />
+          <Suspense fallback={<CardListSkeleton rows={5} />} key={`top-${shopKey}-${periodKey}`}>
+            <TopProductsSection period={period} shopId={selectedShopId} />
           </Suspense>
-          <Suspense fallback={<CardListSkeleton rows={5} />} key={`shopperf-${shopKey}`}>
-            <ShopPerformanceSection shopId={selectedShopId} />
+          <Suspense
+            fallback={<CardListSkeleton rows={5} />}
+            key={`shopperf-${shopKey}-${periodKey}`}
+          >
+            <ShopPerformanceSection period={period} shopId={selectedShopId} />
           </Suspense>
-          <Suspense fallback={<CodBreakdownSkeleton />} key={`cod-${shopKey}`}>
-            <CodBreakdownSection shopId={selectedShopId} />
+          <Suspense fallback={<CodBreakdownSkeleton />} key={`cod-${shopKey}-${periodKey}`}>
+            <CodBreakdownSection period={period} shopId={selectedShopId} />
           </Suspense>
         </section>
 

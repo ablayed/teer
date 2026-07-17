@@ -156,6 +156,7 @@ async function seedDeliveredCollectedOrder(
   admin: AdminClient,
   {
     assignedDriverId,
+    createdAt,
     merchantAccountId,
     productId,
     shopId,
@@ -163,6 +164,7 @@ async function seedDeliveredCollectedOrder(
     totalAmount,
   }: {
     assignedDriverId?: string | null;
+    createdAt?: string;
     merchantAccountId: string;
     productId: string;
     shopId: string;
@@ -170,7 +172,7 @@ async function seedDeliveredCollectedOrder(
     totalAmount: number;
   },
 ) {
-  const timestamp = new Date().toISOString();
+  const timestamp = createdAt ?? new Date().toISOString();
   const { data: order, error: orderError } = await admin
     .from('orders')
     .insert({
@@ -189,6 +191,8 @@ async function seedDeliveredCollectedOrder(
       delivery_state: 'delivered',
       cash_state: 'collected',
       cash_collected_at: timestamp,
+      created_at: timestamp,
+      created_at_shopify: timestamp,
       payment_channel_at_delivery: 'ESPECES',
     })
     .select('id')
@@ -283,6 +287,58 @@ test.describe('Tableau période + CA/livraisons', () => {
     await expect(deliveriesCard).toContainText('1');
     await expect(page.getByText('CA par produit', { exact: true })).toHaveCount(1);
     await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible();
+  });
+
+  test('owner : les trois blocs historiques suivent le preset de période', async ({ page }) => {
+    const { admin, email, merchantAccountId } = await createOwnerFixture('remaining-period');
+    const shopId = await createShop(admin, merchantAccountId, `period-${Date.now()}.myshopify.com`);
+    const recentProduct = await createProduct(admin, merchantAccountId, 'Produit période récent');
+    const olderProduct = await createProduct(admin, merchantAccountId, 'Produit période ancien');
+    const olderTimestamp = new Date(Date.now() - 45 * 24 * 60 * 60 * 1_000).toISOString();
+
+    await seedDeliveredCollectedOrder(admin, {
+      merchantAccountId,
+      productId: recentProduct,
+      shopId,
+      title: 'Produit période récent',
+      totalAmount: 9_000,
+    });
+    await seedDeliveredCollectedOrder(admin, {
+      createdAt: olderTimestamp,
+      merchantAccountId,
+      productId: olderProduct,
+      shopId,
+      title: 'Produit période ancien',
+      totalAmount: 7_000,
+    });
+
+    await signIn(page, email, '/tableau?period=90j');
+
+    const topProducts = page.locator('section.rounded-lg').filter({
+      has: page.getByRole('heading', { name: 'Produits les plus vendus', exact: true }),
+    });
+    const shopPerformance = page.locator('section.rounded-lg').filter({
+      has: page.getByRole('heading', { name: 'Performance par boutique', exact: true }),
+    });
+    const codBreakdown = page.locator('section.rounded-lg').filter({
+      has: page.getByRole('heading', { name: 'Répartition COD', exact: true }),
+    });
+
+    await expect(topProducts).toContainText('Produit période récent');
+    await expect(topProducts).toContainText('Produit période ancien');
+    await expect(shopPerformance).toContainText('2 commandes');
+    await expect(codBreakdown).toContainText('2');
+
+    await page.getByRole('button', { name: /Choisir la période/ }).click();
+    await page
+      .getByRole('button', { name: messages.periodPicker.presets.today, exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/tableau\?(?=[^#]*period=today)/);
+
+    await expect(topProducts).toContainText('Produit période récent');
+    await expect(topProducts).not.toContainText('Produit période ancien');
+    await expect(shopPerformance).toContainText('1 commande');
+    await expect(codBreakdown).toContainText('1');
   });
 
   test('manager : voit les métriques financières et opérationnelles du bloc', async ({ page }) => {

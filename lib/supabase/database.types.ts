@@ -1884,7 +1884,12 @@ export type Database = {
         }[];
       };
       get_dashboard_cod_breakdown: {
-        Args: { p_merchant_id: string; p_shop_id?: string };
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
         Returns: Json;
       };
       get_dashboard_deliveries_by_product: {
@@ -1910,11 +1915,21 @@ export type Database = {
         Returns: Json;
       };
       get_dashboard_shop_performance: {
-        Args: { p_merchant_id: string; p_shop_id?: string };
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
         Returns: Json;
       };
       get_dashboard_top_products: {
-        Args: { p_merchant_id: string; p_shop_id?: string };
+        Args: {
+          p_from: string;
+          p_merchant_id: string;
+          p_shop_id?: string;
+          p_to: string;
+        };
         Returns: Json;
       };
       get_driver_cash_consolidation: {
