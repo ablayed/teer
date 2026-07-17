@@ -1,11 +1,6 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: '14.5';
-  };
   graphql_public: {
     Tables: {
       [_ in never]: never;
@@ -1028,6 +1023,7 @@ export type Database = {
           call_state: string | null;
           cancel_reason: string | null;
           cancel_reasons: string[] | null;
+          cart_locally_modified_at: string | null;
           cash_collectable_minor: number | null;
           cash_collected_at: string | null;
           cash_state: string | null;
@@ -1068,6 +1064,7 @@ export type Database = {
           call_state?: string | null;
           cancel_reason?: string | null;
           cancel_reasons?: string[] | null;
+          cart_locally_modified_at?: string | null;
           cash_collectable_minor?: number | null;
           cash_collected_at?: string | null;
           cash_state?: string | null;
@@ -1108,6 +1105,7 @@ export type Database = {
           call_state?: string | null;
           cancel_reason?: string | null;
           cancel_reasons?: string[] | null;
+          cart_locally_modified_at?: string | null;
           cash_collectable_minor?: number | null;
           cash_collected_at?: string | null;
           cash_state?: string | null;
@@ -2284,6 +2282,10 @@ export type Database = {
           p_note: string;
         };
         Returns: Json;
+      };
+      replace_order_cart: {
+        Args: { p_lines: Json; p_order_id: string };
+        Returns: undefined;
       };
       reserve_manual_order_number: {
         Args: { p_merchant_account_id: string };
