@@ -31,20 +31,13 @@ const dashboardPeriodSchema = z.object({
   to: z.string().datetime(),
 });
 
-export type DashboardSparklinePoint = {
-  date: string;
-  value: number;
-};
-
 export type DashboardKpi = {
   a_appeler_count: number;
   a_appeler_delta: number;
-  ca_collecte_7j: number;
   ca_en_attente: number;
   currency: string | null;
   taux_confirmation: number;
   taux_livraison: number;
-  sparkline_7j: DashboardSparklinePoint[];
 };
 
 export type DashboardKpiActionResult =
@@ -145,43 +138,6 @@ function numberFromRpc(value: unknown): number {
   return Number.isFinite(numericValue) ? numericValue : 0;
 }
 
-function parseJsonString(value: string): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return [];
-  }
-}
-
-function parseSparkline(value: unknown): DashboardSparklinePoint[] {
-  const parsedValue = typeof value === 'string' ? parseJsonString(value) : value;
-  const rawItems = Array.isArray(parsedValue)
-    ? parsedValue
-    : isRecord(parsedValue)
-      ? Object.values(parsedValue)
-      : [];
-
-  return rawItems
-    .map((item) => {
-      if (!isRecord(item)) {
-        return null;
-      }
-
-      const date = item.date;
-      const sparklineValue = numberFromRpc(item.value);
-
-      if (typeof date !== 'string') {
-        return null;
-      }
-
-      return {
-        date,
-        value: sparklineValue,
-      };
-    })
-    .filter((item): item is DashboardSparklinePoint => item !== null);
-}
-
 function firstRpcRow(value: unknown): DashboardKpiRpcPayload | null {
   const row = Array.isArray(value) ? value[0] : value;
 
@@ -192,12 +148,10 @@ function toDashboardKpi(row: DashboardKpiRpcPayload, currency: string | null): D
   return {
     a_appeler_count: numberFromRpc(row.a_appeler_count),
     a_appeler_delta: numberFromRpc(row.a_appeler_delta),
-    ca_collecte_7j: numberFromRpc(row.ca_collecte_7j),
     ca_en_attente: numberFromRpc(row.ca_en_attente),
     currency,
     taux_confirmation: numberFromRpc(row.taux_confirmation),
     taux_livraison: numberFromRpc(row.taux_livraison),
-    sparkline_7j: parseSparkline(row.sparkline_7j),
   };
 }
 

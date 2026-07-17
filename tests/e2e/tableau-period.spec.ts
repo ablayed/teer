@@ -578,6 +578,13 @@ test.describe('Tableau période + CA/livraisons', () => {
     await expect(returnRateCard).toContainText(/0\s?%/);
   });
 
+  test('la carte KPI "CA collecté (7 j)" n\'apparaît plus sur le Tableau', async ({ page }) => {
+    const { email } = await createOwnerFixture('kpi-ca-collecte-removed');
+    await signIn(page, email, '/tableau');
+
+    await expect(page.getByText('CA collecté (7 j)', { exact: true })).toHaveCount(0);
+  });
+
   test('owner : Cash total chez les livreurs reste inchangé au changement de période', async ({
     page,
   }) => {
