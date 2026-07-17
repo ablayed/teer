@@ -1715,6 +1715,62 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
   }
 });
 
+test('panier : owner remplace les lignes avant assignation et le total est recalculé', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cart-edit');
+  const productA = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Produit panier initial',
+  );
+  const productB = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Produit panier remplacé',
+  );
+  const orderId = await createOrderWithMatchedLine({
+    admin: fixture.admin,
+    customerName: 'Client panier',
+    merchantAccountId: fixture.merchantAccountId,
+    productId: productA,
+    productTitle: 'Produit panier initial',
+    qty: 1,
+    status: 'A_APPELER',
+  });
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await page.getByRole('button', { name: 'Modifier panier' }).click();
+    const productSelect = page.getByLabel('Produit sélectionné');
+    await expect(productSelect).toBeVisible();
+    await page.getByRole('textbox', { name: 'Produit' }).fill('remplacé');
+    await productSelect.selectOption(productB);
+    await typeControlledNumber(page.getByLabel('Quantité'), '3');
+    await typeControlledNumber(page.getByLabel('Prix unitaire'), '2500');
+    await expect(page.getByText('7 500', { exact: false })).toBeVisible();
+    await page.getByRole('button', { name: 'Enregistrer le panier' }).click();
+    await expect(page.getByText('Panier mis à jour.')).toBeVisible({ timeout: 15_000 });
+
+    const { data: order } = await fixture.admin
+      .from('orders')
+      .select('total_amount, cash_collectable_minor, cart_locally_modified_at')
+      .eq('id', orderId)
+      .single();
+    expect(order).toMatchObject({ total_amount: 7500, cash_collectable_minor: 7500 });
+    expect(order?.cart_locally_modified_at).toBeTruthy();
+
+    const { data: lines } = await fixture.admin
+      .from('order_line')
+      .select('product_id, qty, match_status')
+      .eq('order_id', orderId);
+    expect(lines).toEqual([{ product_id: productB, qty: 3, match_status: 'matched' }]);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('la transition inline confirmee deplace la commande vers la bonne vue et survit au refresh', async ({
   page,
 }) => {

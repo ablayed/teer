@@ -216,3 +216,11 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 ---
 *This file supersedes any implicit understanding. If in doubt between this file and an ad-hoc instruction, ask the developer.*
+
+## Dette — synchronisation Shopify et lignes de commande
+
+Lors d’une mise à jour Shopify d’une commande déjà importée, le synchroniseur met à jour
+`items_summary` et `total_amount` mais ne reconstruit pas `order_line`. La protection
+`cart_locally_modified_at` (migration 0102) évite uniquement l’écrasement de ces deux champs
+après une édition locale ; elle ne corrige pas cette divergence historique pour les paniers
+non modifiés localement.

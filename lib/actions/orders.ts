@@ -27,6 +27,7 @@ import {
   callOutcomes,
   logCallInputSchema,
 } from '@/lib/orders/call-log-validation';
+import { canEditOrderCart } from '@/lib/orders/cart-editing';
 import { filterOrdersBySearch, legacySearchLookbackIso } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
@@ -1635,6 +1636,124 @@ export const updateOrderAmountsAction = requireRole('owner', 'manager')
 // Phase 11.1 — lecture des détails/montants d'une commande pour le popup
 // d'assignation (owner/manager). Sert le popup ouvert depuis la LISTE où
 // OrderListItem ne porte pas delivery_fee_minor. RLS-scopé (client serveur).
+type CartEditorProduct = { id: string; isActive: boolean; sku: string | null; title: string };
+
+function parseCartSummary(value: Json | null): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  const lines: Array<Record<string, unknown>> = [];
+  for (const item of value) {
+    if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+      lines.push(item as Record<string, unknown>);
+    }
+  }
+  return lines;
+}
+
+export const getOrderCartEditorDataAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'orders.cart_editor_data', section: 'orders' })
+  .inputSchema(z.object({ orderId: z.string().uuid() }))
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, merchant_account_id, delivery_state, cash_state, items_summary')
+      .eq('id', parsedInput.orderId)
+      .maybeSingle();
+    if (orderError) return { ok: false as const, errorCode: 'load_failed' as const };
+    if (!order) return { ok: false as const, errorCode: 'order_not_found' as const };
+    if (!canEditOrderCart({ cashState: order.cash_state, deliveryState: order.delivery_state })) {
+      return { ok: false as const, errorCode: 'cart_edit_not_allowed' as const };
+    }
+    const [linesResult, productsResult] = await Promise.all([
+      supabase
+        .from('order_line')
+        .select('product_id, qty, raw_title, raw_sku')
+        .eq('order_id', order.id)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('product')
+        .select('id, title, sku, is_active')
+        .eq('merchant_account_id', order.merchant_account_id)
+        .order('title', { ascending: true }),
+    ]);
+    if (linesResult.error || productsResult.error)
+      return { ok: false as const, errorCode: 'load_failed' as const };
+    const products: CartEditorProduct[] = (productsResult.data ?? []).map((product) => ({
+      id: product.id,
+      isActive: product.is_active,
+      sku: product.sku,
+      title: product.title,
+    }));
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const summary = parseCartSummary(order.items_summary);
+    const lines = (linesResult.data ?? []).map((line, index) => {
+      const selected = line.product_id ? (productById.get(line.product_id) ?? null) : null;
+      const source =
+        summary.find(
+          (item) =>
+            (line.product_id !== null && item.product_id === line.product_id) ||
+            (line.raw_sku !== null && item.sku === line.raw_sku),
+        ) ?? summary[index];
+      const price =
+        typeof source?.price === 'number' && Number.isFinite(source.price) ? source.price : null;
+      return {
+        productId: selected?.isActive ? selected.id : null,
+        productLabel: selected?.title ?? line.raw_title,
+        quantity: line.qty,
+        unitPrice: price,
+        unresolvedReason: !line.product_id
+          ? 'Cette ligne n’est pas résolue. Sélectionnez un produit du catalogue.'
+          : !selected
+            ? 'Le produit associé n’existe plus. Sélectionnez un produit actif.'
+            : !selected.isActive
+              ? 'Le produit associé est désactivé. Sélectionnez un produit actif.'
+              : null,
+      };
+    });
+    return { ok: true as const, lines, products: products.filter((product) => product.isActive) };
+  });
+
+export const replaceOrderCartAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'orders.replace_cart', section: 'orders' })
+  .inputSchema(
+    z.object({
+      orderId: z.string().uuid(),
+      lines: z
+        .array(
+          z.object({
+            productId: z.string().uuid(),
+            quantity: z.number().int().min(1).max(999),
+            unitPrice: z.number().min(0).max(Number.MAX_SAFE_INTEGER),
+          }),
+        )
+        .min(1)
+        .max(20),
+    }),
+  )
+  .action(async ({ parsedInput, ctx }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const { error } = await supabase.rpc('replace_order_cart', {
+      p_order_id: parsedInput.orderId,
+      p_lines: parsedInput.lines.map((line) => ({
+        product_id: line.productId,
+        quantity: line.quantity,
+        unit_price: line.unitPrice,
+      })),
+    });
+    if (error) {
+      if (error.message === 'order_not_found')
+        return { ok: false as const, errorCode: 'order_not_found' as const };
+      if (error.message.includes('cart_edit_not_allowed'))
+        return { ok: false as const, errorCode: 'cart_edit_not_allowed' as const };
+      if (error.message === 'cart_product_not_found')
+        return { ok: false as const, errorCode: 'cart_product_not_found' as const };
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+    revalidateOrderPaths(parsedInput.orderId);
+    revalidatePath('/tableau');
+    return { ok: true as const, orderId: parsedInput.orderId };
+  });
+
 type AssignmentLine = { title: string; quantity: number; price: number };
 
 function parseAssignmentLines(value: Json | null): AssignmentLine[] {

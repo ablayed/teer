@@ -4,6 +4,7 @@ import { CodStatusBadge, codDisplayLabel } from '@/components/orders/cod-status-
 import { DeliveryAddressForm } from '@/components/orders/delivery-address-form';
 import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import { OrderAmountsEditor } from '@/components/orders/order-amounts-editor';
+import { OrderCartEditor } from '@/components/orders/order-cart-editor';
 import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-ma
 import { cancelReasonLabels, isCancelReason } from '@/lib/domain/order-transition-actions';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
+import { canEditOrderCart } from '@/lib/orders/cart-editing';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
@@ -140,6 +142,9 @@ export function OrderDetailPanel({
     items: parseItemsSummaryForWhatsapp(order.items_summary),
   };
   const isCancelled = order.order_state === 'cancelled';
+  const canEditCart =
+    canEditAmounts &&
+    canEditOrderCart({ cashState: order.cash_state, deliveryState: order.delivery_state });
   // Lot B : raisons d'annulation multiples (libellés FR), fallback legacy.
   const cancelReasonsDisplay = (order.cancel_reasons ?? [])
     .map((reason) => (isCancelReason(reason) ? cancelReasonLabels[reason] : reason.trim()))
@@ -272,6 +277,8 @@ export function OrderDetailPanel({
             <p className="text-sm text-muted">Aucun article renseigne.</p>
           )}
         </section>
+
+        {canEditCart ? <OrderCartEditor currency={order.currency} orderId={order.id} /> : null}
 
         {canEditAmounts ? (
           <OrderAmountsEditor

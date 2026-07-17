@@ -2,6 +2,7 @@ import {
   type ExistingCustomerForMerge,
   type ShopifyOrderNode,
   buildCustomerMergePatch,
+  buildShopifyOrderUpdate,
   extractShopifyId,
   isStaleShopifyUpdate,
   mapShopifyCustomer,
@@ -259,6 +260,46 @@ describe('mapShopifyOrder', () => {
     expect(order.shopify_fulfillment_status).toBe('FULFILLED');
     expect(order.shopify_cancelled_at).toBe('2026-06-01T11:00:00Z');
     expect(order.shopify_updated_at).toBe('2026-06-01T10:00:00Z');
+  });
+});
+
+describe('buildShopifyOrderUpdate', () => {
+  it('simule un webhook après édition locale : préserve le panier et met à jour le reste', () => {
+    const patch = buildShopifyOrderUpdate(
+      mapShopifyOrder(
+        makeOrder({
+          displayFinancialStatus: 'PAID',
+          displayFulfillmentStatus: 'FULFILLED',
+          shippingAddress: {
+            address1: 'Nouvelle adresse',
+            address2: null,
+            city: 'Thies',
+            province: 'Thies',
+            country: 'Senegal',
+            zip: null,
+            phone: '+221771234567',
+            name: 'Awa Diop',
+          },
+        }),
+        { merchantAccountId: 'm', shopId: 's', customerId: 'customer-after-webhook' },
+      ),
+      '2026-07-01T10:00:00Z',
+    );
+    expect(patch).not.toHaveProperty('items_summary');
+    expect(patch).not.toHaveProperty('total_amount');
+    expect(patch.financial_status).toBe('PAID');
+    expect(patch.fulfillment_status).toBe('FULFILLED');
+    expect(patch.customer_id).toBe('customer-after-webhook');
+    expect(patch.shipping_address).toMatchObject({ address1: 'Nouvelle adresse', city: 'Thies' });
+  });
+
+  it('synchronise le panier sans modification locale', () => {
+    const patch = buildShopifyOrderUpdate(
+      mapShopifyOrder(makeOrder(), { merchantAccountId: 'm', shopId: 's', customerId: null }),
+      null,
+    );
+    expect(patch.total_amount).toBe(12500.5);
+    expect(patch.items_summary).toHaveLength(1);
   });
 });
 

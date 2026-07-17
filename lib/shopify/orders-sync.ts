@@ -176,6 +176,30 @@ type OrderShopifyUpdate = Pick<
   | 'updated_at'
 >;
 
+export function buildShopifyOrderUpdate(
+  orderData: OrderUpsert,
+  cartLocallyModifiedAt: string | null,
+): OrderShopifyUpdate {
+  const common = {
+    order_number: orderData.order_number,
+    currency: orderData.currency,
+    financial_status: orderData.financial_status,
+    fulfillment_status: orderData.fulfillment_status,
+    shopify_financial_status: orderData.shopify_financial_status,
+    shopify_fulfillment_status: orderData.shopify_fulfillment_status,
+    shopify_cancelled_at: orderData.shopify_cancelled_at,
+    shopify_updated_at: orderData.shopify_updated_at,
+    shipping_address: orderData.shipping_address,
+    customer_id: orderData.customer_id,
+    created_at_shopify: orderData.created_at_shopify,
+    updated_at: new Date().toISOString(),
+  } satisfies Omit<OrderShopifyUpdate, 'items_summary' | 'total_amount'>;
+
+  return cartLocallyModifiedAt
+    ? common
+    : { ...common, total_amount: orderData.total_amount, items_summary: orderData.items_summary };
+}
+
 type PersistShopifyOrderInput = {
   merchantAccountId: string;
   orderNode: ShopifyOrderNode;
@@ -512,7 +536,7 @@ export async function persistShopifyOrder({
 
     const { data: existingOrder, error: orderSelectError } = await supabaseServiceClient
       .from('orders')
-      .select('id, cod_status, shopify_updated_at')
+      .select('id, cod_status, shopify_updated_at, cart_locally_modified_at')
       .eq('merchant_account_id', merchantAccountId)
       .eq('shopify_order_id', shopifyOrderId)
       .maybeSingle();
@@ -529,22 +553,10 @@ export async function persistShopifyOrder({
 
       // JAMAIS les 4 dimensions (order_state/call_state/delivery_state/cash_state) : Shopify
       // n'écrase pas l'état opérationnel. On met à jour le contenu + le miroir de canal.
-      const orderUpdate: OrderShopifyUpdate = {
-        order_number: orderData.order_number,
-        total_amount: orderData.total_amount,
-        currency: orderData.currency,
-        financial_status: orderData.financial_status,
-        fulfillment_status: orderData.fulfillment_status,
-        shopify_financial_status: orderData.shopify_financial_status,
-        shopify_fulfillment_status: orderData.shopify_fulfillment_status,
-        shopify_cancelled_at: orderData.shopify_cancelled_at,
-        shopify_updated_at: orderData.shopify_updated_at,
-        items_summary: orderData.items_summary,
-        shipping_address: orderData.shipping_address,
-        customer_id: orderData.customer_id,
-        created_at_shopify: orderData.created_at_shopify,
-        updated_at: new Date().toISOString(),
-      };
+      const orderUpdate = buildShopifyOrderUpdate(
+        orderData,
+        existingOrder.cart_locally_modified_at,
+      );
       const { error: orderUpdateError } = await supabaseServiceClient
         .from('orders')
         .update(orderUpdate)
