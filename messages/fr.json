@@ -479,8 +479,7 @@
         "definition": "Le taux de livraison global montre la part de toutes les commandes créées qui sont maintenant livrées. Il diffère du « Taux de livraison réussie », qui regarde seulement les commandes déjà livrées ou refusées pour mesurer la qualité des commandes résolues.",
         "deliveryCount": "{delivered} livrées sur {total} commandes",
         "empty": "Aucune commande créée sur cette période.",
-        "error": "Impossible de charger le taux de livraison.",
-        "maturityNotice": "Les {days, plural, =0 {cohortes récentes sont en maturation} one {cohortes des {days} dernier jour en maturation, en pointillé} other {cohortes des {days} derniers jours en maturation, en pointillé}}."
+        "error": "Impossible de charger le taux de livraison."
       },
       "periodMetrics": {
         "sectionLabel": "CA encaissé et livraisons sur la période",

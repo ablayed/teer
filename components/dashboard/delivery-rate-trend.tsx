@@ -14,7 +14,6 @@ import {
 } from 'recharts';
 
 type DeliveryRateTrendData = {
-  cohortMaturityDays: number;
   trends: LossAnalyticsTrendPoint[];
 };
 
@@ -23,7 +22,6 @@ type DeliveryRateTrendProps = {
   definition: string;
   emptyLabel: string;
   errorLabel: string;
-  maturityNotice: string;
   state: MetricLoadState<DeliveryRateTrendData>;
   title: string;
 };
@@ -69,89 +67,83 @@ function DeliveryRateTooltip({
   );
 }
 
+// Les cohortes immatures ne sont pas tracées du tout : elles apparaissent
+// naturellement, en trait plein, une fois leur seuil de maturité dépassé.
+export function selectMatureCohortPoints(
+  trends: readonly LossAnalyticsTrendPoint[],
+): (LossAnalyticsTrendPoint & { matureRate: number })[] {
+  return trends
+    .filter((point) => point.isMature)
+    .map((point) => ({
+      ...point,
+      matureRate: point.cohortDeliveryRate,
+    }));
+}
+
 function TrendChart({
   data,
   deliveryCountLabel,
-  maturityNotice,
 }: {
   data: DeliveryRateTrendData;
   deliveryCountLabel: string;
-  maturityNotice: string;
 }) {
-  const chartData = data.trends.map((point) => ({
-    ...point,
-    immatureRate: point.isMature ? null : point.cohortDeliveryRate,
-    matureRate: point.isMature ? point.cohortDeliveryRate : null,
-  }));
+  const chartData = selectMatureCohortPoints(data.trends);
 
   return (
-    <>
-      <div className="h-[260px] w-full">
-        <ResponsiveContainer height="100%" width="100%">
-          <AreaChart data={chartData} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
-            <defs>
-              <linearGradient id="deliveryRateMature" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="var(--success)" stopOpacity={0.18} />
-                <stop offset="100%" stopColor="var(--success)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" vertical={false} />
-            <XAxis
-              axisLine={false}
-              dataKey="date"
-              minTickGap={24}
-              tick={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}
-              tickFormatter={formatDate}
-              tickLine={false}
-            />
-            <YAxis
-              axisLine={false}
-              domain={[0, 1]}
-              tick={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}
-              tickFormatter={formatPercent}
-              tickLine={false}
-              width={44}
-            />
-            <Tooltip
-              content={(props) => (
-                <DeliveryRateTooltip
-                  active={props.active}
-                  deliveryCountLabel={deliveryCountLabel}
-                  payload={
-                    props.payload as
-                      | readonly {
-                          payload?: { date: string; deliveredOrders: number; totalOrders: number };
-                        }[]
-                      | undefined
-                  }
-                />
-              )}
-              cursor={{ stroke: 'var(--border)', strokeDasharray: '4 4' }}
-            />
-            <Area
-              connectNulls={false}
-              dataKey="matureRate"
-              fill="url(#deliveryRateMature)"
-              isAnimationActive={false}
-              stroke="var(--success)"
-              strokeWidth={2}
-              type="monotone"
-            />
-            <Area
-              connectNulls={false}
-              dataKey="immatureRate"
-              fill="transparent"
-              isAnimationActive={false}
-              stroke="var(--muted)"
-              strokeDasharray="5 4"
-              strokeWidth={2}
-              type="monotone"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-      <p className="mt-3 text-xs text-muted">{maturityNotice}</p>
-    </>
+    <div className="h-[260px] w-full">
+      <ResponsiveContainer height="100%" width="100%">
+        <AreaChart data={chartData} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
+          <defs>
+            <linearGradient id="deliveryRateMature" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--success)" stopOpacity={0.18} />
+              <stop offset="100%" stopColor="var(--success)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" vertical={false} />
+          <XAxis
+            axisLine={false}
+            dataKey="date"
+            minTickGap={24}
+            tick={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}
+            tickFormatter={formatDate}
+            tickLine={false}
+          />
+          <YAxis
+            axisLine={false}
+            domain={[0, 1]}
+            tick={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}
+            tickFormatter={formatPercent}
+            tickLine={false}
+            width={44}
+          />
+          <Tooltip
+            content={(props) => (
+              <DeliveryRateTooltip
+                active={props.active}
+                deliveryCountLabel={deliveryCountLabel}
+                payload={
+                  props.payload as
+                    | readonly {
+                        payload?: { date: string; deliveredOrders: number; totalOrders: number };
+                      }[]
+                    | undefined
+                }
+              />
+            )}
+            cursor={{ stroke: 'var(--border)', strokeDasharray: '4 4' }}
+          />
+          <Area
+            connectNulls={false}
+            dataKey="matureRate"
+            fill="url(#deliveryRateMature)"
+            isAnimationActive={false}
+            stroke="var(--success)"
+            strokeWidth={2}
+            type="monotone"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -160,7 +152,6 @@ export function DeliveryRateTrend({
   definition,
   emptyLabel,
   errorLabel,
-  maturityNotice,
   state,
   title,
 }: DeliveryRateTrendProps) {
@@ -173,11 +164,7 @@ export function DeliveryRateTrend({
         <DefinitionToggle definition={definition} />
       </div>
       {state.status === 'ready' ? (
-        <TrendChart
-          data={state.data}
-          deliveryCountLabel={deliveryCountLabel}
-          maturityNotice={maturityNotice}
-        />
+        <TrendChart data={state.data} deliveryCountLabel={deliveryCountLabel} />
       ) : state.status === 'error' ? (
         <div className="flex min-h-[220px] items-center justify-center rounded-md border border-dashed border-danger/30 bg-danger-subtle px-4 text-center text-sm text-danger">
           {errorLabel}

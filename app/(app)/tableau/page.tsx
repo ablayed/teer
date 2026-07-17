@@ -162,7 +162,6 @@ function isDeliveriesEmpty(data: { totalDeliveries: number }): boolean {
 }
 
 type DeliveryRateTrendData = {
-  cohortMaturityDays: number;
   trends: LossAnalyticsTrendPoint[];
 };
 
@@ -359,7 +358,6 @@ async function DeliveryRateTrendSection({
   const result: ReadonlyMetricResult<DeliveryRateTrendData> = lossData?.ok
     ? {
         data: {
-          cohortMaturityDays: lossData.analytics.cohortMaturityDays,
           trends: lossData.analytics.trends,
         },
         ok: true,
@@ -374,9 +372,6 @@ async function DeliveryRateTrendSection({
       definition={t('definition')}
       emptyLabel={t('empty')}
       errorLabel={t('error')}
-      maturityNotice={t('maturityNotice', {
-        days: state.status === 'ready' ? state.data.cohortMaturityDays : 0,
-      })}
       state={state}
       title={t('title')}
     />
