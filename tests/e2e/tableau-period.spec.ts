@@ -210,6 +210,52 @@ async function seedDeliveredCollectedOrder(
   if (lineError) throw lineError;
 }
 
+async function seedOrderWithDimensions(
+  admin: AdminClient,
+  {
+    callState,
+    cashState,
+    createdAt,
+    deliveryState,
+    merchantAccountId,
+    orderState,
+    returnedAt,
+    shopId,
+    totalAmount = 5_000,
+  }: {
+    callState: string;
+    cashState: string;
+    createdAt?: string;
+    deliveryState: string;
+    merchantAccountId: string;
+    orderState: string;
+    returnedAt?: string;
+    shopId: string;
+    totalAmount?: number;
+  },
+) {
+  const timestamp = createdAt ?? new Date().toISOString();
+  const { error } = await admin.from('orders').insert({
+    merchant_account_id: merchantAccountId,
+    shop_id: shopId,
+    source: 'manual',
+    order_number: `TAB-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    total_amount: totalAmount,
+    cash_collectable_minor: totalAmount,
+    delivery_fee_minor: 0,
+    currency: 'XOF',
+    items_summary: [{ title: 'Article rates', quantity: 1, price: totalAmount }],
+    order_state: orderState,
+    call_state: callState,
+    delivery_state: deliveryState,
+    cash_state: cashState,
+    created_at: timestamp,
+    created_at_shopify: timestamp,
+    returned_at: returnedAt ?? null,
+  });
+  if (error) throw error;
+}
+
 async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
@@ -447,5 +493,128 @@ test.describe('Tableau période + CA/livraisons', () => {
     );
 
     await expect(cashCard).toContainText(/10.?000/);
+  });
+
+  test('owner : les 3 taux Essentiels opérations suivent le preset de période', async ({
+    page,
+  }) => {
+    const { admin, email, merchantAccountId } = await createOwnerFixture('rates-period');
+    const shopId = await createShop(admin, merchantAccountId, `rates-${Date.now()}.myshopify.com`);
+    const productId = await createProduct(admin, merchantAccountId, 'Produit rates');
+    const olderTimestamp = new Date(Date.now() - 45 * 24 * 60 * 60 * 1_000).toISOString();
+
+    // Commandes anciennes (hors "today", incluses en "90j") : 1 annulée, 1 retournée, 1 RTO.
+    await seedOrderWithDimensions(admin, {
+      callState: 'to_call',
+      cashState: 'not_due',
+      createdAt: olderTimestamp,
+      deliveryState: 'unassigned',
+      merchantAccountId,
+      orderState: 'cancelled',
+      shopId,
+    });
+    await seedOrderWithDimensions(admin, {
+      callState: 'validated',
+      cashState: 'discrepancy',
+      createdAt: olderTimestamp,
+      deliveryState: 'returned',
+      merchantAccountId,
+      orderState: 'returned',
+      returnedAt: olderTimestamp,
+      shopId,
+    });
+    await seedOrderWithDimensions(admin, {
+      callState: 'validated',
+      cashState: 'not_due',
+      createdAt: olderTimestamp,
+      deliveryState: 'failed',
+      merchantAccountId,
+      orderState: 'open',
+      shopId,
+    });
+
+    // Commande récente : livrée.
+    await seedDeliveredCollectedOrder(admin, {
+      merchantAccountId,
+      productId,
+      shopId,
+      title: 'Produit rates',
+      totalAmount: 5_000,
+    });
+
+    await signIn(page, email, '/tableau?period=90j');
+
+    const cancellationCard = page.locator('section.rounded-lg').filter({
+      has: page.getByText(messages.tableau.blocks.operationsEssentials.cancellationRate, {
+        exact: true,
+      }),
+    });
+    const deliveryRateCard = page.locator('section.rounded-lg').filter({
+      has: page.getByText(messages.tableau.blocks.operationsEssentials.deliveryRate, {
+        exact: true,
+      }),
+    });
+    const returnRateCard = page.locator('section.rounded-lg').filter({
+      has: page.getByText(messages.tableau.blocks.operationsEssentials.returnRate, {
+        exact: true,
+      }),
+    });
+
+    // 4 commandes sur 90j : 1 annulée (25 %), 1 livrée + 1 RTO (livraison 50 %), 1 livrée + 1
+    // retournée (retour 50 %).
+    await expect(cancellationCard).toContainText(/25\s?%/);
+    await expect(deliveryRateCard).toContainText(/50\s?%/);
+    await expect(returnRateCard).toContainText(/50\s?%/);
+
+    await page.getByRole('button', { name: /Choisir la période/ }).click();
+    await page
+      .getByRole('button', { name: messages.periodPicker.presets.today, exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/tableau\?(?=[^#]*period=today)/);
+
+    // En "today", seule la commande livrée récente reste dans la fenêtre.
+    await expect(cancellationCard).toContainText(/0\s?%/);
+    await expect(deliveryRateCard).toContainText(/100\s?%/);
+    await expect(returnRateCard).toContainText(/0\s?%/);
+  });
+
+  test('owner : Cash total chez les livreurs reste inchangé au changement de période', async ({
+    page,
+  }) => {
+    const { admin, email, merchantAccountId } = await createOwnerFixture('cash-period-stable');
+    const shopId = await createShop(
+      admin,
+      merchantAccountId,
+      `cashstable-${Date.now()}.myshopify.com`,
+    );
+    const driverId = await createDriver(admin, merchantAccountId, 'Stable');
+    const productId = await createProduct(admin, merchantAccountId, 'Produit cash stable');
+
+    await seedDeliveredCollectedOrder(admin, {
+      assignedDriverId: driverId,
+      merchantAccountId,
+      productId,
+      shopId,
+      title: 'Produit cash stable',
+      totalAmount: 15_000,
+    });
+
+    await signIn(page, email, '/tableau?period=30j');
+
+    const cashCard = page.locator('section.rounded-lg').filter({
+      has: page.getByText(messages.tableau.blocks.operationsEssentials.cashDrivers.label, {
+        exact: true,
+      }),
+    });
+    await expect(cashCard).toContainText(/15.?000/);
+
+    await page.getByRole('button', { name: /Choisir la période/ }).click();
+    await page
+      .getByRole('button', { name: messages.periodPicker.presets.today, exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/tableau\?(?=[^#]*period=today)/);
+
+    // Le solde de réconciliation reste identique quelle que soit la période affichée.
+    await expect(cashCard).toContainText(/15.?000/);
   });
 });
