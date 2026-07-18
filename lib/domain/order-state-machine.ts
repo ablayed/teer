@@ -32,7 +32,10 @@ const legalTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
   // Phase 11.1 (option C) : EN_LIVRAISON→EN_LIVRAISON autorisé pour l'étape
   // `demarrer_livraison` (assigned→out_for_delivery). Le cod_status legacy reste
   // EN_LIVRAISON pour les deux dimensions ; seul delivery_state change.
-  EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'REFUSEE', 'ANNULEE'],
+  // « Refuser → Reprogrammer » : REFUSEE retirée (« refuser » n'est plus légal
+  // depuis assigned/out_for_delivery, cf. getAllowedTransitionActionsForDimensions),
+  // PROGRAMMEE ajoutée (nouvelle action « reprogrammer »).
+  EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'PROGRAMMEE', 'ANNULEE'],
   LIVREE: [],
   REFUSEE: [],
   ANNULEE: [],

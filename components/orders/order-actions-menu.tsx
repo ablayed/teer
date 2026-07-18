@@ -39,12 +39,18 @@ type OrderActionsMenuProps = {
 
 // Actions de transition qui ouvrent un dialog (saisie) avant de s'exécuter.
 function isPayloadDialogAction(action: TransitionAction): action is PayloadDialogAction {
-  return action === 'assigner' || action === 'programmer' || action === 'annuler';
+  return (
+    action === 'assigner' ||
+    action === 'programmer' ||
+    action === 'annuler' ||
+    action === 'reprogrammer'
+  );
 }
 
 // Ordre d'affichage du menu.
 const transitionMenuOrder: TransitionAction[] = [
   'programmer',
+  'reprogrammer',
   'annuler',
   'refuser',
   'journaliser_appel',
@@ -194,6 +200,8 @@ export function OrderActionsMenu({
         return 'Marquer retournée';
       case 'refuser':
         return 'Refuser';
+      case 'reprogrammer':
+        return 'Reprogrammer';
       case 'annuler':
         return 'Annuler la commande';
       case 'deconfirmer':

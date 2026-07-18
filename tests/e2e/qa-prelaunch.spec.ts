@@ -626,12 +626,24 @@ test('Lot D - marquer retournée via UI après remise trace une reprise cash né
 // Angle 2 — refuser (échec livraison) + refus comme raison d'annulation
 // ============================================================================
 
-test('refuser depuis EN_LIVRAISON: failed/cancelled, cash not_due, aucun mouvement stock ajouté', async ({
+function inputDateTime(date: Date): { date: string; time: string } {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  };
+}
+
+test('reprogrammer depuis EN_LIVRAISON: retour à Programmée avec la nouvelle date, stock livreur libéré (order_assignment_release), pas de courier_return', async ({
   page,
 }) => {
-  const fixture = await createOwnerFixture('refuser');
-  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Refus');
-  const productTitle = 'Produit Refus E2E';
+  const fixture = await createOwnerFixture('reprogrammer');
+  const driverId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur Reprogrammer',
+  );
+  const productTitle = 'Produit Reprogrammer E2E';
   const productId = await createProductInCatalog(
     fixture.admin,
     fixture.merchantAccountId,
@@ -646,7 +658,7 @@ test('refuser depuis EN_LIVRAISON: failed/cancelled, cash not_due, aucun mouveme
   });
   const orderId = await createOrderWithMatchedLine({
     admin: fixture.admin,
-    customerName: 'Client Refus',
+    customerName: 'Client Reprogrammer',
     merchantAccountId: fixture.merchantAccountId,
     productId,
     productTitle,
@@ -660,7 +672,7 @@ test('refuser depuis EN_LIVRAISON: failed/cancelled, cash not_due, aucun mouveme
     await driveToOutForDelivery(ownerClient, orderId, fixture.userIds[0], driverId);
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
 
-    // Mouvements avant refus : reserve + dispatch (stock chez le livreur).
+    // Mouvements avant reprogrammer : reserve + dispatch (stock chez le livreur).
     const { data: movementsBefore } = await fixture.admin
       .from('stock_movement')
       .select('movement_type')
@@ -673,20 +685,33 @@ test('refuser depuis EN_LIVRAISON: failed/cancelled, cash not_due, aucun mouveme
     ]);
 
     await signIn(page, fixture.email, `/commandes/${orderId}`);
-    await runDetailMenuAction(page, 'Refuser');
-    await waitForOrderStatus(fixture.admin, orderId, 'REFUSEE');
+    await runDetailMenuAction(page, 'Reprogrammer');
+    const newDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    newDate.setHours(11, 0, 0, 0);
+    const { date, time } = inputDateTime(newDate);
+    await page.getByLabel('Date de livraison', { exact: true }).fill(date);
+    await page.getByLabel('Heure de livraison', { exact: true }).fill(time);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
     const { data: order } = await fixture.admin
       .from('orders')
-      .select('order_state, delivery_state, cash_state')
+      .select('order_state, delivery_state, cash_state, assigned_driver_id, scheduled_for')
       .eq('id', orderId)
       .single();
-    // Comportement actuel et voulu : échec de livraison, stock NON restauré.
-    expect(order?.delivery_state).toBe('failed');
-    expect(order?.order_state).toBe('cancelled');
-    expect(order?.cash_state).toBe('not_due');
+    // Report logistique, pas un échec de livraison : la commande reste ouverte.
+    expect(order?.order_state).toBe('open');
+    expect(order?.delivery_state).toBe('scheduled');
+    expect(order?.cash_state).toBe('expected');
+    expect(order?.assigned_driver_id).toBeNull();
+    // Comparaison au jour près (pas à l'heure/minute) : le process Playwright et le
+    // webServer Next.js peuvent tourner sous des TZ différentes (cf. gotcha CLAUDE.md
+    // datetime-input), une comparaison exacte HH:MM serait fragile sans rapport avec
+    // le comportement produit réellement vérifié ici.
+    expect(order?.scheduled_for).not.toBeNull();
+    expect(new Date(order?.scheduled_for ?? '').toISOString().slice(0, 10)).toBe(date);
 
-    // AUCUN mouvement ajouté par le refus : le stock reste « chez le livreur ».
+    // order_assignment_release ajouté par reprogrammer, PAS un courier_return.
     const { data: movementsAfter } = await fixture.admin
       .from('stock_movement')
       .select('movement_type')
@@ -699,13 +724,68 @@ test('refuser depuis EN_LIVRAISON: failed/cancelled, cash not_due, aucun mouveme
       'order_assignment_release',
     ]);
 
-    // qty_on_hand inchangé depuis le dispatch (50 - 3 = 47), pas de courier_return.
+    // qty_on_hand inchangé depuis le dispatch (50 - 3 = 47) : le stock physique
+    // reste chez le livreur, seul le ledger de disponibilité est libéré.
     const { data: stock } = await fixture.admin
       .from('product_stock')
       .select('qty_on_hand')
       .eq('product_id', productId)
       .single();
     expect(stock?.qty_on_hand).toBe(47);
+
+    // La commande reprogrammée réapparaît dans la vue « Programmer ».
+    await page.goto('/commandes?vue=confirmee');
+    await expect(page.getByText('Client Reprogrammer').first()).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('En cours de livraison : le menu affiche Reprogrammer (pas Refuser), Annuler reste présent et fonctionnel', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('menu-en-livraison');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Menu');
+  const productTitle = 'Produit Menu E2E';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  await seedWarehouseStock({
+    email: fixture.email,
+    merchantAccountId: fixture.merchantAccountId,
+    productId,
+    qty: 50,
+    actorUserId: fixture.userIds[0],
+  });
+  const orderId = await createOrderWithMatchedLine({
+    admin: fixture.admin,
+    customerName: 'Client Menu',
+    merchantAccountId: fixture.merchantAccountId,
+    productId,
+    productTitle,
+    qty: 2,
+    status: 'A_APPELER',
+    totalAmount: 12000,
+  });
+
+  try {
+    const ownerClient = await signInClient(fixture.email);
+    await driveToOutForDelivery(ownerClient, orderId, fixture.userIds[0], driverId);
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+    await openActionsMenu(page);
+    await expect(menuItem(page, 'Refuser')).toHaveCount(0);
+    await expect(menuItem(page, 'Reprogrammer')).toBeVisible({ timeout: 15_000 });
+    await expect(menuItem(page, 'Annuler la commande')).toBeVisible();
+
+    // Annuler reste fonctionnel, comportement inchangé (RTO/cancellation intacts).
+    await menuItem(page, 'Annuler la commande').click();
+    await page.getByLabel('Autres', { exact: true }).check();
+    await page.getByRole('button', { name: "Confirmer l'annulation", exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'ANNULEE');
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
