@@ -23,7 +23,7 @@ import { useEffect, useId, useState } from 'react';
 export type DriverOption = { id: string; fullName: string };
 
 // Actions qui nécessitent une saisie avant que la transition ne s'exécute.
-export type PayloadDialogAction = 'assigner' | 'programmer' | 'annuler';
+export type PayloadDialogAction = 'assigner' | 'programmer' | 'annuler' | 'reprogrammer';
 
 export type TransitionPayload = {
   assignedDriverId?: string;
@@ -51,6 +51,7 @@ const dialogTitles: Record<PayloadDialogAction, string> = {
   assigner: 'Assigner à un livreur',
   programmer: 'Programmer la livraison',
   annuler: 'Annuler la commande',
+  reprogrammer: 'Reprogrammer la livraison',
 };
 
 export function TransitionDialog({

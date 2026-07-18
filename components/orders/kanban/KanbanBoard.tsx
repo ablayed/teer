@@ -67,6 +67,7 @@ const actionLabels: Record<TransitionAction, string> = {
   mark_returned: 'Marquer retournée',
   annuler: 'Annuler',
   refuser: 'Refuser',
+  reprogrammer: 'Reprogrammer',
   deconfirmer: 'Déconfirmer',
   desannuler: 'Désannuler',
 };
