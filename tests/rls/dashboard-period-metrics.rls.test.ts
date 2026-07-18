@@ -329,7 +329,7 @@ describe('dashboard period metrics RPCs', () => {
   );
 
   skipIfNoServiceRole(
-    'get_dashboard_shop_performance : agent refusé, owner/manager autorisés avec résultat inchangé',
+    'get_dashboard_shop_performance : agent et non-membre rejetés avec le même message (NULL-safe), owner/manager autorisés avec résultat inchangé',
     async () => {
       const { admin, email, merchantAccountId } = await createOwnerFixture('shop-perf-rbac');
       const { email: managerEmail } = await addMember(admin, merchantAccountId, 'manager');
@@ -367,6 +367,15 @@ describe('dashboard period metrics RPCs', () => {
         p_to: to,
       });
       expect(outsiderResult.error).not.toBeNull();
+
+      // Preuve NULL-safe : un rôle explicitement rejeté (agent, membre du tenant) et un rôle
+      // NULL (outsider, non-membre) doivent produire EXACTEMENT la même erreur — sinon la garde
+      // fuite une information ("vous êtes membre mais mauvais rôle" vs "vous n'êtes pas membre")
+      // qu'un attaquant pourrait utiliser pour énumérer l'appartenance à un tenant.
+      expect(agentResult.error?.code).toBe('42501');
+      expect(agentResult.error?.message).toBe(outsiderResult.error?.message);
+      expect(agentResult.error?.code).toBe(outsiderResult.error?.code);
+      expect(agentResult.status).toBe(outsiderResult.status);
 
       const ownerResult = await ownerClient.rpc('get_dashboard_shop_performance', {
         p_merchant_id: merchantAccountId,
