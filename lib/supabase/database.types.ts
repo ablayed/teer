@@ -1,6 +1,11 @@
-﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: '14.5';
+  };
   graphql_public: {
     Tables: {
       [_ in never]: never;
@@ -1169,6 +1174,7 @@ export type Database = {
           created_at: string;
           id: string;
           is_active: boolean;
+          is_bundle: boolean;
           merchant_account_id: string;
           shopify_product_id: string | null;
           shopify_variant_id: string | null;
@@ -1181,6 +1187,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           is_active?: boolean;
+          is_bundle?: boolean;
           merchant_account_id: string;
           shopify_product_id?: string | null;
           shopify_variant_id?: string | null;
@@ -1193,6 +1200,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           is_active?: boolean;
+          is_bundle?: boolean;
           merchant_account_id?: string;
           shopify_product_id?: string | null;
           shopify_variant_id?: string | null;
@@ -1204,6 +1212,58 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: 'product_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      product_bundle_component: {
+        Row: {
+          bundle_product_id: string;
+          component_product_id: string;
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          quantity: number;
+          updated_at: string;
+        };
+        Insert: {
+          bundle_product_id: string;
+          component_product_id: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          quantity: number;
+          updated_at?: string;
+        };
+        Update: {
+          bundle_product_id?: string;
+          component_product_id?: string;
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          quantity?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'product_bundle_component_bundle_product_id_fkey';
+            columns: ['bundle_product_id'];
+            isOneToOne: false;
+            referencedRelation: 'product';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_bundle_component_component_product_id_fkey';
+            columns: ['component_product_id'];
+            isOneToOne: false;
+            referencedRelation: 'product';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_bundle_component_merchant_account_id_fkey';
             columns: ['merchant_account_id'];
             isOneToOne: false;
             referencedRelation: 'merchant_account';
@@ -2305,6 +2365,13 @@ export type Database = {
       reserve_manual_order_number: {
         Args: { p_merchant_account_id: string };
         Returns: string;
+      };
+      resolve_order_required_component_quantities: {
+        Args: { p_order_id: string };
+        Returns: {
+          product_id: string;
+          required_qty: number;
+        }[];
       };
       sn_phone_e164: { Args: { p_value: string }; Returns: string };
       transition_order:
