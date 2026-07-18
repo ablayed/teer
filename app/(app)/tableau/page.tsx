@@ -748,7 +748,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
         <section
           className={cn(
             'grid gap-4',
-            showFinancialMetrics ? 'xl:grid-cols-2 2xl:grid-cols-4' : 'xl:grid-cols-3',
+            showFinancialMetrics ? 'xl:grid-cols-2 2xl:grid-cols-4' : 'xl:grid-cols-2',
           )}
         >
           {showFinancialMetrics ? (
@@ -762,12 +762,14 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           <Suspense fallback={<CardListSkeleton rows={5} />} key={`top-${shopKey}-${periodKey}`}>
             <TopProductsSection period={period} shopId={selectedShopId} />
           </Suspense>
-          <Suspense
-            fallback={<CardListSkeleton rows={5} />}
-            key={`shopperf-${shopKey}-${periodKey}`}
-          >
-            <ShopPerformanceSection period={period} shopId={selectedShopId} />
-          </Suspense>
+          {showFinancialMetrics ? (
+            <Suspense
+              fallback={<CardListSkeleton rows={5} />}
+              key={`shopperf-${shopKey}-${periodKey}`}
+            >
+              <ShopPerformanceSection period={period} shopId={selectedShopId} />
+            </Suspense>
+          ) : null}
           <Suspense fallback={<CodBreakdownSkeleton />} key={`cod-${shopKey}-${periodKey}`}>
             <CodBreakdownSection period={period} shopId={selectedShopId} />
           </Suspense>

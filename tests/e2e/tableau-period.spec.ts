@@ -420,6 +420,12 @@ test.describe('Tableau période + CA/livraisons', () => {
         exact: true,
       }),
     ).toHaveCount(1);
+    await expect(
+      page.getByRole('heading', {
+        name: messages.tableau.blocks.shopPerformance.title,
+        exact: true,
+      }),
+    ).toBeVisible();
   });
 
   test('agent : nouvelles métriques owner/manager masquées sans état erreur', async ({ page }) => {
@@ -450,6 +456,12 @@ test.describe('Tableau période + CA/livraisons', () => {
       }),
     ).toHaveCount(0);
     await expect(page.getByText(messages.tableau.blocks.periodMetrics.error)).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', {
+        name: messages.tableau.blocks.shopPerformance.title,
+        exact: true,
+      }),
+    ).toHaveCount(0);
   });
 
   test('owner : le cash livreurs du Tableau respecte le filtre shop', async ({ page }) => {

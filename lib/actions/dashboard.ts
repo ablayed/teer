@@ -714,6 +714,10 @@ export async function getShopPerformance({
     return { ok: false, errorCode: 'not_found' };
   }
 
+  if (ctx.role !== 'owner' && ctx.role !== 'manager') {
+    return { ok: false, errorCode: 'not_found' };
+  }
+
   return fetchShopPerformanceForUser({
     from,
     merchantAccountId: ctx.merchantAccountId,

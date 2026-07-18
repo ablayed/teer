@@ -329,6 +329,72 @@ describe('dashboard period metrics RPCs', () => {
   );
 
   skipIfNoServiceRole(
+    'get_dashboard_shop_performance : agent refusé, owner/manager autorisés avec résultat inchangé',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('shop-perf-rbac');
+      const { email: managerEmail } = await addMember(admin, merchantAccountId, 'manager');
+      const { email: agentEmail } = await addMember(admin, merchantAccountId, 'agent');
+      const outsider = await createOwnerFixture('shop-perf-outsider');
+      const ownerClient = await signIn(email);
+      const managerClient = await signIn(managerEmail);
+      const agentClient = await signIn(agentEmail);
+      const outsiderClient = await signIn(outsider.email);
+      const shopId = await createShop(admin, merchantAccountId, 'shop-perf');
+      const productId = await createProduct(admin, merchantAccountId, 'Produit shop perf');
+      const from = new Date('2026-07-01T00:00:00.000Z').toISOString();
+      const to = new Date('2026-07-31T23:59:59.999Z').toISOString();
+
+      await seedDeliveredCollectedOrder(admin, {
+        cashCollectedAt: '2026-07-10T10:00:00.000Z',
+        merchantAccountId,
+        orderNumber: `SHOPPERF-${Date.now()}`,
+        productId,
+        shopId,
+        title: 'Produit shop perf',
+        totalAmount: 10_000,
+      });
+
+      const agentResult = await agentClient.rpc('get_dashboard_shop_performance', {
+        p_merchant_id: merchantAccountId,
+        p_from: from,
+        p_to: to,
+      });
+      expect(agentResult.error).not.toBeNull();
+
+      const outsiderResult = await outsiderClient.rpc('get_dashboard_shop_performance', {
+        p_merchant_id: merchantAccountId,
+        p_from: from,
+        p_to: to,
+      });
+      expect(outsiderResult.error).not.toBeNull();
+
+      const ownerResult = await ownerClient.rpc('get_dashboard_shop_performance', {
+        p_merchant_id: merchantAccountId,
+        p_from: from,
+        p_to: to,
+      });
+      expect(ownerResult.error).toBeNull();
+      const ownerPayload = ownerResult.data as Array<{
+        id: string;
+        orders_count: number;
+        revenue: number;
+      }>;
+      expect(ownerPayload).toEqual([
+        expect.objectContaining({ id: shopId, orders_count: 1, revenue: 10_000 }),
+      ]);
+
+      const managerResult = await managerClient.rpc('get_dashboard_shop_performance', {
+        p_merchant_id: merchantAccountId,
+        p_from: from,
+        p_to: to,
+      });
+      expect(managerResult.error).toBeNull();
+      expect(managerResult.data).toEqual(ownerResult.data);
+    },
+    20_000,
+  );
+
+  skipIfNoServiceRole(
     'get_driver_cash_consolidation filtre par boutique sans casser le cas null',
     async () => {
       const { admin, email, merchantAccountId } = await createOwnerFixture('driver-shop');
