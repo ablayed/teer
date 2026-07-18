@@ -2036,3 +2036,167 @@ describe('réconciliation zéro écart après valider→dispatch→livrer', () =
     },
   );
 });
+
+describe('Refuser → Reprogrammer : reprogrammer libère le stock engagé côté livreur', () => {
+  skipIfNoServiceRole(
+    'reprogrammer poste order_assignment_release, qty_on_hand inchangé (pas de courier_return), driver vidé, retour à Programmée avec la nouvelle date',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('reprogram-release');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 3 },
+      ]);
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      const assign = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+      expect(assign.error).toBeNull();
+
+      const { data: stockBeforeReprogram } = await admin
+        .from('product_stock')
+        .select('qty_on_hand')
+        .eq('product_id', productId)
+        .single();
+
+      const newScheduledFor = '2099-06-01T09:00:00.000Z';
+      const reprogrammed = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_scheduled_for: newScheduledFor,
+        p_clear_assigned_driver: true,
+      });
+      expect(reprogrammed.error).toBeNull();
+      expect(reprogrammed.data).toBe('PROGRAMMEE');
+
+      const { data: order } = await admin
+        .from('orders')
+        .select('order_state, delivery_state, assigned_driver_id, scheduled_for')
+        .eq('id', orderId)
+        .single();
+      expect(order?.order_state).toBe('open');
+      expect(order?.delivery_state).toBe('scheduled');
+      expect(order?.assigned_driver_id).toBeNull();
+      expect(new Date(order?.scheduled_for ?? '').toISOString()).toBe(newScheduledFor);
+
+      const assignmentMoves = await readOrderAssignmentMovements(admin, orderId);
+      expect(assignmentMoves).toHaveLength(2);
+      expect(assignmentMoves[0]).toMatchObject({
+        movement_type: 'order_assignment_commit',
+        driver_id: driverId,
+        product_id: productId,
+        qty: 3,
+      });
+      expect(assignmentMoves[1]).toMatchObject({
+        movement_type: 'order_assignment_release',
+        driver_id: driverId,
+        product_id: productId,
+        qty: -3,
+      });
+
+      // Stock physique inchangé : release ne libère que le ledger de
+      // disponibilité, jamais un courier_return (le livreur garde le colis
+      // en attendant la nouvelle tentative — cf. audit Phase A).
+      const { data: stockAfterReprogram } = await admin
+        .from('product_stock')
+        .select('qty_on_hand')
+        .eq('product_id', productId)
+        .single();
+      expect(stockAfterReprogram?.qty_on_hand).toBe(stockBeforeReprogram?.qty_on_hand);
+
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('movement_type')
+        .eq('order_id', orderId);
+      expect(movements?.some((m) => m.movement_type === 'courier_return')).toBe(false);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'garde anti-sur-libération : rejouer le même delta après reprogrammer ne poste aucun second release',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture(
+        'reprogram-no-double-release',
+      );
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 2 },
+      ]);
+      const client = await signIn(email);
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+
+      const firstReprogram = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_scheduled_for: '2099-06-01T09:00:00.000Z',
+        p_clear_assigned_driver: true,
+      });
+      expect(firstReprogram.error).toBeNull();
+
+      const movesAfterFirst = await readOrderAssignmentMovements(admin, orderId);
+      expect(
+        movesAfterFirst.filter((m) => m.movement_type === 'order_assignment_release'),
+      ).toHaveLength(1);
+
+      // Rejoue le même paramètre p_delivery_state='scheduled' (simule un retry naïf).
+      // v_order.delivery_state est désormais 'scheduled' (déjà reprogrammée) — le
+      // déclencheur delta assigned/out_for_delivery→scheduled ne matche plus DU TOUT
+      // (le bloc entier est sauté), ce qui est la première ligne de défense contre la
+      // double libération. Le filtre net_open > 0 de la boucle reste la seconde ligne
+      // de défense, inchangée, pour tout autre chemin qui retenterait le même delta.
+      const secondCall = await transitionRpc(client)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      expect(secondCall.error).toBeNull();
+
+      const movesAfterSecond = await readOrderAssignmentMovements(admin, orderId);
+      expect(
+        movesAfterSecond.filter((m) => m.movement_type === 'order_assignment_release'),
+      ).toHaveLength(1);
+    },
+  );
+});

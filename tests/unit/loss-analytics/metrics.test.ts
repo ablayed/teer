@@ -166,6 +166,73 @@ describe('computeLossAnalytics', () => {
     expect(result.summary.rtoRate).toBeCloseTo(0.5, 5);
   });
 
+  it("reprogrammer (retour à Programmée) ne compte jamais comme RTO, ni au courant ni via l'historique — annuler continue de compter en cancellationRate sans jamais toucher rtoCount", () => {
+    const result = computeLossAnalytics({
+      auditLogs: [
+        // Reprogrammer : delivery_state va vers 'scheduled', jamais 'failed' — ne peut
+        // matcher ni isCurrentRto (état courant) ni hasRtoEvent (RTO_DELIVERY_STATES
+        // = {'failed'} sur nextDimensions.delivery_state).
+        audit({
+          payload: {
+            nextDimensions: { delivery_state: 'scheduled', order_state: 'open' },
+            priorDimensions: { delivery_state: 'out_for_delivery', order_state: 'open' },
+          },
+          resourceId: 'order-reprogrammed',
+        }),
+        // Refuser (non-régression) : reste détecté comme RTO via l'historique.
+        audit({
+          payload: {
+            nextDimensions: { delivery_state: 'failed', order_state: 'cancelled' },
+            priorDimensions: { delivery_state: 'out_for_delivery', order_state: 'open' },
+          },
+          resourceId: 'order-refused',
+        }),
+      ],
+      customers: [
+        customer({ id: 'customer-reprogrammed' }),
+        customer({ id: 'customer-refused' }),
+        customer({ id: 'customer-cancelled' }),
+      ],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        // État courant après reprogrammer : de retour à Programmée, commande ouverte.
+        order({
+          customerId: 'customer-reprogrammed',
+          deliveryState: 'scheduled',
+          id: 'order-reprogrammed',
+          orderState: 'open',
+        }),
+        // État courant après refuser (non-régression) : toujours RTO.
+        order({
+          customerId: 'customer-refused',
+          deliveryState: 'failed',
+          id: 'order-refused',
+          orderState: 'cancelled',
+        }),
+        // État courant après annuler : compte en cancellation, jamais en RTO.
+        order({
+          customerId: 'customer-cancelled',
+          deliveryState: 'unassigned',
+          id: 'order-cancelled',
+          orderState: 'cancelled',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    expect(result.summary.totalOrders).toBe(3);
+    // Seul « refuser » alimente rtoCount — reprogrammer et annuler n'y contribuent jamais.
+    expect(result.summary.rtoCount).toBe(1);
+    expect(result.summary.rtoDenominator).toBe(1);
+    expect(result.summary.rtoRate).toBeCloseTo(1, 5);
+    // annuler (deliveryState final 'unassigned', orderState 'cancelled') continue
+    // d'alimenter cancellationCount normalement, comportement inchangé.
+    expect(result.summary.cancellationCount).toBe(1);
+  });
+
   it('builds delivery-rate cohorts and marks recent cohorts as immature from observed delays', () => {
     const result = computeLossAnalytics({
       auditLogs: [
