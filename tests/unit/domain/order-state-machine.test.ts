@@ -16,7 +16,8 @@ const expectedTransitions: Record<OrderStatus, OrderStatus[]> = {
   CONFIRMEE: ['PROGRAMMEE', 'ANNULEE', 'REFUSEE'],
   PROGRAMMEE: ['EN_LIVRAISON', 'ANNULEE', 'REFUSEE'],
   // Phase 11.1 : self-loop EN_LIVRAISON→EN_LIVRAISON (assigned→out_for_delivery).
-  EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'REFUSEE', 'ANNULEE'],
+  // Refuser → Reprogrammer : REFUSEE retirée, PROGRAMMEE ajoutée (reprogrammer).
+  EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'PROGRAMMEE', 'ANNULEE'],
   LIVREE: [],
   REFUSEE: [],
   ANNULEE: [],

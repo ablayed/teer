@@ -35,7 +35,7 @@ describe('server transition actions', () => {
       'demarrer_livraison',
       'livrer',
       'annuler',
-      'refuser',
+      'reprogrammer',
     ]);
     expect(getAllowedTransitionActions('LIVREE', 'owner')).toEqual(['mark_returned']);
     expect(getAllowedTransitionActions('LIVREE', 'manager')).toEqual(['mark_returned']);
@@ -57,6 +57,10 @@ describe('server transition actions', () => {
     // Lot B : les actions reverse ne sont jamais résolues par target (sinon
     // « A_APPELER » deviendrait actionnable via les chemins inline status).
     expect(getTransitionActionForTarget('A_APPELER', 'owner')).toBeNull();
+    // « reprogrammer » partage la cible PROGRAMMEE avec « programmer » et est
+    // volontairement exclue de la résolution par target (déterminisme, cf. précédent
+    // « demarrer_livraison »/EN_LIVRAISON) — reste « programmer ».
+    expect(getTransitionActionForTarget('PROGRAMMEE', 'owner')).toBe('programmer');
   });
 
   describe('Phase 11 — « programmer » supplante « confirmer » dans les surfaces', () => {

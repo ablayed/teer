@@ -11,6 +11,7 @@ export const transitionActions = [
   'mark_returned',
   'annuler',
   'refuser',
+  'reprogrammer',
   'deconfirmer',
   'desannuler',
 ] as const;
@@ -189,6 +190,19 @@ export const transitionCatalog: readonly TransitionCatalogItem[] = [
     label: 'Refuser',
     roles: ['owner', 'manager'],
     target: 'REFUSEE',
+  },
+  // "Reprogrammer" (En cours de livraison → Programmée) : report logistique, pas un
+  // échec de livraison. RBAC aligné sur « refuser », l'action qu'elle remplace à ce
+  // point précis du menu (pas sur « programmer », dont l'accès agent n'a pas été
+  // validé pour ce cas post-dispatch). target partagée avec « programmer » →
+  // volontairement exclue de getTransitionActionForTarget (même pattern que
+  // « demarrer_livraison » pour EN_LIVRAISON) pour que la résolution par target
+  // reste déterministe sur « programmer ».
+  {
+    action: 'reprogrammer',
+    label: 'Reprogrammer',
+    roles: ['owner', 'manager'],
+    target: 'PROGRAMMEE',
   },
   // Lot B — actions reverse. target A_APPELER : volontairement exclues de
   // getTransitionActionForTarget (sinon « A_APPELER » deviendrait actionnable
@@ -487,8 +501,25 @@ export function getAllowedTransitionActionsForDimensions(
               dimensions.deliveryState === 'out_for_delivery')
           );
         case 'annuler':
-        case 'refuser':
+          // Inchangé : reste légal à tout stade ouvert, y compris En cours de
+          // livraison (chemin d'abandon définitif, RTO/cancellationRate inchangés).
           return dimensions.deliveryState !== 'delivered';
+        case 'refuser':
+          // "Refuser" retiré d'En cours de livraison (assigned/out_for_delivery) —
+          // remplacé par "reprogrammer" à ce stade précis. Reste légal avant dispatch
+          // (unassigned/scheduled), y compris le trou préexistant Lot 3 où "scheduled"
+          // est dimensionnellement légal mais masqué du menu (hors scope de ce lot).
+          return (
+            dimensions.deliveryState === 'unassigned' || dimensions.deliveryState === 'scheduled'
+          );
+        case 'reprogrammer':
+          // En cours de livraison → Programmée : report logistique, pas un échec de
+          // livraison. Seule transition légale vers PROGRAMMEE depuis ce stade.
+          return (
+            dimensions.callState === 'validated' &&
+            (dimensions.deliveryState === 'assigned' ||
+              dimensions.deliveryState === 'out_for_delivery')
+          );
       }
     })
     .map((item) => item.action);
@@ -577,6 +608,22 @@ export function buildTransitionDimensionPatch(
         orderState: 'cancelled',
         cancelReason: payload.cancelReason ?? 'refused',
       };
+    // Reprogrammer (En cours de livraison → Programmée) : report logistique, pas un
+    // échec de livraison — orderState reste 'open' (ni cancelled ni returned), donc la
+    // garde SQL existante de order_assignment_release (pilotée par orderState) ne se
+    // déclenche jamais pour cette action : une branche RPC dédiée poste le release en
+    // se basant sur la transition delivery_state assigned/out_for_delivery → scheduled.
+    // assigned_driver_id est vidé (clearAssignedDriver, même mécanisme que désannuler,
+    // migration 0066) : le stock est libéré côté ledger, l'affichage ne doit donc plus
+    // laisser croire que la commande reste engagée avec ce livreur en attendant.
+    case 'reprogrammer':
+      return {
+        callState: 'validated',
+        cashState: 'expected',
+        clearAssignedDriver: true,
+        deliveryState: 'scheduled',
+        ...(payload.scheduledFor ? { scheduledFor: payload.scheduledFor } : {}),
+      };
     // Lot B — déconfirmer : reverse strict de confirmer/programmer. call→to_call,
     // delivery scheduled→unassigned, scheduled_for effacé, réserve libérée (release
     // dérivé en SQL). cash remis à not_due (annule l'expected d'une programmation).
@@ -637,7 +684,10 @@ export function getTransitionActionForTarget(
         // Phase 11.1 : « demarrer_livraison » partage la cible EN_LIVRAISON avec
         // « assigner » → exclue ici pour que la sélection par target (chemins
         // inline status) reste déterministe sur « assigner ».
-        item.action !== 'demarrer_livraison',
+        item.action !== 'demarrer_livraison' &&
+        // « reprogrammer » partage la cible PROGRAMMEE avec « programmer » → exclue
+        // ici pour que la sélection par target reste déterministe sur « programmer ».
+        item.action !== 'reprogrammer',
     )?.action ?? null
   );
 }
