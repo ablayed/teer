@@ -2,6 +2,7 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
+import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-availability';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
@@ -106,6 +107,8 @@ export type ProductsPageItem = {
   isLowStock: boolean;
   stockUnitCost: number | null;
   stockValue: number | null;
+  isBundle: boolean;
+  bundleAvailability: number | null;
 };
 
 type ProductsPageResult =
@@ -136,7 +139,7 @@ export async function getProductsPageData(params: {
   let productQuery = admin
     .from('product')
     .select(
-      'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at',
+      'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at, is_bundle',
     )
     .eq('merchant_account_id', merchantAccountId)
     .order('title', { ascending: true })
@@ -166,6 +169,13 @@ export async function getProductsPageData(params: {
 
   const stockMap = new Map((stocks ?? []).map((s) => [s.product_id, s]));
 
+  const bundleIds = products.filter((p) => p.is_bundle).map((p) => p.id);
+  const bundleAvailabilityMap = await resolveBundleAvailabilities(
+    admin,
+    merchantAccountId,
+    bundleIds,
+  );
+
   const items: ProductsPageItem[] = products.map((p) => {
     const s = stockMap.get(p.id);
     const qtyOnHand = s?.qty_on_hand ?? 0;
@@ -189,6 +199,8 @@ export async function getProductsPageData(params: {
       isLowStock: qtyOnHand <= threshold,
       stockUnitCost: canSeeCost ? (s?.unit_cost ?? 0) : null,
       stockValue: canSeeCost ? qtyOnHand * (s?.unit_cost ?? 0) : null,
+      isBundle: p.is_bundle,
+      bundleAvailability: p.is_bundle ? (bundleAvailabilityMap.get(p.id) ?? null) : null,
     };
   });
 
@@ -333,7 +345,7 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
     let productQuery = admin
       .from('product')
       .select(
-        'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at',
+        'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at, is_bundle',
       )
       .eq('merchant_account_id', merchantAccountId)
       .order('title', { ascending: true })
@@ -363,6 +375,13 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
 
     const stockMap = new Map((stocks ?? []).map((s) => [s.product_id, s]));
 
+    const bundleIds = products.filter((p) => p.is_bundle).map((p) => p.id);
+    const bundleAvailabilityMap = await resolveBundleAvailabilities(
+      admin,
+      merchantAccountId,
+      bundleIds,
+    );
+
     const items: ProductsPageItem[] = products.map((p) => {
       const s = stockMap.get(p.id);
       const qtyOnHand = s?.qty_on_hand ?? 0;
@@ -386,6 +405,8 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
         isLowStock: qtyOnHand <= threshold,
         stockUnitCost: canSeeCost ? (s?.unit_cost ?? 0) : null,
         stockValue: canSeeCost ? qtyOnHand * (s?.unit_cost ?? 0) : null,
+        isBundle: p.is_bundle,
+        bundleAvailability: p.is_bundle ? (bundleAvailabilityMap.get(p.id) ?? null) : null,
       };
     });
 

@@ -102,11 +102,16 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
         getDriverCashConsolidation(selected.id, range),
         getDriverSettlementHistory(selected.id),
         getDriverPerformance(selected.id, range),
+        // is_bundle=false : un bundle n'est jamais chargeable directement sur
+        // un livreur (PR 1, driver_stock_set rejeté en DB pour un bundle,
+        // migration 0108) — l'exclure ici évite d'offrir dans "+ Ajouter un
+        // produit" une action qui échouerait systématiquement côté serveur.
         supabase
           .from('product')
           .select('id, title, sku')
           .eq('merchant_account_id', merchantAccountId)
           .eq('is_active', true)
+          .eq('is_bundle', false)
           .order('title'),
         supabase
           .from('orders')

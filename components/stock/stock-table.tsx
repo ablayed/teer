@@ -32,6 +32,14 @@ function LowStockBadge() {
   );
 }
 
+function BundleBadge() {
+  return (
+    <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
+      Bundle
+    </span>
+  );
+}
+
 function InlineFeedback({ message, kind }: { message: string; kind: 'error' | 'success' }) {
   return (
     <p
@@ -306,8 +314,13 @@ export function StockTable({ rows, canSeeCost }: Props) {
     );
   }
 
-  const lowStockCount = rows.filter((r) => r.isLowStock).length;
-  const totalValue = canSeeCost ? rows.reduce((sum, r) => sum + (r.stockValue ?? 0), 0) : null;
+  // Un bundle n'a pas de qty_on_hand propre significatif (cascade PR 1) : son
+  // isLowStock/stockValue propres sont exclus des agrégats, qui n'auraient
+  // aucun sens mélangés à des stocks de produits normaux.
+  const lowStockCount = rows.filter((r) => !r.isBundle && r.isLowStock).length;
+  const totalValue = canSeeCost
+    ? rows.filter((r) => !r.isBundle).reduce((sum, r) => sum + (r.stockValue ?? 0), 0)
+    : null;
 
   function closeForm() {
     setActiveForm(null);
@@ -365,92 +378,117 @@ export function StockTable({ rows, canSeeCost }: Props) {
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium">{row.title}</span>
                       {row.sku && <span className="text-xs text-muted">{row.sku}</span>}
-                      {row.isLowStock && <LowStockBadge />}
+                      <div className="flex flex-wrap gap-1">
+                        {row.isBundle && <BundleBadge />}
+                        {!row.isBundle && row.isLowStock && <LowStockBadge />}
+                      </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono">{row.qtyOnHand}</td>
-                  <td className="px-4 py-3 text-right font-mono text-muted">{row.qtyReserved}</td>
-                  <td className="px-4 py-3 text-right font-mono">
-                    <span className={cn(row.isLowStock && 'text-danger font-semibold')}>
-                      {row.qtyAvailable}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {isEditingThreshold ? (
-                      <ThresholdForm
-                        current={row.lowStockThreshold}
-                        onDone={() => setThresholdEdit(null)}
-                        productId={row.productId}
-                      />
-                    ) : (
-                      <button
-                        className="text-muted underline underline-offset-2 hover:text-text"
-                        onClick={() => setThresholdEdit(row.productId)}
-                        type="button"
+                  {row.isBundle ? (
+                    <>
+                      <td className="px-4 py-3 text-right font-mono text-muted">—</td>
+                      <td className="px-4 py-3 text-right font-mono text-muted">—</td>
+                      <td
+                        className="px-4 py-3 text-right font-mono tabular-nums"
+                        title="Disponibilité dérivée du stock de ses composants (min de stock_composant / quantité requise)"
                       >
-                        {row.lowStockThreshold}
-                      </button>
-                    )}
-                  </td>
-                  {canSeeCost && (
-                    <td className="px-4 py-3 text-right text-muted">
-                      {row.stockValue !== null ? formatMoney(row.stockValue, 'XOF') : '—'}
-                    </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <div className="space-y-2">
-                      {!form && menuOpen !== row.productId && (
-                        <button
-                          className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
-                          onClick={() => setMenuOpen(row.productId)}
-                          type="button"
-                        >
-                          Modifier le stock
-                        </button>
+                        {row.bundleAvailability ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted">—</td>
+                      {canSeeCost && <td className="px-4 py-3 text-right text-muted">—</td>}
+                      <td className="px-4 py-3 text-xs text-muted">
+                        Le stock d&apos;un bundle se gère via ses composants.
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-3 text-right font-mono">{row.qtyOnHand}</td>
+                      <td className="px-4 py-3 text-right font-mono text-muted">
+                        {row.qtyReserved}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono">
+                        <span className={cn(row.isLowStock && 'text-danger font-semibold')}>
+                          {row.qtyAvailable}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isEditingThreshold ? (
+                          <ThresholdForm
+                            current={row.lowStockThreshold}
+                            onDone={() => setThresholdEdit(null)}
+                            productId={row.productId}
+                          />
+                        ) : (
+                          <button
+                            className="text-muted underline underline-offset-2 hover:text-text"
+                            onClick={() => setThresholdEdit(row.productId)}
+                            type="button"
+                          >
+                            {row.lowStockThreshold}
+                          </button>
+                        )}
+                      </td>
+                      {canSeeCost && (
+                        <td className="px-4 py-3 text-right text-muted">
+                          {row.stockValue !== null ? formatMoney(row.stockValue, 'XOF') : '—'}
+                        </td>
                       )}
-                      {!form && menuOpen === row.productId && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
-                            onClick={() => openForm('purchase', row.productId)}
-                            type="button"
-                          >
-                            + Entrée stock
-                          </button>
-                          <button
-                            className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
-                            onClick={() => openForm('adjustment', row.productId)}
-                            type="button"
-                          >
-                            Ajustement
-                          </button>
-                          <button
-                            className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
-                            onClick={() => openForm('return', row.productId)}
-                            type="button"
-                          >
-                            Retour livreur
-                          </button>
-                          <button
-                            className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9 md:text-xs"
-                            onClick={() => setMenuOpen(null)}
-                            type="button"
-                          >
-                            Annuler
-                          </button>
+                      <td className="px-4 py-3">
+                        <div className="space-y-2">
+                          {!form && menuOpen !== row.productId && (
+                            <button
+                              className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                              onClick={() => setMenuOpen(row.productId)}
+                              type="button"
+                            >
+                              Modifier le stock
+                            </button>
+                          )}
+                          {!form && menuOpen === row.productId && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                                onClick={() => openForm('purchase', row.productId)}
+                                type="button"
+                              >
+                                + Entrée stock
+                              </button>
+                              <button
+                                className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                                onClick={() => openForm('adjustment', row.productId)}
+                                type="button"
+                              >
+                                Ajustement
+                              </button>
+                              <button
+                                className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                                onClick={() => openForm('return', row.productId)}
+                                type="button"
+                              >
+                                Retour livreur
+                              </button>
+                              <button
+                                className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9 md:text-xs"
+                                onClick={() => setMenuOpen(null)}
+                                type="button"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          )}
+                          {form === 'purchase' && (
+                            <PurchaseForm onDone={closeForm} productId={row.productId} />
+                          )}
+                          {form === 'adjustment' && (
+                            <AdjustmentForm onDone={closeForm} productId={row.productId} />
+                          )}
+                          {form === 'return' && (
+                            <CourierReturnForm onDone={closeForm} productId={row.productId} />
+                          )}
                         </div>
-                      )}
-                      {form === 'purchase' && (
-                        <PurchaseForm onDone={closeForm} productId={row.productId} />
-                      )}
-                      {form === 'adjustment' && (
-                        <AdjustmentForm onDone={closeForm} productId={row.productId} />
-                      )}
-                      {form === 'return' && (
-                        <CourierReturnForm onDone={closeForm} productId={row.productId} />
-                      )}
-                    </div>
-                  </td>
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })}
