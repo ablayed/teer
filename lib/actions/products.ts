@@ -491,9 +491,12 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
     const supabase = ctx.supabase as unknown as SupabaseServerClient;
     const { productId, isBundle, components } = parsedInput;
 
-    if (components.some((c) => c.componentProductId === productId)) {
-      return { ok: false as const, errorCode: 'self_reference' satisfies BundleConfigErrorCode };
-    }
+    // Auto-référence (bundle_product_id === component_product_id) volontairement NON
+    // vérifiée ici en TS : la contrainte SQL product_bundle_component_no_self_reference
+    // (migration 0107) est la seule source de vérité, catchée plus bas via insertError.
+    // Un pré-check TS la court-circuiterait et masquerait un contournement direct de
+    // l'action (payload construit hors UI) derrière une validation applicative au lieu
+    // de la contrainte DB réellement testée.
     const uniqueComponentIds = new Set(components.map((c) => c.componentProductId));
     if (uniqueComponentIds.size !== components.length) {
       return {
@@ -539,6 +542,16 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
         );
 
         if (insertError) {
+          // Une auto-référence réelle (component_product_id === bundle_product_id) trippe
+          // TOUJOURS "is itself a bundle" en premier, jamais le check constraint
+          // no_self_reference : le trigger assert_bundle_component_integrity (BEFORE
+          // INSERT) exige que le produit référencé par bundle_product_id soit
+          // is_bundle=true — si c'est le même produit, son propre is_bundle=true fait
+          // aussi échouer le 2e check du même trigger ("le composant ne doit pas être un
+          // bundle") avant que Postgres n'évalue le check constraint. La branche
+          // no_self_reference ci-dessous est donc une défense en profondeur actuellement
+          // inatteignable par ce chemin, pas du code mort à supprimer sans vérifier
+          // d'abord si l'ordre d'évaluation trigger/constraint a changé.
           const errorCode: BundleConfigErrorCode = insertError.message.includes(
             'is itself a bundle',
           )

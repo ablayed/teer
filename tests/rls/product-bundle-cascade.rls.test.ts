@@ -460,6 +460,77 @@ describe('contraintes composition : pas de bundle imbriqué', () => {
       expect(error?.message).toMatch(/already used as a bundle component/);
     },
   );
+
+  // PR 3 (UI de configuration) : saveBundleConfigurationAction n'ajoute AUCUNE validation
+  // TS dupliquant ces deux contraintes — elle s'appuie entièrement sur les triggers 0107.
+  // Les 2 tests ci-dessous appellent l'opération EXACTE que fait l'action (un insert
+  // authentifié owner sur product_bundle_component, via ctx.supabase = un client RLS
+  // identique à `client` ici), avec un payload qu'aucune UI ne permettrait de construire
+  // — la preuve porte donc sur la contrainte SQL elle-même, pas sur l'absence d'option
+  // dans un <select>.
+  skipIfNoServiceRole(
+    'saveBundleConfigurationAction contournée : un composant = le bundle lui-même est rejeté par la contrainte SQL (pas par une validation TS)',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('self-ref-direct');
+      const bundleId = await createProduct(admin, merchantAccountId, {
+        title: 'Bundle Auto-Ref',
+        isBundle: true,
+      });
+      const client = await signIn(email);
+
+      // Payload qu'aucun <select> de ProductDetailPanel ne peut produire (le produit
+      // courant est filtré des candidats) — simule un appel direct à l'action avec un
+      // component_product_id égal au bundle lui-même.
+      const { error } = await client.from('product_bundle_component').insert({
+        merchant_account_id: merchantAccountId,
+        bundle_product_id: bundleId,
+        component_product_id: bundleId,
+        quantity: 1,
+      });
+
+      expect(error).not.toBeNull();
+      // Le trigger assert_bundle_component_integrity (BEFORE INSERT) intercepte AVANT
+      // que le check constraint product_bundle_component_no_self_reference ne soit
+      // évalué : lire is_bundle sur le même produit pour les deux rôles bundle/composant
+      // trippe systématiquement "is itself a bundle" en premier (le produit référencé
+      // par lui-même DOIT être is_bundle=true pour passer le 1er check du trigger, ce
+      // qui fait automatiquement échouer son 2e check "le composant ne doit pas être un
+      // bundle"). Le check constraint no_self_reference reste posé en base (défense en
+      // profondeur) mais est actuellement inatteignable en pratique via ce chemin — la
+      // preuve recherchée ici (rejet SQL, pas TS/UI) tient malgré tout.
+      expect(error?.message).toMatch(/is itself a bundle/);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'saveBundleConfigurationAction contournée : un composant déjà bundle est rejeté par la contrainte SQL en session owner authentifiée',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('already-bundle-direct');
+      const bundleId = await createProduct(admin, merchantAccountId, {
+        title: 'Bundle Cible',
+        isBundle: true,
+      });
+      const alreadyBundleId = await createProduct(admin, merchantAccountId, {
+        title: 'Déjà un bundle',
+        isBundle: true,
+      });
+      const client = await signIn(email);
+
+      // Même appel exact que saveBundleConfigurationAction (ctx.supabase.insert), en
+      // session owner réelle plutôt qu'en service-role — le composant sélectionné est
+      // déjà is_bundle=true, ce qu'aucun <select> ne propose (candidateProducts filtre
+      // !p.isBundle), mais que la contrainte SQL doit rejeter indépendamment.
+      const { error } = await client.from('product_bundle_component').insert({
+        merchant_account_id: merchantAccountId,
+        bundle_product_id: bundleId,
+        component_product_id: alreadyBundleId,
+        quantity: 1,
+      });
+
+      expect(error).not.toBeNull();
+      expect(error?.message).toMatch(/is itself a bundle/);
+    },
+  );
 });
 
 // ──────────────────────────────────────────────────────────────────────────
