@@ -123,6 +123,36 @@ async function waitForOrder(
   return order;
 }
 
+type WebhookOrderAttributes = {
+  shopify_line_item_attributes: unknown;
+  shopify_order_attributes: unknown;
+};
+
+async function pollOrderAttributes(
+  admin: AdminClient,
+  merchantAccountId: string,
+  shopifyOrderId: string,
+  predicate: (row: WebhookOrderAttributes | null) => boolean,
+): Promise<WebhookOrderAttributes | null> {
+  let latest: WebhookOrderAttributes | null = null;
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('orders')
+          .select('shopify_order_attributes, shopify_line_item_attributes')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('shopify_order_id', shopifyOrderId)
+          .maybeSingle();
+        latest = data as WebhookOrderAttributes | null;
+        return predicate(latest);
+      },
+      { timeout: 15_000, intervals: [300, 500, 1000] },
+    )
+    .toBe(true);
+  return latest;
+}
+
 test.setTimeout(90_000);
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E webhooks Shopify');
 
@@ -299,6 +329,157 @@ test("webhook orders/fulfilled n'altère pas delivery_state (miroir de canal uni
         { timeout: 15_000, intervals: [300, 500, 1000] },
       )
       .toBe('fulfilled');
+  } finally {
+    await admin.auth.admin.deleteUser(userId);
+  }
+});
+
+test('webhook orders/create sans note/attributs → colonnes JSONB null (pas de section vide)', async ({
+  request,
+}) => {
+  const admin = adminClient();
+  const { userId, merchantAccountId } = await createMerchant(admin);
+  try {
+    const shopDomain = await seedShop(admin, merchantAccountId);
+    const orderId = 80_000_000 + Math.floor(Math.random() * 1_000_000);
+    const shopifyOrderId = String(orderId);
+    const body = {
+      id: orderId,
+      name: `#E2E-${orderId}`,
+      created_at: '2026-06-01T09:00:00Z',
+      updated_at: '2026-06-01T09:00:00Z',
+      financial_status: 'pending',
+      fulfillment_status: null,
+      total_price: '15000',
+      currency: 'XOF',
+      customer: {
+        id: 9_000_003,
+        first_name: 'Modou',
+        last_name: 'Ndao',
+        phone: '+221770000003',
+        email: 'modou@example.com',
+      },
+      shipping_address: { address1: 'Rue 3', city: 'Dakar', name: 'Modou Ndao' },
+      line_items: [
+        { title: 'Sac', sku: 'SAC-1', quantity: 1, price: '15000', variant_id: 44, product_id: 33 },
+      ],
+    };
+
+    const res = await postWebhook(request, {
+      topic: 'orders/create',
+      shopDomain,
+      webhookId: `wh-create-${orderId}`,
+      body,
+      triggeredAt: '2026-06-01T09:00:01Z',
+    });
+    test.skip(res.status() === 401, 'HMAC: secret webhook indisponible dans cet environnement');
+    await waitForOrder(admin, merchantAccountId, shopifyOrderId);
+
+    const row = await pollOrderAttributes(
+      admin,
+      merchantAccountId,
+      shopifyOrderId,
+      (r) => r !== null,
+    );
+    expect(row?.shopify_order_attributes).toBeNull();
+    expect(row?.shopify_line_item_attributes).toBeNull();
+  } finally {
+    await admin.auth.admin.deleteUser(userId);
+  }
+});
+
+test('webhook orders/create capture note + customAttributes commande et ligne ; orders/updated ajoute une note apres coup', async ({
+  request,
+}) => {
+  const admin = adminClient();
+  const { userId, merchantAccountId } = await createMerchant(admin);
+  try {
+    const shopDomain = await seedShop(admin, merchantAccountId);
+    const orderId = 80_000_000 + Math.floor(Math.random() * 1_000_000);
+    const shopifyOrderId = String(orderId);
+    const baseBody = {
+      id: orderId,
+      name: `#E2E-${orderId}`,
+      created_at: '2026-06-01T09:00:00Z',
+      updated_at: '2026-06-01T09:00:00Z',
+      financial_status: 'pending',
+      fulfillment_status: null,
+      total_price: '15000',
+      currency: 'XOF',
+      customer: {
+        id: 9_000_004,
+        first_name: 'Aida',
+        last_name: 'Ba',
+        phone: '+221770000004',
+        email: 'aida@example.com',
+      },
+      shipping_address: { address1: 'Rue 4', city: 'Dakar', name: 'Aida Ba' },
+      line_items: [
+        {
+          title: 'Sac',
+          sku: 'SAC-1',
+          quantity: 1,
+          price: '15000',
+          variant_id: 44,
+          product_id: 33,
+          properties: [{ name: 'couleur', value: 'Rouge' }],
+        },
+      ],
+    };
+
+    // Création : note absente, note_attributes présent (commande), properties présent (ligne).
+    const createRes = await postWebhook(request, {
+      topic: 'orders/create',
+      shopDomain,
+      webhookId: `wh-create-${orderId}`,
+      body: {
+        ...baseBody,
+        note_attributes: [{ name: 'disponibilite_livraison', value: 'Apres 18h' }],
+      },
+      triggeredAt: '2026-06-01T09:00:01Z',
+    });
+    test.skip(
+      createRes.status() === 401,
+      'HMAC: secret webhook indisponible dans cet environnement',
+    );
+    await waitForOrder(admin, merchantAccountId, shopifyOrderId);
+
+    const created = await pollOrderAttributes(
+      admin,
+      merchantAccountId,
+      shopifyOrderId,
+      (r) => r?.shopify_order_attributes !== null,
+    );
+    expect(created?.shopify_order_attributes).toEqual({
+      note: null,
+      attributes: [{ key: 'disponibilite_livraison', value: 'Apres 18h' }],
+    });
+    expect(created?.shopify_line_item_attributes).toEqual([
+      { title: 'Sac', attributes: [{ key: 'couleur', value: 'Rouge' }] },
+    ]);
+
+    // orders/updated : note ajoutée après coup (updated_at plus récent) → même chemin de
+    // persistance que la création, aucun nouveau mécanisme de sync nécessaire.
+    await postWebhook(request, {
+      topic: 'orders/updated',
+      shopDomain,
+      webhookId: `wh-updated-${orderId}`,
+      body: {
+        ...baseBody,
+        updated_at: '2026-06-01T10:00:00Z',
+        note: 'Note ajoutée après coup',
+        note_attributes: [{ name: 'disponibilite_livraison', value: 'Apres 18h' }],
+      },
+      triggeredAt: '2026-06-01T10:00:01Z',
+    });
+
+    const updated = await pollOrderAttributes(admin, merchantAccountId, shopifyOrderId, (r) =>
+      Boolean((r?.shopify_order_attributes as { note?: string } | null)?.note),
+    );
+    expect(updated?.shopify_order_attributes).toEqual({
+      note: 'Note ajoutée après coup',
+      attributes: [{ key: 'disponibilite_livraison', value: 'Apres 18h' }],
+    });
   } finally {
     await admin.auth.admin.deleteUser(userId);
   }

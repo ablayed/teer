@@ -1056,6 +1056,8 @@ export type Database = {
           shopify_cancelled_at: string | null;
           shopify_financial_status: string | null;
           shopify_fulfillment_status: string | null;
+          shopify_line_item_attributes: Json | null;
+          shopify_order_attributes: Json | null;
           shopify_order_id: string | null;
           shopify_updated_at: string | null;
           sort_at: string | null;
@@ -1097,6 +1099,8 @@ export type Database = {
           shopify_cancelled_at?: string | null;
           shopify_financial_status?: string | null;
           shopify_fulfillment_status?: string | null;
+          shopify_line_item_attributes?: Json | null;
+          shopify_order_attributes?: Json | null;
           shopify_order_id?: string | null;
           shopify_updated_at?: string | null;
           sort_at?: string | null;
@@ -1138,6 +1142,8 @@ export type Database = {
           shopify_cancelled_at?: string | null;
           shopify_financial_status?: string | null;
           shopify_fulfillment_status?: string | null;
+          shopify_line_item_attributes?: Json | null;
+          shopify_order_attributes?: Json | null;
           shopify_order_id?: string | null;
           shopify_updated_at?: string | null;
           sort_at?: string | null;

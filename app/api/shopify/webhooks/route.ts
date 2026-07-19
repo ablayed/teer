@@ -3,6 +3,7 @@ import { getRegisteredShopifyApps, getShopifyAppForShop } from '@/lib/shopify/ap
 import { compileCustomerData, redactCustomer, redactShop } from '@/lib/shopify/gdpr';
 import {
   type ShopifyAddress,
+  type ShopifyCustomAttribute,
   type ShopifyCustomerNode,
   type ShopifyOrderNode,
   persistShopifyOrder,
@@ -100,6 +101,25 @@ function buildCustomerName(customer: Record<string, unknown>, fallbackName: stri
   return fullName || stringField(customer, 'name') || fallbackName;
 }
 
+// Attributs clé/valeur REST : note_attributes (commande) et line_items[].properties (ligne)
+// portent tous deux la forme { name, value } — normalisée vers { key, value } (forme GraphQL).
+function mapWebhookCustomAttributes(value: unknown): ShopifyCustomAttribute[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const attributes: ShopifyCustomAttribute[] = [];
+  for (const entry of value) {
+    if (isRecord(entry)) {
+      const key = stringField(entry, 'name');
+      if (key) {
+        attributes.push({ key, value: stringField(entry, 'value') });
+      }
+    }
+  }
+  return attributes;
+}
+
 function mapWebhookAddress(rec: Record<string, unknown> | null): ShopifyAddress | null {
   if (!rec) {
     return null;
@@ -191,6 +211,8 @@ function mapOrderWebhookToOrderNode(payload: unknown): ShopifyOrderNode | null {
     cancelledAt: stringField(payload, 'cancelled_at'),
     displayFinancialStatus: stringField(payload, 'financial_status'),
     displayFulfillmentStatus: stringField(payload, 'fulfillment_status'),
+    note: stringField(payload, 'note'),
+    customAttributes: mapWebhookCustomAttributes(payload.note_attributes),
     currentTotalPriceSet: {
       shopMoney: {
         amount: stringField(payload, 'total_price') ?? '0',
@@ -234,6 +256,7 @@ function mapOrderWebhookToOrderNode(payload: unknown): ShopifyOrderNode | null {
 
             return productId ? { id: productId } : null;
           })(),
+          customAttributes: mapWebhookCustomAttributes(lineItem.properties),
         },
       })),
     },

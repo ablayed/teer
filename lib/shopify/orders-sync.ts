@@ -16,6 +16,8 @@ query Orders($cursor: String) {
         cancelledAt
         displayFinancialStatus
         displayFulfillmentStatus
+        note
+        customAttributes { key value }
         currentTotalPriceSet { shopMoney { amount currencyCode } }
         customer {
           id
@@ -40,6 +42,7 @@ query Orders($cursor: String) {
               originalUnitPriceSet { shopMoney { amount } }
               variant { id }
               product { id }
+              customAttributes { key value }
             }
           }
         }
@@ -84,6 +87,13 @@ export type ShopifyCustomerNode = {
   createdAt?: string | null;
 };
 
+// Attribut clé/valeur générique (customAttributes GraphQL, "properties" ligne REST,
+// note_attributes commande REST) — affichage brut uniquement, jamais interprété.
+export type ShopifyCustomAttribute = {
+  key: string;
+  value: string | null;
+};
+
 export type ShopifyLineItemNode = {
   title: string;
   sku: string | null;
@@ -99,6 +109,8 @@ export type ShopifyLineItemNode = {
   product: {
     id: string;
   } | null;
+  // Propriétés personnalisées par ligne (apps tierces) — capture générique, aucune automatisation.
+  customAttributes?: ShopifyCustomAttribute[] | null;
 };
 
 export type ShopifyOrderNode = {
@@ -110,6 +122,10 @@ export type ShopifyOrderNode = {
   cancelledAt?: string | null;
   displayFinancialStatus: string | null;
   displayFulfillmentStatus: string | null;
+  // Note commande + attributs personnalisés commande (apps tierces) — capture générique,
+  // affichage brut uniquement.
+  note?: string | null;
+  customAttributes?: ShopifyCustomAttribute[] | null;
   currentTotalPriceSet: {
     shopMoney: ShopifyMoney;
   };
@@ -174,6 +190,8 @@ type OrderShopifyUpdate = Pick<
   | 'customer_id'
   | 'created_at_shopify'
   | 'updated_at'
+  | 'shopify_order_attributes'
+  | 'shopify_line_item_attributes'
 >;
 
 export function buildShopifyOrderUpdate(
@@ -193,6 +211,11 @@ export function buildShopifyOrderUpdate(
     customer_id: orderData.customer_id,
     created_at_shopify: orderData.created_at_shopify,
     updated_at: new Date().toISOString(),
+    // Note/attributs personnalisés : jamais édités localement par le marchand (pas de garde
+    // cart_locally_modified_at) — toujours rafraîchis, y compris sur une note ajoutée après coup
+    // (même chemin orders/updated que le reste du miroir de canal).
+    shopify_order_attributes: orderData.shopify_order_attributes,
+    shopify_line_item_attributes: orderData.shopify_line_item_attributes,
   } satisfies Omit<OrderShopifyUpdate, 'items_summary' | 'total_amount'>;
 
   return cartLocallyModifiedAt
@@ -382,6 +405,39 @@ export function buildCustomerMergePatch(
   };
 }
 
+function normalizeAttributes(
+  attributes: ShopifyCustomAttribute[] | null | undefined,
+): Array<{ key: string; value: string | null }> {
+  return (attributes ?? [])
+    .filter((attribute): attribute is ShopifyCustomAttribute => Boolean(attribute.key?.trim()))
+    .map((attribute) => ({ key: attribute.key, value: attribute.value ?? null }));
+}
+
+// Attributs de commande (note + customAttributes) — objet unique, null si rien à stocker
+// (pas de section vide à l'affichage). Capture générique, jamais interprétée.
+export function buildShopifyOrderAttributes(node: ShopifyOrderNode): Json | null {
+  const note = node.note?.trim() ? node.note : null;
+  const attributes = normalizeAttributes(node.customAttributes);
+
+  if (!note && attributes.length === 0) {
+    return null;
+  }
+
+  return { note, attributes } satisfies Json;
+}
+
+// Attributs par ligne — tableau parallèle à items_summary (même ordre), null si aucune ligne
+// n'a d'attribut (pas de colonne polluée par des tableaux vides).
+export function buildShopifyLineItemAttributes(node: ShopifyOrderNode): Json | null {
+  const lines = node.lineItems.edges.map(({ node: lineItem }) => ({
+    title: lineItem.title,
+    attributes: normalizeAttributes(lineItem.customAttributes),
+  }));
+
+  const hasAny = lines.some((line) => line.attributes.length > 0);
+  return hasAny ? (lines satisfies Json) : null;
+}
+
 export function mapShopifyOrder(
   node: ShopifyOrderNode,
   { merchantAccountId, shopId, customerId }: OrderMappingContext,
@@ -418,6 +474,8 @@ export function mapShopifyOrder(
     })),
     shipping_address: mapShippingAddress(node.shippingAddress),
     created_at_shopify: node.createdAt,
+    shopify_order_attributes: buildShopifyOrderAttributes(node),
+    shopify_line_item_attributes: buildShopifyLineItemAttributes(node),
   };
 }
 
