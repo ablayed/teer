@@ -50,6 +50,30 @@ const productUnitCostSchema = z.object({
   unitCost: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
 
+const bundleCompositionInputSchema = z.object({
+  bundleProductId: z.string().uuid(),
+});
+
+const saveBundleConfigurationSchema = z.object({
+  productId: z.string().uuid(),
+  isBundle: z.boolean(),
+  components: z
+    .array(
+      z.object({
+        componentProductId: z.string().uuid(),
+        quantity: z.number().int().min(1).max(999),
+      }),
+    )
+    .max(50),
+});
+
+type BundleConfigErrorCode =
+  | 'component_is_bundle'
+  | 'duplicate_component'
+  | 'product_used_as_component'
+  | 'self_reference'
+  | 'update_failed';
+
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -416,4 +440,131 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
       hasMore,
       nextOffset: parsedInput.offset + PRODUCTS_PER_PAGE,
     };
+  });
+
+// PR 3 (bundles/packs — UI de configuration) : lit la composition existante d'un bundle,
+// via ctx.supabase (client RLS) — la table accorde déjà SELECT à owner/manager/agent
+// (migration 0107), mais on restreint l'action à owner/manager pour rester cohérent avec
+// le reste de la gestion catalogue (gate déjà appliqué côté RLS insert/update/delete).
+export const getBundleCompositionAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'products.get_bundle_composition', section: 'products' })
+  .inputSchema(bundleCompositionInputSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = ctx.supabase as unknown as SupabaseServerClient;
+    const { data, error } = await supabase
+      .from('product_bundle_component')
+      .select('component_product_id, quantity')
+      .eq('bundle_product_id', parsedInput.bundleProductId)
+      .eq('merchant_account_id', ctx.member.merchantAccountId);
+
+    if (error) return { ok: false as const, errorCode: 'load_failed' as const };
+
+    return {
+      ok: true as const,
+      components: (data ?? []).map((row) => ({
+        componentProductId: row.component_product_id,
+        quantity: row.quantity,
+      })),
+    };
+  });
+
+// PR 3 : sauvegarde la case "Pack/bundle" + la composition (remplacement total, même
+// philosophie que replaceOrderCartAction/replace_order_cart — pas de diff ligne-à-ligne).
+// Décision produit validée (Phase B, PR 3) : décocher "Pack/bundle" n'est JAMAIS bloqué,
+// quel que soit l'historique de ventes ou les commandes en cours référençant ce bundle —
+// cf. note CLAUDE.md dédiée. Les lignes de product_bundle_component existantes ne sont
+// PAS supprimées quand isBundle passe à false (aucune garde ni cascade requise par cette
+// décision) : elles restent en base, invisibles tant que is_bundle=false (PR 2 ne calcule
+// la disponibilité dérivée que pour les produits is_bundle=true), et réapparaissent
+// pré-remplies si le marchand recoche "Pack/bundle" plus tard sur ce même produit.
+//
+// Non-atomicité assumée (même classe que ProductsCatalog.onCreateProduct, qui enchaîne
+// déjà createProductAction puis setLowStockThresholdAction en 2 appels non transactionnels) :
+// la mise à jour de product.is_bundle et le remplacement de la composition sont 2 appels
+// PostgREST séparés, pas une transaction unique. Si le premier réussit et le second échoue,
+// le produit reste marqué is_bundle=true avec une composition vide/partielle — état
+// récupérable en rouvrant le panneau et en réessayant, pas une corruption silencieuse.
+export const saveBundleConfigurationAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'products.save_bundle_configuration', section: 'products' })
+  .inputSchema(saveBundleConfigurationSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = ctx.supabase as unknown as SupabaseServerClient;
+    const { productId, isBundle, components } = parsedInput;
+
+    // Auto-référence (bundle_product_id === component_product_id) volontairement NON
+    // vérifiée ici en TS : la contrainte SQL product_bundle_component_no_self_reference
+    // (migration 0107) est la seule source de vérité, catchée plus bas via insertError.
+    // Un pré-check TS la court-circuiterait et masquerait un contournement direct de
+    // l'action (payload construit hors UI) derrière une validation applicative au lieu
+    // de la contrainte DB réellement testée.
+    const uniqueComponentIds = new Set(components.map((c) => c.componentProductId));
+    if (uniqueComponentIds.size !== components.length) {
+      return {
+        ok: false as const,
+        errorCode: 'duplicate_component' satisfies BundleConfigErrorCode,
+      };
+    }
+
+    const { error: flagError } = await supabase
+      .from('product')
+      .update({ is_bundle: isBundle, updated_at: new Date().toISOString() })
+      .eq('id', productId)
+      .eq('merchant_account_id', ctx.member.merchantAccountId);
+
+    if (flagError) {
+      const errorCode: BundleConfigErrorCode = flagError.message.includes(
+        'is already used as a bundle component',
+      )
+        ? 'product_used_as_component'
+        : 'update_failed';
+      return { ok: false as const, errorCode };
+    }
+
+    if (isBundle) {
+      const { error: deleteError } = await supabase
+        .from('product_bundle_component')
+        .delete()
+        .eq('bundle_product_id', productId)
+        .eq('merchant_account_id', ctx.member.merchantAccountId);
+
+      if (deleteError) {
+        return { ok: false as const, errorCode: 'update_failed' as const };
+      }
+
+      if (components.length > 0) {
+        const { error: insertError } = await supabase.from('product_bundle_component').insert(
+          components.map((c) => ({
+            merchant_account_id: ctx.member.merchantAccountId,
+            bundle_product_id: productId,
+            component_product_id: c.componentProductId,
+            quantity: c.quantity,
+          })),
+        );
+
+        if (insertError) {
+          // Une auto-référence réelle (component_product_id === bundle_product_id) trippe
+          // TOUJOURS "is itself a bundle" en premier, jamais le check constraint
+          // no_self_reference : le trigger assert_bundle_component_integrity (BEFORE
+          // INSERT) exige que le produit référencé par bundle_product_id soit
+          // is_bundle=true — si c'est le même produit, son propre is_bundle=true fait
+          // aussi échouer le 2e check du même trigger ("le composant ne doit pas être un
+          // bundle") avant que Postgres n'évalue le check constraint. La branche
+          // no_self_reference ci-dessous est donc une défense en profondeur actuellement
+          // inatteignable par ce chemin, pas du code mort à supprimer sans vérifier
+          // d'abord si l'ordre d'évaluation trigger/constraint a changé.
+          const errorCode: BundleConfigErrorCode = insertError.message.includes(
+            'is itself a bundle',
+          )
+            ? 'component_is_bundle'
+            : insertError.message.includes('no_self_reference')
+              ? 'self_reference'
+              : 'update_failed';
+          return { ok: false as const, errorCode };
+        }
+      }
+    }
+
+    revalidatePath('/produits');
+
+    return { ok: true as const };
   });
