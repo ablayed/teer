@@ -2,6 +2,7 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
+import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-availability';
 import { parseItemsummary, resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -214,6 +215,8 @@ export type StockPageRow = {
   isLowStock: boolean;
   unitCost: number | null;
   stockValue: number | null;
+  isBundle: boolean;
+  bundleAvailability: number | null;
 };
 
 export type StockPageData =
@@ -243,7 +246,7 @@ export async function getStockPageData(): Promise<StockPageData> {
 
   const { data: products, error: prodError } = await admin
     .from('product')
-    .select('id, title, sku')
+    .select('id, title, sku, is_bundle')
     .eq('merchant_account_id', merchantAccountId)
     .eq('is_active', true)
     .order('title');
@@ -256,6 +259,13 @@ export async function getStockPageData(): Promise<StockPageData> {
     .eq('merchant_account_id', merchantAccountId);
 
   const stockMap = new Map((stocks ?? []).map((s) => [s.product_id, s]));
+
+  const bundleIds = (products ?? []).filter((p) => p.is_bundle).map((p) => p.id);
+  const bundleAvailabilityMap = await resolveBundleAvailabilities(
+    admin,
+    merchantAccountId,
+    bundleIds,
+  );
 
   const rows: StockPageRow[] = (products ?? []).map((p) => {
     const s = stockMap.get(p.id);
@@ -275,6 +285,8 @@ export async function getStockPageData(): Promise<StockPageData> {
       isLowStock: qtyOnHand <= threshold,
       unitCost,
       stockValue: canSeeCost ? qtyOnHand * (s?.unit_cost ?? 0) : null,
+      isBundle: p.is_bundle,
+      bundleAvailability: p.is_bundle ? (bundleAvailabilityMap.get(p.id) ?? null) : null,
     };
   });
 

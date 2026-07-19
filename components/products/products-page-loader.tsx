@@ -30,6 +30,8 @@ function toStockRow(item: ProductsPageItem): StockPageRow {
     isLowStock: item.isLowStock,
     unitCost: item.stockUnitCost,
     stockValue: item.stockValue,
+    isBundle: item.isBundle,
+    bundleAvailability: item.bundleAvailability,
   };
 }
 
