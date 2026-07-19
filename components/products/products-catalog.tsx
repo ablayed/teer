@@ -1,21 +1,22 @@
 'use client';
 
+import { ProductDetailPanel } from '@/components/products/product-detail-panel';
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet';
 import { ResourceRow } from '@/components/ui/resource-row';
 import {
-  type ProductCatalogItem,
+  type ProductsPageItem,
   createProductAction,
   updateProductUnitCostAction,
 } from '@/lib/actions/products';
 import { setLowStockThresholdAction } from '@/lib/actions/stock';
-import { MoreHorizontal, Store, Tag } from 'lucide-react';
+import { Info, MoreHorizontal, Store, Tag } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 type ProductsCatalogProps = {
   currentRole: 'agent' | 'manager' | 'owner';
-  products: ProductCatalogItem[];
+  products: ProductsPageItem[];
 };
 
 function formatMinorAmount(value: number) {
@@ -39,6 +40,8 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
   const [feedback, setFeedback] = useState<string | null>(null);
   const [unitCostDrafts, setUnitCostDrafts] = useState<Record<string, string>>({});
   const [mobileEditingId, setMobileEditingId] = useState<string | null>(null);
+  const [detailProductId, setDetailProductId] = useState<string | null>(null);
+  const detailProduct = products.find((p) => p.id === detailProductId) ?? null;
 
   useEffect(() => {
     const result = updateUnitCost.result.data;
@@ -84,7 +87,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
     router.refresh();
   }
 
-  function onSaveUnitCost(product: ProductCatalogItem) {
+  function onSaveUnitCost(product: ProductsPageItem) {
     const rawValue = unitCostDrafts[product.id] ?? String(product.unit_cost ?? 0);
     const parsedUnitCost = Number.parseInt(rawValue, 10);
     setFeedback(null);
@@ -204,7 +207,24 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                       </span>
                     </div>
                     <div className="space-y-1">
-                      <h2 className="text-lg font-semibold text-text">{product.title}</h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-semibold text-text">{product.title}</h2>
+                        {product.isBundle ? (
+                          <span className="inline-flex min-h-6 items-center rounded-full bg-canvas px-2 text-xs font-medium text-muted">
+                            Bundle
+                          </span>
+                        ) : null}
+                        {canManage ? (
+                          <button
+                            className="inline-flex items-center gap-1 text-xs font-medium text-muted underline hover:text-text"
+                            onClick={() => setDetailProductId(product.id)}
+                            type="button"
+                          >
+                            <Info aria-hidden="true" className="size-3.5" />
+                            Détails
+                          </button>
+                        ) : null}
+                      </div>
                       <div className="flex flex-wrap gap-4 text-sm text-muted">
                         <span className="inline-flex items-center gap-2">
                           <Tag aria-hidden="true" className="size-4" />
@@ -269,6 +289,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
               editingId={mobileEditingId}
               isSaving={updateUnitCost.isExecuting}
               key={product.id}
+              onOpenDetail={() => setDetailProductId(product.id)}
               onSaveUnitCost={() => onSaveUnitCost(product)}
               onToggleEdit={setMobileEditingId}
               onUnitCostChange={(value) =>
@@ -279,6 +300,15 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
             />
           ))}
         </div>
+      ) : null}
+
+      {detailProduct && canManage ? (
+        <ProductDetailPanel
+          allProducts={products}
+          key={detailProduct.id}
+          onClose={() => setDetailProductId(null)}
+          product={detailProduct}
+        />
       ) : null}
     </div>
   );
@@ -294,6 +324,7 @@ function ProductMobileRow({
   canManage,
   editingId,
   isSaving,
+  onOpenDetail,
   onSaveUnitCost,
   onToggleEdit,
   onUnitCostChange,
@@ -303,25 +334,37 @@ function ProductMobileRow({
   canManage: boolean;
   editingId: string | null;
   isSaving: boolean;
+  onOpenDetail: () => void;
   onSaveUnitCost: () => void;
   onToggleEdit: (productId: string | null) => void;
   onUnitCostChange: (value: string) => void;
-  product: ProductCatalogItem;
+  product: ProductsPageItem;
   unitCostValue: string;
 }) {
   const metaParts = [product.sku ?? 'SKU non renseigné'];
   if (canManage) {
     metaParts.push(`${formatMinorAmount(product.unit_cost ?? 0)} XOF`);
   }
+  if (product.isBundle) {
+    metaParts.push('Bundle');
+  }
 
-  const overflowItems: ActionSheetItem[] = [
-    {
-      key: 'edit-cost',
-      label: 'Modifier le coût',
-      icon: <Tag className="size-4" />,
-      onSelect: () => onToggleEdit(product.id),
-    },
-  ];
+  const overflowItems: ActionSheetItem[] = canManage
+    ? [
+        {
+          key: 'edit-cost',
+          label: 'Modifier le coût',
+          icon: <Tag className="size-4" />,
+          onSelect: () => onToggleEdit(product.id),
+        },
+        {
+          key: 'details',
+          label: 'Détails',
+          icon: <Info className="size-4" />,
+          onSelect: onOpenDetail,
+        },
+      ]
+    : [];
 
   return (
     <>

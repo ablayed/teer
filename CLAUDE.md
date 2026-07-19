@@ -232,3 +232,13 @@ Lors d’une mise à jour Shopify d’une commande déjà importée, le synchron
 `cart_locally_modified_at` (migration 0102) évite uniquement l’écrasement de ces deux champs
 après une édition locale ; elle ne corrige pas cette divergence historique pour les paniers
 non modifiés localement.
+
+## Bundles/packs — PR 3 : UI de configuration (`/produits`, onglet Détails)
+
+**Décochage "Pack/bundle" — décision produit assumée, PAS une garde oubliée.** `saveBundleConfigurationAction` (`lib/actions/products.ts`) autorise sans blocage le décochage de `is_bundle` sur un produit, quel que soit l'historique de ventes ou les commandes **en cours** référençant ce bundle. Raison opérationnelle du porteur : si un marchand veut changer la configuration d'un bundle avec une commande en cours, le réflexe naturel est d'annuler cette commande et d'en recréer une manuelle — pas de modifier le bundle en cours de route. Si ce cas survient malgré tout (décochage pendant qu'une commande non résolue référence encore ce bundle), le stock des composants concernés peut ne pas refléter une vente qui aurait dû cascader avant le décochage — risque accepté, pas un bug.
+
+**Les lignes `product_bundle_component` ne sont jamais supprimées au décochage.** Elles restent en base, invisibles tant que `is_bundle=false` (PR 2 ne calcule la disponibilité dérivée que pour `is_bundle=true`), et réapparaissent pré-remplies si le marchand recoche "Pack/bundle" sur ce même produit plus tard.
+
+**Historique jamais réécrit** : commandes déjà résolues et mouvements de stock déjà postés restent inchangés par un changement de `is_bundle` — cohérent avec le principe append-only du projet. `CA par produit`/rapports (basés sur `items_summary`/`cash_collected_at`) ne dépendent jamais de `is_bundle`.
+
+**Non-atomicité assumée** : la mise à jour de `product.is_bundle` et le remplacement de la composition (`product_bundle_component`) sont 2 appels PostgREST séparés, pas une transaction unique (même classe que `ProductsCatalog.onCreateProduct`, qui enchaîne déjà `createProductAction` puis `setLowStockThresholdAction`). Si le premier réussit et le second échoue, le produit reste marqué `is_bundle=true` avec une composition vide/partielle — état récupérable en rouvrant le panneau, pas une corruption silencieuse.
