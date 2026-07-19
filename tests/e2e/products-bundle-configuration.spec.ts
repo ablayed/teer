@@ -36,7 +36,10 @@ const serviceRoleKey =
 const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
 const password = 'Mot-de-passe-e2e-2026!';
 
-test.setTimeout(90_000);
+// CI (runner Linux) s'est montré plus lent que la machine locale sur ces tests (3
+// timeouts marginaux à 90s observés en CI, verts sur retry) — bornage relevé pour
+// couvrir cette marge sans dépendre du retry.
+test.setTimeout(120_000);
 
 type AdminClient = SupabaseClient;
 type Role = 'agent' | 'manager';
