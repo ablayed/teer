@@ -2,6 +2,8 @@ import {
   type ExistingCustomerForMerge,
   type ShopifyOrderNode,
   buildCustomerMergePatch,
+  buildShopifyLineItemAttributes,
+  buildShopifyOrderAttributes,
   buildShopifyOrderUpdate,
   extractShopifyId,
   isStaleShopifyUpdate,
@@ -263,6 +265,101 @@ describe('mapShopifyOrder', () => {
   });
 });
 
+describe('buildShopifyOrderAttributes (note + customAttributes commande)', () => {
+  it('retourne null quand ni note ni customAttributes ne sont presents', () => {
+    expect(buildShopifyOrderAttributes(makeOrder())).toBeNull();
+  });
+
+  it('retourne null quand note est une chaine vide et customAttributes un tableau vide', () => {
+    expect(buildShopifyOrderAttributes(makeOrder({ note: '', customAttributes: [] }))).toBeNull();
+  });
+
+  it('capture la note seule', () => {
+    expect(buildShopifyOrderAttributes(makeOrder({ note: 'Livrer avant midi' }))).toEqual({
+      note: 'Livrer avant midi',
+      attributes: [],
+    });
+  });
+
+  it('capture les customAttributes de commande, brut, sans interpretation', () => {
+    expect(
+      buildShopifyOrderAttributes(
+        makeOrder({
+          note: null,
+          customAttributes: [{ key: 'disponibilite_livraison', value: 'Apres 18h' }],
+        }),
+      ),
+    ).toEqual({
+      note: null,
+      attributes: [{ key: 'disponibilite_livraison', value: 'Apres 18h' }],
+    });
+  });
+
+  it('ignore un attribut sans cle', () => {
+    expect(
+      buildShopifyOrderAttributes(makeOrder({ customAttributes: [{ key: '', value: 'x' }] })),
+    ).toBeNull();
+  });
+});
+
+describe('buildShopifyLineItemAttributes (customAttributes par ligne)', () => {
+  it('retourne null quand aucune ligne n_a d_attribut', () => {
+    expect(buildShopifyLineItemAttributes(makeOrder())).toBeNull();
+  });
+
+  it('capture les customAttributes par ligne, alignes sur items_summary', () => {
+    const order = makeOrder({
+      lineItems: {
+        edges: [
+          {
+            node: {
+              title: 'Sac',
+              sku: 'SAC-001',
+              quantity: 2,
+              originalUnitPriceSet: { shopMoney: { amount: '5000.25' } },
+              variant: { id: 'gid://shopify/ProductVariant/444' },
+              product: { id: 'gid://shopify/Product/333' },
+              customAttributes: [{ key: 'couleur', value: 'Rouge' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(buildShopifyLineItemAttributes(order)).toEqual([
+      { title: 'Sac', attributes: [{ key: 'couleur', value: 'Rouge' }] },
+    ]);
+  });
+});
+
+describe('mapShopifyOrder — attributs personnalises', () => {
+  it('pose shopify_order_attributes/shopify_line_item_attributes a null en absence d_attributs', () => {
+    const order = mapShopifyOrder(makeOrder(), {
+      merchantAccountId: 'merchant_123',
+      shopId: 'shop_123',
+      customerId: null,
+    });
+
+    expect(order.shopify_order_attributes).toBeNull();
+    expect(order.shopify_line_item_attributes).toBeNull();
+  });
+
+  it('capture note + customAttributes commande dans shopify_order_attributes', () => {
+    const order = mapShopifyOrder(
+      makeOrder({
+        note: 'Appeler avant de venir',
+        customAttributes: [{ key: 'source_app', value: 'FormBuilder' }],
+      }),
+      { merchantAccountId: 'merchant_123', shopId: 'shop_123', customerId: null },
+    );
+
+    expect(order.shopify_order_attributes).toEqual({
+      note: 'Appeler avant de venir',
+      attributes: [{ key: 'source_app', value: 'FormBuilder' }],
+    });
+  });
+});
+
 describe('buildShopifyOrderUpdate', () => {
   it('simule un webhook après édition locale : préserve le panier et met à jour le reste', () => {
     const patch = buildShopifyOrderUpdate(
@@ -300,6 +397,22 @@ describe('buildShopifyOrderUpdate', () => {
     );
     expect(patch.total_amount).toBe(12500.5);
     expect(patch.items_summary).toHaveLength(1);
+  });
+
+  it('rafraichit toujours les attributs personnalises, meme apres edition locale du panier (note ajoutee apres coup)', () => {
+    const patch = buildShopifyOrderUpdate(
+      mapShopifyOrder(makeOrder({ note: 'Note ajoutee apres creation' }), {
+        merchantAccountId: 'm',
+        shopId: 's',
+        customerId: null,
+      }),
+      '2026-07-01T10:00:00Z',
+    );
+
+    expect(patch.shopify_order_attributes).toEqual({
+      note: 'Note ajoutee apres creation',
+      attributes: [],
+    });
   });
 });
 

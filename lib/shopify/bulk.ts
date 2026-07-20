@@ -5,6 +5,7 @@
 import { shopifyGraphQL } from '@/lib/shopify/graphql';
 import type {
   ShopifyAddress,
+  ShopifyCustomAttribute,
   ShopifyCustomerNode,
   ShopifyOrderNode,
 } from '@/lib/shopify/orders-sync';
@@ -26,6 +27,8 @@ export function buildBulkOrdersQuery(updatedSinceIso: string | null): string {
         cancelledAt
         displayFinancialStatus
         displayFulfillmentStatus
+        note
+        customAttributes { key value }
         currentTotalPriceSet { shopMoney { amount currencyCode } }
         customer {
           id
@@ -51,6 +54,7 @@ export function buildBulkOrdersQuery(updatedSinceIso: string | null): string {
               originalUnitPriceSet { shopMoney { amount } }
               variant { id }
               product { id }
+              customAttributes { key value }
             }
           }
         }
@@ -232,6 +236,24 @@ function moneyAmount(node: Record<string, unknown>, key: string): string {
   return '0';
 }
 
+function mapCustomAttributes(value: unknown): ShopifyCustomAttribute[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const attributes: ShopifyCustomAttribute[] = [];
+  for (const entry of value) {
+    if (entry && typeof entry === 'object') {
+      const key = (entry as Record<string, unknown>).key;
+      const attrValue = (entry as Record<string, unknown>).value;
+      if (typeof key === 'string') {
+        attributes.push({ key, value: typeof attrValue === 'string' ? attrValue : null });
+      }
+    }
+  }
+  return attributes;
+}
+
 function mapAddressRecord(rec: Record<string, unknown> | null): ShopifyAddress | null {
   if (!rec) {
     return null;
@@ -316,6 +338,7 @@ export function parseBulkOrdersJsonl(jsonl: string): ShopifyOrderNode[] {
           },
           variant: variant && typeof variant.id === 'string' ? { id: variant.id } : null,
           product: product && typeof product.id === 'string' ? { id: product.id } : null,
+          customAttributes: mapCustomAttributes(parsed.customAttributes),
         },
       };
       const list = lineItemsByParent.get(parentId) ?? [];
@@ -342,6 +365,8 @@ export function parseBulkOrdersJsonl(jsonl: string): ShopifyOrderNode[] {
       cancelledAt: str(parsed, 'cancelledAt'),
       displayFinancialStatus: str(parsed, 'displayFinancialStatus'),
       displayFulfillmentStatus: str(parsed, 'displayFulfillmentStatus'),
+      note: str(parsed, 'note'),
+      customAttributes: mapCustomAttributes(parsed.customAttributes),
       currentTotalPriceSet: {
         shopMoney: { amount: moneyAmount(parsed, 'currentTotalPriceSet'), currencyCode },
       },

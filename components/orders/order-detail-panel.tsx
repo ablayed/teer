@@ -46,6 +46,21 @@ type ItemSummary = {
   title: string;
 };
 
+type ShopifyAttributeDisplay = {
+  key: string;
+  value: string | null;
+};
+
+type OrderAttributesDisplay = {
+  attributes: ShopifyAttributeDisplay[];
+  note: string | null;
+};
+
+type LineItemAttributesDisplay = {
+  attributes: ShopifyAttributeDisplay[];
+  title: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -95,6 +110,56 @@ function parseItemsSummary(value: Json | null): ItemSummary[] {
   return items;
 }
 
+// Attribut clé/valeur générique (note_attributes/customAttributes) — affichage brut uniquement.
+function parseAttributeList(value: unknown): ShopifyAttributeDisplay[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const attributes: ShopifyAttributeDisplay[] = [];
+  for (const item of value) {
+    if (isRecord(item)) {
+      const key = stringField(item, 'key');
+      if (key) {
+        attributes.push({ key, value: stringField(item, 'value') });
+      }
+    }
+  }
+  return attributes;
+}
+
+function parseOrderAttributes(value: Json | null): OrderAttributesDisplay | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const note = stringField(value, 'note');
+  const attributes = parseAttributeList(value.attributes);
+
+  if (!note && attributes.length === 0) {
+    return null;
+  }
+
+  return { note, attributes };
+}
+
+function parseLineItemAttributes(value: Json | null): LineItemAttributesDisplay[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const lines: LineItemAttributesDisplay[] = [];
+  for (const item of value) {
+    if (isRecord(item)) {
+      const attributes = parseAttributeList(item.attributes);
+      if (attributes.length > 0) {
+        lines.push({ title: stringField(item, 'title') ?? '', attributes });
+      }
+    }
+  }
+  return lines;
+}
+
 function formatAddress(address: ShippingAddress | null, emptyValue: string): string {
   if (!address) {
     return emptyValue;
@@ -129,6 +194,9 @@ export function OrderDetailPanel({
   const shippingAddress = parseShippingAddress(order.shipping_address);
   const structuredAddress = order.delivery_address ?? order.customer_delivery_address;
   const items = parseItemsSummary(order.items_summary);
+  const orderAttributes = parseOrderAttributes(order.shopify_order_attributes);
+  const lineItemAttributes = parseLineItemAttributes(order.shopify_line_item_attributes);
+  const hasAdditionalDetails = orderAttributes !== null || lineItemAttributes.length > 0;
   const phone = order.customer?.phone ?? null;
   const fallbackQuartier = [shippingAddress?.address1, shippingAddress?.address2]
     .filter(Boolean)
@@ -277,6 +345,41 @@ export function OrderDetailPanel({
             <p className="text-sm text-muted">Aucun article renseigne.</p>
           )}
         </section>
+
+        {hasAdditionalDetails ? (
+          <section className="space-y-3" data-testid="order-additional-details">
+            <h2 className="text-sm font-semibold uppercase text-muted">Détails supplémentaires</h2>
+            {orderAttributes?.note ? (
+              <p className="text-sm text-text">
+                <span className="font-medium">Note : </span>
+                {orderAttributes.note}
+              </p>
+            ) : null}
+            {orderAttributes && orderAttributes.attributes.length > 0 ? (
+              <dl className="space-y-1">
+                {orderAttributes.attributes.map((attribute, index) => (
+                  <div className="flex gap-2 text-sm" key={`${attribute.key}-${index}`}>
+                    <dt className="font-medium text-muted">{attribute.key} :</dt>
+                    <dd className="text-text">{attribute.value ?? '—'}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {lineItemAttributes.map((line, lineIndex) => (
+              <div className="space-y-1" key={`${line.title}-${lineIndex}`}>
+                <p className="text-sm font-medium">{line.title || emptyValue}</p>
+                <dl className="space-y-1 pl-3">
+                  {line.attributes.map((attribute, index) => (
+                    <div className="flex gap-2 text-sm" key={`${attribute.key}-${index}`}>
+                      <dt className="font-medium text-muted">{attribute.key} :</dt>
+                      <dd className="text-text">{attribute.value ?? '—'}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+          </section>
+        ) : null}
 
         {canEditCart ? <OrderCartEditor currency={order.currency} orderId={order.id} /> : null}
 
