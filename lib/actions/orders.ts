@@ -28,6 +28,7 @@ import {
   logCallInputSchema,
 } from '@/lib/orders/call-log-validation';
 import { canEditOrderCart } from '@/lib/orders/cart-editing';
+import { positiveOrderTotalSchema } from '@/lib/orders/order-amount-validation';
 import { filterOrdersBySearch, legacySearchLookbackIso } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
@@ -1560,7 +1561,7 @@ export const updateOrderAmountsAction = requireRole('owner', 'manager')
   .inputSchema(
     z.object({
       orderId: z.string().uuid(),
-      totalAmount: z.number().int().min(0),
+      totalAmount: positiveOrderTotalSchema,
       deliveryFeeMinor: z.number().int().min(0),
       scheduledFor: z.string().datetime().optional(),
     }),

@@ -11,6 +11,7 @@ import {
 } from '@/lib/drivers/stock-on-hand';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
+import { fetchAllPostgrestRows } from '@/lib/supabase/pagination';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
@@ -70,12 +71,19 @@ export const setDriverStockAction = requireRole('owner', 'manager')
     // résolve les types de colonnes, la valeur runtime est le même client typé.
     const supabase = ctx.supabase as unknown as SupabaseClient<Database>;
 
-    const { data: movements, error: movementsError } = await supabase
-      .from('stock_movement')
-      .select('driver_id, product_id, movement_type, qty')
-      .eq('merchant_account_id', ctx.member.merchantAccountId)
-      .eq('driver_id', driverId)
-      .eq('product_id', productId);
+    const { data: movements, error: movementsError } =
+      await fetchAllPostgrestRows<DriverStockMovement>(
+        async (from, to) =>
+          await supabase
+            .from('stock_movement')
+            .select('driver_id, product_id, movement_type, qty')
+            .eq('merchant_account_id', ctx.member.merchantAccountId)
+            .eq('driver_id', driverId)
+            .eq('product_id', productId)
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to),
+      );
 
     if (movementsError) return { ok: false as const, message: movementsError.message };
 
@@ -204,11 +212,17 @@ export async function getDriverStockOnHand(driverId: string): Promise<DriverStoc
   if (!auth.ok) return { ok: false, message: auth.message };
   const { merchantAccountId, admin } = auth;
 
-  const { data: movements, error } = await admin
-    .from('stock_movement')
-    .select('driver_id, product_id, movement_type, qty')
-    .eq('merchant_account_id', merchantAccountId)
-    .eq('driver_id', driverId);
+  const { data: movements, error } = await fetchAllPostgrestRows<DriverStockMovement>(
+    async (from, to) =>
+      await admin
+        .from('stock_movement')
+        .select('driver_id, product_id, movement_type, qty')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('driver_id', driverId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+  );
 
   if (error) return { ok: false, message: error.message };
 
@@ -264,11 +278,17 @@ export async function getDriverAvailableStock(driverId: string): Promise<DriverA
   if (!auth.ok) return { ok: false, message: auth.message };
   const { merchantAccountId, admin } = auth;
 
-  const { data: movements, error } = await admin
-    .from('stock_movement')
-    .select('driver_id, product_id, movement_type, qty')
-    .eq('merchant_account_id', merchantAccountId)
-    .eq('driver_id', driverId);
+  const { data: movements, error } = await fetchAllPostgrestRows<DriverStockMovement>(
+    async (from, to) =>
+      await admin
+        .from('stock_movement')
+        .select('driver_id, product_id, movement_type, qty')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('driver_id', driverId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+  );
 
   if (error) return { ok: false, message: error.message };
 
