@@ -20,6 +20,10 @@ import {
 import { formatMoney } from '@/lib/format/fcfa';
 import { type StockShortageRow, computeStockShortages } from '@/lib/orders/assignment-stock-check';
 import {
+  ORDER_TOTAL_POSITIVE_MESSAGE,
+  parsePositiveOrderTotalInput,
+} from '@/lib/orders/order-amount-validation';
+import {
   buildWhatsappShareUrl,
   formatMoneyForWhatsApp,
   formatProduits,
@@ -74,7 +78,7 @@ export function AssignmentDetailsDialog({
   const [savedTotal, setSavedTotal] = useState(0);
   const [savedFee, setSavedFee] = useState(0);
   const [savedScheduledFor, setSavedScheduledFor] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
+  const [totalInput, setTotalInput] = useState('');
   const [feeInput, setFeeInput] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -109,7 +113,7 @@ export function AssignmentDetailsDialog({
       setSavedTotal(d.totalAmount);
       setSavedFee(d.deliveryFeeMinor);
       setSavedScheduledFor(d.scheduledFor);
-      setTotal(d.totalAmount);
+      setTotalInput(String(d.totalAmount));
       setFeeInput(d.deliveryFeeMinor > 0 ? String(d.deliveryFeeMinor) : '');
       const dt = d.scheduledFor ? isoToDateTimeInputs(d.scheduledFor) : nextWholeHourInputs();
       setDate(dt.date);
@@ -179,15 +183,16 @@ export function AssignmentDetailsDialog({
         telephone: safeText(customerPhone),
         produits: formatProduits(items.map((i) => ({ nom: i.title, quantite: i.quantity }))),
         adresse: safeText(deliveryAddress),
-        total: formatMoneyForWhatsApp(total),
+        total: formatMoneyForWhatsApp(parsePositiveOrderTotalInput(totalInput) ?? 0),
       }),
     );
-  }, [loaded, total, t, orderNumber, customerPhone, items, deliveryAddress]);
+  }, [loaded, totalInput, t, orderNumber, customerPhone, items, deliveryAddress]);
 
   const parsedFee = feeInput === '' ? 0 : Number(feeInput);
   const fee = Number.isFinite(parsedFee) ? parsedFee : 0;
-  const netMinor = Math.max(total - fee, 0);
-  const totalValid = Number.isFinite(total) && total >= 0;
+  const parsedTotal = parsePositiveOrderTotalInput(totalInput);
+  const netMinor = Math.max((parsedTotal ?? 0) - fee, 0);
+  const totalValid = parsedTotal !== null;
   const feeValid = Number.isFinite(parsedFee) && parsedFee >= 0;
   const canConfirm = loaded && totalValid && feeValid && !isExecuting;
 
@@ -201,7 +206,12 @@ export function AssignmentDetailsDialog({
     }
     setFeedback(null);
 
-    const roundedTotal = Math.round(total);
+    if (parsedTotal === null) {
+      setFeedback(ORDER_TOTAL_POSITIVE_MESSAGE);
+      return;
+    }
+
+    const roundedTotal = Math.round(parsedTotal);
     const roundedFee = Math.round(fee);
     const scheduledForIso = dateTimeInputsToIso(date, time);
     // Pré-ouverture synchrone obligatoire avant tout await (popup-blocker Safari).
@@ -309,11 +319,16 @@ export function AssignmentDetailsDialog({
               <Input
                 id={`${fieldId}-total`}
                 inputMode="numeric"
-                min={0}
-                onChange={(event) => setTotal(Number(event.target.value))}
+                min={1}
+                onChange={(event) => setTotalInput(event.target.value)}
                 type="number"
-                value={Number.isFinite(total) ? total : ''}
+                value={totalInput}
               />
+              {!totalValid ? (
+                <p className="text-sm text-danger" role="alert">
+                  {ORDER_TOTAL_POSITIVE_MESSAGE}
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">

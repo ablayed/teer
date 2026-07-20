@@ -10,6 +10,10 @@ import {
   normalizeHourInput,
 } from '@/lib/format/datetime-input';
 import { formatMoney } from '@/lib/format/fcfa';
+import {
+  ORDER_TOTAL_POSITIVE_MESSAGE,
+  parsePositiveOrderTotalInput,
+} from '@/lib/orders/order-amount-validation';
 import { Pencil } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -48,7 +52,7 @@ export function OrderAmountsEditor({
   const [open, setOpen] = useState(false);
   const [displayedTotal, setDisplayedTotal] = useState(totalAmount);
   const [displayedFee, setDisplayedFee] = useState(deliveryFeeMinor);
-  const [total, setTotal] = useState(totalAmount);
+  const [totalInput, setTotalInput] = useState(String(totalAmount));
   const [fee, setFee] = useState(deliveryFeeMinor);
   const initialDateTime = isoToDateTimeInputs(scheduledFor);
   const [date, setDate] = useState(initialDateTime.date);
@@ -71,13 +75,14 @@ export function OrderAmountsEditor({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, update.isExecuting]);
 
-  const netMinor = Math.max(total - fee, 0);
-  const totalValid = Number.isFinite(total) && total >= 0;
+  const parsedTotal = parsePositiveOrderTotalInput(totalInput);
+  const netMinor = Math.max((parsedTotal ?? 0) - fee, 0);
+  const totalValid = parsedTotal !== null;
   const feeValid = Number.isFinite(fee) && fee >= 0;
   const canConfirm = totalValid && feeValid && !update.isExecuting;
 
   function resetFields() {
-    setTotal(displayedTotal);
+    setTotalInput(String(displayedTotal));
     setFee(displayedFee);
     setDate(initialDateTime.date);
     setTime(initialDateTime.time);
@@ -89,7 +94,12 @@ export function OrderAmountsEditor({
     }
     setFeedback(null);
 
-    const roundedTotal = Math.round(total);
+    if (parsedTotal === null) {
+      setFeedback({ tone: 'error', message: ORDER_TOTAL_POSITIVE_MESSAGE });
+      return;
+    }
+
+    const roundedTotal = Math.round(parsedTotal);
     const roundedFee = Math.round(fee);
     const scheduledForIso = showScheduling ? dateTimeInputsToIso(date, time) : null;
 
@@ -171,11 +181,16 @@ export function OrderAmountsEditor({
               <Input
                 id={`${fieldId}-total`}
                 inputMode="numeric"
-                min={0}
-                onChange={(event) => setTotal(Number(event.target.value))}
+                min={1}
+                onChange={(event) => setTotalInput(event.target.value)}
                 type="number"
-                value={Number.isFinite(total) ? total : ''}
+                value={totalInput}
               />
+              {!totalValid ? (
+                <p className="text-sm text-danger" role="alert">
+                  {ORDER_TOTAL_POSITIVE_MESSAGE}
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
