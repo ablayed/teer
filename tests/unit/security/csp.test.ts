@@ -35,6 +35,10 @@ describe('cspRegimeForPath', () => {
 describe('buildCspHeader — régime app (nonce strict)', () => {
   const csp = buildCspHeader({ regime: 'app', isDev: false, nonce: 'NONCE_TEST' });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('porte le nonce et strict-dynamic, et JAMAIS unsafe-inline sur script-src', () => {
     const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src '));
     expect(scriptSrc).toContain("'nonce-NONCE_TEST'");
@@ -72,6 +76,20 @@ describe('buildCspHeader — régime app (nonce strict)', () => {
     const scriptSrc = dev.split('; ').find((d) => d.startsWith('script-src '));
     expect(scriptSrc).toContain("'unsafe-eval'");
     expect(dev.split('; ').find((d) => d.startsWith('connect-src '))).toContain('ws:');
+  });
+
+  it('autorise exactement les hôtes PostHog EU configurés sans affaiblir script-src', () => {
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', 'https://eu.i.posthog.com');
+    const euCsp = buildCspHeader({ regime: 'app', isDev: false, nonce: 'EU_NONCE' });
+    const connectSrc = euCsp.split('; ').find((d) => d.startsWith('connect-src '));
+    const scriptSrc = euCsp.split('; ').find((d) => d.startsWith('script-src '));
+
+    expect(connectSrc).toBe(
+      "connect-src 'self' https://eu.i.posthog.com https://eu-assets.i.posthog.com",
+    );
+    expect(scriptSrc).toContain("'nonce-EU_NONCE'");
+    expect(scriptSrc).toContain("'strict-dynamic'");
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
   });
 });
 
