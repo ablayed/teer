@@ -200,9 +200,6 @@ test('webhook orders/create crée la commande ; rejeu (même webhook-id) → pas
       body,
       triggeredAt: '2026-06-01T09:00:01Z',
     });
-    // 401 = le serveur dev en cours utilise un SHOPIFY_API_SECRET indisponible côté test
-    // (serveur préexistant). On skippe proprement plutôt que d'échouer sur un souci d'env.
-    test.skip(res1.status() === 401, 'HMAC: secret webhook indisponible dans cet environnement');
     expect(res1.status()).toBe(200);
 
     const order = await waitForOrder(admin, merchantAccountId, shopifyOrderId);
@@ -291,10 +288,7 @@ test("webhook orders/fulfilled n'altère pas delivery_state (miroir de canal uni
       body: baseBody,
       triggeredAt: '2026-06-01T09:00:01Z',
     });
-    test.skip(
-      createRes.status() === 401,
-      'HMAC: secret webhook indisponible dans cet environnement',
-    );
+    expect(createRes.status()).toBe(200);
     const created = await waitForOrder(admin, merchantAccountId, shopifyOrderId);
     expect(created).not.toBeNull();
     expect(created?.delivery_state).toBe('unassigned');
@@ -372,7 +366,7 @@ test('webhook orders/create sans note/attributs → colonnes JSONB null (pas de 
       body,
       triggeredAt: '2026-06-01T09:00:01Z',
     });
-    test.skip(res.status() === 401, 'HMAC: secret webhook indisponible dans cet environnement');
+    expect(res.status()).toBe(200);
     await waitForOrder(admin, merchantAccountId, shopifyOrderId);
 
     const row = await pollOrderAttributes(
@@ -438,10 +432,7 @@ test('webhook orders/create capture note + customAttributes commande et ligne ; 
       },
       triggeredAt: '2026-06-01T09:00:01Z',
     });
-    test.skip(
-      createRes.status() === 401,
-      'HMAC: secret webhook indisponible dans cet environnement',
-    );
+    expect(createRes.status()).toBe(200);
     await waitForOrder(admin, merchantAccountId, shopifyOrderId);
 
     const created = await pollOrderAttributes(
