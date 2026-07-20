@@ -473,7 +473,9 @@ test('Lot D - marquer retournée via UI (sans remise) restaure le stock, aucune 
       .from('stock_movement')
       .select('movement_type, qty, driver_id')
       .eq('order_id', orderId)
-      .order('created_at');
+      .order('created_at')
+      .order('movement_type')
+      .order('id');
     expect(movements?.map((m) => m.movement_type)).toEqual([
       'reserve',
       'dispatch',
@@ -677,7 +679,9 @@ test('reprogrammer depuis EN_LIVRAISON: retour à Programmée avec la nouvelle d
       .from('stock_movement')
       .select('movement_type')
       .eq('order_id', orderId)
-      .order('created_at');
+      .order('created_at')
+      .order('movement_type')
+      .order('id');
     expect(movementsBefore?.map((m) => m.movement_type)).toEqual([
       'reserve',
       'dispatch',
@@ -716,7 +720,9 @@ test('reprogrammer depuis EN_LIVRAISON: retour à Programmée avec la nouvelle d
       .from('stock_movement')
       .select('movement_type')
       .eq('order_id', orderId)
-      .order('created_at');
+      .order('created_at')
+      .order('movement_type')
+      .order('id');
     expect(movementsAfter?.map((m) => m.movement_type)).toEqual([
       'reserve',
       'dispatch',

@@ -276,7 +276,9 @@ describe('atomicité transition + mouvement stock', () => {
         .from('stock_movement')
         .select('movement_type, qty')
         .eq('order_id', orderId)
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
 
       // reserve (+3) + dispatch (-3) + disponibilite livreur engagee (+3)
       expect(movements).toHaveLength(3);
@@ -327,7 +329,9 @@ describe('atomicité transition + mouvement stock', () => {
       .from('stock_movement')
       .select('movement_type, qty')
       .eq('order_id', orderId)
-      .order('created_at');
+      .order('created_at')
+      .order('movement_type')
+      .order('id');
 
     const release = movements?.find((m) => m.movement_type === 'release');
     expect(release?.qty).toBe(-3);
@@ -940,7 +944,9 @@ describe('Lot B : déconfirmer libère la réserve, le cycle ne déduplique pas'
         .from('stock_movement')
         .select('movement_type, qty, idempotency_key, transition_id')
         .eq('order_id', orderId)
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
 
       expect(movements?.map((m) => m.movement_type)).toEqual(['reserve', 'release', 'reserve']);
       expect(movements?.map((m) => m.qty)).toEqual([3, -3, 3]);
@@ -1241,7 +1247,9 @@ describe('Phase 13.1 : désannuler post-dispatch vide le livreur sans mouvement'
         .from('stock_movement')
         .select('movement_type')
         .eq('order_id', orderId)
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
       expect(movementsBefore.data?.map((m) => m.movement_type)).toEqual([
         'reserve',
         'dispatch',
@@ -1280,7 +1288,9 @@ describe('Phase 13.1 : désannuler post-dispatch vide le livreur sans mouvement'
         .from('stock_movement')
         .select('movement_type, driver_id')
         .eq('order_id', orderId)
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
       expect(movementsAfter.data?.map((m) => m.movement_type)).toEqual([
         'reserve',
         'dispatch',
@@ -1437,7 +1447,9 @@ async function readOrderAssignmentMovements(admin: AdminClient, orderId: string)
     .select('movement_type, qty, product_id, driver_id')
     .eq('order_id', orderId)
     .in('movement_type', ['order_assignment_commit', 'order_assignment_release'])
-    .order('created_at');
+    .order('created_at')
+    .order('movement_type')
+    .order('id');
   return data ?? [];
 }
 
@@ -1493,7 +1505,9 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
         .from('stock_movement')
         .select('movement_type, qty')
         .eq('order_id', orderId)
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
       expect(assignMovements.data?.map((m) => m.movement_type)).toEqual([
         'reserve',
         'advance_commit',
@@ -1567,7 +1581,9 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
         .from('stock_movement')
         .select('movement_type, qty')
         .eq('order_id', orderId)
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
       expect(assignMovements.data?.map((m) => m.movement_type)).toEqual([
         'reserve',
         'advance_commit',
@@ -1813,7 +1829,9 @@ describe('0068/0069 : livraison depuis le lot d’avance', () => {
         .select('qty, driver_id')
         .eq('order_id', orderId)
         .eq('movement_type', 'advance_commit')
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
       expect(commits.data?.map((m) => m.qty)).toEqual([2, -2]);
       expect(commits.data?.every((m) => m.driver_id === driverId)).toBe(true);
 
@@ -1913,7 +1931,9 @@ describe('Lot D - mark_returned apres livraison', () => {
         .from('stock_movement')
         .select('movement_type, qty, driver_id')
         .eq('order_id', orderId)
-        .order('created_at');
+        .order('created_at')
+        .order('movement_type')
+        .order('id');
       expect(movements?.map((movement) => movement.movement_type)).toEqual([
         'reserve',
         'dispatch',

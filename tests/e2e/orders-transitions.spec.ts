@@ -1412,7 +1412,9 @@ test('Lot B - deconfirmer libere la reserve et disparait apres dispatch', async 
       .from('stock_movement')
       .select('movement_type, qty')
       .eq('order_id', orderId)
-      .order('created_at');
+      .order('created_at')
+      .order('movement_type')
+      .order('id');
     expect(firstMovements?.map((movement) => movement.movement_type)).toEqual([
       'reserve',
       'release',
@@ -1506,7 +1508,9 @@ test('Lot B - annuler avec raisons puis desannuler efface sans mouvement stock',
       .from('stock_movement')
       .select('movement_type, qty')
       .eq('order_id', orderId)
-      .order('created_at');
+      .order('created_at')
+      .order('movement_type')
+      .order('id');
     expect(movementsBefore?.map((movement) => movement.movement_type)).toEqual([
       'reserve',
       'release',
