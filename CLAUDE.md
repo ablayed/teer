@@ -214,7 +214,7 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 ## Gotcha — maturité des cohortes de livraison
 
-**Le seuil `DEFAULT_COHORT_MATURITY_DAYS = 3` du graphe « Taux de livraison dans le temps » est une valeur produit de repli, non une mesure empirique.** `deriveCohortMaturityDays` utilise la moyenne observée création→transition `delivered` lorsqu'un échantillon exploitable est présent ; sinon il affiche explicitement les 3 derniers jours comme cohortes « en maturation ». Ne pas présenter ce défaut comme un SLA ou une moyenne historique validée. Si le porteur constate que ce signal ne correspond pas aux commandes réelles, un lot futur peut ajuster ce défaut ou l'étalonner sur un échantillon représentatif de délais création→livraison, avec une décision produit documentée.
+**Le seuil `DEFAULT_COHORT_MATURITY_DAYS = 3` du graphe « Taux de livraison dans le temps » reste la valeur produit de repli, désormais confrontée aux données réelles.** Audit prod en lecture seule du 2026-07-20 sur **164 transitions livrées** : délai création→livraison moyen **3,37 jours**, médiane **1,88 jour**, p75 **3,98 jours**, p90 **10,43 jours**. Le défaut de 3 jours reste cohérent avec la tendance centrale et n'est donc pas modifié ; il ne constitue toutefois pas un SLA. `deriveCohortMaturityDays` continue d'utiliser la moyenne observée lorsqu'un échantillon exploitable est présent et ne retombe sur 3 que sans mesure disponible.
 
 ## Dette E2E residuelle
 
