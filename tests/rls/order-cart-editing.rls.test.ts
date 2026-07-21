@@ -1,4 +1,4 @@
-import { persistShopifyOrder, type ShopifyOrderNode } from '@/lib/shopify/orders-sync';
+import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
