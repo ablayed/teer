@@ -10,6 +10,7 @@ import {
   mapShopifyCustomer,
   mapShopifyOrder,
   mergeGids,
+  shouldResyncShopifyOrderCart,
 } from '@/lib/shopify/orders-sync';
 import { describe, expect, it } from 'vitest';
 
@@ -413,6 +414,38 @@ describe('buildShopifyOrderUpdate', () => {
       note: 'Note ajoutee apres creation',
       attributes: [],
     });
+  });
+});
+
+describe('shouldResyncShopifyOrderCart', () => {
+  it('autorise le recalcul uniquement avant assignation et encaissement', () => {
+    expect(
+      shouldResyncShopifyOrderCart({
+        cart_locally_modified_at: null,
+        delivery_state: 'unassigned',
+        cash_state: 'not_due',
+      }),
+    ).toBe(true);
+  });
+
+  it('conserve order_line pour une commande assignee', () => {
+    expect(
+      shouldResyncShopifyOrderCart({
+        cart_locally_modified_at: null,
+        delivery_state: 'assigned',
+        cash_state: 'expected',
+      }),
+    ).toBe(false);
+  });
+
+  it('respecte la protection apres edition locale', () => {
+    expect(
+      shouldResyncShopifyOrderCart({
+        cart_locally_modified_at: '2026-07-21T10:00:00Z',
+        delivery_state: 'unassigned',
+        cash_state: 'not_due',
+      }),
+    ).toBe(false);
   });
 });
 
