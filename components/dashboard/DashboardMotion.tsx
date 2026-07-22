@@ -1,6 +1,6 @@
 'use client';
 
-import { MotionConfig, motion } from 'framer-motion';
+import { MotionConfig, motion, useReducedMotion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import React from 'react';
 
@@ -29,12 +29,14 @@ const itemVariants: Variants = {
 };
 
 export function DashboardMotion({ children }: DashboardMotionProps) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <MotionConfig reducedMotion="user">
       <motion.div
         animate="visible"
         className="space-y-8"
-        initial="hidden"
+        initial={reduceMotion ? false : 'hidden'}
         variants={containerVariants}
       >
         {React.Children.map(children, (child, index) => (

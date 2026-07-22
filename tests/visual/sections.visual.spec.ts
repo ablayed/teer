@@ -23,6 +23,9 @@ test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les basel
 
 test.describe('Baselines visuelles — sections Phase 1', () => {
   test.beforeEach(async ({ page }) => {
+    // Émulation native Playwright, posée avant toute navigation : MotionConfig respecte
+    // cette préférence utilisateur et capture directement l'état final.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.clock.setFixedTime(visualFixedTime);
   });
 
@@ -254,6 +257,7 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
       );
       await expect(page.getByTestId('tableau-top-products-card')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('tableau-top-products-card')).toHaveCSS('opacity', '1');
       await waitForFonts(page);
 
       await expect(page.getByTestId('tableau-top-products-card')).toHaveScreenshot(
