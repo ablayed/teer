@@ -197,6 +197,52 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
     }
   });
 
+  test('tableau-cash-by-product stays contained at desktop grid transitions', async ({
+    browserName,
+    page,
+  }) => {
+    test.skip(browserName !== 'chromium', 'Les largeurs desktop ciblent le projet chromium.');
+    test.setTimeout(60_000);
+    const fixture = await createVisualFixture('tableau-cash-by-product-responsive');
+
+    try {
+      await seedDashboardCashByProductVisualData(fixture, 7);
+
+      await page.setViewportSize({ height: 960, width: 1440 });
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+
+      for (const width of [1440, 1536, 1600, 1920]) {
+        await page.setViewportSize({ height: 960, width });
+        await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible({
+          timeout: 15_000,
+        });
+        await waitForFonts(page);
+
+        const layout = await page.getByTestId('tableau-cash-by-product-card').evaluate((card) => {
+          const cardBounds = card.getBoundingClientRect();
+          const labels = [...card.querySelectorAll<SVGTextElement>('.recharts-label-list text')];
+
+          return {
+            hasHorizontalOverflow: card.scrollWidth > card.clientWidth,
+            labelCount: labels.length,
+            labelsFit: labels.every((label) => {
+              const bounds = label.getBoundingClientRect();
+              return bounds.left >= cardBounds.left && bounds.right <= cardBounds.right;
+            }),
+          };
+        });
+
+        expect(layout).toEqual({ hasHorizontalOverflow: false, labelCount: 7, labelsFit: true });
+      }
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
   test('tableau-top-products-spacing', async ({ page }) => {
     const fixture = await createVisualFixture('tableau-top-products-spacing');
 

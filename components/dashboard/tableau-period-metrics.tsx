@@ -74,7 +74,7 @@ function HorizontalCashByProductChart({
   return (
     <div
       aria-label={`${title}. ${subtitle}`}
-      className="h-[300px] w-full"
+      className="h-[300px] min-w-0 w-full"
       data-testid="tableau-cash-by-product-chart"
     >
       <ResponsiveContainer height="100%" width="100%">
@@ -166,7 +166,7 @@ export function TableauCashByProductChart({
   title,
 }: TableauCashByProductChartProps) {
   return (
-    <Card className="rounded-lg" data-testid="tableau-cash-by-product-card" padding="lg">
+    <Card className="min-w-0 rounded-lg" data-testid="tableau-cash-by-product-card" padding="lg">
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold text-text">{title}</h2>
         <p className="mt-0.5 text-xs text-muted">{subtitle}</p>
