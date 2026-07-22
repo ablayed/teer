@@ -1,5 +1,9 @@
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
-import { parseItemsummary, resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
+import {
+  parseItemsummary,
+  resolveAndInsertOrderLines,
+  resolveOrderLines,
+} from '@/lib/stock/order-line-resolution';
 import type { Database, Json, TablesInsert, TablesUpdate } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -193,6 +197,32 @@ type OrderShopifyUpdate = Pick<
   | 'shopify_order_attributes'
   | 'shopify_line_item_attributes'
 >;
+
+type ReplaceShopifyOrderCartArgs = {
+  p_order_id: string;
+  p_lines: Json;
+  p_order_update: Json;
+};
+
+function replaceShopifyOrderCartRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'replace_shopify_order_cart',
+    args: ReplaceShopifyOrderCartArgs,
+  ) => Promise<{ data: null; error: { message: string } | null }>;
+}
+
+export function shouldResyncShopifyOrderCart(
+  existingOrder: Pick<
+    TablesUpdate<'orders'>,
+    'cart_locally_modified_at' | 'cash_state' | 'delivery_state'
+  >,
+): boolean {
+  return (
+    existingOrder.cart_locally_modified_at === null &&
+    existingOrder.delivery_state === 'unassigned' &&
+    existingOrder.cash_state === 'not_due'
+  );
+}
 
 export function buildShopifyOrderUpdate(
   orderData: OrderUpsert,
@@ -594,7 +624,9 @@ export async function persistShopifyOrder({
 
     const { data: existingOrder, error: orderSelectError } = await supabaseServiceClient
       .from('orders')
-      .select('id, cod_status, shopify_updated_at, cart_locally_modified_at')
+      .select(
+        'id, cod_status, shopify_updated_at, cart_locally_modified_at, delivery_state, cash_state',
+      )
       .eq('merchant_account_id', merchantAccountId)
       .eq('shopify_order_id', shopifyOrderId)
       .maybeSingle();
@@ -615,10 +647,26 @@ export async function persistShopifyOrder({
         orderData,
         existingOrder.cart_locally_modified_at,
       );
-      const { error: orderUpdateError } = await supabaseServiceClient
-        .from('orders')
-        .update(orderUpdate)
-        .eq('id', existingOrder.id);
+
+      const orderUpdateError = shouldResyncShopifyOrderCart(existingOrder)
+        ? (
+            await replaceShopifyOrderCartRpc(supabaseServiceClient)('replace_shopify_order_cart', {
+              p_order_id: existingOrder.id,
+              p_lines: (
+                await resolveOrderLines(supabaseServiceClient, {
+                  merchantAccountId,
+                  lineItems: parseItemsummary(orderData.items_summary as Json),
+                })
+              ).map(({ qty, ...line }) => ({ ...line, quantity: qty })) as unknown as Json,
+              p_order_update: orderUpdate as unknown as Json,
+            })
+          ).error
+        : (
+            await supabaseServiceClient
+              .from('orders')
+              .update(orderUpdate)
+              .eq('id', existingOrder.id)
+          ).error;
 
       if (orderUpdateError) {
         return { ok: false, error: orderUpdateError.message };

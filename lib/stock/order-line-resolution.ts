@@ -14,6 +14,16 @@ export type ItemsummaryLine = {
   product_id?: string | null;
 };
 
+export type ResolvedOrderLine = {
+  product_id: string | null;
+  raw_title: string;
+  raw_sku: string | null;
+  raw_shopify_variant_id: string | null;
+  raw_shopify_product_id: string | null;
+  qty: number;
+  match_status: MatchStatus;
+};
+
 export function parseItemsummary(items: Json): ItemsummaryLine[] {
   if (!Array.isArray(items)) return [];
   return items.flatMap((item) => {
@@ -35,19 +45,17 @@ export function parseItemsummary(items: Json): ItemsummaryLine[] {
   });
 }
 
-export async function resolveAndInsertOrderLines(
+export async function resolveOrderLines(
   client: AnySupabaseClient,
   {
     merchantAccountId,
-    orderId,
     lineItems,
   }: {
     merchantAccountId: string;
-    orderId: string;
     lineItems: ItemsummaryLine[];
   },
-): Promise<void> {
-  if (lineItems.length === 0) return;
+): Promise<ResolvedOrderLine[]> {
+  if (lineItems.length === 0) return [];
 
   const { data: products } = await client
     .from('product')
@@ -91,20 +99,40 @@ export async function resolveAndInsertOrderLines(
     return { productId: null, status: 'unresolved' };
   }
 
-  const inserts = lineItems.map((item) => {
+  return lineItems.map((item) => {
     const { productId, status } = resolve(item);
     return {
-      merchant_account_id: merchantAccountId,
-      order_id: orderId,
       product_id: productId,
       raw_title: item.title.trim(),
       raw_sku: item.sku ?? null,
       raw_shopify_variant_id: item.shopify_variant_id ?? null,
       raw_shopify_product_id: item.shopify_product_id ?? null,
       qty: item.quantity,
-      match_status: status as string,
+      match_status: status,
     };
   });
+}
+
+export async function resolveAndInsertOrderLines(
+  client: AnySupabaseClient,
+  {
+    merchantAccountId,
+    orderId,
+    lineItems,
+  }: {
+    merchantAccountId: string;
+    orderId: string;
+    lineItems: ItemsummaryLine[];
+  },
+): Promise<void> {
+  const resolvedLines = await resolveOrderLines(client, { merchantAccountId, lineItems });
+  if (resolvedLines.length === 0) return;
+
+  const inserts = resolvedLines.map((line) => ({
+    merchant_account_id: merchantAccountId,
+    order_id: orderId,
+    ...line,
+  }));
 
   await client.from('order_line').insert(inserts);
 }
