@@ -194,6 +194,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
             return (
               <article
                 className="rounded-lg border border-border bg-surface p-4 shadow-1"
+                data-testid={`product-catalog-card-${product.id}`}
                 key={product.id}
               >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -395,6 +396,7 @@ function ProductMobileRow({
             </span>
           ) : null
         }
+        testId={`product-catalog-row-${product.id}`}
         title={<h2 className="truncate text-base font-semibold text-text">{product.title}</h2>}
       />
       {editingId === product.id ? (

@@ -273,20 +273,31 @@ function panel(page: Page): Locator {
   return page.getByTestId('product-detail-panel');
 }
 
-async function openDetails(page: Page, title: string) {
-  // Desktop (>= md) : bouton "Détails" inline à côté du titre. Mobile : item
-  // "Détails" dans le menu overflow (…) de la ligne. On tente le desktop d'abord,
-  // fallback overflow sinon — les specs tournent sur chromium/pixel-7/iphone-14.
-  const desktopButton = page
-    .getByRole('button', { name: 'Détails' })
-    .and(page.locator('article', { hasText: title }).locator('button'));
-  if (await desktopButton.count()) {
-    await desktopButton.first().click();
+async function openDetails(page: Page, productId: string, title: string) {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('Viewport Playwright requis pour ouvrir les détails produit');
+
+  const isDesktop = viewport.width >= 768;
+  const productRow = page.getByTestId(
+    `${isDesktop ? 'product-catalog-card' : 'product-catalog-row'}-${productId}`,
+  );
+
+  // La présence de main#main ne garantit pas que le catalogue client est déjà monté.
+  // Attendre d'abord la ligne évite qu'un count() instantané choisisse le contrôle mobile
+  // sur Chromium desktop pendant ce bref état intermédiaire.
+  await productRow.waitFor({ state: 'visible' });
+
+  if (isDesktop) {
+    await productRow.getByRole('button', { name: 'Détails', exact: true }).click();
     return;
   }
-  const overflowTrigger = page.getByRole('button', { name: `Actions — ${title}` });
+
+  const overflowTrigger = productRow.getByRole('button', {
+    name: `Actions — ${title}`,
+    exact: true,
+  });
   await overflowTrigger.click();
-  await page.getByRole('menuitem', { name: 'Détails' }).click();
+  await page.getByRole('menuitem', { name: 'Détails', exact: true }).click();
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E bundles');
@@ -315,7 +326,7 @@ test('configurer un bundle : 2 composants, quantités différentes → compositi
     await seedProductStock(fixture.admin, fixture.merchantAccountId, cable, 3);
 
     await signIn(page, fixture.email, '/produits');
-    await openDetails(page, bundleProductTitle);
+    await openDetails(page, bundleId, bundleProductTitle);
     const detailPanel = panel(page);
 
     await detailPanel.getByRole('checkbox', { name: 'Pack/bundle' }).check();
@@ -380,10 +391,14 @@ test('sélectionner un composant déjà promu bundle entre le chargement et la s
   try {
     const other = await createProduct(fixture.admin, fixture.merchantAccountId, 'Autre Cfg E2E');
     const bundleProductTitle = 'Kit Race E2E';
-    await createProduct(fixture.admin, fixture.merchantAccountId, bundleProductTitle);
+    const bundleId = await createProduct(
+      fixture.admin,
+      fixture.merchantAccountId,
+      bundleProductTitle,
+    );
 
     await signIn(page, fixture.email, '/produits');
-    await openDetails(page, bundleProductTitle);
+    await openDetails(page, bundleId, bundleProductTitle);
     const detailPanel = panel(page);
 
     await detailPanel.getByRole('checkbox', { name: 'Pack/bundle' }).check();
@@ -418,10 +433,14 @@ test('un produit ne peut jamais se sélectionner lui-même comme composant (filt
   const fixture = await createOwnerFixture('self-ref');
   try {
     const bundleProductTitle = 'Kit Self E2E';
-    await createProduct(fixture.admin, fixture.merchantAccountId, bundleProductTitle);
+    const bundleId = await createProduct(
+      fixture.admin,
+      fixture.merchantAccountId,
+      bundleProductTitle,
+    );
 
     await signIn(page, fixture.email, '/produits');
-    await openDetails(page, bundleProductTitle);
+    await openDetails(page, bundleId, bundleProductTitle);
     const detailPanel = panel(page);
     await detailPanel.getByRole('checkbox', { name: 'Pack/bundle' }).check();
     await detailPanel.getByRole('button', { name: 'Ajouter un composant' }).click();
@@ -479,7 +498,7 @@ test('décocher un bundle déjà vendu : autorisé sans blocage, historique des 
     // l'historique de vente existant sur ce bundle. gotoStable absorbe la navigation
     // nuqs encore en vol suite à selectPeriod30j.
     await gotoStable(page, '/produits');
-    await openDetails(page, bundleProductTitle);
+    await openDetails(page, bundle, bundleProductTitle);
     const detailPanel = panel(page);
     const checkbox = detailPanel.getByRole('checkbox', { name: 'Pack/bundle' });
     await expect(checkbox).toBeChecked();

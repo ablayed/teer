@@ -12,6 +12,7 @@ type ResourceRowBase = {
   primaryAction?: React.ReactNode;
   overflow?: React.ReactNode;
   className?: string;
+  testId?: string;
 };
 
 type ResourceRowWithHref = ResourceRowBase & {
@@ -44,6 +45,7 @@ export function ResourceRow({
   overflow,
   className,
   prefetch,
+  testId,
 }: ResourceRowProps) {
   const mainContent = (
     <span className="flex min-w-0 flex-1 items-center gap-3">
@@ -67,6 +69,7 @@ export function ResourceRow({
         'border-b border-border last:border-b-0',
         className,
       )}
+      data-testid={testId}
     >
       {href ? (
         <Link className={linkClasses} href={href} prefetch={prefetch}>
