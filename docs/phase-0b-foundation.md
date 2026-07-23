@@ -19,6 +19,7 @@ Date de décision : 23 juillet 2026. Ce document consigne des décisions validé
 | Action | Propriétaire | État | Preuve attendue | Phase limite | Blocage |
 |---|---|---|---|---|---|
 | Partner Shopify et ownership | Ablaye | À ouvrir | accès Partner + propriétaire identifié | avant soumission | compte partenaire |
+| Autorisation Shopify — facturation externe de Teer Public | Ablaye | Envoyée — réponse écrite en attente | numéro du ticket et réponse Shopify explicitement rattachée à Teer Public / à son App ID | avant soumission publique Shopify et avant décision finale de facturation Phase 7 | cette attente ne bloque pas la Phase 1 |
 | URL production et redirect URIs | Ablaye | À confirmer | URLs enregistrées et test OAuth | avant soumission | domaine final |
 | Boutique dev tierce | Ablaye | À ouvrir | installation test indépendante | avant soumission | boutique Shopify |
 | Protected Customer Data/scopes/listing | Ablaye | À préparer | demande, justifications, captures et accusé Shopify | avant soumission | Partner Shopify |
