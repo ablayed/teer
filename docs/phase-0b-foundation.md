@@ -10,7 +10,8 @@ Date de décision : 23 juillet 2026. Ce document consigne des décisions validé
 - YouCan est obligatoire avant lancement si sa faisabilité technique est confirmée. Toute impossibilité officielle nécessite une décision écrite d'Ablaye.
 - Ordre impératif : Phase 1 workspace/RLS, Phase 2 modèle canonique + Shopify, Phase 3 ingestion commune, connecteurs, onboarding/gouvernance, conformité/facturation, UX, finance/exports/qualification.
 - Les états actuels restent la baseline jusqu'à l'alignement Phase 2 ; aucun nouvel état métier n'est ajouté en Phase 0B.
-- L'unité facturable MVP est la boutique, jamais le compte marchand. Chaque boutique aura abonnement, plan, statut, provider et historique propres, sans consolidation métier inter-boutiques. Shopify Billing/App Pricing s'applique à Teer Public ; les parcours directs non-Shopify sont en XOF sous réserve de confirmation Shopify lorsqu'un marchand emploie aussi Teer Public. GETGET SN/KOBA conservent provisoirement leur facturation directe.
+- L'unité commerciale et facturable est `merchant_account`, jamais la boutique. Un abonnement peut autoriser plusieurs boutiques selon les limites du forfait, sans créer un abonnement par ajout. Chaque boutique garde toutefois des données strictement isolées. Le provider de boutique ne détermine pas le provider de facturation.
+- Shopify est un connecteur, non le socle. La distribution publique Shopify avec facturation externe exige une autorisation écrite Shopify ; jusqu'à cette preuve, KOBA reste le connecteur pilote et aucune dépendance à Shopify Billing n'est implémentée. La facturation au niveau `merchant_account` appartient à la Phase 7.
 - `main` doit rester protégée : PR obligatoire, zéro approbation obligatoire pour le fondateur solo, checks Linux requis, pas de force-push ni suppression. Exception : une modification d'urgence passe par PR documentée ; aucun push direct ordinaire.
 
 ## Actions externes
