@@ -81,3 +81,7 @@ conception n'implique pas de le garder sans relecture au moment de
 soumettre réellement l'app à Shopify.
 
 Propriétaire : Ablaye.
+
+## Références historiques à conserver
+
+La migration `0048_multi_app_shop_client_id.sql` décrit Teer Dev comme app publique au moment où elle a été écrite. C'est une trace historique append-only : elle ne doit pas être réécrite. La décision actuelle de distribution et de facturation est celle de ce document ; toute correction de comportement relève d'une phase ultérieure, sans modifier la migration historique.

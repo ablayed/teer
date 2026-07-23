@@ -1,7 +1,10 @@
 # Checklist publication app Shopify — Tëër (Phase 7a)
 
-App **publique en visibilité limitée (unlisted)**, PAS custom. Passe la review Shopify.
-Pas besoin de finir la Phase 8 (IA) pour publier.
+La préparation de publication concerne **Teer Public**. Son statut de distribution réel doit être confirmé dans le Partner Dashboard ; ce document ne le prouve pas.
+
+**Gating de facturation :** un marchand acquis via l'App Store qui accède à des fonctionnalités payantes doit être facturé via Shopify Billing. Un client Tëër effectivement payant avant sa première connexion Shopify peut conserver une facturation externe, à condition de conserver une preuve non modifiable de son paiement antérieur et de l'ordre chronologique. Le modèle détaillé et la décision de Shopify Support font foi dans [phase-0c-shopify-billing.md](./phase-0c-shopify-billing.md).
+
+KOBA reste le connecteur custom du pilote. Une custom app peut rester un parcours accompagné transitoire ; elle n'est pas la voie durable de distribution multi-marchands.
 
 ## Exigences techniques (état Phase 7a)
 
@@ -28,13 +31,14 @@ Pas besoin de finir la Phase 8 (IA) pour publier.
 
 1. Déclarer l'URL des webhooks de conformité (déjà dans `shopify.app.toml` `compliance_topics`) et **tester** les 3 topics GDPR depuis le dashboard.
 2. Renseigner **App listing** : nom, description FR, captures, politique de confidentialité (URL `/confidentialite`), URL d'assistance.
-3. Demander l'accès aux **données client protégées** (protected customer data) et justifier l'usage (opérations COD). Champs à déclarer :
-   - **Niveau 1** (protected customer data) : `name`/`firstName`/`lastName`, `defaultAddress`/`shippingAddress`, `tags`, `numberOfOrders`, `amountSpent`, `createdAt` — affichés sur la fiche client pour la livraison COD et l'historique.
-   - **Niveau 2** (protected customer fields) : `email`, `phone`, `emailMarketingConsent` — **téléphone = identité principale** (dédup + appels de confirmation + WhatsApp), email = clé de dédup secondaire, consentement marketing affiché.
-   - Justifier la **minimisation** : on ne stocke que le nécessaire à la livraison (nom, téléphone, adresse, email, consentement) ; effacement réel sur `customers/redact` / `shop/redact` (< 30 j / 48 h).
+3. Demander l'accès aux **données client protégées** (protected customer data) et justifier l'usage COD. Ne déclarer que les champs réellement traités : nom/prénom, téléphone et adresse de livraison. Le téléphone est l'identité principale pour la déduplication et les appels de confirmation ; le nom et l'adresse sont nécessaires à l'exécution de la livraison.
+   - Ne pas demander l'e-mail du client final : il n'est pas traité par le code et la migration `0049` a supprimé cette capacité.
+   - Ne pas demander le consentement marketing : Tëër ne l'utilise pas pour une finalité marketing.
+   - Justifier la **minimisation** : conservation limitée aux données nécessaires à la livraison COD ; effacement réel sur `customers/redact` / `shop/redact` (< 30 j / 48 h).
+   - **Blocage avant soumission :** le code d'ingestion lit encore `tags`, `numberOfOrders`, `amountSpent`, `createdAt` et normalise `emailMarketingConsent`. Ces champs ne justifient pas la demande PCD minimale ci-dessus. Leur lecture/stockage devra être retiré ou explicitement justifié dans un chantier ultérieur avant toute demande PCD ; cette phase documentaire ne modifie pas le code.
 4. Vérifier que la version API stable courante = `2026-04` sur shopify.dev avant soumission ; sinon ré-épingler.
-5. Configurer l'app comme **public unlisted** (pas custom).
-6. Variables d'env prod (Vercel) : `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_TOKEN_ENCRYPTION_KEY` (64 hex), `CRON_SECRET`. **Multi-app** : pour une 2e app (Teer Pilote, custom), ajouter `SHOPIFY_PILOTE_API_KEY` + `SHOPIFY_PILOTE_API_SECRET` (Prod + Preview) sans toucher aux clés Teer Dev ; les deux doivent être présentes sinon l'app Pilote est ignorée (warning au boot). Routage par `client_id` → `shop.shopify_client_id` (cf. CLAUDE.md « Shopify multi-app »).
+5. Choisir et confirmer la distribution de Teer Public dans le Partner Dashboard. Toute offre App Store réellement gratuite/bêta ne doit afficher ni déclencher de souscription externe. Avant toute fonctionnalité payante pour un marchand acquis via l'App Store, Shopify Billing devra être implémenté en Phase 7.
+6. Variables d'env prod (Vercel) : `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_TOKEN_ENCRYPTION_KEY` (64 hex), `CRON_SECRET`. **Multi-app** : pour une app pilote custom (KOBA), ajouter ses variables dédiées en Prod + Preview sans toucher aux clés de Teer Public ; elles doivent être présentes par paire sinon l'app est ignorée au boot. Routage par `client_id` → `shop.shopify_client_id` (cf. CLAUDE.md « Shopify multi-app »).
 
 ## Restes connus (non bloquants pour 7a, à traiter en 7b/7c)
 
