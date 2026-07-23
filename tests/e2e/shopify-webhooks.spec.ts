@@ -49,21 +49,28 @@ async function createMerchant(
   return { userId, merchantAccountId };
 }
 
-async function seedShop(admin: AdminClient, merchantAccountId: string): Promise<string> {
+async function seedShop(
+  admin: AdminClient,
+  merchantAccountId: string,
+): Promise<{ shopDomain: string; shopId: string }> {
   const shopDomain = `e2e-wh-${Date.now()}-${Math.random().toString(36).slice(2)}.myshopify.com`;
-  const { error } = await admin.from('shop').insert({
-    merchant_account_id: merchantAccountId,
-    shop_domain: shopDomain,
-    access_token_encrypted: 'dummy',
-    scopes: 'read_orders,read_customers,read_products',
-    status: 'active',
-  });
-  if (error) throw new Error(`shop insert failed: ${error.message}`);
-  return shopDomain;
+  const { data, error } = await admin
+    .from('shop')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_domain: shopDomain,
+      access_token_encrypted: 'dummy',
+      scopes: 'read_orders,read_customers,read_products',
+      status: 'active',
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`shop insert failed: ${error?.message ?? 'missing shop'}`);
+  return { shopDomain, shopId: data.id };
 }
 
-function sign(rawBody: string): string {
-  return createHmac('sha256', apiSecret).update(rawBody, 'utf8').digest('base64');
+function sign(rawBody: string, secret = apiSecret): string {
+  return createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
 }
 
 async function postWebhook(
@@ -74,13 +81,21 @@ async function postWebhook(
     webhookId,
     body,
     triggeredAt,
-  }: { topic: string; shopDomain: string; webhookId: string; body: unknown; triggeredAt: string },
+    hmacSecret,
+  }: {
+    topic: string;
+    shopDomain: string;
+    webhookId: string;
+    body: unknown;
+    triggeredAt: string;
+    hmacSecret?: string;
+  },
 ) {
   const rawBody = JSON.stringify(body);
   return request.post('/api/shopify/webhooks', {
     headers: {
       'content-type': 'application/json',
-      'x-shopify-hmac-sha256': sign(rawBody),
+      'x-shopify-hmac-sha256': sign(rawBody, hmacSecret),
       'x-shopify-topic': topic,
       'x-shopify-shop-domain': shopDomain,
       'x-shopify-webhook-id': webhookId,
@@ -162,7 +177,7 @@ test('webhook orders/create crée la commande ; rejeu (même webhook-id) → pas
   const admin = adminClient();
   const { userId, merchantAccountId } = await createMerchant(admin);
   try {
-    const shopDomain = await seedShop(admin, merchantAccountId);
+    const { shopDomain } = await seedShop(admin, merchantAccountId);
     const orderId = 80_000_000 + Math.floor(Math.random() * 1_000_000);
     const shopifyOrderId = String(orderId);
     const webhookId = `wh-create-${orderId}`;
@@ -256,7 +271,7 @@ test("webhook orders/fulfilled n'altère pas delivery_state (miroir de canal uni
   const admin = adminClient();
   const { userId, merchantAccountId } = await createMerchant(admin);
   try {
-    const shopDomain = await seedShop(admin, merchantAccountId);
+    const { shopDomain } = await seedShop(admin, merchantAccountId);
     const orderId = 80_000_000 + Math.floor(Math.random() * 1_000_000);
     const shopifyOrderId = String(orderId);
     const baseBody = {
@@ -334,7 +349,7 @@ test('webhook orders/create sans note/attributs → colonnes JSONB null (pas de 
   const admin = adminClient();
   const { userId, merchantAccountId } = await createMerchant(admin);
   try {
-    const shopDomain = await seedShop(admin, merchantAccountId);
+    const { shopDomain } = await seedShop(admin, merchantAccountId);
     const orderId = 80_000_000 + Math.floor(Math.random() * 1_000_000);
     const shopifyOrderId = String(orderId);
     const body = {
@@ -388,7 +403,7 @@ test('webhook orders/create capture note + customAttributes commande et ligne ; 
   const admin = adminClient();
   const { userId, merchantAccountId } = await createMerchant(admin);
   try {
-    const shopDomain = await seedShop(admin, merchantAccountId);
+    const { shopDomain } = await seedShop(admin, merchantAccountId);
     const orderId = 80_000_000 + Math.floor(Math.random() * 1_000_000);
     const shopifyOrderId = String(orderId);
     const baseBody = {
@@ -471,6 +486,192 @@ test('webhook orders/create capture note + customAttributes commande et ligne ; 
       note: 'Note ajoutée après coup',
       attributes: [{ key: 'disponibilite_livraison', value: 'Apres 18h' }],
     });
+  } finally {
+    await admin.auth.admin.deleteUser(userId);
+  }
+});
+
+test('HMAC invalide est rejeté en 401 sans enregistrer d’événement', async ({ request }) => {
+  const admin = adminClient();
+  const webhookId = `wh-invalid-${Date.now()}`;
+  const response = await postWebhook(request, {
+    topic: 'orders/create',
+    shopDomain: `absent-${Date.now()}.myshopify.com`,
+    webhookId,
+    body: { id: 99_999_991 },
+    triggeredAt: '2026-07-23T10:00:00Z',
+    hmacSecret: 'intentionally-invalid-test-secret',
+  });
+
+  expect(response.status()).toBe(401);
+  const { count } = await admin
+    .from('webhook_event')
+    .select('id', { count: 'exact', head: true })
+    .eq('shopify_webhook_id', webhookId);
+  expect(count).toBe(0);
+});
+
+test('boutique absente mais HMAC valide reçoit 2xx sans mutation tenant', async ({ request }) => {
+  const admin = adminClient();
+  const orderId = 89_000_000 + Math.floor(Math.random() * 1_000_000);
+  const webhookId = `wh-unknown-shop-${orderId}`;
+  const response = await postWebhook(request, {
+    topic: 'orders/create',
+    shopDomain: `absent-${orderId}.myshopify.com`,
+    webhookId,
+    body: { id: orderId, name: `#UNKNOWN-${orderId}`, line_items: [] },
+    triggeredAt: '2026-07-23T10:00:00Z',
+  });
+
+  expect(response.status()).toBe(200);
+  await expect
+    .poll(async () => {
+      const { data } = await admin
+        .from('webhook_event')
+        .select('shop_id, merchant_account_id, status')
+        .eq('shopify_webhook_id', webhookId)
+        .maybeSingle();
+      return data;
+    })
+    .toMatchObject({ merchant_account_id: null, shop_id: null, status: 'done' });
+  const { count } = await admin
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('shopify_order_id', String(orderId));
+  expect(count).toBe(0);
+});
+
+test('webhooks GDPR data_request, customers/redact et shop/redact exécutent les traitements attendus', async ({
+  request,
+}) => {
+  const admin = adminClient();
+  const { userId, merchantAccountId } = await createMerchant(admin);
+  try {
+    const { shopDomain, shopId } = await seedShop(admin, merchantAccountId);
+    const orderId = 88_000_000 + Math.floor(Math.random() * 1_000_000);
+    const customerId = String(77_000_000 + Math.floor(Math.random() * 1_000_000));
+    const orderBody = {
+      id: orderId,
+      name: `#GDPR-${orderId}`,
+      created_at: '2026-07-23T09:00:00Z',
+      updated_at: '2026-07-23T09:00:00Z',
+      total_price: '15000',
+      currency: 'XOF',
+      customer: { id: customerId, first_name: 'Awa', last_name: 'Diop', phone: '+221770000099' },
+      shipping_address: { address1: 'Rue GDPR', city: 'Dakar', name: 'Awa Diop' },
+      line_items: [{ title: 'Sac', quantity: 1, price: '15000' }],
+    };
+    expect(
+      (
+        await postWebhook(request, {
+          topic: 'orders/create',
+          shopDomain,
+          webhookId: `wh-gdpr-order-${orderId}`,
+          body: orderBody,
+          triggeredAt: '2026-07-23T09:00:01Z',
+        })
+      ).status(),
+    ).toBe(200);
+    await waitForOrder(admin, merchantAccountId, String(orderId));
+
+    const dataRequestId = `wh-gdpr-data-${orderId}`;
+    expect(
+      (
+        await postWebhook(request, {
+          topic: 'customers/data_request',
+          shopDomain,
+          webhookId: dataRequestId,
+          body: { shop_domain: shopDomain, customer: { id: customerId } },
+          triggeredAt: '2026-07-23T09:01:00Z',
+        })
+      ).status(),
+    ).toBe(200);
+    await expect
+      .poll(async () => {
+        const { data } = await admin
+          .from('audit_log')
+          .select('action')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('action', 'gdpr.customers/data_request')
+          .eq('resource_id', shopId)
+          .maybeSingle();
+        return data?.action ?? '';
+      })
+      .toBe('gdpr.customers/data_request');
+
+    expect(
+      (
+        await postWebhook(request, {
+          topic: 'customers/redact',
+          shopDomain,
+          webhookId: `wh-gdpr-customer-${orderId}`,
+          body: { shop_domain: shopDomain, customer: { id: customerId } },
+          triggeredAt: '2026-07-23T09:02:00Z',
+        })
+      ).status(),
+    ).toBe(200);
+    await expect
+      .poll(async () => {
+        const { data } = await admin
+          .from('customer')
+          .select('full_name, phone')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('shopify_customer_id', customerId)
+          .maybeSingle();
+        return data;
+      })
+      .toMatchObject({ full_name: '[client supprimé]', phone: null });
+
+    expect(
+      (
+        await postWebhook(request, {
+          topic: 'shop/redact',
+          shopDomain,
+          webhookId: `wh-gdpr-shop-${orderId}`,
+          body: { shop_domain: shopDomain },
+          triggeredAt: '2026-07-23T09:03:00Z',
+        })
+      ).status(),
+    ).toBe(200);
+    await expect
+      .poll(async () => {
+        const { data } = await admin
+          .from('audit_log')
+          .select('action')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('action', 'gdpr.shop/redact')
+          .eq('resource_id', shopId)
+          .maybeSingle();
+        return data?.action ?? '';
+      })
+      .toBe('gdpr.shop/redact');
+  } finally {
+    await admin.auth.admin.deleteUser(userId);
+  }
+});
+
+test('app/uninstalled désactive uniquement la boutique concernée', async ({ request }) => {
+  const admin = adminClient();
+  const { userId, merchantAccountId } = await createMerchant(admin);
+  try {
+    const { shopDomain, shopId } = await seedShop(admin, merchantAccountId);
+    expect(
+      (
+        await postWebhook(request, {
+          topic: 'app/uninstalled',
+          shopDomain,
+          webhookId: `wh-uninstalled-${shopId}`,
+          body: { shop_domain: shopDomain },
+          triggeredAt: '2026-07-23T10:00:00Z',
+        })
+      ).status(),
+    ).toBe(200);
+    await expect
+      .poll(async () => {
+        const { data } = await admin.from('shop').select('status').eq('id', shopId).maybeSingle();
+        return data?.status ?? '';
+      })
+      .toBe('uninstalled');
   } finally {
     await admin.auth.admin.deleteUser(userId);
   }
