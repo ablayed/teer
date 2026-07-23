@@ -24,6 +24,8 @@ Règle confirmée :
 Archive le texte intégral de la réponse de Rob comme preuve liée à
 Teer Public / App ID.
 
+La preuve archivée est disponible dans [support-rob-billing-api-2026-07-23.md](./shopify/support-rob-billing-api-2026-07-23.md). Les métadonnées absentes du message y sont explicitement marquées comme non disponibles.
+
 ## DÉCISION — Modèle de facturation par compte
 
 L'ancienne règle "billing_provider déterminé par source_platform"
