@@ -16,6 +16,8 @@ Date de décision : 23 juillet 2026. Ce document consigne des décisions validé
 
 ### Facturation et distribution Shopify — CONDITIONNEL
 
+> **Mise à jour Phase 0C — décision postérieure (23 juillet 2026).** La condition Shopify a été tranchée par la réponse écrite de Shopify Support : la branche d'exemption générale est désormais écartée. [phase-0c-shopify-billing.md](./phase-0c-shopify-billing.md) est la source de vérité actuelle pour la facturation Shopify. Les clients Tëër effectivement payants avant leur première connexion Shopify peuvent conserver leur facturation externe ; les marchands acquis via l'App Store et accédant à des fonctionnalités payantes relèvent de Shopify Billing. Les branches historiques A/B ci-dessous ne sont pas réécrites afin de conserver la trace de la décision Phase 0B.
+
 Propriétaire de la levée du conditionnel : **Ablaye**, sur la base d'une réponse écrite de Shopify explicitement rattachée à Teer Public / à son App ID.
 
 - **BRANCHE A — autorisation écrite Shopify accordée :** Teer Public peut être distribué publiquement comme connecteur gratuit à visibilité limitée ; Tëër conserve un abonnement externe unique au niveau de `merchant_account`, couvrant les boutiques autorisées, sans Shopify Billing. La preuve doit autoriser explicitement cette facturation externe.
