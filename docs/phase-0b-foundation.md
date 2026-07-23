@@ -5,14 +5,21 @@ Date de décision : 23 juillet 2026. Ce document consigne des décisions validé
 ## Décisions figées
 
 - Le lancement comporte Shopify, WooCommerce, YouCan et l'ingestion générique (saisie manuelle, WhatsApp, TikTok, Facebook, Instagram, téléphone, CSV et API générique). Meta/TikTok direct ne font pas partie du prérequis.
-- Tëër est un SaaS autonome. L'app Shopify publique est la cible ; la custom app GETGET SN/KOBA reste transitoire jusqu'à approbation et migration vérifiée, avec critère de retrait à définir ultérieurement.
+- Tëër est un SaaS autonome et Shopify est un connecteur, non le socle. KOBA reste le connecteur pilote ; toute évolution vers Teer Public relève du conditionnel ci-dessous.
 - `merchant_account` est l'organisation. Une organisation possède plusieurs boutiques et les accès boutique seront des memberships explicites (Phase 1).
 - YouCan est obligatoire avant lancement si sa faisabilité technique est confirmée. Toute impossibilité officielle nécessite une décision écrite d'Ablaye.
 - Ordre impératif : Phase 1 workspace/RLS, Phase 2 modèle canonique + Shopify, Phase 3 ingestion commune, connecteurs, onboarding/gouvernance, conformité/facturation, UX, finance/exports/qualification.
 - Les états actuels restent la baseline jusqu'à l'alignement Phase 2 ; aucun nouvel état métier n'est ajouté en Phase 0B.
 - L'unité commerciale et facturable est `merchant_account`, jamais la boutique. Un abonnement peut autoriser plusieurs boutiques selon les limites du forfait, sans créer un abonnement par ajout. Chaque boutique garde toutefois des données strictement isolées. Le provider de boutique ne détermine pas le provider de facturation.
-- Shopify est un connecteur, non le socle. La distribution publique Shopify avec facturation externe exige une autorisation écrite Shopify ; jusqu'à cette preuve, KOBA reste le connecteur pilote et aucune dépendance à Shopify Billing n'est implémentée. La facturation au niveau `merchant_account` appartient à la Phase 7.
+- La facturation au niveau `merchant_account` appartient à la Phase 7 ; aucune dépendance à Shopify Billing n'est implémentée.
 - `main` doit rester protégée : PR obligatoire, zéro approbation obligatoire pour le fondateur solo, checks Linux requis, pas de force-push ni suppression. Exception : une modification d'urgence passe par PR documentée ; aucun push direct ordinaire.
+
+### Facturation et distribution Shopify — CONDITIONNEL
+
+Propriétaire de la levée du conditionnel : **Ablaye**, sur la base d'une réponse écrite de Shopify explicitement rattachée à Teer Public / à son App ID.
+
+- **BRANCHE A — autorisation écrite Shopify accordée :** Teer Public peut être distribué publiquement comme connecteur gratuit à visibilité limitée ; Tëër conserve un abonnement externe unique au niveau de `merchant_account`, couvrant les boutiques autorisées, sans Shopify Billing. La preuve doit autoriser explicitement cette facturation externe.
+- **BRANCHE B — autorisation Shopify refusée :** aucune soumission publique de Teer Public ne s'appuie sur une facturation externe. Les installations Shopify restent temporairement custom et accompagnées ; le lancement priorise WooCommerce, les commandes manuelles et les imports. Toute autre décision de distribution ou de facturation exige une décision explicite d'Ablaye avant l'implémentation de la Phase 7.
 
 ## Actions externes
 
