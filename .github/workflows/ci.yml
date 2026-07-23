@@ -194,6 +194,10 @@ jobs:
       - run: pnpm test:e2e --project=${{ matrix.project }}
         env:
           E2E_PROD_BUILD: '1'
+          # Secret de test contrôlé : le serveur Next et les specs Playwright signent/vérifient
+          # la même valeur. Ne jamais substituer un secret Partner ou de production ici.
+          SHOPIFY_API_KEY: test-shopify-api-key
+          SHOPIFY_API_SECRET: test-shopify-api-secret
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
