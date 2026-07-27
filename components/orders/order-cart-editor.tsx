@@ -1,8 +1,12 @@
 'use client';
 
-import { getOrderCartEditorDataAction, replaceOrderCartAction } from '@/lib/actions/orders';
+import {
+  getOrderCartEditorDataAction,
+  reduceOrderCartPostAssignmentAction,
+  replaceOrderCartAction,
+} from '@/lib/actions/orders';
 import { formatMoney } from '@/lib/format/fcfa';
-import { calculateCartTotal } from '@/lib/orders/cart-editing';
+import { type CartEditingMode, calculateCartTotal } from '@/lib/orders/cart-editing';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -31,10 +35,19 @@ function newLine(): Line {
   };
 }
 
-export function OrderCartEditor({ currency, orderId }: { currency: string; orderId: string }) {
+export function OrderCartEditor({
+  currency,
+  mode,
+  orderId,
+}: {
+  currency: string;
+  mode: CartEditingMode;
+  orderId: string;
+}) {
   const router = useRouter();
   const load = useAction(getOrderCartEditorDataAction);
-  const save = useAction(replaceOrderCartAction);
+  const replace = useAction(replaceOrderCartAction);
+  const reduce = useAction(reduceOrderCartPostAssignmentAction);
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
@@ -65,17 +78,19 @@ export function OrderCartEditor({ currency, orderId }: { currency: string; order
     );
   }, [load.result.data]);
 
+  const saveResult = mode === 'full' ? replace.result.data : reduce.result.data;
+  const isSaving = mode === 'full' ? replace.isExecuting : reduce.isExecuting;
+
   useEffect(() => {
-    const result = save.result.data;
-    if (!result) return;
-    if (result.ok) {
+    if (!saveResult) return;
+    if (saveResult.ok) {
       setOpen(false);
       setMessage('Panier mis à jour.');
       router.refresh();
       return;
     }
     setMessage('La mise à jour du panier a échoué. Vérifiez les lignes puis réessayez.');
-  }, [router, save.result.data]);
+  }, [router, saveResult]);
 
   const total = useMemo(
     () =>
@@ -94,8 +109,8 @@ export function OrderCartEditor({ currency, orderId }: { currency: string; order
         Number.isInteger(Number(line.quantity)) &&
         Number(line.quantity) >= 1 &&
         Number(line.quantity) <= 999 &&
-        Number.isFinite(Number(line.unitPrice)) &&
-        Number(line.unitPrice) >= 0,
+        (mode === 'reduction' ||
+          (Number.isFinite(Number(line.unitPrice)) && Number(line.unitPrice) >= 0)),
     );
 
   function patchLine(id: string, patch: Partial<Line>) {
@@ -114,17 +129,24 @@ export function OrderCartEditor({ currency, orderId }: { currency: string; order
 
   function submit() {
     if (!valid) {
-      setMessage('Chaque ligne doit avoir un produit actif, une quantité valide et un prix.');
+      setMessage('Chaque ligne doit avoir un produit actif et une quantité valide.');
       return;
     }
     setMessage(null);
-    save.execute({
+    if (mode === 'full') {
+      replace.execute({
+        orderId,
+        lines: lines.map((line) => ({
+          productId: line.productId,
+          quantity: Number(line.quantity),
+          unitPrice: Number(line.unitPrice),
+        })),
+      });
+      return;
+    }
+    reduce.execute({
       orderId,
-      lines: lines.map((line) => ({
-        productId: line.productId,
-        quantity: Number(line.quantity),
-        unitPrice: Number(line.unitPrice),
-      })),
+      lines: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity) })),
     });
   }
 
@@ -133,7 +155,11 @@ export function OrderCartEditor({ currency, orderId }: { currency: string; order
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="font-medium">Panier</p>
-          <p className="text-sm text-muted">Produits, quantités et prix avant assignation.</p>
+          <p className="text-sm text-muted">
+            {mode === 'full'
+              ? 'Produits, quantités et prix avant assignation.'
+              : 'Retirez des articles ou baissez les quantités pour cette livraison.'}
+          </p>
         </div>
         <button
           className="min-h-10 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
@@ -162,35 +188,43 @@ export function OrderCartEditor({ currency, orderId }: { currency: string; order
                     {line.warning}
                   </p>
                 ) : null}
-                <label className="block text-sm font-medium">
-                  Produit
-                  <span className="relative mt-1 block">
-                    <Search
-                      aria-hidden="true"
-                      className="absolute left-3 top-3 size-4 text-muted"
-                    />
-                    <input
-                      className="min-h-10 w-full rounded-lg border border-border bg-canvas py-2 pl-9 pr-3"
-                      onChange={(event) => patchLine(line.id, { search: event.target.value })}
-                      value={line.search}
-                    />
-                  </span>
-                </label>
-                <select
-                  aria-label="Produit sélectionné"
-                  className="min-h-10 w-full rounded-lg border border-border bg-canvas px-3"
-                  onChange={(event) => selectProduct(line.id, event.target.value)}
-                  value={line.productId}
+                {mode === 'full' ? (
+                  <>
+                    <label className="block text-sm font-medium">
+                      Produit
+                      <span className="relative mt-1 block">
+                        <Search
+                          aria-hidden="true"
+                          className="absolute left-3 top-3 size-4 text-muted"
+                        />
+                        <input
+                          className="min-h-10 w-full rounded-lg border border-border bg-canvas py-2 pl-9 pr-3"
+                          onChange={(event) => patchLine(line.id, { search: event.target.value })}
+                          value={line.search}
+                        />
+                      </span>
+                    </label>
+                    <select
+                      aria-label="Produit sélectionné"
+                      className="min-h-10 w-full rounded-lg border border-border bg-canvas px-3"
+                      onChange={(event) => selectProduct(line.id, event.target.value)}
+                      value={line.productId}
+                    >
+                      <option value="">Sélectionnez un produit</option>
+                      {matches.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.title}
+                          {product.sku ? ` (${product.sku})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <p className="text-sm font-medium">{line.productLabel}</p>
+                )}
+                <div
+                  className={`grid gap-2 ${mode === 'full' ? 'grid-cols-[1fr_1fr_auto]' : 'grid-cols-[1fr_auto]'}`}
                 >
-                  <option value="">Sélectionnez un produit</option>
-                  {matches.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.title}
-                      {product.sku ? ` (${product.sku})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
                   <label className="text-sm font-medium">
                     Quantité
                     <input
@@ -201,16 +235,18 @@ export function OrderCartEditor({ currency, orderId }: { currency: string; order
                       value={line.quantity}
                     />
                   </label>
-                  <label className="text-sm font-medium">
-                    Prix unitaire
-                    <input
-                      className="mt-1 min-h-10 w-full rounded-lg border border-border bg-canvas px-3"
-                      min="0"
-                      onChange={(event) => patchLine(line.id, { unitPrice: event.target.value })}
-                      type="number"
-                      value={line.unitPrice}
-                    />
-                  </label>
+                  {mode === 'full' ? (
+                    <label className="text-sm font-medium">
+                      Prix unitaire
+                      <input
+                        className="mt-1 min-h-10 w-full rounded-lg border border-border bg-canvas px-3"
+                        min="0"
+                        onChange={(event) => patchLine(line.id, { unitPrice: event.target.value })}
+                        type="number"
+                        value={line.unitPrice}
+                      />
+                    </label>
+                  ) : null}
                   <button
                     aria-label="Supprimer la ligne"
                     className="mt-6 inline-flex size-10 items-center justify-center rounded-lg border border-border hover:bg-canvas"
@@ -230,21 +266,23 @@ export function OrderCartEditor({ currency, orderId }: { currency: string; order
               </div>
             );
           })}
-          <button
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
-            onClick={() => setLines((current) => [...current, newLine()])}
-            type="button"
-          >
-            <Plus aria-hidden="true" className="size-4" />
-            Ajouter un produit
-          </button>
+          {mode === 'full' ? (
+            <button
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
+              onClick={() => setLines((current) => [...current, newLine()])}
+              type="button"
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              Ajouter un produit
+            </button>
+          ) : null}
           <div className="flex items-center justify-between border-t border-border pt-3">
             <p className="font-medium">Total</p>
             <p className="font-mono font-semibold">{formatMoney(total, currency)}</p>
           </div>
           <button
             className="min-h-10 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] disabled:opacity-50"
-            disabled={!valid || save.isExecuting}
+            disabled={!valid || isSaving}
             onClick={submit}
             type="button"
           >
