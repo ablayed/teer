@@ -2416,6 +2416,10 @@ export type Database = {
         };
         Returns: Json;
       };
+      reduce_order_cart_post_assignment: {
+        Args: { p_lines: Json; p_order_id: string };
+        Returns: undefined;
+      };
       replace_order_cart: {
         Args: { p_lines: Json; p_order_id: string };
         Returns: undefined;
