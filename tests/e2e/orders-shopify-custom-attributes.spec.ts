@@ -107,6 +107,67 @@ test('commande avec attributs personnalises Shopify → section "Détails suppl�
   }
 });
 
+test('commande Shopify avec champs utiles et bruités → n’affiche que les champs utiles', async ({
+  page,
+}) => {
+  const admin = adminClient();
+  const email = e2eEmail('shopify-attrs-noise-filter');
+  const userId = await createConfirmedUser(admin, email);
+  const merchantAccountId = await waitForMerchant(admin, userId);
+  await markOnboarded(admin, merchantAccountId);
+
+  try {
+    const orderId = await seedOrder(admin, merchantAccountId, {
+      customerName: 'Client Filtre Attributs Shopify',
+      shopifyOrderAttributes: {
+        note: 'Appeler avant livraison',
+        attributes: [
+          { key: 'Nom', value: 'Awa Diop' },
+          { key: 'Disponibilité', value: 'Après 18h' },
+          { key: 'Étage', value: '3e' },
+          { key: 'utm_source', value: 'facebook' },
+          { key: 'UTM_MEDIUM', value: 'cpc' },
+          { key: 'shopify-cart-token', value: 'secret-token' },
+          { key: 'checkout_url', value: 'https://example.test/checkout' },
+          { key: 'IP Address', value: '203.0.113.42' },
+          { key: '_', value: '534' },
+        ],
+      },
+      shopifyLineItemAttributes: [
+        {
+          title: 'Sac',
+          attributes: [
+            { key: 'Whatsapp', value: '+221771234567' },
+            { key: 'full_url', value: 'https://example.test/cart' },
+          ],
+        },
+      ],
+    });
+
+    await loginViaForm(page, email, e2ePassword, `/commandes/${orderId}`);
+    await page.waitForURL(`**/commandes/${orderId}`);
+
+    const section = page.getByTestId('order-additional-details');
+    await expect(section).toBeVisible({ timeout: 15_000 });
+    await expect(section).toContainText('Appeler avant livraison');
+    await expect(section).toContainText('Nom');
+    await expect(section).toContainText('Disponibilité');
+    await expect(section).toContainText('Étage');
+    await expect(section).toContainText('Whatsapp');
+    await expect(section).not.toContainText('utm_source');
+    await expect(section).not.toContainText('UTM_MEDIUM');
+    await expect(section).not.toContainText('shopify-cart-token');
+    await expect(section).not.toContainText('checkout_url');
+    await expect(section).not.toContainText('IP Address');
+    await expect(section).not.toContainText('203.0.113.42');
+    await expect(section).not.toContainText('_');
+    await expect(section).not.toContainText('534');
+    await expect(section).not.toContainText('full_url');
+  } finally {
+    await cleanupUsers(admin, [userId]);
+  }
+});
+
 test('commande sans attributs personnalises Shopify → section "Détails supplémentaires" absente', async ({
   page,
 }) => {

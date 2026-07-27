@@ -14,6 +14,7 @@ import { cancelReasonLabels, isCancelReason } from '@/lib/domain/order-transitio
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import { canEditOrderCart } from '@/lib/orders/cart-editing';
+import { filterShopifyAttributesForDisplay } from '@/lib/orders/shopify-attribute-display';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
@@ -194,8 +195,19 @@ export function OrderDetailPanel({
   const shippingAddress = parseShippingAddress(order.shipping_address);
   const structuredAddress = order.delivery_address ?? order.customer_delivery_address;
   const items = parseItemsSummary(order.items_summary);
-  const orderAttributes = parseOrderAttributes(order.shopify_order_attributes);
-  const lineItemAttributes = parseLineItemAttributes(order.shopify_line_item_attributes);
+  const parsedOrderAttributes = parseOrderAttributes(order.shopify_order_attributes);
+  const orderAttributes = parsedOrderAttributes
+    ? {
+        ...parsedOrderAttributes,
+        attributes: filterShopifyAttributesForDisplay(parsedOrderAttributes.attributes),
+      }
+    : null;
+  const lineItemAttributes = parseLineItemAttributes(order.shopify_line_item_attributes)
+    .map((line) => ({
+      ...line,
+      attributes: filterShopifyAttributesForDisplay(line.attributes),
+    }))
+    .filter((line) => line.attributes.length > 0);
   const hasAdditionalDetails = orderAttributes !== null || lineItemAttributes.length > 0;
   const phone = order.customer?.phone ?? null;
   const fallbackQuartier = [shippingAddress?.address1, shippingAddress?.address2]
