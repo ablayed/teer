@@ -1,14 +1,45 @@
-import { calculateCartTotal, canEditOrderCart } from '@/lib/orders/cart-editing';
+import { calculateCartTotal, getOrderCartEditingMode } from '@/lib/orders/cart-editing';
+import { shouldResyncShopifyOrderCart } from '@/lib/shopify/orders-sync';
 import { describe, expect, it } from 'vitest';
 
-describe('canEditOrderCart', () => {
-  it('autorise uniquement une commande non assignée et non due', () => {
-    expect(canEditOrderCart({ deliveryState: 'unassigned', cashState: 'not_due' })).toBe(true);
+describe('getOrderCartEditingMode', () => {
+  it('garde l’édition complète avant assignation', () => {
+    expect(getOrderCartEditingMode({ cashState: 'not_due', deliveryState: 'unassigned' })).toBe(
+      'full',
+    );
   });
 
-  it('refuse une commande assignée ou encaissable', () => {
-    expect(canEditOrderCart({ deliveryState: 'assigned', cashState: 'not_due' })).toBe(false);
-    expect(canEditOrderCart({ deliveryState: 'unassigned', cashState: 'expected' })).toBe(false);
+  it('active la réduction seule après assignation tant que le cash n’est pas dû', () => {
+    expect(getOrderCartEditingMode({ cashState: 'not_due', deliveryState: 'assigned' })).toBe(
+      'reduction',
+    );
+    expect(
+      getOrderCartEditingMode({ cashState: 'not_due', deliveryState: 'out_for_delivery' }),
+    ).toBe('reduction');
+  });
+
+  it('refuse toute édition après encaissement', () => {
+    expect(
+      getOrderCartEditingMode({ cashState: 'expected', deliveryState: 'assigned' }),
+    ).toBeNull();
+  });
+});
+
+describe('réduction post-assignation et resynchronisation Shopify', () => {
+  it('opèrent sur des états de livraison disjoints', () => {
+    const assigned = {
+      cart_locally_modified_at: null,
+      cash_state: 'not_due',
+      delivery_state: 'assigned',
+    } as const;
+
+    expect(
+      getOrderCartEditingMode({
+        cashState: assigned.cash_state,
+        deliveryState: assigned.delivery_state,
+      }),
+    ).toBe('reduction');
+    expect(shouldResyncShopifyOrderCart(assigned)).toBe(false);
   });
 });
 

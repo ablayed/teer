@@ -2270,6 +2270,58 @@ export type Database = {
           tier: string;
         }[];
       };
+      lock_order_cart_replaceable: {
+        Args: { p_order_id: string };
+        Returns: {
+          assigned_driver_id: string | null;
+          attempt_count: number | null;
+          call_state: string | null;
+          cancel_reason: string | null;
+          cancel_reasons: string[] | null;
+          cart_locally_modified_at: string | null;
+          cash_collectable_minor: number | null;
+          cash_collected_at: string | null;
+          cash_state: string | null;
+          cod_status: string;
+          created_at: string;
+          created_at_shopify: string | null;
+          currency: string;
+          customer_id: string | null;
+          delivery_fee_minor: number;
+          delivery_state: string | null;
+          financial_status: string | null;
+          fulfillment_status: string | null;
+          id: string;
+          items_summary: Json | null;
+          merchant_account_id: string;
+          next_action_at: string | null;
+          next_contact_at: string | null;
+          order_number: string | null;
+          order_state: string | null;
+          payment_channel_at_delivery: string | null;
+          returned_at: string | null;
+          scheduled_for: string | null;
+          shipping_address: Json | null;
+          shop_id: string | null;
+          shopify_cancelled_at: string | null;
+          shopify_financial_status: string | null;
+          shopify_fulfillment_status: string | null;
+          shopify_line_item_attributes: Json | null;
+          shopify_order_attributes: Json | null;
+          shopify_order_id: string | null;
+          shopify_updated_at: string | null;
+          sort_at: string | null;
+          source: string | null;
+          total_amount: number;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'orders';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       log_ia_tool_audit: {
         Args: {
           p_allowed: boolean;
@@ -2366,6 +2418,10 @@ export type Database = {
       };
       replace_order_cart: {
         Args: { p_lines: Json; p_order_id: string };
+        Returns: undefined;
+      };
+      replace_shopify_order_cart: {
+        Args: { p_lines: Json; p_order_id: string; p_order_update: Json };
         Returns: undefined;
       };
       reserve_manual_order_number: {
