@@ -27,7 +27,7 @@ import {
   callOutcomes,
   logCallInputSchema,
 } from '@/lib/orders/call-log-validation';
-import { canEditOrderCart } from '@/lib/orders/cart-editing';
+import { getOrderCartEditingMode } from '@/lib/orders/cart-editing';
 import { positiveOrderTotalSchema } from '@/lib/orders/order-amount-validation';
 import { filterOrdersBySearch, legacySearchLookbackIso } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
@@ -43,6 +43,18 @@ type CustomerSummary = Pick<Tables<'customer'>, 'full_name' | 'phone'>;
 type CustomerDetail = Pick<Tables<'customer'>, 'full_name' | 'phone' | 'shipping_address'>;
 export type DeliveryAddress = Tables<'delivery_address'>;
 type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
+
+type ReduceOrderCartPostAssignmentArgs = {
+  p_lines: Json;
+  p_order_id: string;
+};
+
+function reduceOrderCartPostAssignmentRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'reduce_order_cart_post_assignment',
+    args: ReduceOrderCartPostAssignmentArgs,
+  ) => Promise<{ data: null; error: { message: string } | null }>;
+}
 
 export type OrderListItem = Pick<
   Tables<'orders'>,
@@ -1662,7 +1674,11 @@ export const getOrderCartEditorDataAction = requireRole('owner', 'manager')
       .maybeSingle();
     if (orderError) return { ok: false as const, errorCode: 'load_failed' as const };
     if (!order) return { ok: false as const, errorCode: 'order_not_found' as const };
-    if (!canEditOrderCart({ cashState: order.cash_state, deliveryState: order.delivery_state })) {
+    const mode = getOrderCartEditingMode({
+      cashState: order.cash_state,
+      deliveryState: order.delivery_state,
+    });
+    if (!mode) {
       return { ok: false as const, errorCode: 'cart_edit_not_allowed' as const };
     }
     const [linesResult, productsResult] = await Promise.all([
@@ -1711,7 +1727,12 @@ export const getOrderCartEditorDataAction = requireRole('owner', 'manager')
               : null,
       };
     });
-    return { ok: true as const, lines, products: products.filter((product) => product.isActive) };
+    return {
+      ok: true as const,
+      lines,
+      mode,
+      products: products.filter((product) => product.isActive),
+    };
   });
 
 export const replaceOrderCartAction = requireRole('owner', 'manager')
@@ -1752,6 +1773,50 @@ export const replaceOrderCartAction = requireRole('owner', 'manager')
     }
     revalidateOrderPaths(parsedInput.orderId);
     revalidatePath('/tableau');
+    return { ok: true as const, orderId: parsedInput.orderId };
+  });
+
+export const reduceOrderCartPostAssignmentAction = requireRole('owner', 'manager')
+  .metadata({ actionName: 'orders.reduce_cart_post_assignment', section: 'orders' })
+  .inputSchema(
+    z.object({
+      orderId: z.string().uuid(),
+      lines: z
+        .array(
+          z.object({
+            productId: z.string().uuid(),
+            quantity: z.number().int().min(1).max(999),
+          }),
+        )
+        .min(1)
+        .max(20),
+    }),
+  )
+  .action(async ({ parsedInput, ctx }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const { error } = await reduceOrderCartPostAssignmentRpc(supabase)(
+      'reduce_order_cart_post_assignment',
+      {
+        p_order_id: parsedInput.orderId,
+        p_lines: parsedInput.lines.map((line) => ({
+          product_id: line.productId,
+          quantity: line.quantity,
+        })) as Json,
+      },
+    );
+    if (error) {
+      if (error.message === 'order_not_found')
+        return { ok: false as const, errorCode: 'order_not_found' as const };
+      if (error.message.includes('cart_reduction_not_allowed'))
+        return { ok: false as const, errorCode: 'cart_edit_not_allowed' as const };
+      if (error.message.includes('cart_reduction_'))
+        return { ok: false as const, errorCode: 'invalid_reduction' as const };
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+    revalidateOrderPaths(parsedInput.orderId);
+    revalidatePath('/tableau');
+    revalidatePath('/livreurs');
+    revalidatePath('/finances');
     return { ok: true as const, orderId: parsedInput.orderId };
   });
 

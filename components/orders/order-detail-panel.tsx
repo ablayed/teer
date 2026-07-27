@@ -13,7 +13,7 @@ import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-ma
 import { cancelReasonLabels, isCancelReason } from '@/lib/domain/order-transition-actions';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
-import { canEditOrderCart } from '@/lib/orders/cart-editing';
+import { getOrderCartEditingMode } from '@/lib/orders/cart-editing';
 import { filterShopifyAttributesForDisplay } from '@/lib/orders/shopify-attribute-display';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
@@ -222,9 +222,11 @@ export function OrderDetailPanel({
     items: parseItemsSummaryForWhatsapp(order.items_summary),
   };
   const isCancelled = order.order_state === 'cancelled';
-  const canEditCart =
-    canEditAmounts &&
-    canEditOrderCart({ cashState: order.cash_state, deliveryState: order.delivery_state });
+  const cartEditingMode = getOrderCartEditingMode({
+    cashState: order.cash_state,
+    deliveryState: order.delivery_state,
+  });
+  const canEditCart = canEditAmounts && cartEditingMode !== null;
   // Lot B : raisons d'annulation multiples (libellés FR), fallback legacy.
   const cancelReasonsDisplay = (order.cancel_reasons ?? [])
     .map((reason) => (isCancelReason(reason) ? cancelReasonLabels[reason] : reason.trim()))
@@ -393,7 +395,9 @@ export function OrderDetailPanel({
           </section>
         ) : null}
 
-        {canEditCart ? <OrderCartEditor currency={order.currency} orderId={order.id} /> : null}
+        {canEditCart && cartEditingMode ? (
+          <OrderCartEditor currency={order.currency} mode={cartEditingMode} orderId={order.id} />
+        ) : null}
 
         {canEditAmounts ? (
           <OrderAmountsEditor
