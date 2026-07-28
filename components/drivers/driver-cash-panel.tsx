@@ -63,7 +63,12 @@ function cashCardWithDefinition({
       >
         {value}
       </p>
-      <div className="mt-2 flex items-center justify-between gap-2">
+      {/* `flex-wrap` : une action au libellé long (« Enregistrer un versement »)
+          déborde sinon de la carte et se retrouve SOUS la carte voisine de la
+          grille, qui intercepte alors le clic. On n'ajoute que le retour à la
+          ligne — le modèle de boîte (flex) reste identique, donc les cartes dont
+          l'action tient déjà sur la ligne sont inchangées. */}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <DefinitionToggle definition={definition} />
         {action}
       </div>
@@ -88,6 +93,10 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
   const t = useTranslations('livreurs.cash');
   const [cash, setCash] = useState(initialCash);
   const [history, setHistory] = useState(initialHistory);
+  // Partie 2 : demande de préremplissage envoyée au formulaire de versement déjà
+  // monté plus bas. Le compteur `nonce` (et non la valeur) déclenche l'application
+  // côté formulaire — cf. DriverRemittanceForm.
+  const [prefill, setPrefill] = useState<{ amountMinor: number; nonce: number } | null>(null);
   const [, startTransition] = useTransition();
   const searchParams = useSearchParams();
   const { selectPreset } = usePeriodParams();
@@ -135,6 +144,26 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
         {statCard(t('deliveryFees'), formatMoney(c.collectedDeliveryFeesMinor, 'XOF'))}
         {cashCardWithDefinition({
           accent: true,
+          // Partie 2 — raccourci de règlement. Ce bouton n'enregistre RIEN : il
+          // propose au formulaire déjà monté ci-dessous le solde live affiché sur
+          // cette carte, puis y amène le marchand. Le mécanisme de versement
+          // (recordSettlementAction → record_cash_settlement) reste inchangé et
+          // reste le seul chemin d'écriture, avec son RBAC owner/manager existant.
+          action: (
+            <button
+              className="min-h-9 rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted hover:bg-canvas hover:text-text"
+              data-testid="driver-cash-settle-shortcut"
+              onClick={() =>
+                setPrefill((previous) => ({
+                  amountMinor: c.cashOnHandMinor,
+                  nonce: (previous?.nonce ?? 0) + 1,
+                }))
+              }
+              type="button"
+            >
+              {t('settleNow')}
+            </button>
+          ),
           definition: t('cashOnHandLiveDefinition'),
           label: t('cashOnHand'),
           value: formatMoney(c.cashOnHandMinor, 'XOF'),
@@ -162,7 +191,7 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
       )}
       <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
         <p className="mb-3 text-sm font-medium">{t('remittanceTitle')}</p>
-        <DriverRemittanceForm driverId={driverId} onSettled={refreshCash} />
+        <DriverRemittanceForm driverId={driverId} onSettled={refreshCash} prefill={prefill} />
       </div>
       <div className="space-y-2">
         <p className="text-sm font-medium">Historique des versements</p>

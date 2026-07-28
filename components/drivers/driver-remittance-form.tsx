@@ -4,10 +4,16 @@ import { recordSettlementAction } from '@/lib/actions/finance';
 import { settlementMethods } from '@/lib/finance/cash';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type Props = {
   driverId: string;
+  // Partie 2 — raccourci depuis la carte « Cash chez le livreur (live) ». Le parent
+  // demande un préremplissage en incrémentant `nonce` ; ce composant reste la SEULE
+  // source de vérité du montant saisi et le SEUL appelant de recordSettlementAction.
+  // Aucune logique de calcul du solde n'est dupliquée ici : `amountMinor` est la
+  // valeur déjà affichée par la carte (c.cashOnHandMinor), pas un recalcul client.
+  prefill?: { amountMinor: number; nonce: number } | null;
   // Appelé après une remise réussie : le parent relit la conso cash FRAÎCHE côté
   // serveur et met à jour son état. On NE fait PAS de router.refresh() ici — son
   // re-render RSC à travers le composant client était racey (~27% de ratés en
@@ -24,11 +30,26 @@ const methodLabels: Record<(typeof settlementMethods)[number], string> = {
 
 // Remise globale par défaut : le versement couvre plusieurs commandes, réparti
 // automatiquement (FIFO côté RPC) en l'absence d'allocations explicites.
-export function DriverRemittanceForm({ driverId, onSettled }: Props) {
+export function DriverRemittanceForm({ driverId, onSettled, prefill }: Props) {
   const action = useAction(recordSettlementAction);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<(typeof settlementMethods)[number]>('ESPECES');
   const [feedback, setFeedback] = useState<{ msg: string; kind: 'error' | 'success' } | null>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  // Le montant reste librement modifiable après préremplissage : la carte propose
+  // le solde complet, le marchand peut saisir une remise partielle. On dépend du
+  // `nonce` et non de la valeur, pour qu'un second clic sur un solde inchangé
+  // réapplique bien la proposition après une saisie manuelle.
+  const prefillNonce = prefill?.nonce;
+  const prefillAmountMinor = prefill?.amountMinor;
+  useEffect(() => {
+    if (prefillNonce === undefined || prefillAmountMinor === undefined) return;
+    setAmount(String(prefillAmountMinor));
+    setFeedback(null);
+    amountInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    amountInputRef.current?.focus({ preventScroll: true });
+  }, [prefillNonce, prefillAmountMinor]);
 
   async function submit() {
     const a = Number.parseInt(amount, 10);
@@ -60,6 +81,7 @@ export function DriverRemittanceForm({ driverId, onSettled }: Props) {
           min="0"
           onChange={(e) => setAmount(e.target.value)}
           placeholder="0"
+          ref={amountInputRef}
           type="number"
           value={amount}
         />

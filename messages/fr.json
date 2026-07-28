@@ -328,6 +328,7 @@
       "cashOnHandPeriod": "Cash chez le livreur (période)",
       "cashOnHandPeriodDefinition": "Cette carte est un instantané de l'activité sur la période choisie : le cash collecté sur ces commandes, moins les frais et les versements enregistrés sur cette même fenêtre. Un versement peut couvrir des commandes hors de cette période, donc ce chiffre peut différer du solde « (live) » ci-contre — ce n'est pas une erreur.",
       "resetPeriod": "Réinitialiser",
+      "settleNow": "Enregistrer un versement",
       "remittanceTitle": "Enregistrer un versement (remise globale)",
       "discrepancy": "Écart non résolu : {amount}"
     },
