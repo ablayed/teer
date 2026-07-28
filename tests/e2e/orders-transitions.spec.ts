@@ -1362,7 +1362,10 @@ test('la date/heure programmée et l heure de reception sont visibles (liste + d
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
     // 1.1 (detail) : jour ET heure, pas seulement le jour.
-    await page.goto(`/commandes/${orderId}`);
+    // `page.reload()` et non `page.goto(<url courante>)` : la seconde entre en course
+    // avec la navigation que l'app déclenche elle-même après la transition
+    // (« Navigation is interrupted by another navigation », observé sur iphone-14).
+    await page.reload();
     await expect(page.getByTestId('order-scheduled-for')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('order-scheduled-for')).toContainText(dateTimePattern);
 
