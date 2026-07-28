@@ -10,12 +10,17 @@ export type CartPriceLine = {
 
 export type CartEditingMode = 'full' | 'reduction';
 
+const collectedCashStates = new Set(['collected', 'remitted', 'discrepancy']);
+const terminalDeliveryStates = new Set(['delivered', 'failed', 'returned']);
+
 export function getOrderCartEditingMode({
   cashState,
   deliveryState,
 }: CartEditableOrderState): CartEditingMode | null {
-  if (cashState !== 'not_due') return null;
-  return deliveryState === 'unassigned' ? 'full' : 'reduction';
+  if (deliveryState === 'unassigned') return cashState === 'not_due' ? 'full' : null;
+  if (!deliveryState || terminalDeliveryStates.has(deliveryState)) return null;
+  if (!cashState || collectedCashStates.has(cashState)) return null;
+  return 'reduction';
 }
 
 export function canEditOrderCart({ cashState, deliveryState }: CartEditableOrderState): boolean {

@@ -78,7 +78,11 @@ async function fixture(tag: string) {
     return result.data.id;
   }
   const driverId = driver.data.id;
-  async function order(lines: Array<{ id: string; qty: number; price: number }>, summary?: Json[]) {
+  async function order(
+    lines: Array<{ id: string; qty: number; price: number }>,
+    summary?: Json[],
+    deliveryState: 'assigned' | 'out_for_delivery' = 'assigned',
+  ) {
     const total = lines.reduce((sum, line) => sum + line.qty * line.price, 0);
     const created = await db
       .from('orders')
@@ -89,8 +93,9 @@ async function fixture(tag: string) {
         currency: 'XOF',
         order_state: 'open',
         call_state: 'validated',
-        delivery_state: 'assigned',
-        cash_state: 'not_due',
+        // Flux réel : programmer/assigner pose expected ; le démarrage de livraison le conserve.
+        delivery_state: deliveryState,
+        cash_state: 'expected',
         assigned_driver_id: driverId,
         items_summary:
           summary ??
@@ -206,7 +211,7 @@ describe('reduce_order_cart_post_assignment', () => {
         p_lines: [{ product_id: b, quantity: 1 }],
       }),
     ).resolves.toMatchObject({ error: { message: 'cart_reduction_product_not_in_order' } });
-    await f.db.from('orders').update({ cash_state: 'expected' }).eq('id', id);
+    await f.db.from('orders').update({ cash_state: 'collected' }).eq('id', id);
     await expect(
       reduce(f.owner)('reduce_order_cart_post_assignment', {
         p_order_id: id,
@@ -225,6 +230,7 @@ describe('reduce_order_cart_post_assignment', () => {
         { product_id: a, title: 'Produit', quantity: 1, price: 200 },
       ],
     );
+
     await expect(
       reduce(f.owner)('reduce_order_cart_post_assignment', {
         p_order_id: id,
@@ -237,6 +243,31 @@ describe('reduce_order_cart_post_assignment', () => {
         p_lines: [{ product_id: a, quantity: 1 }],
       }),
     ).resolves.toMatchObject({ error: { message: 'forbidden' } });
+  });
+
+  run('autorise une réduction en cours de livraison avec un cash attendu', async () => {
+    const f = await fixture('out-for-delivery');
+    const a = await f.product('A');
+    const id = await f.order([{ id: a, qty: 2, price: 100 }], undefined, 'out_for_delivery');
+
+    await expect(
+      reduce(f.owner)('reduce_order_cart_post_assignment', {
+        p_order_id: id,
+        p_lines: [{ product_id: a, quantity: 1 }],
+      }),
+    ).resolves.toMatchObject({ error: null });
+
+    const { data: order } = await f.db
+      .from('orders')
+      .select('cash_state,delivery_state,total_amount,cash_collectable_minor')
+      .eq('id', id)
+      .single();
+    expect(order).toMatchObject({
+      cash_state: 'expected',
+      delivery_state: 'out_for_delivery',
+      total_amount: 100,
+      cash_collectable_minor: 100,
+    });
   });
 
   run('rejette deux livreurs avec un engagement net ouvert sur le même produit', async () => {

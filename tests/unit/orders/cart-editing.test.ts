@@ -9,19 +9,40 @@ describe('getOrderCartEditingMode', () => {
     );
   });
 
-  it('active la réduction seule après assignation tant que le cash n’est pas dû', () => {
-    expect(getOrderCartEditingMode({ cashState: 'not_due', deliveryState: 'assigned' })).toBe(
+  it('active la réduction seule après assignation tant que le cash n’est pas encaissé', () => {
+    expect(getOrderCartEditingMode({ cashState: 'expected', deliveryState: 'assigned' })).toBe(
       'reduction',
     );
     expect(
-      getOrderCartEditingMode({ cashState: 'not_due', deliveryState: 'out_for_delivery' }),
+      getOrderCartEditingMode({ cashState: 'expected', deliveryState: 'out_for_delivery' }),
     ).toBe('reduction');
   });
 
-  it('refuse toute édition après encaissement', () => {
-    expect(
-      getOrderCartEditingMode({ cashState: 'expected', deliveryState: 'assigned' }),
-    ).toBeNull();
+  it.each(['collected', 'remitted', 'discrepancy'] as const)(
+    'refuse toute édition après encaissement (%s)',
+    (cashState) => {
+      expect(getOrderCartEditingMode({ cashState, deliveryState: 'out_for_delivery' })).toBeNull();
+    },
+  );
+
+  it.each(['delivered', 'failed', 'returned'] as const)(
+    'refuse les états de livraison terminaux (%s), même quand le cash n’est pas dû',
+    (deliveryState) => {
+      expect(getOrderCartEditingMode({ cashState: 'not_due', deliveryState })).toBeNull();
+    },
+  );
+
+  it.each([
+    { cashState: null, deliveryState: 'out_for_delivery' },
+    { cashState: 'expected', deliveryState: null },
+  ])('refuse les dimensions cash ou livraison nulles (%o)', ({ cashState, deliveryState }) => {
+    expect(getOrderCartEditingMode({ cashState, deliveryState })).toBeNull();
+  });
+
+  it('garde la réduction seule pour une commande programmée dont le cash est attendu', () => {
+    expect(getOrderCartEditingMode({ cashState: 'expected', deliveryState: 'scheduled' })).toBe(
+      'reduction',
+    );
   });
 });
 
@@ -29,7 +50,7 @@ describe('réduction post-assignation et resynchronisation Shopify', () => {
   it('opèrent sur des états de livraison disjoints', () => {
     const assigned = {
       cart_locally_modified_at: null,
-      cash_state: 'not_due',
+      cash_state: 'expected',
       delivery_state: 'assigned',
     } as const;
 
