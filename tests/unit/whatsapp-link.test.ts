@@ -1,4 +1,9 @@
-import { buildWhatsappShareUrl, formatProduits, safeText } from '@/lib/whatsapp/format';
+import {
+  buildWhatsappDirectUrl,
+  buildWhatsappShareUrl,
+  formatProduits,
+  safeText,
+} from '@/lib/whatsapp/format';
 import { normalizeWhatsAppSenegalPhone } from '@/lib/whatsapp/link';
 import { describe, expect, it } from 'vitest';
 
@@ -40,6 +45,38 @@ describe('buildWhatsappShareUrl', () => {
     const url = buildWhatsappShareUrl('+221 77 123 45 67\nDakar Plateau');
     const parsed = new URL(url);
     expect(parsed.searchParams.has('phone')).toBe(false);
+  });
+});
+
+describe('buildWhatsappDirectUrl', () => {
+  it.each([
+    ['+221 77 123 45 67', 'https://wa.me/221771234567'],
+    ['77 123 45 67', 'https://wa.me/221771234567'],
+    ['077 123 45 67', 'https://wa.me/221771234567'],
+    ['00221 79 123 45 67', 'https://wa.me/221791234567'],
+    ['221-76-123-45-67', 'https://wa.me/221761234567'],
+  ])('ouvre la conversation du client pour %s', (phone, expectedOrigin) => {
+    const url = buildWhatsappDirectUrl(phone, 'Bonjour');
+    expect(url.startsWith(`${expectedOrigin}?text=`)).toBe(true);
+  });
+
+  it('encode le message dans text=', () => {
+    const url = new URL(buildWhatsappDirectUrl('+221 77 123 45 67', 'Commande #1007\nMerci 😊'));
+    expect(url.searchParams.get('text')).toBe('Commande #1007\nMerci 😊');
+  });
+
+  it.each([
+    ['+221 33 123 45 67', 'fixe sénégalais'],
+    ['77 12 34', 'numéro incomplet'],
+    ['+33 6 12 34 56 78', 'numéro étranger'],
+  ])('retombe sur le sélecteur de chat pour %s (%s)', (phone) => {
+    const url = buildWhatsappDirectUrl(phone, 'Bonjour');
+    expect(url).toContain('https://api.whatsapp.com/send');
+    expect(url).not.toContain('wa.me');
+  });
+
+  it.each([null, undefined, ''])('retombe sur le sélecteur de chat sans numéro (%s)', (phone) => {
+    expect(buildWhatsappDirectUrl(phone, 'Bonjour')).toContain('https://api.whatsapp.com/send');
   });
 });
 
