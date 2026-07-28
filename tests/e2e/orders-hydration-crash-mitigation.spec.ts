@@ -160,6 +160,19 @@ async function signIn(page: Page, email: string, redirectTo: string) {
 test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désactivé sur les lignes', () => {
   test.skip(!hasSupabaseAdmin, 'SUPABASE service role requis pour seeder les fixtures');
 
+  // OBLIGATOIRE ICI : ce spec repose ENTIÈREMENT sur l'observation réseau côté page
+  // (`page.route` pour injecter la panne, `page.on('request')` pour compter les prefetch).
+  // `ServiceWorkerRegister` (`app/(app)/layout.tsx`) n'enregistre `/sw.js` QUE si
+  // `NODE_ENV === 'production'` — donc jamais en `pnpm dev`, mais TOUJOURS en CI
+  // (`E2E_PROD_BUILD=1` → `next start`). Ce SW fait `skipWaiting()` + `clients.claim()`
+  // (`public/sw.js`) : il prend le contrôle de la page déjà ouverte quelques centaines de ms
+  // après la connexion. Dès cet instant, toutes les requêtes de la page passent par le
+  // service worker et deviennent INVISIBLES pour `page.route`/`page.on('request')` — y
+  // compris `/api/orders/search`, alors même que le fetch part et répond 200. Le test
+  // devenait alors soit rouge (l'abort n'est jamais injecté), soit vert pour une mauvaise
+  // raison (le compteur de prefetch reste à 0 parce que PLUS AUCUNE requête n'est observée).
+  test.use({ serviceWorkers: 'block' });
+
   test('cycles recherche/effacement répétés : aucune requête de prefetch par ligne, aucune erreur console', async ({
     page,
   }, testInfo) => {

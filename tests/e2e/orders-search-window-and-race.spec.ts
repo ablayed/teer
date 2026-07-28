@@ -207,6 +207,15 @@ test.describe('Fix triage — bornage recherche 12 mois', () => {
 test.describe('Fix triage — invalidation des réponses de recherche obsolètes', () => {
   test.skip(!hasSupabaseAdmin, 'SUPABASE service role requis pour seeder les fixtures');
 
+  // Même cause que `orders-hydration-crash-mitigation.spec.ts` : en CI (`E2E_PROD_BUILD=1`),
+  // `ServiceWorkerRegister` enregistre `/sw.js`, qui fait `skipWaiting()` + `clients.claim()`.
+  // Une fois la page contrôlée par le SW, ses requêtes ne passent plus par `page.route` /
+  // `page.on('request')` — le ralentissement et l'abort injectés ici ne s'appliqueraient
+  // jamais, et `firstRequestFailed` resterait faux sans que le mécanisme applicatif soit
+  // en cause. Le blocage du SW est indispensable pour que ces deux tests observent vraiment
+  // le réseau ; il ne change aucun comportement applicatif (`/sw.js` n'intercepte pas /api/**).
+  test.use({ serviceWorkers: 'block' });
+
   test('une réponse de recherche en retard n’écrase pas un résultat plus récent', async ({
     page,
   }, testInfo) => {
