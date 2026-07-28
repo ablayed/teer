@@ -2,6 +2,8 @@
 
 > `AGENTS.md` points here. This file is the single source of truth.
 
+> **Mobile `commandes-detail` visual baselines:** the Linux captures were stale from 29 June 2026. `db19074` created them at 20:33 UTC, before `d1dd4b0` at 23:25 UTC moved `Clients` into the bottom navigation and `Livreurs` into `Plus`; that valid navigation change was never reflected in the two captures. The discrepancy was discovered incidentally while inspecting CI `actual`/`expected`/`diff` artifacts for the post-assignment cart-reduction work. The refreshed baselines include both that legitimate navigation and the new `Modifier panier` block. A green `main` run nevertheless validated both mobile `commandes-detail` assertions: why a visually stale baseline survived for a month is a separate future visual-test-reliability investigation, not scope for this lot.
+
 **Latest migration present: `0111`** (`shopify_order_cart_resync`). La dernière migration dont l'application **prod + local** est explicitement attestée dans ce fichier reste `0099` ; ne pas présumer l'application de `0100`–`0111` sans `db push` réussi ou lecture de `supabase_migrations.schema_migrations` (règle tracker ci-dessous).
 
 **Dernières features en prod (main) :** invitation collaborateur (#26) · garde-fou anti-prod seeds E2E `assertLocalSupabase` (#29) · **commandes : filtre période + boutique, groupement par date, recherche instantanée, dropdown actions (#30)**. La création manuelle de commande utilise **Paradigm A** (cf. gotcha « Données serveur post-mutation ») : lecture serveur + injection state, jamais `router.refresh()`/navigation.
