@@ -14,6 +14,7 @@ import {
   ORDER_TOTAL_POSITIVE_MESSAGE,
   parsePositiveOrderTotalInput,
 } from '@/lib/orders/order-amount-validation';
+import { SCHEDULED_DELIVERY_STATES } from '@/lib/orders/scheduled-delivery';
 import { Pencil } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -33,8 +34,9 @@ type OrderAmountsEditorProps = {
 // est géré par le popup d'assignation). Sert la consultation/édition à tout moment
 // (programmée, en cours de livraison…). owner/manager (gating amont canEditAmounts).
 
-// États de livraison où une date/heure de livraison est pertinente.
-const SCHEDULING_STATES = ['scheduled', 'assigned', 'out_for_delivery'];
+// États de livraison où une date/heure de livraison est pertinente
+// (source unique partagée avec l'affichage lecture seule — Sujet 1.1).
+const SCHEDULING_STATES: readonly string[] = SCHEDULED_DELIVERY_STATES;
 
 export function OrderAmountsEditor({
   currency,

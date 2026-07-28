@@ -11,14 +11,16 @@ import { Button } from '@/components/ui/button';
 import type { OrderDetail } from '@/lib/actions/orders';
 import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { cancelReasonLabels, isCancelReason } from '@/lib/domain/order-transition-actions';
+import { formatDateTime } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import { getOrderCartEditingMode } from '@/lib/orders/cart-editing';
+import { hasVisibleScheduledDelivery } from '@/lib/orders/scheduled-delivery';
 import { filterShopifyAttributesForDisplay } from '@/lib/orders/shopify-attribute-display';
 import type { Json } from '@/lib/supabase/database.types';
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
-import { ArrowLeft, MapPin, Pencil, ShoppingBag, X } from 'lucide-react';
+import { ArrowLeft, CalendarClock, MapPin, Pencil, ShoppingBag, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -222,6 +224,13 @@ export function OrderDetailPanel({
     items: parseItemsSummaryForWhatsapp(order.items_summary),
   };
   const isCancelled = order.order_state === 'cancelled';
+  // Sujet 1.1 : la date/heure programmée n'était visible que dans le modal
+  // « Modifier les montants » (owner/manager). Affichée ici en lecture seule pour
+  // tous les rôles, jour ET heure (fuseau Africa/Dakar via formatDateTime).
+  const showScheduledDelivery = hasVisibleScheduledDelivery({
+    deliveryState: order.delivery_state,
+    scheduledFor: order.scheduled_for,
+  });
   const cartEditingMode = getOrderCartEditingMode({
     cashState: order.cash_state,
     deliveryState: order.delivery_state,
@@ -416,6 +425,19 @@ export function OrderDetailPanel({
             </p>
           </section>
         )}
+
+        {showScheduledDelivery && order.scheduled_for ? (
+          <section
+            className="rounded-lg border border-border p-4"
+            data-testid="order-scheduled-for"
+          >
+            <p className="text-sm text-muted">Livraison programmée</p>
+            <p className="mt-1 flex items-center gap-2 text-sm font-semibold text-text">
+              <CalendarClock aria-hidden="true" className="size-4 shrink-0 text-accent" />
+              {formatDateTime(order.scheduled_for)}
+            </p>
+          </section>
+        ) : null}
 
         <section className="rounded-lg border border-border p-4">
           <p className="text-sm text-muted">Statut COD</p>
