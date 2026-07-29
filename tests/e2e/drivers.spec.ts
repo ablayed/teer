@@ -576,6 +576,54 @@ test('modifier le stock: retrait excédentaire (valeur négative) est bloqué av
   }
 });
 
+// Partie 2 : le raccourci de la carte « Cash chez le livreur (live) » ne fait que
+// proposer le solde affiché au formulaire de versement déjà existant. Il ne crée
+// aucun chemin d'écriture : l'enregistrement passe par le MÊME bouton et la même
+// action que le test de remise globale ci-dessous.
+test('cash livreur: le raccourci de la carte live prérempli le versement avec le solde', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cash-shortcut');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Awa Raccourci');
+  await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 20000);
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+
+    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
+      /20\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+
+    // Le formulaire démarre vide ; le raccourci y injecte le solde live.
+    const settlementInput = page.getByPlaceholder('0');
+    await expect(settlementInput).toHaveValue('');
+    await page.getByTestId('driver-cash-settle-shortcut').click();
+    await expect(settlementInput).toHaveValue('20000');
+
+    // Le montant reste modifiable : le raccourci propose, il n'impose pas.
+    await settlementInput.click({ clickCount: 3 });
+    await settlementInput.pressSequentially('5000');
+    await expect(settlementInput).toHaveValue('5000');
+
+    await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    await expect(page.getByText('Versement enregistré.')).toBeVisible({ timeout: 15_000 });
+    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
+      /15\s*000\s*F\s*CFA/,
+      { timeout: 15_000 },
+    );
+
+    const { data: settlements } = await fixture.admin
+      .from('cash_settlement')
+      .select('amount_received_minor')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId);
+    expect(settlements?.[0]?.amount_received_minor).toBe(5000);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('cash livreur: commande livrée affiche le collecté puis la remise globale met à jour le remis', async ({
   page,
 }) => {
