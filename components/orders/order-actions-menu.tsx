@@ -43,7 +43,11 @@ function isPayloadDialogAction(action: TransitionAction): action is PayloadDialo
     action === 'assigner' ||
     action === 'programmer' ||
     action === 'annuler' ||
-    action === 'reprogrammer'
+    action === 'reprogrammer' ||
+    // 0114 — « Marquer livrée » ouvre désormais un dialog pour permettre de corriger
+    // la date réelle de livraison. Le champ y est optionnel : valider sans rien saisir
+    // produit exactement la transition d'avant ce lot.
+    action === 'livrer'
   );
 }
 

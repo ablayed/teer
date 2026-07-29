@@ -23,10 +23,14 @@ import { useEffect, useId, useState } from 'react';
 export type DriverOption = { id: string; fullName: string };
 
 // Actions qui nécessitent une saisie avant que la transition ne s'exécute.
-export type PayloadDialogAction = 'assigner' | 'programmer' | 'annuler' | 'reprogrammer';
+// 0114 : `livrer` en fait désormais partie — elle s'exécutait jusqu'ici directement
+// au clic, sans aucune saisie.
+export type PayloadDialogAction = 'assigner' | 'programmer' | 'annuler' | 'reprogrammer' | 'livrer';
 
 export type TransitionPayload = {
   assignedDriverId?: string;
+  callConfirmedAt?: string;
+  deliveredAt?: string;
   scheduledFor?: string;
   cancelReasons?: CancelReason[];
   note?: string;
@@ -52,7 +56,23 @@ const dialogTitles: Record<PayloadDialogAction, string> = {
   programmer: 'Programmer la livraison',
   annuler: 'Annuler la commande',
   reprogrammer: 'Reprogrammer la livraison',
+  livrer: 'Marquer la commande livrée',
 };
+
+// 0114 — une date corrigée est OPTIONNELLE : laissée vide, la RPC garde son
+// comportement d'avant ce lot (now(), ou scheduled_for pour la livraison). On ne
+// renvoie donc une valeur que si les DEUX champs sont remplis ; un seul des deux
+// est une saisie incomplète, jamais une date implicite.
+function optionalDateTimeIso(date: string, time: string): string | null {
+  if (!date || !time) {
+    return null;
+  }
+  return dateTimeInputsToIso(date, time);
+}
+
+function isPartiallyFilled(date: string, time: string): boolean {
+  return Boolean(date) !== Boolean(time);
+}
 
 export function TransitionDialog({
   action,
@@ -70,6 +90,12 @@ export function TransitionDialog({
   const [time, setTime] = useState(defaultSchedule.time);
   const [reasons, setReasons] = useState<Set<CancelReason>>(new Set());
   const [note, setNote] = useState('');
+  // 0114 — les deux corrections de date, chacune vide par défaut : le geste courant
+  // (« c'est arrivé maintenant ») reste un simple clic, sans friction ajoutée.
+  const [confirmedDate, setConfirmedDate] = useState('');
+  const [confirmedTime, setConfirmedTime] = useState('');
+  const [deliveredDate, setDeliveredDate] = useState('');
+  const [deliveredTime, setDeliveredTime] = useState('');
   const [stockShortages, setStockShortages] = useState<StockShortageRow[]>([]);
   const [stockCheckFailed, setStockCheckFailed] = useState(false);
   const fetchRequiredStock = useAction(getOrderRequiredStockAction);
@@ -88,6 +114,11 @@ export function TransitionDialog({
 
   const isAssign = action === 'assigner';
   const isCancel = action === 'annuler';
+  const isDeliver = action === 'livrer';
+  // La date de confirmation ne se saisit qu'à `programmer` : à `reprogrammer` la
+  // commande est déjà confirmée depuis longtemps, et la RPC est idempotente sur ce
+  // champ — proposer la saisie y serait un champ sans effet.
+  const canEditConfirmedAt = action === 'programmer';
   const title = dialogTitles[action];
   const hasNoDrivers = isAssign && drivers.length === 0;
 
@@ -145,11 +176,16 @@ export function TransitionDialog({
     });
   }
 
+  const confirmedIncomplete = canEditConfirmedAt && isPartiallyFilled(confirmedDate, confirmedTime);
+  const deliveredIncomplete = isDeliver && isPartiallyFilled(deliveredDate, deliveredTime);
+
   const canConfirm = isAssign
     ? Boolean(driverId)
     : isCancel
       ? reasons.size > 0
-      : Boolean(dateTimeInputsToIso(date, time));
+      : isDeliver
+        ? !deliveredIncomplete
+        : Boolean(dateTimeInputsToIso(date, time)) && !confirmedIncomplete;
 
   function handleConfirm() {
     if (isAssign) {
@@ -157,6 +193,15 @@ export function TransitionDialog({
         return;
       }
       onConfirm({ assignedDriverId: driverId });
+      return;
+    }
+
+    if (isDeliver) {
+      if (deliveredIncomplete) {
+        return;
+      }
+      const deliveredAt = optionalDateTimeIso(deliveredDate, deliveredTime);
+      onConfirm(deliveredAt ? { deliveredAt } : {});
       return;
     }
 
@@ -172,10 +217,13 @@ export function TransitionDialog({
     }
 
     const scheduledFor = dateTimeInputsToIso(date, time);
-    if (!scheduledFor) {
+    if (!scheduledFor || confirmedIncomplete) {
       return;
     }
-    onConfirm({ scheduledFor });
+    const callConfirmedAt = canEditConfirmedAt
+      ? optionalDateTimeIso(confirmedDate, confirmedTime)
+      : null;
+    onConfirm({ scheduledFor, ...(callConfirmedAt ? { callConfirmedAt } : {}) });
   }
 
   return (
@@ -250,27 +298,107 @@ export function TransitionDialog({
               <p className="text-sm text-muted">Sélectionnez au moins une raison.</p>
             ) : null}
           </div>
+        ) : isDeliver ? (
+          // 0114 — « Marquer livrée » n'avait AUCUN dialog avant ce lot : le clic
+          // exécutait la transition directement. Le champ est optionnel, vide par
+          // défaut : ne rien saisir reproduit exactement le comportement précédent.
+          <div className="space-y-3">
+            <p className="text-sm text-muted">
+              La livraison sera datée d'aujourd'hui. Renseignez ces champs uniquement si elle a
+              réellement eu lieu à une autre date.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor={`${fieldId}-delivered-date`}>Date de livraison réelle</Label>
+                <Input
+                  data-testid="transition-delivered-date"
+                  id={`${fieldId}-delivered-date`}
+                  onChange={(event) => setDeliveredDate(event.target.value)}
+                  type="date"
+                  value={deliveredDate}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${fieldId}-delivered-time`}>Heure</Label>
+                <Input
+                  data-testid="transition-delivered-time"
+                  id={`${fieldId}-delivered-time`}
+                  onChange={(event) => setDeliveredTime(normalizeHourInput(event.target.value))}
+                  step={3600}
+                  type="time"
+                  value={deliveredTime}
+                />
+              </div>
+            </div>
+            {deliveredIncomplete ? (
+              <p className="text-sm text-danger" role="alert">
+                Renseignez la date ET l'heure, ou laissez les deux vides.
+              </p>
+            ) : null}
+          </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor={fieldId}>Date de livraison</Label>
-              <Input
-                id={fieldId}
-                onChange={(event) => setDate(event.target.value)}
-                type="date"
-                value={date}
-              />
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor={fieldId}>Date de livraison</Label>
+                <Input
+                  id={fieldId}
+                  onChange={(event) => setDate(event.target.value)}
+                  type="date"
+                  value={date}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
+                <Input
+                  id={`${fieldId}-time`}
+                  onChange={(event) => setTime(normalizeHourInput(event.target.value))}
+                  step={3600}
+                  type="time"
+                  value={time}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
-              <Input
-                id={`${fieldId}-time`}
-                onChange={(event) => setTime(normalizeHourInput(event.target.value))}
-                step={3600}
-                type="time"
-                value={time}
-              />
-            </div>
+
+            {canEditConfirmedAt ? (
+              // 0114 — date de confirmation client. Distincte de la date de livraison
+              // prévue juste au-dessus : l'une dit quand le client a dit oui, l'autre
+              // quand le colis doit partir. Optionnelle, vide par défaut.
+              <div className="space-y-3 border-t border-border pt-3">
+                <p className="text-sm text-muted">
+                  Le client a confirmé aujourd'hui. Renseignez ces champs uniquement s'il a confirmé
+                  à une autre date.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor={`${fieldId}-confirmed-date`}>Date de confirmation</Label>
+                    <Input
+                      data-testid="transition-confirmed-date"
+                      id={`${fieldId}-confirmed-date`}
+                      onChange={(event) => setConfirmedDate(event.target.value)}
+                      type="date"
+                      value={confirmedDate}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`${fieldId}-confirmed-time`}>Heure</Label>
+                    <Input
+                      data-testid="transition-confirmed-time"
+                      id={`${fieldId}-confirmed-time`}
+                      onChange={(event) => setConfirmedTime(normalizeHourInput(event.target.value))}
+                      step={3600}
+                      type="time"
+                      value={confirmedTime}
+                    />
+                  </div>
+                </div>
+                {confirmedIncomplete ? (
+                  <p className="text-sm text-danger" role="alert">
+                    Renseignez la date ET l'heure, ou laissez les deux vides.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         )}
 
