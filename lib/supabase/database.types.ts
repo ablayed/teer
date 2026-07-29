@@ -1025,6 +1025,7 @@ export type Database = {
         Row: {
           assigned_driver_id: string | null;
           attempt_count: number | null;
+          call_confirmed_at: string | null;
           call_state: string | null;
           cancel_reason: string | null;
           cancel_reasons: string[] | null;
@@ -1068,6 +1069,7 @@ export type Database = {
         Insert: {
           assigned_driver_id?: string | null;
           attempt_count?: number | null;
+          call_confirmed_at?: string | null;
           call_state?: string | null;
           cancel_reason?: string | null;
           cancel_reasons?: string[] | null;
@@ -1111,6 +1113,7 @@ export type Database = {
         Update: {
           assigned_driver_id?: string | null;
           attempt_count?: number | null;
+          call_confirmed_at?: string | null;
           call_state?: string | null;
           cancel_reason?: string | null;
           cancel_reasons?: string[] | null;
@@ -2275,6 +2278,7 @@ export type Database = {
         Returns: {
           assigned_driver_id: string | null;
           attempt_count: number | null;
+          call_confirmed_at: string | null;
           call_state: string | null;
           cancel_reason: string | null;
           cancel_reasons: string[] | null;
@@ -2446,6 +2450,7 @@ export type Database = {
               p_actor: string;
               p_assigned_driver_id?: string;
               p_attempt_count?: number;
+              p_call_confirmed_at?: string;
               p_call_state?: string;
               p_cancel_reason?: string;
               p_cancel_reasons?: string[];
@@ -2453,6 +2458,7 @@ export type Database = {
               p_clear_assigned_driver?: boolean;
               p_clear_cancel_reasons?: boolean;
               p_clear_scheduled_for?: boolean;
+              p_delivered_at?: string;
               p_delivery_state?: string;
               p_next_contact_at?: string;
               p_note?: string;
