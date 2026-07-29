@@ -12,6 +12,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import {
   type WhatsappOrderData,
+  buildWhatsappDirectUrl,
   buildWhatsappShareUrl,
   formatMoneyForWhatsApp,
   formatProduits,
@@ -82,7 +83,14 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
     onOpenChange?.(next);
   }
 
-  const shareUrl = buildWhatsappShareUrl(message);
+  // Sujet 1.3 : le template client cible directement la conversation du client
+  // (`wa.me/<numéro>`). Le template livreur n'a pas de destinataire connu ici —
+  // `order.telephone` est celui du CLIENT, recopié dans le corps du message pour
+  // le livreur : il ne doit jamais devenir le destinataire.
+  const shareUrl =
+    template === 'livreur'
+      ? buildWhatsappShareUrl(message)
+      : buildWhatsappDirectUrl(order.telephone, message);
 
   return (
     <Drawer open={isOpen} onOpenChange={handleOpenChange}>

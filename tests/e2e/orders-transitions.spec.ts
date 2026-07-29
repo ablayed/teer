@@ -1324,6 +1324,75 @@ test('programmer garde la commande dans Programmer et hors En cours de livraison
   }
 });
 
+// Sujets 1.1 / 1.2 : la date+heure programmée et l'heure de réception sont rendues.
+// Avant ce lot, `scheduled_for` n'était visible QUE dans le modal « Modifier les
+// montants » (owner/manager) et `created_at` nulle part dans le détail.
+test('la date/heure programmée et l heure de reception sont visibles (liste + detail)', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('schedule-display');
+  await createOrderWithCustomer(fixture.admin, {
+    merchantAccountId: fixture.merchantAccountId,
+    status: 'CONFIRMEE',
+    customerName: 'Client Affichage',
+    phone: '+221772223355',
+  });
+  const { data: createdOrder } = await fixture.admin
+    .from('orders')
+    .select('id')
+    .eq('merchant_account_id', fixture.merchantAccountId)
+    .limit(1)
+    .single();
+  const orderId = createdOrder?.id as string;
+  const dateTimePattern = /\d{1,2} \S+ \d{4} à \d{2}:\d{2}/;
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    // 1.2 : l'heure de réception est affichée dès l'ouverture du détail, quel que
+    // soit l'état de la commande (aucune programmation nécessaire).
+    await expect(page.getByTestId('order-created-at')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('order-created-at')).toContainText(dateTimePattern);
+
+    // Une commande non programmée n'affiche AUCUNE date de livraison.
+    await expect(page.getByTestId('order-scheduled-for')).toHaveCount(0);
+
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+
+    // 1.1 (detail) : jour ET heure, pas seulement le jour.
+    // `page.reload()` et non `page.goto(<url courante>)` : la seconde entre en course
+    // avec la navigation que l'app déclenche elle-même après la transition
+    // (« Navigation is interrupted by another navigation », observé sur iphone-14).
+    await page.reload();
+    await expect(page.getByTestId('order-scheduled-for')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('order-scheduled-for')).toContainText(dateTimePattern);
+
+    // 1.1 (vue « Programmer ») : même information sur la ligne de liste.
+    //
+    // ⚠️ Uniquement au-delà des écrans étroits. `ResourceRow` masque TOUTE sa ligne
+    // `meta` sous 22rem de largeur de conteneur (`@max-[22rem]/row:hidden`,
+    // components/ui/resource-row.tsx) — numéro de commande, date relative et cette
+    // date de livraison comprises. Sur iphone-14 (390 px) le conteneur passe sous ce
+    // seuil, la ligne n'est donc jamais rendue. Ce n'est pas une régression de ce lot
+    // mais un comportement responsive préexistant ; sur ces écrans, la date de
+    // livraison reste accessible sur le DÉTAIL de la commande, déjà asserté ci-dessus
+    // sur tous les profils. Assertion conditionnée à la largeur réelle du viewport
+    // plutôt que supprimée : elle garde toute sa valeur sur desktop et pixel-7.
+    await page.goto('/commandes?vue=confirmee');
+    await expect(page.getByText('Client Affichage')).toBeVisible({ timeout: 15_000 });
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    if (viewportWidth >= 400) {
+      const rowScheduled = page.locator('[data-testid="order-row-scheduled-for"]:visible').first();
+      await expect(rowScheduled).toBeVisible({ timeout: 15_000 });
+      await expect(rowScheduled).toContainText(dateTimePattern);
+    }
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('un agent ne voit que les actions legales sur une commande a appeler', async ({ page }) => {
   const fixture = await createOwnerFixture('agent-actions');
   const agent = await addMember(fixture, 'agent');

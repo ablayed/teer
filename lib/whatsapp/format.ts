@@ -1,5 +1,6 @@
 import { formatMoney } from '@/lib/format/fcfa';
 import type { Json } from '@/lib/supabase/database.types';
+import { normalizeWhatsAppSenegalPhone } from '@/lib/whatsapp/link';
 
 export type WhatsappOrderItem = {
   nom: string;
@@ -70,4 +71,27 @@ export function parseItemsSummaryForWhatsapp(value: Json | null | undefined): Wh
  */
 export function buildWhatsappShareUrl(message: string): string {
   return `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Sujet 1.3 — lien WhatsApp AVEC destinataire : ouvre directement la conversation
+ * du client (`wa.me/<E.164 sans +>`), texte pré-rempli, rien n'est envoyé.
+ *
+ * Le bouton « Message client » passait par `buildWhatsappShareUrl` (sélecteur de
+ * chat, sans destinataire) : l'agent devait retrouver le contact à la main. Le
+ * numéro est normalisé (indicatif 221, 0 initial et 00 international retirés,
+ * séparateurs supprimés) par `normalizeWhatsAppSenegalPhone`.
+ *
+ * Repli explicite sur le sélecteur de chat quand le numéro n'est pas un mobile
+ * sénégalais normalisable : un `wa.me/<numéro invalide>` ouvre une page d'erreur
+ * WhatsApp, strictement pire que le comportement actuel.
+ */
+export function buildWhatsappDirectUrl(phone: string | null | undefined, message: string): string {
+  const normalized = normalizeWhatsAppSenegalPhone(phone);
+
+  if (!normalized) {
+    return buildWhatsappShareUrl(message);
+  }
+
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }

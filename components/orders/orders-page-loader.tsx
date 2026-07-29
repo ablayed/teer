@@ -19,9 +19,15 @@ import type { TransitionResult } from '@/lib/actions/transitions';
 import { matchesOrderSavedView, orderQueueDate } from '@/lib/domain/order-saved-views';
 import type { OrderSavedViewId } from '@/lib/domain/order-saved-views';
 import type { OrderStatus } from '@/lib/domain/order-state-machine';
-import { formatDateDayKey, formatDateGroupLabel, formatDateRelative } from '@/lib/format/date';
+import {
+  formatDateDayKey,
+  formatDateGroupLabel,
+  formatDateRelative,
+  formatDateTime,
+} from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatOrderAddress } from '@/lib/format/order-address';
+import { hasVisibleScheduledDelivery } from '@/lib/orders/scheduled-delivery';
 import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
@@ -228,6 +234,20 @@ export function OrdersPageLoader({
                     <span className="font-mono">{order.order_number ?? emptyValueLabel}</span>
                     <span aria-hidden="true">·</span>
                     <span>{formatDateRelative(order.created_at_shopify ?? order.created_at)}</span>
+                    {/* Sujet 1.1 : jour ET heure de livraison programmée, visibles
+                        directement dans la vue « Programmer » (et les autres vues où
+                        la commande est encore pilotable). */}
+                    {hasVisibleScheduledDelivery({
+                      deliveryState: order.delivery_state,
+                      scheduledFor: order.scheduled_for,
+                    }) && order.scheduled_for ? (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span className="text-accent" data-testid="order-row-scheduled-for">
+                          Livraison {formatDateTime(order.scheduled_for)}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
                 }
                 primaryAction={
