@@ -2338,3 +2338,162 @@ test('dates éditables : confirmation saisie à Programmer, livraison saisie à 
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
 });
+
+test('0116 - invalider une commande livrée la ramène dans « À appeler » et la retire des rapports', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('invalider-livree');
+  const driverId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur Invalidation',
+  );
+  const productTitle = 'Produit Invalidation E2E';
+  const productId = await createProductInCatalog(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productTitle,
+  );
+  await seedWarehouseStock({
+    actorUserId: fixture.userIds[0],
+    email: fixture.email,
+    merchantAccountId: fixture.merchantAccountId,
+    productId,
+    qty: 10,
+  });
+  const orderId = await createConfirmedOrderWithLine(
+    fixture.admin,
+    fixture.merchantAccountId,
+    productId,
+    productTitle,
+    2,
+  );
+
+  // Fenêtre large volontairement : ce test ne mesure pas le découpage de période, il
+  // mesure la présence/absence de la commande dans les rapports.
+  const reportFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const reportTo = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  // Les 2 RPC de rapport sont owner/manager (garde NULL-safe) : le client service-role
+  // serait rejeté (rôle NULL). On lit donc avec la session owner, comme le fait /tableau.
+  const ownerClient = await signInClient(fixture.email);
+  async function readReports() {
+    const { data: cash, error: cashError } = await ownerClient.rpc(
+      'get_dashboard_cash_collected_total',
+      { p_merchant_id: fixture.merchantAccountId, p_from: reportFrom, p_to: reportTo },
+    );
+    if (cashError) throw cashError;
+    const { data: deliveries, error: deliveriesError } = await ownerClient.rpc(
+      'get_dashboard_deliveries_by_product',
+      { p_merchant_id: fixture.merchantAccountId, p_from: reportFrom, p_to: reportTo },
+    );
+    if (deliveriesError) throw deliveriesError;
+    // get_dashboard_deliveries_by_product renvoie un jsonb OBJET
+    // ({total_deliveries, products[]}), pas un tableau de lignes.
+    const payload = (deliveries ?? {}) as {
+      total_deliveries?: number;
+      products?: { title: string; delivered_orders_count: number }[];
+    };
+    return {
+      caMinor: Number(
+        (cash as { ca_encaisse_minor: number }[] | null)?.[0]?.ca_encaisse_minor ?? 0,
+      ),
+      totalDeliveries: Number(payload.total_deliveries ?? 0),
+      deliveredTitles: (payload.products ?? []).map((row) => row.title),
+    };
+  }
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    // 1) Chemin réel jusqu'à LIVREE — jamais un insert direct : il faut de vrais
+    //    mouvements de stock et un vrai cash_collected_at pour prouver la restitution.
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+    await page.reload();
+    // Stabilisation post-reload avant tout clic (gotcha projet : le bouton existe en SSR
+    // avant que React ait attaché son onClick — le clic part dans le vide).
+    await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
+
+    await runDetailMenuAction(page, 'Assigner');
+    await page.getByLabel('Livreur', { exact: true }).selectOption(driverId);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderDeliveryState(fixture.admin, orderId, 'scheduled');
+    await page
+      .context()
+      .route('https://api.whatsapp.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }),
+      );
+    const startButton = page.getByRole('button', {
+      name: 'Envoyer au livreur (WhatsApp)',
+      exact: true,
+    });
+    await expect(startButton).toBeEnabled({ timeout: 15_000 });
+    const [whatsappPopup] = await Promise.all([page.waitForEvent('popup'), startButton.click()]);
+    await whatsappPopup.close();
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Actions' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await runDetailMenuAction(page, 'Marquer livree');
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
+
+    // 2) Baseline rapports : la commande EST comptée avant l'invalidation. Sans cette
+    //    lecture, l'assertion « absente après » serait vacuement verte.
+    const before = await readReports();
+    expect(before.caMinor).toBe(20000);
+    expect(before.totalDeliveries).toBe(1);
+    expect(before.deliveredTitles).toContain(productTitle);
+
+    // 3) Invalider — proposée à côté de « Marquer retournée », sans dialog de saisie.
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Actions' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await openActionsMenu(page);
+    await expect(menuItem(page, 'Invalider')).toBeVisible({ timeout: 15_000 });
+    await expect(menuItem(page, 'Marquer retournée')).toBeVisible();
+    await menuItem(page, 'Invalider').click();
+    await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
+
+    const { data: reverted } = await fixture.admin
+      .from('orders')
+      .select(
+        'order_state, call_state, delivery_state, cash_state, assigned_driver_id, cash_collected_at, call_confirmed_at, payment_channel_at_delivery',
+      )
+      .eq('id', orderId)
+      .single();
+    expect(reverted?.order_state).toBe('open');
+    expect(reverted?.call_state).toBe('to_call');
+    expect(reverted?.delivery_state).toBe('unassigned');
+    expect(reverted?.cash_state).toBe('not_due');
+    expect(reverted?.assigned_driver_id).toBeNull();
+    expect(reverted?.cash_collected_at).toBeNull();
+    expect(reverted?.call_confirmed_at).toBeNull();
+    expect(reverted?.payment_channel_at_delivery).toBeNull();
+
+    // 4) Stock central restitué à son niveau d'avant le dispatch.
+    const { data: stock } = await fixture.admin
+      .from('product_stock')
+      .select('qty_on_hand, qty_reserved')
+      .eq('product_id', productId)
+      .single();
+    expect(stock?.qty_on_hand).toBe(10);
+
+    // 5) Les rapports ne la comptent plus — recalcul naturel, aucune correction manuelle.
+    const after = await readReports();
+    expect(after.caMinor).toBe(0);
+    expect(after.totalDeliveries).toBe(0);
+    expect(after.deliveredTitles).not.toContain(productTitle);
+
+    // 6) Elle réapparaît bien dans la vue « À appeler » de /commandes.
+    await page.goto('/commandes?vue=a-appeler');
+    await expect(orderRowTitle(page, 'Client Assignation')).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});

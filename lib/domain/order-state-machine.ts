@@ -36,7 +36,10 @@ const legalTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
   // depuis assigned/out_for_delivery, cf. getAllowedTransitionActionsForDimensions),
   // PROGRAMMEE ajoutée (nouvelle action « reprogrammer »).
   EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'PROGRAMMEE', 'ANNULEE'],
-  LIVREE: [],
+  // « Invalider » (0116) : LIVREE n'est plus terminale. A_APPELER est sa SEULE sortie
+  // supplémentaire — « Marquer retournée » (REFUSEE) reste, elle, gérée hors de cette
+  // table (order_state='returned', cf. getAllowedTransitionActionsForDimensions).
+  LIVREE: ['A_APPELER'],
   REFUSEE: [],
   ANNULEE: [],
 };

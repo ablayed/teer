@@ -60,9 +60,32 @@ async function signIn(email: string) {
   return client;
 }
 
+// 0116 — membre non-owner du MÊME tenant, pour tester le RBAC en base (policy
+// orders_update) et pas seulement le catalogue TS. Le compte marchand créé
+// automatiquement pour ce nouvel utilisateur est supprimé : on ne veut qu'un membre.
+async function addMember(
+  admin: AdminClient,
+  merchantAccountId: string,
+  role: 'agent' | 'manager' | 'owner',
+) {
+  const email = `atomicity-member-${role}-${Date.now()}-${crypto.randomUUID()}@example.com`;
+  const userId = await createConfirmedUser(admin, email);
+
+  await admin.from('merchant_account').delete().eq('owner_user_id', userId);
+
+  const { error } = await admin.from('merchant_member').insert({
+    merchant_account_id: merchantAccountId,
+    role,
+    user_id: userId,
+  });
+  if (error) throw error;
+
+  return { email, userId };
+}
+
 async function createOwnerFixture(label: string) {
   const admin = adminClient();
-  const email = `atomicity-${label}-${Date.now()}@example.com`;
+  const email = `atomicity-${label}-${Date.now()}-${crypto.randomUUID()}@example.com`;
   const userId = await createConfirmedUser(admin, email);
   const merchantAccountId = await waitForMerchantAccount(admin, userId);
   return { admin, email, merchantAccountId, userId };
@@ -84,6 +107,8 @@ type TransitionOrderArgs = {
   p_clear_scheduled_for?: boolean;
   p_clear_cancel_reasons?: boolean;
   p_clear_assigned_driver?: boolean;
+  // 0116 — « Invalider » : demande explicite, jamais déduite des dimensions.
+  p_invalidate_delivered?: boolean;
 };
 
 function transitionRpc(client: SupabaseClient<Database>) {
@@ -2217,6 +2242,411 @@ describe('Refuser → Reprogrammer : reprogrammer libère le stock engagé côt�
       expect(
         movesAfterSecond.filter((m) => m.movement_type === 'order_assignment_release'),
       ).toHaveLength(1);
+    },
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// 0116 — « Invalider une commande » : LIVREE revient à « À appeler ».
+//
+// À NE PAS CONFONDRE avec « Marquer retournée » (bloc « Lot D » ci-dessus), qui reste
+// inchangée : elle enregistre un RETOUR réel (REFUSEE, courier_return, reprise de cash).
+// « Invalider » dit que la livraison n'a jamais eu lieu — la contre-passation de stock se
+// fait par NÉGATION EXACTE des mouvements réellement posés (dérivée du ledger), jamais par
+// un courier_return.
+// ──────────────────────────────────────────────────────────────────────────
+
+// Parcours complet À appeler → … → LIVREE, via le VRAI chemin transition_order (jamais un
+// insert direct : seule la RPC poste les mouvements de stock qu'on veut ensuite contre-passer).
+async function driveOrderToDelivered(
+  client: SupabaseClient<Database>,
+  userId: string,
+  orderId: string,
+  driverId: string,
+) {
+  await transitionRpc(client)('transition_order', {
+    p_actor: userId,
+    p_order_id: orderId,
+    p_call_state: 'validated',
+    p_cash_state: 'expected',
+    p_delivery_state: 'scheduled',
+  });
+  await transitionRpc(client)('transition_order', {
+    p_actor: userId,
+    p_order_id: orderId,
+    p_delivery_state: 'assigned',
+    p_assigned_driver_id: driverId,
+  });
+  const delivered = await transitionRpc(client)('transition_order', {
+    p_actor: userId,
+    p_order_id: orderId,
+    p_delivery_state: 'delivered',
+    p_order_state: 'completed',
+    p_cash_state: 'collected',
+    p_payment_channel: 'ESPECES',
+  });
+  expect(delivered.error).toBeNull();
+  expect(delivered.data).toBe('LIVREE');
+}
+
+// Le patch exact que buildTransitionDimensionPatch('invalider', …) envoie à la RPC.
+function invalidateArgs(userId: string, orderId: string): TransitionOrderArgs {
+  return {
+    p_actor: userId,
+    p_order_id: orderId,
+    p_call_state: 'to_call',
+    p_cash_state: 'not_due',
+    p_delivery_state: 'unassigned',
+    p_order_state: 'open',
+    p_clear_assigned_driver: true,
+    p_clear_cancel_reasons: true,
+    p_clear_scheduled_for: true,
+    p_invalidate_delivered: true,
+  };
+}
+
+function movementNetByType(rows: Array<{ movement_type: string; qty: number | null }>) {
+  const byType = new Map<string, number>();
+  for (const row of rows) {
+    byType.set(row.movement_type, (byType.get(row.movement_type) ?? 0) + (row.qty ?? 0));
+  }
+  return byType;
+}
+
+describe('0116 - Invalider une commande livree', () => {
+  skipIfNoServiceRole(
+    'remet les 4 dimensions a « A appeler », efface les 2 dates et restitue le stock',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-full');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+      await driveOrderToDelivered(client, userId, orderId, driverId);
+
+      // Etat livre : les deux dates de 0114 sont posees, le stock est parti.
+      const { data: beforeOrder } = await admin
+        .from('orders')
+        .select('cash_collected_at, call_confirmed_at, cash_collectable_minor')
+        .eq('id', orderId)
+        .single();
+      expect(beforeOrder?.cash_collected_at).not.toBeNull();
+      expect(beforeOrder?.call_confirmed_at).not.toBeNull();
+      expect(beforeOrder?.cash_collectable_minor).toBe(10000);
+      expect(await readStock(admin, productId)).toMatchObject({ qty_on_hand: 47 });
+
+      const invalidated = await transitionRpc(client)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(invalidated.error).toBeNull();
+      expect(invalidated.data).toBe('A_APPELER');
+
+      const { data: order } = await admin
+        .from('orders')
+        .select(
+          'cod_status, order_state, call_state, delivery_state, cash_state, assigned_driver_id, scheduled_for, cash_collected_at, call_confirmed_at, payment_channel_at_delivery, cash_collectable_minor',
+        )
+        .eq('id', orderId)
+        .single();
+      // Les 4 dimensions exactement a leur valeur initiale.
+      expect(order?.order_state).toBe('open');
+      expect(order?.call_state).toBe('to_call');
+      expect(order?.delivery_state).toBe('unassigned');
+      expect(order?.cash_state).toBe('not_due');
+      expect(order?.cod_status).toBe('A_APPELER');
+      expect(order?.assigned_driver_id).toBeNull();
+      expect(order?.scheduled_for).toBeNull();
+      // Les deux dates de 0114 remises a NULL : c'est ce qui fait sortir la commande des
+      // fenetres du CA encaisse, des Livraisons par produit et du P&L.
+      expect(order?.cash_collected_at).toBeNull();
+      expect(order?.call_confirmed_at).toBeNull();
+      // Plus aucun montant encaissable fantome sur une commande « jamais livree ».
+      expect(order?.payment_channel_at_delivery).toBeNull();
+      expect(order?.cash_collectable_minor).toBe(0);
+
+      // Stock central restitue a l'identique, reserve remise a zero.
+      expect(await readStock(admin, productId)).toMatchObject({
+        qty_on_hand: 50,
+        qty_reserved: 0,
+      });
+
+      // Contre-passation par negation exacte : chaque type pose a son oppose, et AUCUN
+      // courier_return n'est emis (aucun retour n'a eu lieu — cf. lib/ia/finance-data.ts,
+      // qui lit ce type comme un signal de retour).
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('movement_type, qty, driver_id')
+        .eq('order_id', orderId);
+      const net = movementNetByType(movements ?? []);
+      expect(net.get('dispatch')).toBe(0);
+      expect(net.get('sold')).toBe(0);
+      expect(net.get('order_assignment_commit')).toBe(3);
+      expect(net.get('order_assignment_release')).toBe(-3);
+      expect(net.has('courier_return')).toBe(false);
+
+      // Le livreur ne detient plus rien et n'a plus aucun engagement ouvert.
+      expect(await driverHand(admin, productId, driverId)).toBe(0);
+      const assignmentNet = (await readOrderAssignmentMovements(admin, orderId)).reduce(
+        (sum, m) => sum + (m.qty ?? 0),
+        0,
+      );
+      expect(assignmentNet).toBe(0);
+
+      // L'invalidation n'introduit AUCUNE derive ledger↔product_stock : l'ecart de
+      // reconciliation reste exactement celui de la fixture (seedProductStock ecrit
+      // qty_on_hand=50 en direct, sans purchase_in — cet ecart de 50 preexiste au test).
+      expect(await reconcileDiscrepancyFor(admin, productId)).toMatchObject([{ delta: 50 }]);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'cascade bundle : les composants sont restitues, jamais le bundle lui-meme',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-bundle');
+      const bundleId = await createProduct(admin, merchantAccountId);
+      const componentAId = await createProduct(admin, merchantAccountId);
+      const componentBId = await createProduct(admin, merchantAccountId);
+      await admin.from('product').update({ is_bundle: true }).eq('id', bundleId);
+      await admin.from('product_bundle_component').insert([
+        {
+          merchant_account_id: merchantAccountId,
+          bundle_product_id: bundleId,
+          component_product_id: componentAId,
+          quantity: 2,
+        },
+        {
+          merchant_account_id: merchantAccountId,
+          bundle_product_id: bundleId,
+          component_product_id: componentBId,
+          quantity: 1,
+        },
+      ]);
+      await seedProductStock(admin, componentAId, merchantAccountId, 50);
+      await seedProductStock(admin, componentBId, merchantAccountId, 50);
+
+      const driverId = await createDriver(admin, merchantAccountId);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, bundleId);
+
+      const client = await signIn(email);
+      await driveOrderToDelivered(client, userId, orderId, driverId);
+
+      // qty=3 sur la ligne bundle → 6 de A et 3 de B partis du stock central.
+      expect(await readStock(admin, componentAId)).toMatchObject({ qty_on_hand: 44 });
+      expect(await readStock(admin, componentBId)).toMatchObject({ qty_on_hand: 47 });
+
+      const invalidated = await transitionRpc(client)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(invalidated.error).toBeNull();
+
+      expect(await readStock(admin, componentAId)).toMatchObject({
+        qty_on_hand: 50,
+        qty_reserved: 0,
+      });
+      expect(await readStock(admin, componentBId)).toMatchObject({
+        qty_on_hand: 50,
+        qty_reserved: 0,
+      });
+      expect(await driverHand(admin, componentAId, driverId)).toBe(0);
+      expect(await driverHand(admin, componentBId, driverId)).toBe(0);
+
+      // Aucun mouvement PHYSIQUE ni de vente au niveau du bundle : la cascade de 0108
+      // resout en composants a l'aller comme au retour, y compris pour la contre-passation.
+      // Seul `reserve` reste au niveau du bundle — 0108 ne le cascade volontairement pas
+      // (dette documentee, anterieure a ce lot) ; c'est aussi pourquoi la contre-passation
+      // ne contre-passe pas `reserve` mais neutralise l'effet reserve du dispatch par un
+      // `release` appaire, au niveau composant, la ou le dispatch a reellement eu lieu.
+      const { data: bundleMovements } = await admin
+        .from('stock_movement')
+        .select('movement_type')
+        .eq('order_id', orderId)
+        .eq('product_id', bundleId);
+      expect(bundleMovements?.map((m) => m.movement_type)).toEqual(['reserve']);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'cash deja remis : invalidation refusee, la commande reste livree intacte',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-remitted');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+      await driveOrderToDelivered(client, userId, orderId, driverId);
+
+      // Le livreur a verse : cash_settlement + settlement_allocation existent desormais.
+      const { data: settlement } = await admin
+        .from('cash_settlement')
+        .insert({
+          merchant_account_id: merchantAccountId,
+          driver_id: driverId,
+          amount_received_minor: 10000,
+          method: 'ESPECES',
+          note: 'Remise test invalidation',
+          created_by: userId,
+          client_request_id: randomUUID(),
+        })
+        .select('id')
+        .single();
+      if (!settlement) {
+        throw new Error('cash settlement insert failed');
+      }
+      await admin.from('settlement_allocation').insert({
+        merchant_account_id: merchantAccountId,
+        settlement_id: settlement.id,
+        order_id: orderId,
+        allocated_minor: 10000,
+      });
+      await admin.from('orders').update({ cash_state: 'remitted' }).eq('id', orderId);
+
+      const refused = await transitionRpc(client)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(refused.error?.message).toContain('invalid_invalidate_cash_settled');
+
+      // Refus AVANT toute ecriture : ni dimensions, ni dates, ni stock ne bougent.
+      const { data: order } = await admin
+        .from('orders')
+        .select('cod_status, order_state, delivery_state, cash_state, cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      expect(order?.cod_status).toBe('LIVREE');
+      expect(order?.order_state).toBe('completed');
+      expect(order?.delivery_state).toBe('delivered');
+      expect(order?.cash_state).toBe('remitted');
+      expect(order?.cash_collected_at).not.toBeNull();
+      expect(await readStock(admin, productId)).toMatchObject({ qty_on_hand: 47 });
+
+      // Meme refus pour un ecart de caisse (discrepancy).
+      await admin.from('orders').update({ cash_state: 'discrepancy' }).eq('id', orderId);
+      const refusedDiscrepancy = await transitionRpc(client)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(refusedDiscrepancy.error?.message).toContain('invalid_invalidate_cash_settled');
+
+      // Cas AUTORISE a l'inverse : cash encore chez le livreur, aucun versement enregistre.
+      await admin.from('orders').update({ cash_state: 'collected' }).eq('id', orderId);
+      const allowed = await transitionRpc(client)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(allowed.error).toBeNull();
+      expect(allowed.data).toBe('A_APPELER');
+    },
+  );
+
+  skipIfNoServiceRole(
+    "p_invalidate_delivered est refusee sur une commande qui n'est pas livree",
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-illegal');
+      const productId = await createProduct(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+      const refused = await transitionRpc(client)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(refused.error?.message).toContain('illegal_invalidation');
+
+      const { data: order } = await admin
+        .from('orders')
+        .select('cod_status, call_state')
+        .eq('id', orderId)
+        .single();
+      expect(order?.cod_status).toBe('A_APPELER');
+      expect(order?.call_state).toBe('to_call');
+    },
+  );
+
+  skipIfNoServiceRole('RBAC : un agent ne peut pas invalider, un manager le peut', async () => {
+    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('invalidate-rbac');
+    const productId = await createProduct(admin, merchantAccountId);
+    const driverId = await createDriver(admin, merchantAccountId);
+    await seedProductStock(admin, productId, merchantAccountId, 50);
+    const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+    const ownerClient = await signIn(email);
+    await driveOrderToDelivered(ownerClient, userId, orderId, driverId);
+
+    // L'agent est bloque en base, pas seulement dans le catalogue TS : la policy
+    // orders_update borne son WITH CHECK aux cod_status TENTEE/CONFIRMEE/PROGRAMMEE/
+    // EN_LIVRAISON — A_APPELER n'en fait pas partie.
+    const agent = await addMember(admin, merchantAccountId, 'agent');
+    const agentClient = await signIn(agent.email);
+    const agentAttempt = await transitionRpc(agentClient)(
+      'transition_order',
+      invalidateArgs(agent.userId, orderId),
+    );
+    expect(agentAttempt.error).not.toBeNull();
+
+    const { data: stillDelivered } = await admin
+      .from('orders')
+      .select('cod_status')
+      .eq('id', orderId)
+      .single();
+    expect(stillDelivered?.cod_status).toBe('LIVREE');
+
+    const manager = await addMember(admin, merchantAccountId, 'manager');
+    const managerClient = await signIn(manager.email);
+    const managerAttempt = await transitionRpc(managerClient)(
+      'transition_order',
+      invalidateArgs(manager.userId, orderId),
+    );
+    expect(managerAttempt.error).toBeNull();
+    expect(managerAttempt.data).toBe('A_APPELER');
+  });
+
+  skipIfNoServiceRole(
+    "n'ecrit AUCUNE ligne audit_log — exception deliberee a la convention du projet",
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-audit');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      await seedProductStock(admin, productId, merchantAccountId, 50);
+      const orderId = await createOrderWithLine(admin, merchantAccountId, userId, productId);
+
+      const client = await signIn(email);
+      await driveOrderToDelivered(client, userId, orderId, driverId);
+
+      const invalidated = await transitionRpc(client)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(invalidated.error).toBeNull();
+
+      // Preuve d'absence, lue en service-role (donc sans filtre RLS qui pourrait masquer
+      // une ligne) : zero trace d'audit pour cette commande, sur tout le parcours.
+      const { data: auditRows } = await admin
+        .from('audit_log')
+        .select('id, action')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('resource_id', orderId);
+      expect(auditRows).toEqual([]);
+
+      // La ligne order_state_transition, elle, reste posee : ce n'est pas un audit mais
+      // l'ancre d'idempotence des mouvements de stock (p_transition_id).
+      const { data: transitions } = await admin
+        .from('order_state_transition')
+        .select('to_status')
+        .eq('order_id', orderId)
+        .order('created_at');
+      expect(transitions?.at(-1)?.to_status).toBe('A_APPELER');
     },
   );
 });
