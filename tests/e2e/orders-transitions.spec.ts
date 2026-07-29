@@ -1370,11 +1370,24 @@ test('la date/heure programmée et l heure de reception sont visibles (liste + d
     await expect(page.getByTestId('order-scheduled-for')).toContainText(dateTimePattern);
 
     // 1.1 (vue « Programmer ») : même information sur la ligne de liste.
+    //
+    // ⚠️ Uniquement au-delà des écrans étroits. `ResourceRow` masque TOUTE sa ligne
+    // `meta` sous 22rem de largeur de conteneur (`@max-[22rem]/row:hidden`,
+    // components/ui/resource-row.tsx) — numéro de commande, date relative et cette
+    // date de livraison comprises. Sur iphone-14 (390 px) le conteneur passe sous ce
+    // seuil, la ligne n'est donc jamais rendue. Ce n'est pas une régression de ce lot
+    // mais un comportement responsive préexistant ; sur ces écrans, la date de
+    // livraison reste accessible sur le DÉTAIL de la commande, déjà asserté ci-dessus
+    // sur tous les profils. Assertion conditionnée à la largeur réelle du viewport
+    // plutôt que supprimée : elle garde toute sa valeur sur desktop et pixel-7.
     await page.goto('/commandes?vue=confirmee');
     await expect(page.getByText('Client Affichage')).toBeVisible({ timeout: 15_000 });
-    const rowScheduled = page.locator('[data-testid="order-row-scheduled-for"]:visible').first();
-    await expect(rowScheduled).toBeVisible({ timeout: 15_000 });
-    await expect(rowScheduled).toContainText(dateTimePattern);
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    if (viewportWidth >= 400) {
+      const rowScheduled = page.locator('[data-testid="order-row-scheduled-for"]:visible').first();
+      await expect(rowScheduled).toBeVisible({ timeout: 15_000 });
+      await expect(rowScheduled).toContainText(dateTimePattern);
+    }
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
