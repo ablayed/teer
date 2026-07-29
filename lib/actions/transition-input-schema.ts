@@ -13,7 +13,13 @@ export const transitionInputSchema = z
       .object({
         note: z.string().trim().max(500).optional(),
         assignedDriverId: z.string().uuid().optional(),
+        // 0114 — deux dates éditables indépendantes. Les bornes métier (pas dans le
+        // futur, pas avant la création, confirmation ≤ livraison) sont validées par
+        // transition_order, pas ici : elles dépendent de la commande en base, que ce
+        // schéma ne lit pas. Zod ne garantit ici que le format ISO.
+        callConfirmedAt: z.string().datetime().optional(),
         cancelReason: z.string().trim().max(500).optional(),
+        deliveredAt: z.string().datetime().optional(),
         // Lot B : raisons d'annulation multiples, allow-list stricte.
         cancelReasons: z.array(z.enum(cancelReasonValues)).min(1).max(5).optional(),
         nextContactAt: z.string().datetime().optional(),

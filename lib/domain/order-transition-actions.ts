@@ -100,8 +100,15 @@ export type OrderDimensionsSource = {
 
 export type TransitionSupportPayload = {
   assignedDriverId?: string;
+  // 0114 — date/heure réelle de la confirmation client, saisie au moment de confirmer
+  // (« Programmer la livraison » dans l'UI). Optionnelle : sans elle, la RPC retombe
+  // sur now(), comportement d'avant ce lot.
+  callConfirmedAt?: string;
   cancelReason?: string;
   cancelReasons?: string[];
+  // 0114 — date/heure réelle de la livraison, saisie au moment de « Marquer livrée ».
+  // Strictement indépendante de callConfirmedAt : elle n'alimente que cash_collected_at.
+  deliveredAt?: string;
   nextContactAt?: string;
   paymentChannelAtDelivery?: PaymentChannelAtDelivery;
   scheduledFor?: string;
@@ -110,8 +117,14 @@ export type TransitionSupportPayload = {
 export type TransitionDimensionPatch = {
   assignedDriverId?: string;
   attemptCount?: number;
+  // 0114 — les deux dates éditables. Ce ne sont PAS des dimensions : elles ne
+  // participent ni à canTransition, ni à la dérivation de cod_status. Elles
+  // transitent par le patch uniquement parce que c'est le canal existant entre
+  // le catalogue et la RPC.
+  callConfirmedAt?: string;
   callState?: CallStateDimension;
   cancelReason?: string;
+  deliveredAt?: string;
   cancelReasons?: string[];
   cashState?: CashStateDimension;
   // Lot B : effacements explicites (le RPC ne peut sinon que coalesce, jamais NULL).
@@ -555,12 +568,19 @@ export function buildTransitionDimensionPatch(
     case 'confirmer':
       return {
         callState: 'validated',
+        ...(payload.callConfirmedAt ? { callConfirmedAt: payload.callConfirmedAt } : {}),
       };
     case 'programmer':
       return {
         callState: 'validated',
         cashState: 'expected',
         deliveryState: 'scheduled',
+        // 0114 — `programmer` pose call_state='validated' : c'est le geste de
+        // confirmation client réellement visible (`visibleAllowedActions` masque
+        // `confirmer` dès que `programmer` est proposée). La date de confirmation
+        // se saisit donc ici, à côté de la date de livraison prévue — deux champs
+        // distincts qui ne se recouvrent pas.
+        ...(payload.callConfirmedAt ? { callConfirmedAt: payload.callConfirmedAt } : {}),
         ...(payload.scheduledFor ? { scheduledFor: payload.scheduledFor } : {}),
       };
     case 'assigner':
@@ -582,6 +602,11 @@ export function buildTransitionDimensionPatch(
       return {
         callState: 'validated',
         cashState: 'collected',
+        // 0114 — date réelle de livraison. N'alimente QUE cash_collected_at côté
+        // RPC ; ne touche jamais call_confirmed_at, y compris quand cette même
+        // transition pose call_state='validated' sur une commande jamais confirmée
+        // (la RPC retombe alors sur now() pour la confirmation, pas sur cette date).
+        ...(payload.deliveredAt ? { deliveredAt: payload.deliveredAt } : {}),
         deliveryState: 'delivered',
         orderState: 'completed',
         paymentChannelAtDelivery: payload.paymentChannelAtDelivery ?? 'ESPECES',

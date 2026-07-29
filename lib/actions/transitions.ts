@@ -33,10 +33,44 @@ export type TransitionErrorCode =
   | 'audit_failed'
   | 'forbidden'
   | 'invalid_current_status'
+  // 0114 — violations des bornes des deux dates éditables, levées par transition_order.
+  | 'invalid_confirmation_after_delivery'
+  | 'invalid_date_before_creation'
+  | 'invalid_date_future'
   | 'illegal_transition'
   | 'missing_driver_for_dispatch'
   | 'order_not_found'
   | 'update_failed';
+
+// 0114 — transition_order lève une exception nommée par borne violée. Sans ce mapping,
+// une date hors bornes tomberait dans le `update_failed` générique, dont le message
+// (« Vérifiez vos droits puis réessayez ») serait factuellement faux : les droits sont
+// bons, c'est la date qui ne l'est pas. L'ordre de test n'importe pas — la RPC ne lève
+// qu'une seule de ces exceptions par appel.
+const dateBoundErrorMessages: Record<
+  'invalid_confirmation_after_delivery' | 'invalid_date_before_creation' | 'invalid_date_future',
+  string
+> = {
+  invalid_confirmation_after_delivery:
+    'La date de confirmation ne peut pas être postérieure à la date de livraison.',
+  invalid_date_before_creation:
+    'Cette date ne peut pas être antérieure à la création de la commande.',
+  invalid_date_future: 'Cette date ne peut pas être dans le futur.',
+};
+
+function dateBoundErrorFrom(message: string | undefined): TransitionResult | null {
+  if (!message) {
+    return null;
+  }
+
+  for (const [code, userMessage] of Object.entries(dateBoundErrorMessages)) {
+    if (message.includes(code)) {
+      return transitionError(code as TransitionErrorCode, userMessage);
+    }
+  }
+
+  return null;
+}
 
 export type TransitionResult =
   | {
@@ -118,8 +152,10 @@ function transitionRpc(supabase: SupabaseServerClient) {
     args: {
       p_actor: string;
       p_assigned_driver_id?: string;
+      p_call_confirmed_at?: string;
       p_call_state?: string;
       p_cancel_reason?: string;
+      p_delivered_at?: string;
       p_cash_state?: string;
       p_delivery_state?: string;
       p_next_contact_at?: string;
@@ -224,6 +260,8 @@ export async function performTransitionForContext({
     assignedDriverId?: string;
     cancelReason?: string;
     cancelReasons?: string[];
+    callConfirmedAt?: string;
+    deliveredAt?: string;
     nextContactAt?: string;
     note?: string;
     paymentChannelAtDelivery?: PaymentChannelAtDelivery;
@@ -273,6 +311,8 @@ export async function performTransitionForContext({
     cancelReasons: payload?.cancelReasons,
     nextContactAt: payload?.nextContactAt,
     paymentChannelAtDelivery: payload?.paymentChannelAtDelivery,
+    callConfirmedAt: payload?.callConfirmedAt,
+    deliveredAt: payload?.deliveredAt,
     scheduledFor: payload?.scheduledFor,
   });
   const paymentChannelAtDelivery = transitionPatch.paymentChannelAtDelivery;
@@ -303,6 +343,10 @@ export async function performTransitionForContext({
       ...(transitionPatch.assignedDriverId
         ? { p_assigned_driver_id: transitionPatch.assignedDriverId }
         : {}),
+      ...(transitionPatch.callConfirmedAt
+        ? { p_call_confirmed_at: transitionPatch.callConfirmedAt }
+        : {}),
+      ...(transitionPatch.deliveredAt ? { p_delivered_at: transitionPatch.deliveredAt } : {}),
       ...(transitionPatch.attemptCount !== undefined
         ? { p_attempt_count: transitionPatch.attemptCount }
         : {}),
@@ -325,6 +369,11 @@ export async function performTransitionForContext({
   );
 
   if (transitionErrorResult || !isOrderStatus(nextStatus)) {
+    const dateBoundError = dateBoundErrorFrom(transitionErrorResult?.message);
+    if (dateBoundError) {
+      return dateBoundError;
+    }
+
     return transitionError(
       'update_failed',
       "La transition n'a pas pu être appliquée. Vérifiez vos droits puis réessayez.",

@@ -33,6 +33,9 @@ type TransitionOrderArgs = {
   p_order_state?: string;
   p_payment_channel?: string;
   p_scheduled_for?: string;
+  // Migration 0114 — les deux dates éditables.
+  p_call_confirmed_at?: string;
+  p_delivered_at?: string;
 };
 
 type ReconcileRow = {
@@ -790,6 +793,321 @@ describe('transition_order — cash_collected_at daté sur scheduled_for (migrat
       expect(collectedAtMs).not.toBe(new Date(oldScheduledFor).getTime());
       expect(collectedAtMs).toBeGreaterThanOrEqual(before);
       expect(collectedAtMs).toBeLessThanOrEqual(after);
+    },
+  );
+});
+
+// Migration 0114 — deux dates éditables et INDÉPENDANTES : call_confirmed_at (posée à la
+// confirmation) et cash_collected_at (posée à la livraison). Comme pour 0096, tout passe
+// par le VRAI chemin transition_order : les gardes d'idempotence, les bornes serveur et
+// l'absence de backfill ne se prouvent qu'en rejouant le moteur, jamais par un insert.
+// `createOrder` insère avec created_at = now(). Or 0114 refuse toute date antérieure à
+// la création de la commande — une fixture créée à l'instant ne peut donc pas avoir été
+// confirmée avant-hier. On antidate la commande pour représenter le cas réel : une
+// commande passée il y a plusieurs jours, saisie ou corrigée aujourd'hui.
+async function backdateOrder(admin: AdminClient, orderId: string, daysAgo: number) {
+  const createdAt = new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+  const { error } = await admin
+    .from('orders')
+    .update({ created_at: createdAt, created_at_shopify: createdAt })
+    .eq('id', orderId);
+  expect(error).toBeNull();
+}
+
+describe('transition_order — dates de confirmation et de livraison éditables (migration 0114)', () => {
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'programmer avec une date de confirmation antidatée pose call_confirmed_at à cette date',
+    async () => {
+      const fixture = await createOwnerFixture('cca-confirm-set');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+      await backdateOrder(fixture.admin, orderId, 10);
+      const owner = await signIn(fixture.email);
+      // Le client a confirmé il y a 2 jours ; le bureau ne saisit que maintenant.
+      const confirmedAt = new Date(Date.now() - 2 * 86_400_000).toISOString();
+
+      const programmed = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_confirmed_at: confirmedAt,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_order_id: orderId,
+        p_scheduled_for: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      expect(programmed.error).toBeNull();
+      expect(programmed.data).toBe('PROGRAMMEE');
+
+      const { data: stored } = await fixture.admin
+        .from('orders')
+        .select('call_confirmed_at')
+        .eq('id', orderId)
+        .single();
+      // Égalité EXACTE, pas une fenêtre : la valeur vient de l'appelant, pas de now().
+      expect(new Date(stored?.call_confirmed_at as string).getTime()).toBe(
+        new Date(confirmedAt).getTime(),
+      );
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'sans saisie, confirmer pose call_confirmed_at à now() et une reconfirmation ne le réécrase jamais',
+    async () => {
+      const fixture = await createOwnerFixture('cca-confirm-default');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+      await backdateOrder(fixture.admin, orderId, 10);
+      const owner = await signIn(fixture.email);
+
+      const before = Date.now();
+      const confirmed = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_order_id: orderId,
+      });
+      const after = Date.now();
+      expect(confirmed.error).toBeNull();
+
+      const { data: first } = await fixture.admin
+        .from('orders')
+        .select('call_confirmed_at')
+        .eq('id', orderId)
+        .single();
+      const firstMs = new Date(first?.call_confirmed_at as string).getTime();
+      // Fenêtre before/after, jamais une égalité exacte à now() — cf. garde-fou 0096.
+      // Marge de 60 s de part et d'autre : `before`/`after` viennent de l'horloge Node,
+      // `now()` de celle de Postgres dans Docker, et les deux dérivent l'une de l'autre
+      // (observé en local : 3 tests à fenêtre échouant ensemble puis repassant). La
+      // marge ne dilue pas l'assertion — ce qu'il s'agit de distinguer, c'est « now() »
+      // d'une valeur antidatée de plusieurs jours.
+      const clockSkewToleranceMs = 60_000;
+      expect(firstMs).toBeGreaterThanOrEqual(before - clockSkewToleranceMs);
+      expect(firstMs).toBeLessThanOrEqual(after + clockSkewToleranceMs);
+
+      // Déconfirmer puis reconfirmer avec une date explicite : la garde
+      // `call_confirmed_at is null` doit refuser de réécrire la valeur d'origine.
+      await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'to_call',
+        p_order_id: orderId,
+      });
+      const reconfirmed = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_confirmed_at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+        p_call_state: 'validated',
+        p_order_id: orderId,
+      });
+      expect(reconfirmed.error).toBeNull();
+
+      const { data: second } = await fixture.admin
+        .from('orders')
+        .select('call_confirmed_at')
+        .eq('id', orderId)
+        .single();
+      expect(second?.call_confirmed_at).toBe(first?.call_confirmed_at);
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'livrer avec une date réelle pose cash_collected_at à cette date, devant scheduled_for',
+    async () => {
+      const fixture = await createOwnerFixture('cca-deliver-set');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      await backdateOrder(fixture.admin, orderId, 10);
+      const owner = await signIn(fixture.email);
+      const scheduledFor = new Date(Date.now() - 6 * 86_400_000).toISOString();
+      // Livrée en réalité 2 jours APRÈS la date programmée, saisie encore plus tard.
+      const deliveredAt = new Date(Date.now() - 4 * 86_400_000).toISOString();
+
+      await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_order_id: orderId,
+        p_scheduled_for: scheduledFor,
+      });
+
+      const delivered = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_cash_state: 'collected',
+        p_delivered_at: deliveredAt,
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(delivered.error).toBeNull();
+      expect(delivered.data).toBe('LIVREE');
+
+      const { data: stored } = await fixture.admin
+        .from('orders')
+        .select('cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      // La saisie explicite gagne sur scheduled_for, qui gagnait déjà sur now() (0096).
+      expect(new Date(stored?.cash_collected_at as string).getTime()).toBe(
+        new Date(deliveredAt).getTime(),
+      );
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'bornes serveur : date future rejetée, date antérieure à la création rejetée',
+    async () => {
+      const fixture = await createOwnerFixture('cca-bounds');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+      const owner = await signIn(fixture.email);
+
+      // Au-delà de la tolérance d'horloge de 5 minutes.
+      const future = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_confirmed_at: new Date(Date.now() + 3 * 3_600_000).toISOString(),
+        p_call_state: 'validated',
+        p_order_id: orderId,
+      });
+      expect(future.error?.message).toContain('invalid_date_future');
+
+      const beforeCreation = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_confirmed_at: new Date(Date.now() - 365 * 86_400_000).toISOString(),
+        p_call_state: 'validated',
+        p_order_id: orderId,
+      });
+      expect(beforeCreation.error?.message).toContain('invalid_date_before_creation');
+
+      // Aucun des deux rejets n'a écrit quoi que ce soit : la commande n'a pas bougé.
+      const { data: stored } = await fixture.admin
+        .from('orders')
+        .select('call_confirmed_at, call_state, cod_status')
+        .eq('id', orderId)
+        .single();
+      expect(stored?.call_confirmed_at).toBeNull();
+      expect(stored?.call_state).toBe('to_call');
+      expect(stored?.cod_status).toBe('A_APPELER');
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'borne croisée : une confirmation postérieure à la livraison déjà enregistrée est rejetée',
+    async () => {
+      const fixture = await createOwnerFixture('cca-cross');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
+      await backdateOrder(fixture.admin, orderId, 10);
+      const owner = await signIn(fixture.email);
+      const deliveredAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
+
+      await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_cash_state: 'collected',
+        p_delivered_at: deliveredAt,
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+
+      // La commande a été livrée il y a 3 jours ; prétendre qu'elle a été confirmée
+      // hier est chronologiquement impossible.
+      const impossible = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_confirmed_at: new Date(Date.now() - 86_400_000).toISOString(),
+        p_call_state: 'to_call',
+        p_order_id: orderId,
+      });
+      expect(impossible.error?.message).toContain('invalid_confirmation_after_delivery');
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'aucun backfill : une commande confirmée avant ce lot garde call_confirmed_at null, même après livraison',
+    async () => {
+      const fixture = await createOwnerFixture('cca-no-backfill');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+      const owner = await signIn(fixture.email);
+
+      await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_state: 'validated',
+        p_order_id: orderId,
+      });
+
+      // Remise à null en service-role : reproduit fidèlement l'état d'une commande
+      // confirmée AVANT la migration 0114, que le déploiement n'a jamais backfillée.
+      await fixture.admin.from('orders').update({ call_confirmed_at: null }).eq('id', orderId);
+
+      const delivered = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_cash_state: 'collected',
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(delivered.error).toBeNull();
+
+      const { data: stored } = await fixture.admin
+        .from('orders')
+        .select('call_confirmed_at, cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      // Preuve explicite de l'absence de backfill : livrer ne remplit JAMAIS
+      // rétroactivement la date de confirmation d'une commande historique.
+      expect(stored?.call_confirmed_at).toBeNull();
+      expect(stored?.cash_collected_at).not.toBeNull();
+    },
+  );
+
+  it.skipIf(!supabaseUrl || !serviceRoleKey || !anonKey)(
+    'indépendance : corriger la livraison ne touche jamais call_confirmed_at, et réciproquement',
+    async () => {
+      const fixture = await createOwnerFixture('cca-independent');
+      const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+      await backdateOrder(fixture.admin, orderId, 10);
+      const owner = await signIn(fixture.email);
+      const confirmedAt = new Date(Date.now() - 5 * 86_400_000).toISOString();
+      const deliveredAt = new Date(Date.now() - 2 * 86_400_000).toISOString();
+
+      await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_call_confirmed_at: confirmedAt,
+        p_call_state: 'validated',
+        p_cash_state: 'expected',
+        p_delivery_state: 'scheduled',
+        p_order_id: orderId,
+        p_scheduled_for: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+      });
+
+      const { data: beforeDelivery } = await fixture.admin
+        .from('orders')
+        .select('call_confirmed_at, cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      expect(beforeDelivery?.cash_collected_at).toBeNull();
+
+      const delivered = await transitionOrderRpc(owner)('transition_order', {
+        p_actor: fixture.userId,
+        p_cash_state: 'collected',
+        p_delivered_at: deliveredAt,
+        p_delivery_state: 'delivered',
+        p_order_id: orderId,
+        p_order_state: 'completed',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(delivered.error).toBeNull();
+
+      const { data: afterDelivery } = await fixture.admin
+        .from('orders')
+        .select('call_confirmed_at, cash_collected_at')
+        .eq('id', orderId)
+        .single();
+      // La date de livraison a bougé exactement où on l'a mise…
+      expect(new Date(afterDelivery?.cash_collected_at as string).getTime()).toBe(
+        new Date(deliveredAt).getTime(),
+      );
+      // …et la date de confirmation n'a pas bougé d'un iota.
+      expect(afterDelivery?.call_confirmed_at).toBe(beforeDelivery?.call_confirmed_at);
+      expect(new Date(afterDelivery?.call_confirmed_at as string).getTime()).toBe(
+        new Date(confirmedAt).getTime(),
+      );
     },
   );
 });

@@ -658,6 +658,10 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 
     await menuItem(page, 'Marquer livree').click();
+    // 0114 : « Marquer livrée » ouvre désormais un dialog. On valide sans rien saisir —
+    // le champ de date réelle est optionnel, et ne pas le remplir doit reproduire
+    // exactement la transition d'avant ce lot (cash_collected_at = now()).
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
     await page.reload();
     await expect(page.getByText('Livrée').first()).toBeVisible({ timeout: 15_000 });
@@ -2174,6 +2178,93 @@ test('Lot 3 - Message client : le texte tapé manuellement n est jamais écrasé
     // texte tapé serait écrasé par le template recalculé.
     await page.waitForTimeout(500);
     await expect(textarea).toHaveValue('Message personnalisé du marchand');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+// 0114 — les deux corrections de date apparaissent chacune dans SA transition, jamais
+// dans un écran unique combinant les deux. Ce test vérifie les deux moments et, à
+// chaque fois, l'absence des champs de l'autre.
+test('dates éditables : confirmation saisie à Programmer, livraison saisie à Marquer livrée', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('dates-editables');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Livreur Dates');
+  const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+
+  // La borne serveur refuse toute date antérieure à la création : on antidate la
+  // commande pour représenter le cas réel (commande passée il y a des jours, traitée
+  // au bureau aujourd'hui).
+  const createdAt = addDays(new Date(), -6).toISOString();
+  await fixture.admin
+    .from('orders')
+    .update({ created_at: createdAt, created_at_shopify: createdAt })
+    .eq('id', orderId);
+
+  const confirmedDate = formatDateInput(addDays(new Date(), -3));
+  const deliveredDate = formatDateInput(addDays(new Date(), -1));
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    // 1) « Programmer la livraison » : date de livraison prévue (existante) ET date de
+    //    confirmation client (0114), deux blocs distincts dans le même dialog.
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByLabel('Date de livraison', { exact: true }).fill(formatDateInput(new Date()));
+    await page.getByLabel('Heure de livraison', { exact: true }).fill(formatTimeInput(10, 0));
+    await page.getByTestId('transition-confirmed-date').fill(confirmedDate);
+    await page.getByTestId('transition-confirmed-time').fill(formatTimeInput(20, 0));
+    // Pas de champ de date de livraison RÉELLE ici : ce n'est pas le bon moment.
+    await expect(page.getByTestId('transition-delivered-date')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+
+    const { data: afterProgram } = await fixture.admin
+      .from('orders')
+      .select('call_confirmed_at, cash_collected_at')
+      .eq('id', orderId)
+      .single();
+    expect(afterProgram?.call_confirmed_at?.slice(0, 10)).toBe(confirmedDate);
+    // La date de livraison n'existe pas encore : les deux champs sont indépendants.
+    expect(afterProgram?.cash_collected_at).toBeNull();
+
+    // « Marquer livrée » n'est légale qu'en delivery_state='assigned'. On amène la
+    // commande à cet état par le service-role plutôt que de rejouer tout le flux
+    // d'assignation (choix du livreur puis envoi WhatsApp), hors sujet ici : ce test
+    // porte sur les deux dialogs de saisie de date, et la transition « livrer » qu'il
+    // déclenche ensuite passe bien par le vrai chemin transition_order.
+    const { error: dispatchError } = await fixture.admin
+      .from('orders')
+      .update({ assigned_driver_id: driverId, delivery_state: 'assigned' })
+      .eq('id', orderId);
+    expect(dispatchError).toBeNull();
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+
+    // 2) « Marquer livrée » : dialog propre à cette transition (elle n'en avait aucun
+    //    avant ce lot), sans aucun champ de date de confirmation.
+    await page.reload();
+    // Stabilisation post-reload avant d'interagir : le bouton existe dans le HTML SSR
+    // avant que React ait attaché son onClick (gotcha connu du projet).
+    await expect(page.getByRole('button', { name: 'Actions' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await runDetailMenuAction(page, 'Marquer livree');
+    await expect(page.getByTestId('transition-delivered-date')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('transition-confirmed-date')).toHaveCount(0);
+    await page.getByTestId('transition-delivered-date').fill(deliveredDate);
+    await page.getByTestId('transition-delivered-time').fill(formatTimeInput(16, 0));
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
+
+    const { data: afterDelivery } = await fixture.admin
+      .from('orders')
+      .select('call_confirmed_at, cash_collected_at')
+      .eq('id', orderId)
+      .single();
+    expect(afterDelivery?.cash_collected_at?.slice(0, 10)).toBe(deliveredDate);
+    // La correction de la livraison n'a pas touché la date de confirmation.
+    expect(afterDelivery?.call_confirmed_at).toBe(afterProgram?.call_confirmed_at);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

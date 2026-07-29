@@ -1,7 +1,7 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
-import { performTransitionForContext } from '@/lib/actions/transitions';
+import { type TransitionErrorCode, performTransitionForContext } from '@/lib/actions/transitions';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import {
   type OrderSavedViewId,
@@ -1455,15 +1455,11 @@ export const logCallAction = requireRole('owner', 'manager', 'agent')
 
     const autoTransitionTarget = getAutoTransitionTarget(parsedInput.outcome);
     let transitioned = false;
-    let transitionErrorCode:
-      | 'forbidden'
-      | 'audit_failed'
-      | 'illegal_transition'
-      | 'invalid_current_status'
-      | 'missing_driver_for_dispatch'
-      | 'order_not_found'
-      | 'update_failed'
-      | null = null;
+    // Ce code réutilise `TransitionErrorCode` au lieu de le recopier : l'union était
+    // dupliquée à la main et 0114 (qui ajoute 3 codes de bornes de date) l'a fait
+    // diverger. Réutiliser le type source évite que le prochain code ajouté soit à
+    // nouveau oublié ici.
+    let transitionErrorCode: TransitionErrorCode | null = null;
 
     if (isOrderStatus(order.cod_status)) {
       const transitionAction = getTransitionActionForTarget(autoTransitionTarget, ctx.member.role);
