@@ -2444,50 +2444,30 @@ export type Database = {
         }[];
       };
       sn_phone_e164: { Args: { p_value: string }; Returns: string };
-      transition_order:
-        | {
-            Args: {
-              p_actor: string;
-              p_assigned_driver_id?: string;
-              p_attempt_count?: number;
-              p_call_confirmed_at?: string;
-              p_call_state?: string;
-              p_cancel_reason?: string;
-              p_cancel_reasons?: string[];
-              p_cash_state?: string;
-              p_clear_assigned_driver?: boolean;
-              p_clear_cancel_reasons?: boolean;
-              p_clear_scheduled_for?: boolean;
-              p_delivered_at?: string;
-              p_delivery_state?: string;
-              p_next_contact_at?: string;
-              p_note?: string;
-              p_order_id: string;
-              p_order_state?: string;
-              p_payment_channel?: string;
-              p_scheduled_for?: string;
-            };
-            Returns: string;
-          }
-        | {
-            Args: {
-              p_actor: string;
-              p_note?: string;
-              p_order_id: string;
-              p_to: string;
-            };
-            Returns: string;
-          }
-        | {
-            Args: {
-              p_actor: string;
-              p_note?: string;
-              p_order_id: string;
-              p_payment_channel?: string;
-              p_to: string;
-            };
-            Returns: string;
-          };
+      transition_order: {
+        Args: {
+          p_actor: string;
+          p_assigned_driver_id?: string;
+          p_attempt_count?: number;
+          p_call_confirmed_at?: string;
+          p_call_state?: string;
+          p_cancel_reason?: string;
+          p_cancel_reasons?: string[];
+          p_cash_state?: string;
+          p_clear_assigned_driver?: boolean;
+          p_clear_cancel_reasons?: boolean;
+          p_clear_scheduled_for?: boolean;
+          p_delivered_at?: string;
+          p_delivery_state?: string;
+          p_next_contact_at?: string;
+          p_note?: string;
+          p_order_id: string;
+          p_order_state?: string;
+          p_payment_channel?: string;
+          p_scheduled_for?: string;
+        };
+        Returns: string;
+      };
       write_off_shortfall: {
         Args: {
           p_actor?: string;
