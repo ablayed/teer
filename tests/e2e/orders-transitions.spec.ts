@@ -2493,6 +2493,21 @@ test('0116 - invalider une commande livrée la ramène dans « À appeler » et 
     // 6) Elle réapparaît bien dans la vue « À appeler » de /commandes.
     await page.goto('/commandes?vue=a-appeler');
     await expect(orderRowTitle(page, 'Client Assignation')).toBeVisible({ timeout: 15_000 });
+
+    // 7) « Activité récente » (/tableau, components/dashboard/RecentActivity.tsx, alimenté
+    //    par fetchRecentActivityForUser qui lit order_state_transition SANS filtre de
+    //    statut) : le bloc rend normalement, affiche bien les transitions réelles de la
+    //    commande, et l'invalidation n'y apparaît PAS — elle ne pose aucune ligne.
+    await page.goto('/tableau');
+    const recentActivity = page.getByRole('heading', { name: 'Activité récente' }).locator('..');
+    await expect(recentActivity).toBeVisible({ timeout: 15_000 });
+    // Le bloc n'est ni vide ni cassé : les transitions normales de la commande y sont.
+    await expect(recentActivity.getByText('En livraison → Livrée')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(recentActivity.getByText('Aucune transition récente.')).toHaveCount(0);
+    // Et aucune entrée « Livrée → À appeler », la signature de l'invalidation.
+    await expect(recentActivity.getByText('Livrée → À appeler')).toHaveCount(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

@@ -2694,6 +2694,21 @@ describe('0116 - Invalider une commande livree', () => {
       const afterFirst = await readStock(admin, productId);
       expect(afterFirst).toMatchObject({ qty_on_hand: 50, qty_reserved: 0 });
 
+      // Photo EXACTE du ledger apres le 1er appel : nombre de lignes ET jeu de cles.
+      async function movementSnapshot() {
+        const { data } = await admin
+          .from('stock_movement')
+          .select('idempotency_key, movement_type, qty')
+          .eq('order_id', orderId)
+          .order('idempotency_key');
+        return {
+          count: (data ?? []).length,
+          keys: (data ?? []).map((m) => m.idempotency_key).sort(),
+          rows: data ?? [],
+        };
+      }
+      const snapshotBeforeReplay = await movementSnapshot();
+
       // Rejeu (double-clic, retry reseau). Les cles d'idempotence NE protegent pas ici :
       // v_transition_id est neuf a chaque appel, donc les cles du second appel seraient
       // differentes et ne se dedupliqueraient pas. C'est la GARDE D'ETAT qui arrete le
@@ -2702,19 +2717,20 @@ describe('0116 - Invalider une commande livree', () => {
         'transition_order',
         invalidateArgs(userId, orderId),
       );
+      // Message exact leve par la garde, et code SQLSTATE de la garde (22023), pas un
+      // echec generique de RLS ou de contrainte.
       expect(replay.error?.message).toContain('illegal_invalidation');
+      // transitionRpc restreint le type d'erreur a { message } ; le SQLSTATE est bien la
+      // au runtime (22023 = raise ... using errcode de la garde).
+      expect((replay.error as { code?: string } | null)?.code).toBe('22023');
 
-      // Aucune double compensation : positions inchangees, et le nombre de mouvements n'a
-      // pas bouge (le rejeu n'a rien ecrit du tout).
+      // Aucune double compensation : positions inchangees, ET ledger identique AU BIT PRES
+      // (meme nombre de lignes, memes cles) — le rejeu n'a rien ecrit du tout.
       expect(await readStock(admin, productId)).toEqual(afterFirst);
-      const { count } = await admin
-        .from('stock_movement')
-        .select('id', { count: 'exact', head: true })
-        .eq('order_id', orderId);
-      const net = movementNetByType(
-        (await admin.from('stock_movement').select('movement_type, qty').eq('order_id', orderId))
-          .data ?? [],
-      );
+      const snapshotAfterReplay = await movementSnapshot();
+      expect(snapshotAfterReplay.count).toBe(snapshotBeforeReplay.count);
+      expect(snapshotAfterReplay.keys).toEqual(snapshotBeforeReplay.keys);
+      const net = movementNetByType(snapshotAfterReplay.rows);
       expect(net.get('dispatch')).toBe(0);
       expect(net.get('sold')).toBe(0);
 
@@ -2747,7 +2763,9 @@ describe('0116 - Invalider une commande livree', () => {
       // Le dispatch de cette 2e commande est reparti puis revenu : position finale identique
       // a celle d'avant, une seule fois — pas deux.
       expect(await readStock(admin, productId)).toEqual(beforeConcurrent);
-      expect(count).toBeGreaterThan(0);
+      expect(
+        (outcomes.find((r) => r.error !== null)?.error as { code?: string } | undefined)?.code,
+      ).toBe('22023');
     },
   );
 
@@ -2760,9 +2778,31 @@ describe('0116 - Invalider une commande livree', () => {
       const driverId = await createDriver(admin, merchantAccountId);
       const owner = await signIn(email);
       await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+      // Reserve de fond non nulle : la valeur attendue de qty_reserved apres CHAQUE passage
+      // est 4, pas 0 — une valeur qu'un greatest(0, …) ne peut pas atteindre par clamp. Sans
+      // elle, une sur-liberation au 2e passage passerait inapercue.
+      await seedSiblingReserve(admin, owner, merchantAccountId, userId, productId, 4);
       const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
         { productId, qty: 3 },
       ]);
+      const baseline = await readStock(admin, productId);
+      expect(baseline).toMatchObject({ qty_on_hand: 50, qty_reserved: 4 });
+
+      // Cles de contre-passation uniquement (celles que 0116 construit sur l'UUID de l'appel).
+      async function reversalKeys() {
+        const { data } = await admin
+          .from('stock_movement')
+          .select('idempotency_key')
+          .eq('order_id', orderId);
+        return (data ?? [])
+          .map((m) => m.idempotency_key)
+          .filter(
+            (key) =>
+              key.endsWith(':invalidate_reversal') ||
+              key.endsWith(':invalidate_reserved_release') ||
+              key.endsWith(':advance_commit_reversal'),
+          );
+      }
 
       // Vie 1 : livree puis invalidee.
       await driveOrderToDelivered(owner, userId, orderId, driverId);
@@ -2771,6 +2811,10 @@ describe('0116 - Invalider une commande livree', () => {
         invalidateArgs(userId, orderId),
       );
       expect(firstPass.error).toBeNull();
+      // Le point 5 doit tenir A CHAQUE passage, pas seulement au premier.
+      expect(await readStock(admin, productId)).toEqual(baseline);
+      const firstReversalKeys = await reversalKeys();
+      expect(firstReversalKeys.length).toBeGreaterThan(0);
       const keysAfterFirst = new Set(
         (
           await admin.from('stock_movement').select('idempotency_key').eq('order_id', orderId)
@@ -2797,11 +2841,18 @@ describe('0116 - Invalider une commande livree', () => {
       expect(new Set(allKeys).size).toBe(allKeys?.length);
       expect((allKeys?.length ?? 0) > keysAfterFirst.size).toBe(true);
 
-      // Les deux allers-retours se sont annules : position finale = position de depart.
-      expect(await readStock(admin, productId)).toMatchObject({
-        qty_on_hand: 50,
-        qty_reserved: 0,
-      });
+      // Preuve CIBLEE de non-collision : les cles de contre-passation du 2e passage sont
+      // STRICTEMENT disjointes de celles du 1er, et il y en a autant (chaque passage a bien
+      // pose son jeu complet, aucune ligne avalee par une deduplication silencieuse).
+      const allReversalKeys = await reversalKeys();
+      const secondReversalKeys = allReversalKeys.filter((key) => !firstReversalKeys.includes(key));
+      expect(secondReversalKeys).toHaveLength(firstReversalKeys.length);
+      expect(secondReversalKeys.filter((key) => firstReversalKeys.includes(key))).toHaveLength(0);
+      expect(new Set(allReversalKeys).size).toBe(firstReversalKeys.length * 2);
+
+      // Les deux allers-retours se sont annules : position finale = position de depart,
+      // reserve de fond incluse (4, pas 0).
+      expect(await readStock(admin, productId)).toEqual(baseline);
       const net = movementNetByType(
         (await admin.from('stock_movement').select('movement_type, qty').eq('order_id', orderId))
           .data ?? [],

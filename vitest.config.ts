@@ -11,6 +11,11 @@ export default defineConfig({
       thresholds: { lines: 80, statements: 80 },
     },
   },
+  // Runtime JSX automatique, comme Next (React 19). Sans ça, esbuild applique la transforme
+  // classique (`React.createElement`) et tout composant testé qui n'importe pas React
+  // explicitement échoue au rendu en « React is not defined » — piège rencontré en testant
+  // components/dashboard/RecentActivity.tsx, qui n'a aucune raison d'importer React.
+  esbuild: { jsx: 'automatic' },
   resolve: {
     alias: { '@': resolve(__dirname, '.') },
   },
