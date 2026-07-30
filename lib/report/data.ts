@@ -390,6 +390,7 @@ export async function getReportData({
     a_encaisser: 0,
     ca_livre: 0,
     cash_chez_livreurs: 0,
+    delivered_orders_count: 0,
     encaisse: 0,
     taux_refus: 0,
   };

@@ -277,6 +277,32 @@ async function seedMissingCostOrder(admin: AdminClient, merchantAccountId: strin
   });
 }
 
+// Commande encaissée simple (sans mouvement de stock) : suffit pour prouver qu'elle est
+// comptée par /finances, puis qu'elle en sort après invalidation.
+async function seedCollectedOrder(admin: AdminClient, merchantAccountId: string) {
+  const { data: order } = await admin
+    .from('orders')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      source: 'manual',
+      order_number: `INVAL-${Date.now()}`,
+      total_amount: 20000,
+      delivery_fee_minor: 0,
+      currency: 'XOF',
+      items_summary: [{ title: 'Article invalidable', quantity: 1, price: 20000 }],
+      order_state: 'completed',
+      call_state: 'validated',
+      delivery_state: 'delivered',
+      cash_state: 'collected',
+      cash_collected_at: new Date().toISOString(),
+      payment_channel_at_delivery: 'ESPECES',
+    })
+    .select('id')
+    .single();
+  if (!order) throw new Error('order insert returned no row');
+  return order.id as string;
+}
+
 async function signIn(page: Page, email: string, redirectTo = '/finances') {
   await page.goto(`/connexion?redirectTo=${encodeURIComponent(redirectTo)}`);
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
@@ -651,6 +677,51 @@ test('vue produit : coût manquant éditable in-cell + card à définition au ta
         .and(page.locator(':visible'))
         .first(),
     ).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+// 0116 + 0117 — preuve À L'ÉCRAN, en complément des tests RLS qui prouvent la même chose au
+// niveau de `finance_kpis`. Une commande invalidée doit disparaître de /finances, et pas
+// seulement du Tableau. L'invalidation passe par le VRAI chemin `transition_order`
+// (p_invalidate_delivered), jamais par un UPDATE direct : c'est lui qui remet
+// `cash_collected_at` à null et fait sortir la commande de la fenêtre financière.
+test('0116 : une commande invalidée disparaît du CA de /finances', async ({ page }) => {
+  const fixture = await createOwnerFixture('invalidation-finances');
+  try {
+    const orderId = await seedCollectedOrder(fixture.admin, fixture.merchantAccountId);
+    await signIn(page, fixture.email, '/finances');
+
+    // La valeur est portée par le <p class="font-mono"> de la carte « CA ».
+    const caValue = page
+      .locator('section')
+      .filter({ hasText: messages.finance.kpis.caUnified })
+      .last()
+      .locator('p.font-mono');
+
+    // Avant : la commande est bien comptée.
+    await expect(caValue).toHaveText(/^20\s*000\s*F/, { timeout: 15_000 });
+
+    const invalidated = await fixture.admin.rpc('transition_order', {
+      p_actor: fixture.userId,
+      p_order_id: orderId,
+      p_order_state: 'open',
+      p_call_state: 'to_call',
+      p_delivery_state: 'unassigned',
+      p_cash_state: 'not_due',
+      p_clear_assigned_driver: true,
+      p_clear_cancel_reasons: true,
+      p_clear_scheduled_for: true,
+      p_invalidate_delivered: true,
+    });
+    expect(invalidated.error).toBeNull();
+    expect(invalidated.data).toBe('A_APPELER');
+
+    // Après : le chiffre affiché retombe à 0. `^` empêche « 20 000 F CFA » de satisfaire
+    // par accident une assertion sur « 0 F CFA ».
+    await page.goto('/finances');
+    await expect(caValue).toHaveText(/^0\s*F/, { timeout: 15_000 });
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
   }

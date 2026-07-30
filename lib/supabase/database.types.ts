@@ -1908,6 +1908,7 @@ export type Database = {
           a_encaisser: number;
           ca_livre: number;
           cash_chez_livreurs: number;
+          delivered_orders_count: number;
           encaisse: number;
           taux_refus: number;
         }[];

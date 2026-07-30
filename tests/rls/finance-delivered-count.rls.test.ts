@@ -107,8 +107,9 @@ async function createOrder(admin: AdminClient, merchantAccountId: string, totalA
 }
 
 // Signature declaree a la main, comme dans les autres specs RLS de transition_order
-// (orders-dimensions, product-bundle-cascade) : database.types.ts est genere depuis la prod,
-// qui n'a pas encore la signature 20-args de 0116 (regle #3 du projet).
+// (orders-dimensions, product-bundle-cascade) : le type genere expose bien les 20 arguments
+// depuis le push de 0116, mais l'inference PostgREST sur une RPC a autant d'arguments
+// optionnels reste illisible en cas d'erreur. On garde la convention du projet.
 type TransitionArgs = {
   p_actor: string;
   p_order_id: string;
@@ -189,10 +190,9 @@ async function financeKpis(client: SupabaseClient<Database>, merchantId: string)
     p_to: new Date(Date.now() + 86_400_000).toISOString(),
   });
   if (error) throw error;
-  // `database.types.ts` est genere depuis la PROD, qui n'a pas encore 0117 (regle #3 du
-  // projet : le schema part en prod avant le code). Le cast passe donc par `unknown` en
-  // attendant le `db push` + `pnpm db:types` du porteur.
-  return (data as unknown as Array<{ ca_livre: number; delivered_orders_count: number }>)[0];
+  // 0117 applique en prod : `delivered_orders_count` vient desormais du type genere,
+  // plus aucun cast n'est necessaire ici.
+  return data[0];
 }
 
 // Le comptage que faisait la page AVANT 0117, reproduit tel quel pour prouver que le

@@ -242,39 +242,37 @@ async function GlobalTabContent({
   to: Date;
 }) {
   const t = await getTranslations('finance');
-  const [kpisResult, agingResult, settingsResult, settlementsResult, deliveredCountResult] =
-    await Promise.all([
-      financeKpisRpc(supabase)('finance_kpis', {
-        p_from: from.toISOString(),
-        p_merchant: merchantAccountId,
-        p_shop_id: selectedShopId,
-        p_to: to.toISOString(),
-      }),
-      cashAgingRpc(supabase)('cash_aging', { p_merchant: merchantAccountId }),
-      supabase
-        .from('merchant_settings')
-        .select('*')
-        .eq('merchant_account_id', merchantAccountId)
-        .maybeSingle(),
-      supabase
-        .from('cash_settlement')
-        .select('amount_received_minor, method')
-        .eq('merchant_account_id', merchantAccountId)
-        .gte('settled_at', from.toISOString())
-        .lte('settled_at', to.toISOString()),
-      supabase
-        .from('order_state_transition')
-        .select('id', { count: 'exact', head: true })
-        .eq('merchant_account_id', merchantAccountId)
-        .eq('to_status', 'LIVREE')
-        .gte('created_at', from.toISOString())
-        .lte('created_at', to.toISOString()),
-    ]);
+  // 0117 : le nombre de livraisons vient de `finance_kpis` (meme CTE, meme fenetre que
+  // `ca_livre`, bornee a l'etat COURANT `cod_status = 'LIVREE'` et groupee par commande).
+  // Il remplace un count autonome sur `order_state_transition` qui, sans jointure vers
+  // `orders`, comptait encore une commande invalidee et comptait DEUX fois une commande
+  // livree -> invalidee -> re-livree (comptage de lignes de transition, pas de commandes).
+  const [kpisResult, agingResult, settingsResult, settlementsResult] = await Promise.all([
+    financeKpisRpc(supabase)('finance_kpis', {
+      p_from: from.toISOString(),
+      p_merchant: merchantAccountId,
+      p_shop_id: selectedShopId,
+      p_to: to.toISOString(),
+    }),
+    cashAgingRpc(supabase)('cash_aging', { p_merchant: merchantAccountId }),
+    supabase
+      .from('merchant_settings')
+      .select('*')
+      .eq('merchant_account_id', merchantAccountId)
+      .maybeSingle(),
+    supabase
+      .from('cash_settlement')
+      .select('amount_received_minor, method')
+      .eq('merchant_account_id', merchantAccountId)
+      .gte('settled_at', from.toISOString())
+      .lte('settled_at', to.toISOString()),
+  ]);
 
   const kpis = kpisResult.data?.[0] ?? {
     a_encaisser: 0,
     ca_livre: 0,
     cash_chez_livreurs: 0,
+    delivered_orders_count: 0,
     encaisse: 0,
     taux_refus: 0,
   };
@@ -302,7 +300,7 @@ async function GlobalTabContent({
   }));
   const marginMinor = estimatedMarginMinor({
     caLivreMinor: kpis.ca_livre,
-    deliveredOrdersCount: deliveredCountResult.count ?? 0,
+    deliveredOrdersCount: kpis.delivered_orders_count,
     settlements,
     settings,
   });
