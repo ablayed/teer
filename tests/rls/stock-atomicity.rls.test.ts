@@ -2649,4 +2649,245 @@ describe('0116 - Invalider une commande livree', () => {
       expect(transitions?.at(-1)?.to_status).toBe('A_APPELER');
     },
   );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Preuve NUMÉRIQUE que qty_reserved retombe à sa valeur exacte d'avant le
+  // parcours — pas une déduction depuis les commentaires de 0116.
+  //
+  // Les deux tests ci-dessous mesurent (qty_on_hand, qty_reserved) AVANT toute
+  // transition puis APRÈS invalidation et prouvent l'égalité STRICTE. Ils
+  // couvrent les deux cas précis que la contre-passation par le ledger existe
+  // pour traiter, et qu'un rejeu d'`order_line` aurait cassés :
+  //   1. dispatch partiellement couvert par du stock d'avance (advance_commit) ;
+  //   2. commande réassignée en cours de route (le stock doit revenir au bon
+  //      livreur, pas à celui de la dernière assignation).
+  //
+  // Chaque test embarque une commande SŒUR confirmée qui immobilise 4 unités de
+  // réserve pendant toute la manœuvre. Sans cette réserve de fond non nulle, la
+  // valeur attendue serait 0 et un `greatest(0, …)` de post_stock_movement
+  // masquerait une sur-libération : le test passerait pour une mauvaise raison.
+  // ────────────────────────────────────────────────────────────────────────
+
+  // Réserve de fond : une autre commande du même produit, confirmée et laissée
+  // en l'état, dont les 4 unités réservées ne doivent jamais bouger.
+  async function seedSiblingReserve(
+    admin: AdminClient,
+    client: SupabaseClient<Database>,
+    merchantAccountId: string,
+    userId: string,
+    productId: string,
+    qty: number,
+  ) {
+    const siblingDriverId = await createDriver(admin, merchantAccountId);
+    const siblingOrderId = await createOrderForDriver(admin, merchantAccountId, siblingDriverId, [
+      { productId, qty },
+    ]);
+    const confirmed = await transitionRpc(client)('transition_order', {
+      p_actor: userId,
+      p_order_id: siblingOrderId,
+      p_call_state: 'validated',
+      p_attempt_count: 1,
+    });
+    expect(confirmed.error).toBeNull();
+    return siblingOrderId;
+  }
+
+  async function netByDriverAndType(admin: AdminClient, orderId: string) {
+    const { data } = await admin
+      .from('stock_movement')
+      .select('movement_type, qty, driver_id')
+      .eq('order_id', orderId);
+    const net = new Map<string, number>();
+    for (const row of data ?? []) {
+      const key = `${row.movement_type}@${row.driver_id ?? 'none'}`;
+      net.set(key, (net.get(key) ?? 0) + (row.qty ?? 0));
+    }
+    return net;
+  }
+
+  skipIfNoServiceRole(
+    'avance partielle : qty_reserved et qty_on_hand reviennent a leur valeur EXACTE, avance restituee',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-advance');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+
+      // purchase_in (et non seedProductStock) : le ledger et product_stock restent
+      // cohérents, donc l'écart de réconciliation attendu est ZÉRO à la fin.
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+      // Avance de 2 chez le livreur : la livraison puisera 2 dans l'avance et
+      // dispatchera seulement 1 depuis l'entrepôt.
+      await allocateToCourier(owner, merchantAccountId, productId, driverId, userId, 2);
+      await seedSiblingReserve(admin, owner, merchantAccountId, userId, productId, 4);
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 3 },
+      ]);
+
+      // Référence : l'état AVANT toute transition de la commande cible, réserve
+      // de fond incluse.
+      const before = await readStock(admin, productId);
+      expect(before).toMatchObject({ qty_on_hand: 50, qty_reserved: 4 });
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(2);
+
+      await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      }); // reserve +3 → 7
+      await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+      // advance_commit 2 (libère 2 de réserve) + dispatch 1 (libère 1, sort 1 de
+      // l'entrepôt) → il ne reste que la réserve de fond.
+      expect(await readStock(admin, productId)).toMatchObject({
+        qty_on_hand: 49,
+        qty_reserved: 4,
+      });
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(0);
+
+      const delivered = await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'delivered',
+        p_order_state: 'completed',
+        p_cash_state: 'collected',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(delivered.data).toBe('LIVREE');
+
+      const invalidated = await transitionRpc(owner)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(invalidated.error).toBeNull();
+      expect(invalidated.data).toBe('A_APPELER');
+
+      // ÉGALITÉ STRICTE, les deux compteurs à la fois. C'est l'assertion que ce
+      // test existe pour porter : la contre-passation du dispatch ré-arme la
+      // réserve (+1) et le `release` apparié l'annule (−1) — si ce couplage était
+      // faux, qty_reserved vaudrait 5 ici.
+      expect(await readStock(admin, productId)).toEqual(before);
+
+      // L'avance du livreur n'a jamais été consommée : elle est intégralement
+      // restituée (compensation advance_commit négative, qui ne touche PAS la
+      // réserve grâce au greatest(p_qty, 0) de post_stock_movement).
+      expect(await advanceAvailable(admin, productId, driverId)).toBe(2);
+      // Le livreur garde physiquement son lot d'avance de 2 — l'invalidation ne
+      // rapatrie rien de sa main, elle défait seulement la vente.
+      expect(await driverHand(admin, productId, driverId)).toBe(2);
+
+      const net = movementNetByType(
+        (await admin.from('stock_movement').select('movement_type, qty').eq('order_id', orderId))
+          .data ?? [],
+      );
+      expect(net.get('dispatch')).toBe(0);
+      expect(net.get('sold')).toBe(0);
+      expect(net.get('advance_commit')).toBe(0);
+      expect(net.has('courier_return')).toBe(false);
+
+      // Aucune dérive ledger ↔ product_stock introduite par l'aller-retour.
+      expect(await reconcileDiscrepancyFor(admin, productId)).toHaveLength(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'reassignation en cours de route : le stock revient au bon livreur, positions a l’identique',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-reassign');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverA = await createDriver(admin, merchantAccountId);
+      const driverB = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+      await seedSiblingReserve(admin, owner, merchantAccountId, userId, productId, 4);
+
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverA, [
+        { productId, qty: 3 },
+      ]);
+      const before = await readStock(admin, productId);
+      expect(before).toMatchObject({ qty_on_hand: 50, qty_reserved: 4 });
+
+      await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_call_state: 'validated',
+        p_attempt_count: 1,
+      });
+      await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'scheduled',
+      });
+      await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'out_for_delivery',
+      });
+
+      // Le dispatch est parti chez A, puis la commande change de livreur EN COURS
+      // de livraison : reassign_from_driver (A, +3) puis reassign_to_driver (B, −3).
+      const reassign = await owner.rpc('reassign_order_driver', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_new_driver: driverB,
+      });
+      expect(reassign.error).toBeNull();
+
+      const delivered = await transitionRpc(owner)('transition_order', {
+        p_actor: userId,
+        p_order_id: orderId,
+        p_delivery_state: 'delivered',
+        p_order_state: 'completed',
+        p_cash_state: 'collected',
+        p_payment_channel: 'ESPECES',
+      });
+      expect(delivered.data).toBe('LIVREE');
+
+      const invalidated = await transitionRpc(owner)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(invalidated.error).toBeNull();
+      expect(invalidated.data).toBe('A_APPELER');
+
+      // Égalité stricte malgré une chaîne de 4 types qui touchent qty_on_hand
+      // (dispatch, reassign_from, reassign_to, puis leurs 3 contre-passations) et
+      // la réserve de fond intacte.
+      expect(await readStock(admin, productId)).toEqual(before);
+
+      // Aucun des deux livreurs ne conserve quoi que ce soit : chaque mouvement a
+      // été contre-passé SUR LE LIVREUR QUI L'AVAIT REÇU (c'est le point que le
+      // rejeu d'order_line manquerait — il aurait tout imputé à B).
+      const net = await netByDriverAndType(admin, orderId);
+      expect(net.get(`dispatch@${driverA}`)).toBe(0);
+      expect(net.get(`reassign_from_driver@${driverA}`)).toBe(0);
+      expect(net.get(`reassign_to_driver@${driverB}`)).toBe(0);
+      expect(net.get(`sold@${driverB}`)).toBe(0);
+      expect(net.has(`reassign_from_driver@${driverB}`)).toBe(false);
+      expect(net.has(`dispatch@${driverB}`)).toBe(false);
+      expect(await driverHand(admin, productId, driverA)).toBe(0);
+      expect(await driverHand(admin, productId, driverB)).toBe(0);
+
+      // Engagements de disponibilité soldés des deux côtés.
+      const assignmentNet = (await readOrderAssignmentMovements(admin, orderId)).reduce(
+        (sum, m) => sum + (m.qty ?? 0),
+        0,
+      );
+      expect(assignmentNet).toBe(0);
+      expect(await reconcileDiscrepancyFor(admin, productId)).toHaveLength(0);
+    },
+  );
 });
