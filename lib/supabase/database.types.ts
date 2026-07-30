@@ -2459,6 +2459,7 @@ export type Database = {
           p_clear_scheduled_for?: boolean;
           p_delivered_at?: string;
           p_delivery_state?: string;
+          p_invalidate_delivered?: boolean;
           p_next_contact_at?: string;
           p_note?: string;
           p_order_id: string;

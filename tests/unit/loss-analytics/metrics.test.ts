@@ -606,4 +606,147 @@ describe('computeLossAnalytics', () => {
 
     expect(result.summary.returnCount).toBe(0);
   });
+  // ────────────────────────────────────────────────────────────────────────
+  // 0116/0117 — une commande INVALIDÉE ne doit plus compter comme livrée.
+  // L'audit du clic « Livrer » subsiste volontairement (l'historique n'est jamais
+  // réécrit) ; c'est l'état COURANT de la commande qui tranche.
+  // ────────────────────────────────────────────────────────────────────────
+
+  it('exclut une commande invalidée du délai de maturité des cohortes', () => {
+    // Livraison réelle : 1 jour de délai. Commande invalidée : 12 jours d'audit résiduel.
+    // Si l'invalidée comptait, la moyenne passerait de 1 à ~6,5 jours et décalerait la
+    // frontière de maturité de tout le graphe « Taux de livraison dans le temps ».
+    const auditLogs = [
+      audit({
+        createdAt: '2026-06-02T10:00:00.000Z',
+        payload: { nextDimensions: { delivery_state: 'delivered' }, priorDimensions: {} },
+        resourceId: 'order-livree',
+      }),
+      audit({
+        createdAt: '2026-06-13T10:00:00.000Z',
+        payload: { nextDimensions: { delivery_state: 'delivered' }, priorDimensions: {} },
+        resourceId: 'order-invalidee',
+      }),
+    ];
+    const orders = [
+      order({
+        createdAt: '2026-06-01T10:00:00.000Z',
+        deliveryState: 'delivered',
+        id: 'order-livree',
+        orderState: 'completed',
+      }),
+      // Etat COURANT d'une commande invalidée : exactement celui de « À appeler ».
+      order({
+        createdAt: '2026-06-01T10:00:00.000Z',
+        deliveryState: 'unassigned',
+        id: 'order-invalidee',
+        orderState: 'open',
+      }),
+    ];
+
+    const base = {
+      customers: [],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      reliability: [],
+      toISO: '2026-06-20T23:59:59.999Z',
+    };
+
+    // On passe par la surface publique (computeLossAnalytics expose cohortMaturityDays)
+    // plutot que d'elargir l'API du module pour les besoins du test.
+    expect(computeLossAnalytics({ ...base, auditLogs, orders }).cohortMaturityDays).toBe(1);
+
+    // Contre-épreuve : si la commande était réellement livrée, la moyenne remonterait.
+    const bothDelivered = orders.map((current) =>
+      current.id === 'order-invalidee'
+        ? order({ ...current, deliveryState: 'delivered', orderState: 'completed' })
+        : current,
+    );
+    expect(
+      computeLossAnalytics({ ...base, auditLogs, orders: bothDelivered }).cohortMaturityDays,
+    ).toBeGreaterThan(1);
+  });
+
+  it('exclut une commande invalidée des livraisons et du dénominateur RTO journaliers', () => {
+    const auditLogs = [
+      audit({
+        createdAt: '2026-06-02T10:00:00.000Z',
+        payload: { nextDimensions: { delivery_state: 'delivered' }, priorDimensions: {} },
+        resourceId: 'order-livree',
+      }),
+      audit({
+        createdAt: '2026-06-02T11:00:00.000Z',
+        payload: { nextDimensions: { delivery_state: 'delivered' }, priorDimensions: {} },
+        resourceId: 'order-invalidee',
+      }),
+    ];
+    const result = computeLossAnalytics({
+      auditLogs,
+      customers: [],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          createdAt: '2026-06-01T10:00:00.000Z',
+          deliveryState: 'delivered',
+          id: 'order-livree',
+          orderState: 'completed',
+        }),
+        order({
+          createdAt: '2026-06-01T10:00:00.000Z',
+          deliveryState: 'unassigned',
+          id: 'order-invalidee',
+          orderState: 'open',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    const day = result.trends.find((point) => point.date === '2026-06-02');
+    expect(day?.deliveredCount).toBe(1);
+    expect(day?.rtoDenominator).toBe(1);
+
+    // Le taux de livraison de cohorte etait DEJA base sur l'etat courant : il reste a 1/2
+    // sur le jour de creation, non regresse par ce correctif.
+    const cohortDay = result.trends.find((point) => point.date === '2026-06-01');
+    expect(cohortDay?.totalOrders).toBe(2);
+    expect(cohortDay?.deliveredOrders).toBe(1);
+
+    // Et le resume global, deja base sur l'etat courant, ne compte qu'une livraison.
+    expect(result.summary.deliveredCount).toBe(1);
+  });
+
+  it('conserve la sémantique historique des événements annulation / retour / RTO', () => {
+    // Non-regression du choix produit documente : un RTO reste un fait meme si la commande
+    // a ensuite ete desannulee. Ce correctif ne filtre QUE delivered_outcome.
+    const result = computeLossAnalytics({
+      auditLogs: [
+        audit({
+          payload: {
+            nextDimensions: { delivery_state: 'failed', order_state: 'cancelled' },
+            priorDimensions: { delivery_state: 'out_for_delivery', order_state: 'open' },
+          },
+          resourceId: 'order-rto-desannule',
+        }),
+      ],
+      customers: [],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          deliveryState: 'unassigned',
+          id: 'order-rto-desannule',
+          orderState: 'open',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    expect(result.summary.rtoCount).toBe(1);
+  });
 });

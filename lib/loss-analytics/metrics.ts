@@ -356,13 +356,31 @@ function rateSummary(
 const DEFAULT_COHORT_MATURITY_DAYS = 3;
 const MAX_COHORT_MATURITY_DAYS = 14;
 
+// Commandes dont l'état COURANT est « livrée ». Sert à écarter les événements
+// `delivered_outcome` d'une livraison qui n'existe plus — cas « Invalider » (0116) : l'audit
+// du clic Livrer subsiste volontairement (l'historique n'est jamais réécrit), mais la
+// livraison, elle, n'a jamais eu lieu.
+//
+// N'est appliqué QU'à `delivered_outcome`. Les événements `cancellation`, `return` et `rto`
+// gardent délibérément leur sémantique « courant OU historique » (`hasRtoEvent`,
+// `hasReturnEvent`) : qu'une commande ait connu un RTO reste un fait même après un
+// désannulement, et c'est un choix produit documenté, pas un oubli.
+function deliveredOrderIdSet(orders: LossAnalyticsOrder[]): Set<string> {
+  return new Set(
+    orders.filter((order) => order.deliveryState === 'delivered').map((order) => order.id),
+  );
+}
+
 export function deriveCohortMaturityDays(
   orders: LossAnalyticsOrder[],
   events: LossEvent[],
 ): number {
   const createdAtByOrderId = new Map(orders.map((order) => [order.id, order.createdAt]));
+  // Le délai création→livraison ne se mesure que sur des livraisons réelles : une commande
+  // invalidée fausserait la moyenne avec un délai qui ne correspond à aucune livraison.
+  const deliveredOrderIds = deliveredOrderIdSet(orders);
   const deliveryDelays = events.flatMap((event) => {
-    if (event.type !== 'delivered_outcome') {
+    if (event.type !== 'delivered_outcome' || !deliveredOrderIds.has(event.orderId)) {
       return [];
     }
 
@@ -430,6 +448,7 @@ export function computeLossAnalytics({
   toISO: string;
 }): LossAnalyticsResult {
   const events = parseLossEvents(auditLogs);
+  const deliveredOrderIds = deliveredOrderIdSet(orders);
   const cohortMaturityDays = deriveCohortMaturityDays(orders, events);
   const eventsByOrderId = new Map<string, Set<LossEventType>>();
   const customerById = new Map(customers.map((customer) => [customer.id, customer]));
@@ -611,7 +630,11 @@ export function computeLossAnalytics({
       point.rtoCount += 1;
       point.rtoDenominator += 1;
     }
-    if (event.type === 'delivered_outcome') {
+    // Même garde que deriveCohortMaturityDays : une livraison invalidée ne compte plus, ni
+    // dans le nombre de livraisons du jour, ni dans le dénominateur du taux de RTO
+    // journalier (où elle diluait le taux affiché). Les 3 autres types d'événements
+    // ci-dessus restent volontairement historiques.
+    if (event.type === 'delivered_outcome' && deliveredOrderIds.has(event.orderId)) {
       point.deliveredCount += 1;
       point.rtoDenominator += 1;
     }
