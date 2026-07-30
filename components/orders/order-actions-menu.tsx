@@ -64,10 +64,18 @@ const transitionMenuOrder: TransitionAction[] = [
   'demarrer_livraison',
   'livrer',
   'mark_returned',
+  // « Invalider » (0116) se lit juste après « Marquer retournée » : ce sont les deux seules
+  // sorties d'une commande livrée, et les présenter côte à côte rend le choix explicite.
+  'invalider',
   'desannuler',
 ];
 
-const destructiveActions = new Set<TransitionAction>(['annuler', 'mark_returned', 'refuser']);
+const destructiveActions = new Set<TransitionAction>([
+  'annuler',
+  'mark_returned',
+  'refuser',
+  'invalider',
+]);
 
 export function OrderActionsMenu({
   allowedActions,
@@ -202,6 +210,8 @@ export function OrderActionsMenu({
         return 'Marquer livree';
       case 'mark_returned':
         return 'Marquer retournée';
+      case 'invalider':
+        return 'Invalider';
       case 'refuser':
         return 'Refuser';
       case 'reprogrammer':

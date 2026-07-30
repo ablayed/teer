@@ -18,7 +18,8 @@ const expectedTransitions: Record<OrderStatus, OrderStatus[]> = {
   // Phase 11.1 : self-loop EN_LIVRAISON→EN_LIVRAISON (assigned→out_for_delivery).
   // Refuser → Reprogrammer : REFUSEE retirée, PROGRAMMEE ajoutée (reprogrammer).
   EN_LIVRAISON: ['EN_LIVRAISON', 'LIVREE', 'PROGRAMMEE', 'ANNULEE'],
-  LIVREE: [],
+  // 0116 « Invalider » : LIVREE n'est plus terminale, A_APPELER en est la seule sortie.
+  LIVREE: ['A_APPELER'],
   REFUSEE: [],
   ANNULEE: [],
 };
@@ -66,7 +67,8 @@ describe('COD order state machine', () => {
   });
 
   it('identifies terminal statuses', () => {
-    expect(isTerminal('LIVREE')).toBe(true);
+    // 0116 : LIVREE a quitté cette liste — « Invalider » lui ouvre A_APPELER.
+    expect(isTerminal('LIVREE')).toBe(false);
     expect(isTerminal('REFUSEE')).toBe(true);
     expect(isTerminal('ANNULEE')).toBe(true);
 

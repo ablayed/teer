@@ -37,8 +37,14 @@ describe('server transition actions', () => {
       'annuler',
       'reprogrammer',
     ]);
-    expect(getAllowedTransitionActions('LIVREE', 'owner')).toEqual(['mark_returned']);
-    expect(getAllowedTransitionActions('LIVREE', 'manager')).toEqual(['mark_returned']);
+    // 0116 : « Invalider » rejoint « Marquer retournée » sur une commande livrée — deux
+    // sorties distinctes (retour réel vs livraison qui n'a jamais eu lieu), owner/manager
+    // seulement. L'agent reste sans aucune action sur une commande livrée.
+    expect(getAllowedTransitionActions('LIVREE', 'owner')).toEqual(['mark_returned', 'invalider']);
+    expect(getAllowedTransitionActions('LIVREE', 'manager')).toEqual([
+      'mark_returned',
+      'invalider',
+    ]);
     expect(getAllowedTransitionActions('LIVREE', 'agent')).toEqual([]);
     expect(getAllowedTransitionActions('CONFIRMEE', 'manager')).toEqual([
       'programmer',

@@ -70,6 +70,7 @@ const actionLabels: Record<TransitionAction, string> = {
   reprogrammer: 'Reprogrammer',
   deconfirmer: 'Déconfirmer',
   desannuler: 'Désannuler',
+  invalider: 'Invalider',
 };
 
 const DesktopKanbanBoard = dynamic(

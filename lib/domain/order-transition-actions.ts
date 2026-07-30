@@ -14,6 +14,7 @@ export const transitionActions = [
   'reprogrammer',
   'deconfirmer',
   'desannuler',
+  'invalider',
 ] as const;
 
 export type TransitionAction = (typeof transitionActions)[number];
@@ -132,6 +133,11 @@ export type TransitionDimensionPatch = {
   clearCancelReasons?: boolean;
   clearScheduledFor?: boolean;
   deliveryState?: DeliveryStateDimension;
+  // 0116 — demande explicite d'invalidation d'une livraison. Ce n'est pas une dimension :
+  // elle pilote la branche dédiée de transition_order (effacement des dates de
+  // confirmation/encaissement + contre-passation de stock), que la RPC ne déduit
+  // volontairement jamais des seules dimensions.
+  invalidateDelivered?: boolean;
   nextContactAt?: string;
   orderState?: OrderStateDimension;
   paymentChannelAtDelivery?: PaymentChannelAtDelivery;
@@ -229,6 +235,17 @@ export const transitionCatalog: readonly TransitionCatalogItem[] = [
   {
     action: 'desannuler',
     label: 'Désannuler',
+    roles: ['owner', 'manager'],
+    target: 'A_APPELER',
+  },
+  // « Invalider » (0116) : la livraison n'a jamais eu lieu, la commande repart à zéro.
+  // À NE PAS confondre avec « Marquer retournée », qui reste inchangée et enregistre un
+  // vrai RETOUR (REFUSEE, RTO, reprise de cash, courier_return). RBAC owner/manager,
+  // aligné sur mark_returned et desannuler — jamais l'agent. Comme les autres actions
+  // reverse, exclue de getTransitionActionForTarget.
+  {
+    action: 'invalider',
+    label: 'Invalider',
     roles: ['owner', 'manager'],
     target: 'A_APPELER',
   },
@@ -445,8 +462,17 @@ export function getAllowedTransitionActionsForDimensions(
 ): TransitionAction[] {
   if (dimensions.orderState !== 'open') {
     if (dimensions.orderState === 'completed' && dimensions.deliveryState === 'delivered') {
+      // Deux sorties, jamais confondues : « Marquer retournée » enregistre un retour réel
+      // (REFUSEE), « Invalider » (0116) dit que la livraison n'a jamais eu lieu et ramène
+      // la commande à « À appeler ». La garde cash (déjà remis → refus) n'est PAS ici :
+      // ces dimensions ne portent pas cashState, elle vit dans performTransitionForContext
+      // et, en dernier ressort, dans transition_order.
       return transitionCatalog
-        .filter((item) => item.action === 'mark_returned' && item.roles.includes(role))
+        .filter(
+          (item) =>
+            (item.action === 'mark_returned' || item.action === 'invalider') &&
+            item.roles.includes(role),
+        )
         .map((item) => item.action);
     }
 
@@ -474,7 +500,8 @@ export function getAllowedTransitionActionsForDimensions(
           // Jamais légale sur une commande ouverte (gérée ci-dessus).
           return false;
         case 'mark_returned':
-          // Jamais légale sur une commande ouverte : cas spécial completed/delivered ci-dessus.
+        case 'invalider':
+          // Jamais légales sur une commande ouverte : cas spécial completed/delivered ci-dessus.
           return false;
         case 'deconfirmer':
           return (
@@ -674,6 +701,25 @@ export function buildTransitionDimensionPatch(
         deliveryState: 'unassigned',
         orderState: 'open',
       };
+    // 0116 — invalider : les 4 dimensions reviennent EXACTEMENT à celles d'« À appeler »
+    // (cf. legacyStatusToDimensions('A_APPELER')), livreur, date programmée et raisons
+    // effacés. `invalidateDelivered` déclenche en plus, côté RPC, la remise à NULL de
+    // cash_collected_at/call_confirmed_at et la contre-passation de stock.
+    //
+    // `attemptCount` n'est volontairement PAS remis à 0 : c'est un compteur d'historique
+    // d'appels, pas une dimension d'état (aucune autre action reverse — deconfirmer,
+    // desannuler — ne le réinitialise non plus).
+    case 'invalider':
+      return {
+        callState: 'to_call',
+        cashState: 'not_due',
+        clearAssignedDriver: true,
+        clearCancelReasons: true,
+        clearScheduledFor: true,
+        deliveryState: 'unassigned',
+        invalidateDelivered: true,
+        orderState: 'open',
+      };
   }
 }
 
@@ -705,6 +751,7 @@ export function getTransitionActionForTarget(
         // (sinon « A_APPELER » deviendrait actionnable via les chemins inline).
         item.action !== 'deconfirmer' &&
         item.action !== 'desannuler' &&
+        item.action !== 'invalider' &&
         item.action !== 'mark_returned' &&
         // Phase 11.1 : « demarrer_livraison » partage la cible EN_LIVRAISON avec
         // « assigner » → exclue ici pour que la sélection par target (chemins

@@ -166,7 +166,67 @@ describe('order state dimensions', () => {
     expect(returned.deliveryState).toBe('returned');
     expect(returned.cashState).toBe('not_due');
     expect(returned.codStatus).toBe('REFUSEE');
-    expect(getAllowedTransitionActionsForDimensions(delivered, 'owner')).toEqual(['mark_returned']);
+    expect(getAllowedTransitionActionsForDimensions(delivered, 'owner')).toEqual([
+      'mark_returned',
+      'invalider',
+    ]);
     expect(getAllowedTransitionActionsForDimensions(returned, 'owner')).toEqual([]);
+  });
+
+  // ── 0116 — « Invalider » (LIVREE → À appeler) ─────────────────────────────────
+  it("invalider ramène les 4 dimensions à celles d'« À appeler » et efface le livreur", () => {
+    const delivered = {
+      ...legacyStatusToDimensions('LIVREE'),
+      assignedDriverId: 'driver-1',
+      scheduledFor: '2026-07-20T10:00:00.000Z',
+    };
+    const patch = buildTransitionDimensionPatch('invalider', delivered);
+    const invalidated = applyPatch(delivered, patch);
+    const initial = legacyStatusToDimensions('A_APPELER');
+
+    expect(invalidated.orderState).toBe(initial.orderState);
+    expect(invalidated.callState).toBe(initial.callState);
+    expect(invalidated.deliveryState).toBe(initial.deliveryState);
+    expect(invalidated.cashState).toBe(initial.cashState);
+    expect(invalidated.codStatus).toBe('A_APPELER');
+
+    // Effacements explicites : le RPC ne sait pas mettre NULL par simple coalesce.
+    expect(patch.clearAssignedDriver).toBe(true);
+    expect(patch.clearScheduledFor).toBe(true);
+    expect(patch.clearCancelReasons).toBe(true);
+    // Le drapeau qui déclenche, côté RPC, l'effacement des dates + la contre-passation.
+    expect(patch.invalidateDelivered).toBe(true);
+  });
+
+  it('invalider est réservée à owner/manager et jamais légale hors commande livrée', () => {
+    const delivered = legacyStatusToDimensions('LIVREE');
+    expect(getAllowedTransitionActionsForDimensions(delivered, 'agent')).toEqual([]);
+
+    for (const status of [
+      'A_APPELER',
+      'TENTEE',
+      'CONFIRMEE',
+      'PROGRAMMEE',
+      'EN_LIVRAISON',
+    ] as const) {
+      expect(
+        getAllowedTransitionActionsForDimensions(legacyStatusToDimensions(status), 'owner'),
+      ).not.toContain('invalider');
+    }
+    // Retour terminal et annulation : « Invalider » n'y est jamais proposée non plus.
+    for (const status of ['REFUSEE', 'ANNULEE'] as const) {
+      expect(
+        getAllowedTransitionActionsForDimensions(legacyStatusToDimensions(status), 'owner'),
+      ).not.toContain('invalider');
+    }
+  });
+
+  it("mark_returned garde exactement le comportement d'avant 0116", () => {
+    const delivered = legacyStatusToDimensions('LIVREE');
+    expect(buildTransitionDimensionPatch('mark_returned', delivered)).toEqual({
+      cashState: 'not_due',
+      deliveryState: 'returned',
+      orderState: 'returned',
+    });
   });
 });

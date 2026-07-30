@@ -38,9 +38,17 @@ export type TransitionErrorCode =
   | 'invalid_date_before_creation'
   | 'invalid_date_future'
   | 'illegal_transition'
+  // 0116 — invalidation refusée parce que le cash a déjà été remis par le livreur.
+  | 'invalid_invalidate_cash_settled'
   | 'missing_driver_for_dispatch'
   | 'order_not_found'
   | 'update_failed';
+
+// 0116 — un seul message, partagé par la garde TS (pré-mutation, pour un retour immédiat)
+// et par le mapping de l'exception SQL (filet incontournable). Les deux doivent dire
+// exactement la même chose à l'utilisateur.
+const INVALIDATE_CASH_SETTLED_MESSAGE =
+  'Le versement de cette commande a déjà été enregistré. Corrigez le versement du livreur avant de pouvoir invalider la livraison.';
 
 // 0114 — transition_order lève une exception nommée par borne violée. Sans ce mapping,
 // une date hors bornes tomberait dans le `update_failed` générique, dont le message
@@ -48,7 +56,10 @@ export type TransitionErrorCode =
 // bons, c'est la date qui ne l'est pas. L'ordre de test n'importe pas — la RPC ne lève
 // qu'une seule de ces exceptions par appel.
 const dateBoundErrorMessages: Record<
-  'invalid_confirmation_after_delivery' | 'invalid_date_before_creation' | 'invalid_date_future',
+  | 'invalid_confirmation_after_delivery'
+  | 'invalid_date_before_creation'
+  | 'invalid_date_future'
+  | 'invalid_invalidate_cash_settled',
   string
 > = {
   invalid_confirmation_after_delivery:
@@ -56,6 +67,9 @@ const dateBoundErrorMessages: Record<
   invalid_date_before_creation:
     'Cette date ne peut pas être antérieure à la création de la commande.',
   invalid_date_future: 'Cette date ne peut pas être dans le futur.',
+  // 0116 — même mécanisme de mapping : sans lui, cette garde tomberait dans le
+  // `update_failed` générique (« Vérifiez vos droits »), message factuellement faux.
+  invalid_invalidate_cash_settled: INVALIDATE_CASH_SETTLED_MESSAGE,
 };
 
 function dateBoundErrorFrom(message: string | undefined): TransitionResult | null {
@@ -169,6 +183,7 @@ function transitionRpc(supabase: SupabaseServerClient) {
       p_clear_scheduled_for?: boolean;
       p_clear_cancel_reasons?: boolean;
       p_clear_assigned_driver?: boolean;
+      p_invalidate_delivered?: boolean;
     },
   ) => Promise<PostgrestSingleResponse<string>>;
 }
@@ -335,6 +350,18 @@ export async function performTransitionForContext({
     );
   }
 
+  // 0116 — garde cash de l'invalidation, en défense en profondeur. transition_order la
+  // repose côté SQL (elle est donc incontournable, y compris par appel RPC direct) ; ici
+  // elle évite un aller-retour et rend le message sans dépendre du parsing d'exception.
+  // « remitted »/« discrepancy » : un cash_settlement existe déjà, or cette action ne sait
+  // pas le contre-passer et n'écrit aucun audit — cf. commentaire de tête de 0116.
+  if (
+    transitionPatch.invalidateDelivered &&
+    (order.cash_state === 'remitted' || order.cash_state === 'discrepancy')
+  ) {
+    return transitionError('invalid_invalidate_cash_settled', INVALIDATE_CASH_SETTLED_MESSAGE);
+  }
+
   const { data: nextStatus, error: transitionErrorResult } = await transitionRpc(supabase)(
     'transition_order',
     {
@@ -358,6 +385,7 @@ export async function performTransitionForContext({
       ...(transitionPatch.clearScheduledFor ? { p_clear_scheduled_for: true } : {}),
       ...(transitionPatch.clearCancelReasons ? { p_clear_cancel_reasons: true } : {}),
       ...(transitionPatch.clearAssignedDriver ? { p_clear_assigned_driver: true } : {}),
+      ...(transitionPatch.invalidateDelivered ? { p_invalidate_delivered: true } : {}),
       ...(transitionPatch.nextContactAt
         ? { p_next_contact_at: transitionPatch.nextContactAt }
         : {}),
@@ -395,40 +423,53 @@ export async function performTransitionForContext({
   }
 
   const updatedDimensions = resolveOrderDimensions(updatedOrder);
-  const auditError = await writeTransitionAudit({
-    action,
-    actorUserId,
-    from: currentStatus,
-    fromDimensions: {
-      assigned_driver_id: order.assigned_driver_id,
-      attempt_count: order.attempt_count,
-      call_state: order.call_state,
-      cancel_reason: order.cancel_reason,
-      cancel_reasons: order.cancel_reasons,
-      cash_state: order.cash_state,
-      delivery_state: order.delivery_state,
-      next_contact_at: order.next_contact_at,
-      order_state: order.order_state,
-      scheduled_for: order.scheduled_for,
-    },
-    merchantAccountId: order.merchant_account_id,
-    nextDimensions: {
-      assigned_driver_id: updatedOrder.assigned_driver_id,
-      attempt_count: updatedOrder.attempt_count,
-      call_state: updatedOrder.call_state,
-      cancel_reason: updatedOrder.cancel_reason,
-      cancel_reasons: updatedOrder.cancel_reasons,
-      cash_state: updatedOrder.cash_state,
-      delivery_state: updatedOrder.delivery_state,
-      next_contact_at: updatedOrder.next_contact_at,
-      order_state: updatedOrder.order_state,
-      scheduled_for: updatedOrder.scheduled_for,
-    },
-    note: note ?? null,
-    orderId: order.id,
-    paymentChannelAtDelivery: paymentChannelAtDelivery ?? null,
-    to: updatedOrder.cod_status,
-  });
+
+  // ⚠️ EXCEPTION DÉLIBÉRÉE ET UNIQUE À LA CONVENTION DU PROJET (0116, « Invalider »).
+  // Toute action sensible pose normalement une ligne `audit_log` ; celle-ci n'en pose
+  // AUCUNE — ni visible dans l'UI, ni cachée en base. C'est une décision produit explicite
+  // du porteur, assumée en connaissance de cause, pas un oubli et pas une régression.
+  // NE PAS « corriger » en rebranchant writeTransitionAudit ici : ce serait réintroduire
+  // une trace que le porteur a demandé de ne pas garder. Documenté dans CLAUDE.md.
+  // La RPC ne pose pas non plus de ligne `order_state_transition` pour cette action : le
+  // porteur veut zéro trace persistée, y compris technique. L'anti-rejeu ne repose pas sur
+  // cette ligne mais sur la garde d'état de `transition_order` (cf. point 7 de `0116`).
+  const auditError =
+    action === 'invalider'
+      ? null
+      : await writeTransitionAudit({
+          action,
+          actorUserId,
+          from: currentStatus,
+          fromDimensions: {
+            assigned_driver_id: order.assigned_driver_id,
+            attempt_count: order.attempt_count,
+            call_state: order.call_state,
+            cancel_reason: order.cancel_reason,
+            cancel_reasons: order.cancel_reasons,
+            cash_state: order.cash_state,
+            delivery_state: order.delivery_state,
+            next_contact_at: order.next_contact_at,
+            order_state: order.order_state,
+            scheduled_for: order.scheduled_for,
+          },
+          merchantAccountId: order.merchant_account_id,
+          nextDimensions: {
+            assigned_driver_id: updatedOrder.assigned_driver_id,
+            attempt_count: updatedOrder.attempt_count,
+            call_state: updatedOrder.call_state,
+            cancel_reason: updatedOrder.cancel_reason,
+            cancel_reasons: updatedOrder.cancel_reasons,
+            cash_state: updatedOrder.cash_state,
+            delivery_state: updatedOrder.delivery_state,
+            next_contact_at: updatedOrder.next_contact_at,
+            order_state: updatedOrder.order_state,
+            scheduled_for: updatedOrder.scheduled_for,
+          },
+          note: note ?? null,
+          orderId: order.id,
+          paymentChannelAtDelivery: paymentChannelAtDelivery ?? null,
+          to: updatedOrder.cod_status,
+        });
 
   if (auditError) {
     return transitionError('audit_failed', "La transition est appliquee, mais l'audit a echoue.");
