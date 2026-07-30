@@ -2639,14 +2639,186 @@ describe('0116 - Invalider une commande livree', () => {
         .eq('resource_id', orderId);
       expect(auditRows).toEqual([]);
 
-      // La ligne order_state_transition, elle, reste posee : ce n'est pas un audit mais
-      // l'ancre d'idempotence des mouvements de stock (p_transition_id).
+      // Ni AUCUNE ligne order_state_transition : l'invalidation est la seule branche de
+      // transition_order qui ne pose pas son historique. Les transitions des vies
+      // ANTERIEURES de la commande restent, elles, intactes — seule l'invalidation
+      // elle-meme n'apparait nulle part.
       const { data: transitions } = await admin
         .from('order_state_transition')
         .select('to_status')
         .eq('order_id', orderId)
         .order('created_at');
-      expect(transitions?.at(-1)?.to_status).toBe('A_APPELER');
+      // driveOrderToDelivered pose validated+scheduled dans le MEME appel : la premiere
+      // transition est donc PROGRAMMEE, pas CONFIRMEE.
+      expect(transitions?.map((t) => t.to_status)).toEqual([
+        'PROGRAMMEE',
+        'EN_LIVRAISON',
+        'LIVREE',
+      ]);
+      expect(transitions?.some((t) => t.to_status === 'A_APPELER')).toBe(false);
+
+      // Les mouvements de compensation portent donc transition_id = NULL : la colonne est
+      // une FK vers order_state_transition(id), un UUID fantome la violerait.
+      const { data: compensations } = await admin
+        .from('stock_movement')
+        .select('movement_type, qty, transition_id')
+        .eq('order_id', orderId)
+        .in('movement_type', ['dispatch', 'sold'])
+        .order('created_at');
+      const reversals = (compensations ?? []).filter((m) =>
+        m.movement_type === 'dispatch' ? (m.qty ?? 0) > 0 : (m.qty ?? 0) < 0,
+      );
+      expect(reversals).toHaveLength(2);
+      for (const movement of reversals) {
+        expect(movement.transition_id).toBeNull();
+      }
+    },
+  );
+
+  skipIfNoServiceRole(
+    'rejeu : un second appel identique echoue en illegal_invalidation, sans double compensation',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-replay');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 3 },
+      ]);
+      await driveOrderToDelivered(owner, userId, orderId, driverId);
+
+      const first = await transitionRpc(owner)('transition_order', invalidateArgs(userId, orderId));
+      expect(first.error).toBeNull();
+      const afterFirst = await readStock(admin, productId);
+      expect(afterFirst).toMatchObject({ qty_on_hand: 50, qty_reserved: 0 });
+
+      // Rejeu (double-clic, retry reseau). Les cles d'idempotence NE protegent pas ici :
+      // v_transition_id est neuf a chaque appel, donc les cles du second appel seraient
+      // differentes et ne se dedupliqueraient pas. C'est la GARDE D'ETAT qui arrete le
+      // rejeu, avant toute ecriture de stock.
+      const replay = await transitionRpc(owner)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(replay.error?.message).toContain('illegal_invalidation');
+
+      // Aucune double compensation : positions inchangees, et le nombre de mouvements n'a
+      // pas bouge (le rejeu n'a rien ecrit du tout).
+      expect(await readStock(admin, productId)).toEqual(afterFirst);
+      const { count } = await admin
+        .from('stock_movement')
+        .select('id', { count: 'exact', head: true })
+        .eq('order_id', orderId);
+      const net = movementNetByType(
+        (await admin.from('stock_movement').select('movement_type, qty').eq('order_id', orderId))
+          .data ?? [],
+      );
+      expect(net.get('dispatch')).toBe(0);
+      expect(net.get('sold')).toBe(0);
+
+      // Et le rejeu n'a pas non plus posé de ligne d'historique fantome.
+      const { data: transitions } = await admin
+        .from('order_state_transition')
+        .select('to_status')
+        .eq('order_id', orderId);
+      expect(transitions?.some((t) => t.to_status === 'A_APPELER')).toBe(false);
+
+      // Deux appels concurrents : le select … for update serialise, le second relit la ligne
+      // validee apres obtention du verrou et tombe donc sur la meme garde.
+      const concurrentOrderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 3 },
+      ]);
+      // Reference prise AVANT le dispatch de cette 2e commande (50 en stock), pour que
+      // l'assertion finale prouve UNE seule contre-passation et non deux.
+      const beforeConcurrent = await readStock(admin, productId);
+      await driveOrderToDelivered(owner, userId, concurrentOrderId, driverId);
+      const [a, b] = await Promise.all([
+        transitionRpc(owner)('transition_order', invalidateArgs(userId, concurrentOrderId)),
+        transitionRpc(owner)('transition_order', invalidateArgs(userId, concurrentOrderId)),
+      ]);
+      const outcomes = [a, b];
+      expect(outcomes.filter((r) => r.error === null)).toHaveLength(1);
+      expect(outcomes.filter((r) => r.error !== null)).toHaveLength(1);
+      expect(outcomes.find((r) => r.error !== null)?.error?.message).toContain(
+        'illegal_invalidation',
+      );
+      // Le dispatch de cette 2e commande est reparti puis revenu : position finale identique
+      // a celle d'avant, une seule fois — pas deux.
+      expect(await readStock(admin, productId)).toEqual(beforeConcurrent);
+      expect(count).toBeGreaterThan(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'double invalidation dans le temps : les cles des deux passages restent distinctes',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('invalidate-twice');
+      const productId = await createProduct(admin, merchantAccountId);
+      const driverId = await createDriver(admin, merchantAccountId);
+      const owner = await signIn(email);
+      await purchaseIn(owner, merchantAccountId, productId, userId, 50);
+      const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+        { productId, qty: 3 },
+      ]);
+
+      // Vie 1 : livree puis invalidee.
+      await driveOrderToDelivered(owner, userId, orderId, driverId);
+      const firstPass = await transitionRpc(owner)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(firstPass.error).toBeNull();
+      const keysAfterFirst = new Set(
+        (
+          await admin.from('stock_movement').select('idempotency_key').eq('order_id', orderId)
+        ).data?.map((m) => m.idempotency_key),
+      );
+
+      // Vie 2 : la commande est re-traitee normalement, re-livree, puis invalidee A NOUVEAU.
+      // Sans UUID neuf par execution, les cles du 2e passage collisionneraient avec celles du
+      // 1er : post_stock_movement dedupliquerait silencieusement et la compensation ne serait
+      // JAMAIS posee — stock central durablement faux, sans aucune erreur remontee.
+      await admin.from('orders').update({ assigned_driver_id: driverId }).eq('id', orderId);
+      await driveOrderToDelivered(owner, userId, orderId, driverId);
+      const secondPass = await transitionRpc(owner)(
+        'transition_order',
+        invalidateArgs(userId, orderId),
+      );
+      expect(secondPass.error).toBeNull();
+      expect(secondPass.data).toBe('A_APPELER');
+
+      const allKeys = (
+        await admin.from('stock_movement').select('idempotency_key').eq('order_id', orderId)
+      ).data?.map((m) => m.idempotency_key);
+      // Aucune collision, et le 2e passage a bien ajoute ses propres mouvements.
+      expect(new Set(allKeys).size).toBe(allKeys?.length);
+      expect((allKeys?.length ?? 0) > keysAfterFirst.size).toBe(true);
+
+      // Les deux allers-retours se sont annules : position finale = position de depart.
+      expect(await readStock(admin, productId)).toMatchObject({
+        qty_on_hand: 50,
+        qty_reserved: 0,
+      });
+      const net = movementNetByType(
+        (await admin.from('stock_movement').select('movement_type, qty').eq('order_id', orderId))
+          .data ?? [],
+      );
+      expect(net.get('dispatch')).toBe(0);
+      expect(net.get('sold')).toBe(0);
+      expect(await driverHand(admin, productId, driverId)).toBe(0);
+      expect(await reconcileDiscrepancyFor(admin, productId)).toHaveLength(0);
+
+      // Toujours aucune trace des DEUX invalidations dans l'historique, alors que les deux
+      // vies ont bien laisse leurs transitions normales (2 x CONFIRMEE/…/LIVREE).
+      const { data: transitions } = await admin
+        .from('order_state_transition')
+        .select('to_status')
+        .eq('order_id', orderId);
+      expect(transitions?.some((t) => t.to_status === 'A_APPELER')).toBe(false);
+      expect(transitions?.filter((t) => t.to_status === 'LIVREE')).toHaveLength(2);
     },
   );
 

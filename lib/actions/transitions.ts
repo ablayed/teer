@@ -430,8 +430,9 @@ export async function performTransitionForContext({
   // du porteur, assumée en connaissance de cause, pas un oubli et pas une régression.
   // NE PAS « corriger » en rebranchant writeTransitionAudit ici : ce serait réintroduire
   // une trace que le porteur a demandé de ne pas garder. Documenté dans CLAUDE.md.
-  // (La ligne `order_state_transition` posée par la RPC reste, elle, indispensable : c'est
-  // l'ancre d'idempotence des mouvements de stock, pas une trace d'audit.)
+  // La RPC ne pose pas non plus de ligne `order_state_transition` pour cette action : le
+  // porteur veut zéro trace persistée, y compris technique. L'anti-rejeu ne repose pas sur
+  // cette ligne mais sur la garde d'état de `transition_order` (cf. point 7 de `0116`).
   const auditError =
     action === 'invalider'
       ? null

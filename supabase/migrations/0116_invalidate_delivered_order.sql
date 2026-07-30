@@ -82,13 +82,34 @@
 --    convention du projet. Rien à faire ici : `transition_order` n'a jamais écrit
 --    `audit_log` (c'est `lib/actions/transitions.ts` qui le fait) ; c'est donc côté TS que
 --    l'exception est implémentée, et documentée dans CLAUDE.md.
---    La ligne `order_state_transition` reste posée : ce n'est pas une trace d'audit mais
---    l'ancre d'idempotence des mouvements de stock (`p_transition_id` alimente toutes les
---    clés d'idempotence ci-dessous) — la retirer casserait la contre-passation elle-même.
 --
--- PORTÉE : signature (+1 paramètre), 2 gardes, 4 colonnes de l'UPDATE, 1 condition élargie
--- et 1 boucle de contre-passation. Tout le reste de `transition_order` est repris VERBATIM
--- de `0114` (fichier copié puis patché, à vérifier par `diff` avant merge).
+-- 7) AUCUNE ligne `order_state_transition` NON PLUS — extension de la décision (6) : le
+--    porteur veut zéro trace persistée de ce geste, y compris technique. L'invalidation est
+--    donc la SEULE branche de `transition_order` qui ne pose pas sa ligne d'historique.
+--    * `v_transition_id` reçoit alors un `gen_random_uuid()` construit EN MÉMOIRE, jamais
+--      inséré nulle part. Il ne sert qu'à préfixer les clés d'idempotence des mouvements
+--      posés PENDANT CET APPEL, pour qu'elles restent uniques et distinctes de celles de
+--      toute autre exécution (y compris d'une future seconde invalidation de la même
+--      commande, après re-livraison).
+--    * `stock_movement.transition_id` a une CONTRAINTE DE CLÉ ÉTRANGÈRE vers
+--      `order_state_transition(id)` (`0028`, `on delete set null`). Passer cet UUID fantôme
+--      en `p_transition_id` violerait donc la FK et ferait échouer TOUTE l'invalidation.
+--      C'est pourquoi `v_movement_transition_id` est introduite : elle vaut `v_transition_id`
+--      partout ailleurs, et `NULL` sur le chemin d'invalidation. La colonne est nullable et
+--      n'est LUE par aucune requête de production (vérifié : seuls `post_stock_movement`,
+--      `reassign_order_driver` et `transition_order` la mentionnent, en écriture).
+--    * La protection anti-rejeu ne repose PAS sur ces clés — elle n'y a jamais reposé, même
+--      avant ce changement : `v_transition_id` étant neuf à chaque appel, deux appels
+--      distincts produisent des clés distinctes et ne se dédupliquent donc jamais entre eux
+--      (comportement déjà verrouillé par le test « le cycle ne déduplique pas »). Le rejeu
+--      est arrêté par la GARDE D'ÉTAT (2) : le `select … for update` en tête de fonction
+--      sérialise les appels concurrents et relit la ligne validée après obtention du verrou,
+--      donc un second appel voit `open`/`unassigned` et lève `illegal_invalidation` AVANT
+--      la moindre écriture de stock. Prouvé par test, pas déduit.
+--
+-- PORTÉE : signature (+1 paramètre), 2 gardes, 4 colonnes de l'UPDATE, 1 condition élargie,
+-- 1 insert d'historique rendu conditionnel et 1 boucle de contre-passation. Tout le reste de
+-- `transition_order` est repris VERBATIM de `0114` (fichier copié puis patché).
 -- « Marquer retournée » n'est PAS touchée : ni sa branche de reprise de cash, ni son
 -- `courier_return`, ni sa garde `illegal_return_transition`.
 
@@ -159,6 +180,11 @@ declare
   v_effective_delivered_at    timestamptz;
   -- 0116 — contre-passation de stock à l'invalidation.
   v_invalidation_reversal     record;
+  -- 0116 — transition_id RÉELLEMENT persisté, à passer aux mouvements de stock. Identique à
+  -- v_transition_id partout, sauf à l'invalidation où aucune ligne d'historique n'existe :
+  -- il vaut alors NULL, car stock_movement.transition_id est une FK vers
+  -- order_state_transition(id) et n'accepterait pas un UUID inexistant.
+  v_movement_transition_id    uuid;
 begin
   select *
     into v_order
@@ -352,25 +378,36 @@ begin
    where id = p_order_id
    returning cod_status into v_next_status;
 
-  insert into public.order_state_transition (
-    merchant_account_id,
-    order_id,
-    from_status,
-    to_status,
-    actor_user_id,
-    note,
-    created_at
-  )
-  values (
-    v_order.merchant_account_id,
-    v_order.id,
-    v_order.cod_status,
-    v_next_status,
-    p_actor,
-    p_note,
-    now()
-  )
-  returning id into v_transition_id;
+  -- 0116 — SEULE branche de la fonction qui ne pose PAS sa ligne d'historique (point 7 de
+  -- l'en-tête). L'UUID généré ici n'est jamais inséré : il ne sert qu'à rendre les clés
+  -- d'idempotence de CET appel uniques. `v_movement_transition_id` reste NULL pour ne pas
+  -- violer la FK stock_movement.transition_id → order_state_transition(id).
+  if p_invalidate_delivered then
+    v_transition_id := gen_random_uuid();
+    v_movement_transition_id := null;
+  else
+    insert into public.order_state_transition (
+      merchant_account_id,
+      order_id,
+      from_status,
+      to_status,
+      actor_user_id,
+      note,
+      created_at
+    )
+    values (
+      v_order.merchant_account_id,
+      v_order.id,
+      v_order.cod_status,
+      v_next_status,
+      p_actor,
+      p_note,
+      now()
+    )
+    returning id into v_transition_id;
+
+    v_movement_transition_id := v_transition_id;
+  end if;
 
   if v_order.order_state = 'completed'
      and v_order.delivery_state = 'delivered'
@@ -504,7 +541,7 @@ begin
                                      || ':advance_commit',
             p_created_by          := p_actor,
             p_order_id            := p_order_id,
-            p_transition_id       := v_transition_id,
+            p_transition_id       := v_movement_transition_id,
             p_driver_id           := v_effective_driver_id
           );
         end if;
@@ -520,7 +557,7 @@ begin
                                      || ':dispatch',
             p_created_by          := p_actor,
             p_order_id            := p_order_id,
-            p_transition_id       := v_transition_id,
+            p_transition_id       := v_movement_transition_id,
             p_driver_id           := v_effective_driver_id
           );
         end if;
@@ -540,7 +577,7 @@ begin
                                    || ':' || v_movement_type,
           p_created_by          := p_actor,
           p_order_id            := p_order_id,
-          p_transition_id       := v_transition_id,
+          p_transition_id       := v_movement_transition_id,
           p_driver_id           := v_effective_driver_id
         );
       end if;
@@ -568,7 +605,7 @@ begin
                                  || ':order_assignment_commit',
         p_created_by          := p_actor,
         p_order_id            := p_order_id,
-        p_transition_id       := v_transition_id,
+        p_transition_id       := v_movement_transition_id,
         p_driver_id           := v_effective_driver_id
       );
     end loop;
@@ -639,7 +676,7 @@ begin
                                  || ':order_assignment_release',
         p_created_by          := p_actor,
         p_order_id            := p_order_id,
-        p_transition_id       := v_transition_id,
+        p_transition_id       := v_movement_transition_id,
         p_driver_id           := v_assignment_release.driver_id
       );
     end loop;
@@ -682,7 +719,7 @@ begin
                                  || ':invalidate_reversal',
         p_created_by          := p_actor,
         p_order_id            := p_order_id,
-        p_transition_id       := v_transition_id,
+        p_transition_id       := v_movement_transition_id,
         p_driver_id           := v_invalidation_reversal.driver_id
       );
 
@@ -703,7 +740,7 @@ begin
                                    || ':invalidate_reserved_release',
           p_created_by          := p_actor,
           p_order_id            := p_order_id,
-          p_transition_id       := v_transition_id,
+          p_transition_id       := v_movement_transition_id,
           p_driver_id           := v_invalidation_reversal.driver_id
         );
       end if;
@@ -734,7 +771,7 @@ begin
                                  || ':advance_commit_reversal',
         p_created_by          := p_actor,
         p_order_id            := p_order_id,
-        p_transition_id       := v_transition_id,
+        p_transition_id       := v_movement_transition_id,
         p_driver_id           := v_line.driver_id
       );
     end loop;
