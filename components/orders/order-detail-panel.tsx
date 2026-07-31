@@ -255,6 +255,7 @@ export function OrderDetailPanel({
       orderId={order.id}
       orderState={order.order_state}
       phone={phone}
+      scheduledFor={order.scheduled_for}
       whatsappOrderData={whatsappOrderData}
     />
   );
