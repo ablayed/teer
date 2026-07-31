@@ -6,6 +6,7 @@ import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
 import { OrderAmountsEditor } from '@/components/orders/order-amounts-editor';
 import { OrderCartEditor } from '@/components/orders/order-cart-editor';
 import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
+import { OrderNoteEditor } from '@/components/orders/order-note-editor';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { Button } from '@/components/ui/button';
 import type { OrderDetail } from '@/lib/actions/orders';
@@ -321,6 +322,12 @@ export function OrderDetailPanel({
           <p className="text-lg font-semibold">{order.customer?.full_name ?? emptyValue}</p>
           <p className="text-sm text-muted">{phone ? formatPhoneSN(phone) : emptyValue}</p>
         </section>
+
+        {/* Note libre d'équipe (0118) — toujours montée, quel que soit l'état de
+            la commande et quel que soit le rôle. À ne pas confondre avec la
+            « Note : » du bloc « Détails supplémentaires » plus bas, qui est la
+            note écrite par le CLIENT sur Shopify et reste en lecture seule. */}
+        <OrderNoteEditor initialNote={order.note} orderId={order.id} />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">

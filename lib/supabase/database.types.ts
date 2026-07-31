@@ -1047,6 +1047,7 @@ export type Database = {
           merchant_account_id: string;
           next_action_at: string | null;
           next_contact_at: string | null;
+          note: string | null;
           order_number: string | null;
           order_state: string | null;
           payment_channel_at_delivery: string | null;
@@ -1091,6 +1092,7 @@ export type Database = {
           merchant_account_id: string;
           next_action_at?: string | null;
           next_contact_at?: string | null;
+          note?: string | null;
           order_number?: string | null;
           order_state?: string | null;
           payment_channel_at_delivery?: string | null;
@@ -1135,6 +1137,7 @@ export type Database = {
           merchant_account_id?: string;
           next_action_at?: string | null;
           next_contact_at?: string | null;
+          note?: string | null;
           order_number?: string | null;
           order_state?: string | null;
           payment_channel_at_delivery?: string | null;
@@ -2301,6 +2304,7 @@ export type Database = {
           merchant_account_id: string;
           next_action_at: string | null;
           next_contact_at: string | null;
+          note: string | null;
           order_number: string | null;
           order_state: string | null;
           payment_channel_at_delivery: string | null;
@@ -2443,6 +2447,10 @@ export type Database = {
           product_id: string;
           required_qty: number;
         }[];
+      };
+      set_order_note: {
+        Args: { p_note: string; p_order_id: string };
+        Returns: string;
       };
       sn_phone_e164: { Args: { p_value: string }; Returns: string };
       transition_order: {
