@@ -276,6 +276,7 @@ export function OrdersPageLoader({
                     orderId={order.id}
                     orderState={order.order_state}
                     phone={order.customer?.phone ?? null}
+                    scheduledFor={order.scheduled_for}
                     whatsappOrderData={{
                       numeroCommande: order.order_number,
                       telephone: order.customer?.phone ?? null,

@@ -2252,10 +2252,15 @@ test('Lot 3 - Message client : le texte tapé manuellement n est jamais écrasé
   }
 });
 
-// 0114 — les deux corrections de date apparaissent chacune dans SA transition, jamais
-// dans un écran unique combinant les deux. Ce test vérifie les deux moments et, à
-// chaque fois, l'absence des champs de l'autre.
-test('dates éditables : confirmation saisie à Programmer, livraison saisie à Marquer livrée', async ({
+// Fix 1 — le dialog « Programmer la livraison » a perdu son second bloc « Date de
+// confirmation » (0114) : décision produit, il n'a pas sa place ici. call_confirmed_at
+// retombe donc sur le défaut dimensionnel now() de la RPC (mécanisme SQL inchangé,
+// seul le front ne le sollicite plus jamais pour cette action).
+// Fix 2 — le dialog « Marquer livrée » est désormais prérempli avec order.scheduled_for
+// (posé par la vraie transition Programmer ci-dessus, jamais injecté à la main), pas
+// vide et pas la date du jour ; il reste éditable si la livraison a eu lieu à une autre
+// date.
+test('programmer ne demande que la date de livraison ; marquer livrée préremplit avec la date programmée', async ({
   page,
 }) => {
   const fixture = await createOwnerFixture('dates-editables');
@@ -2271,38 +2276,58 @@ test('dates éditables : confirmation saisie à Programmer, livraison saisie à 
     .update({ created_at: createdAt, created_at_shopify: createdAt })
     .eq('id', orderId);
 
-  const confirmedDate = formatDateInput(addDays(new Date(), -3));
+  // Volontairement demain (pas aujourd'hui) : distingue sans ambiguïté un préremplissage
+  // correct (Fix 2) d'un bug qui retomberait silencieusement sur la date du jour.
+  const scheduledDate = formatDateInput(addDays(new Date(), 1));
+  const scheduledTime = formatTimeInput(10, 0);
   const deliveredDate = formatDateInput(addDays(new Date(), -1));
+
+  const beforeProgram = new Date();
 
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    // 1) « Programmer la livraison » : date de livraison prévue (existante) ET date de
-    //    confirmation client (0114), deux blocs distincts dans le même dialog.
+    // 1) « Programmer la livraison » : un seul groupe de champs (date de livraison
+    //    prévue). Le bloc « Date de confirmation » n'existe plus, quelle que soit
+    //    l'action.
     await runDetailMenuAction(page, 'Programmer la livraison');
-    await page.getByLabel('Date de livraison', { exact: true }).fill(formatDateInput(new Date()));
-    await page.getByLabel('Heure de livraison', { exact: true }).fill(formatTimeInput(10, 0));
-    await page.getByTestId('transition-confirmed-date').fill(confirmedDate);
-    await page.getByTestId('transition-confirmed-time').fill(formatTimeInput(20, 0));
-    // Pas de champ de date de livraison RÉELLE ici : ce n'est pas le bon moment.
+    await expect(page.getByTestId('transition-confirmed-date')).toHaveCount(0);
     await expect(page.getByTestId('transition-delivered-date')).toHaveCount(0);
+    await page.getByLabel('Date de livraison', { exact: true }).fill(scheduledDate);
+    await page.getByLabel('Heure de livraison', { exact: true }).fill(scheduledTime);
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
 
     const { data: afterProgram } = await fixture.admin
       .from('orders')
-      .select('call_confirmed_at, cash_collected_at')
+      .select('call_confirmed_at, cash_collected_at, scheduled_for')
       .eq('id', orderId)
       .single();
-    expect(afterProgram?.call_confirmed_at?.slice(0, 10)).toBe(confirmedDate);
-    // La date de livraison n'existe pas encore : les deux champs sont indépendants.
+    // Aucune saisie n'est plus transmise pour cette action : la RPC retombe sur son
+    // défaut dimensionnel now() (0114/0116), inchangé côté SQL — seul le front a perdu
+    // le champ qui permettait de le corriger.
+    expect(afterProgram?.call_confirmed_at).not.toBeNull();
+    expect(new Date(afterProgram?.call_confirmed_at ?? '').getTime()).toBeGreaterThanOrEqual(
+      beforeProgram.getTime() - 1_000,
+    );
     expect(afterProgram?.cash_collected_at).toBeNull();
+    expect(afterProgram?.scheduled_for?.slice(0, 10)).toBe(scheduledDate);
+
+    // Recul de call_confirmed_at à une date antérieure : mise en situation nécessaire
+    // pour exercer plus bas une correction de livraison antérieure à « maintenant »
+    // (contrainte SQL « confirmation ≤ livraison », 0114) — PAS le comportement testé
+    // ici, déjà vérifié juste au-dessus via la vraie transition « programmer ». Même
+    // logique que le contournement assigned_driver_id/delivery_state ci-dessous.
+    await fixture.admin
+      .from('orders')
+      .update({ call_confirmed_at: addDays(new Date(), -3).toISOString() })
+      .eq('id', orderId);
 
     // « Marquer livrée » n'est légale qu'en delivery_state='assigned'. On amène la
     // commande à cet état par le service-role plutôt que de rejouer tout le flux
     // d'assignation (choix du livreur puis envoi WhatsApp), hors sujet ici : ce test
-    // porte sur les deux dialogs de saisie de date, et la transition « livrer » qu'il
-    // déclenche ensuite passe bien par le vrai chemin transition_order.
+    // porte sur le préremplissage de la date de livraison, et la transition « livrer »
+    // qu'il déclenche ensuite passe bien par le vrai chemin transition_order.
     const { error: dispatchError } = await fixture.admin
       .from('orders')
       .update({ assigned_driver_id: driverId, delivery_state: 'assigned' })
@@ -2310,8 +2335,8 @@ test('dates éditables : confirmation saisie à Programmer, livraison saisie à 
     expect(dispatchError).toBeNull();
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
 
-    // 2) « Marquer livrée » : dialog propre à cette transition (elle n'en avait aucun
-    //    avant ce lot), sans aucun champ de date de confirmation.
+    // 2) « Marquer livrée » : préremplie avec scheduled_for, sans aucun champ de date
+    //    de confirmation.
     await page.reload();
     // Stabilisation post-reload avant d'interagir : le bouton existe dans le HTML SSR
     // avant que React ait attaché son onClick (gotcha connu du projet).
@@ -2321,6 +2346,11 @@ test('dates éditables : confirmation saisie à Programmer, livraison saisie à 
     await runDetailMenuAction(page, 'Marquer livree');
     await expect(page.getByTestId('transition-delivered-date')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('transition-confirmed-date')).toHaveCount(0);
+    await expect(page.getByTestId('transition-delivered-date')).toHaveValue(scheduledDate);
+    await expect(page.getByTestId('transition-delivered-time')).toHaveValue(scheduledTime);
+
+    // L'agent corrige : la livraison a réellement eu lieu la veille, pas à la date
+    // programmée.
     await page.getByTestId('transition-delivered-date').fill(deliveredDate);
     await page.getByTestId('transition-delivered-time').fill(formatTimeInput(16, 0));
     await page.getByRole('button', { name: 'Valider', exact: true }).click();
@@ -2328,12 +2358,78 @@ test('dates éditables : confirmation saisie à Programmer, livraison saisie à 
 
     const { data: afterDelivery } = await fixture.admin
       .from('orders')
-      .select('call_confirmed_at, cash_collected_at')
+      .select('cash_collected_at')
       .eq('id', orderId)
       .single();
     expect(afterDelivery?.cash_collected_at?.slice(0, 10)).toBe(deliveredDate);
-    // La correction de la livraison n'a pas touché la date de confirmation.
-    expect(afterDelivery?.call_confirmed_at).toBe(afterProgram?.call_confirmed_at);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+// Fix 2 — laisser le dialog « Marquer livrée » intact (ne pas éditer le préremplissage)
+// doit reproduire exactement le comportement d'avant ce lot : p_delivered_at n'est PAS
+// transmis, la RPC coalesce sur scheduled_for. Sans cette garde, renvoyer verbatim la
+// valeur préremplie déclencherait la validation « jamais dans le futur » de 0114 dès
+// qu'une commande est programmée pour une date à venir et livrée par erreur en avance.
+test('marquer livrée sans toucher au préremplissage ne transmet aucune date explicite', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('dates-non-editees');
+  const driverId = await createDriver(
+    fixture.admin,
+    fixture.merchantAccountId,
+    'Livreur Non Edite',
+  );
+  const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+
+  const createdAt = addDays(new Date(), -6).toISOString();
+  await fixture.admin
+    .from('orders')
+    .update({ created_at: createdAt, created_at_shopify: createdAt })
+    .eq('id', orderId);
+
+  // Programmée pour DEMAIN : si le front envoyait cette valeur telle quelle comme
+  // p_delivered_at, la RPC la rejetterait (invalid_date_future). Ne rien transmettre
+  // est la seule façon dont cette validation par livraison en avance sur la date
+  // programmée reste acceptée, comme avant ce lot.
+  const scheduledDate = formatDateInput(addDays(new Date(), 1));
+  const scheduledTime = formatTimeInput(9, 0);
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    await runDetailMenuAction(page, 'Programmer la livraison');
+    await page.getByLabel('Date de livraison', { exact: true }).fill(scheduledDate);
+    await page.getByLabel('Heure de livraison', { exact: true }).fill(scheduledTime);
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
+
+    const { error: dispatchError } = await fixture.admin
+      .from('orders')
+      .update({ assigned_driver_id: driverId, delivery_state: 'assigned' })
+      .eq('id', orderId);
+    expect(dispatchError).toBeNull();
+    await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
+
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Actions' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await runDetailMenuAction(page, 'Marquer livree');
+    await expect(page.getByTestId('transition-delivered-date')).toHaveValue(scheduledDate);
+    // Aucune édition : on valide directement.
+    await page.getByRole('button', { name: 'Valider', exact: true }).click();
+    await waitForOrderStatus(fixture.admin, orderId, 'LIVREE');
+
+    const { data: afterDelivery } = await fixture.admin
+      .from('orders')
+      .select('cash_collected_at')
+      .eq('id', orderId)
+      .single();
+    // coalesce(p_delivered_at, scheduled_for, now()) retombe sur scheduled_for :
+    // aucune erreur malgré une date programmée dans le futur.
+    expect(afterDelivery?.cash_collected_at?.slice(0, 10)).toBe(scheduledDate);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }

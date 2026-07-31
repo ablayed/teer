@@ -34,6 +34,9 @@ type OrderActionsMenuProps = {
   orderId: string;
   orderState: string | null;
   phone: string | null;
+  // Fix 2 — order.scheduled_for, transmis à TransitionDialog pour préremplir le
+  // dialog `livrer`. `null` pour une commande jamais passée par `programmer`.
+  scheduledFor?: string | null;
   whatsappOrderData: WhatsappOrderData;
 };
 
@@ -88,6 +91,7 @@ export function OrderActionsMenu({
   orderId,
   orderState,
   phone,
+  scheduledFor = null,
   whatsappOrderData,
 }: OrderActionsMenuProps) {
   const router = useRouter();
@@ -300,6 +304,7 @@ export function OrderActionsMenu({
                 onCancel={() => setPendingAction(null)}
                 onConfirm={handleDialogConfirm}
                 orderId={orderId}
+                scheduledFor={scheduledFor}
               />,
               document.body,
             )
@@ -377,6 +382,7 @@ export function OrderActionsMenu({
           onCancel={() => setPendingAction(null)}
           onConfirm={handleDialogConfirm}
           orderId={orderId}
+          scheduledFor={scheduledFor}
         />
       ) : null}
 
