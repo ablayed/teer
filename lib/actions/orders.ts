@@ -29,6 +29,7 @@ import {
 } from '@/lib/orders/call-log-validation';
 import { getOrderCartEditingMode } from '@/lib/orders/cart-editing';
 import { positiveOrderTotalSchema } from '@/lib/orders/order-amount-validation';
+import { ORDER_NOTE_MAX_LENGTH, normalizeOrderNote } from '@/lib/orders/order-note';
 import { filterOrdersBySearch, legacySearchLookbackIso } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
 import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
@@ -835,7 +836,12 @@ async function writeOrderAuditLog({
   orderId,
   payload,
 }: {
-  action: 'call.logged' | 'order.transition' | 'order.amounts_updated' | 'order.driver_reassigned';
+  action:
+    | 'call.logged'
+    | 'order.transition'
+    | 'order.amounts_updated'
+    | 'order.driver_reassigned'
+    | 'order.note_updated';
   actorUserId: string;
   merchantAccountId: string;
   orderId: string;
@@ -2068,4 +2074,73 @@ export const reassignOrderDriverAction = requireRole('owner', 'manager')
     revalidatePath('/tableau');
 
     return { ok: true as const };
+  });
+
+// ────────────────────────────────────────────────────────────
+// Note libre sur la commande (0118)
+//
+// CE N'EST PAS une transition d'état : aucune des 4 dimensions n'est touchée,
+// `performTransition`/`transition_order` ne sont pas impliqués. La note est une
+// donnée opérationnelle libre, éditable à tout moment du cycle de vie.
+//
+// L'écriture passe par la RPC `set_order_note` et NON par un
+// `.from('orders').update(...)` : la policy `orders_update` borne l'agent à
+// cod_status in ('TENTEE','CONFIRMEE','PROGRAMMEE','EN_LIVRAISON'), ce qui lui
+// interdirait d'annoter une commande `A_APPELER` ou `LIVREE`. La RPC est
+// `security definer` mais portée à la seule colonne `note`, avec sa propre
+// garde de rôle NULL-safe (cf. 0118).
+export const setOrderNoteAction = requireRole('owner', 'manager', 'agent')
+  .metadata({ actionName: 'orders.set_note', section: 'orders' })
+  .inputSchema(
+    z.object({
+      orderId: z.string().uuid(),
+      note: z.string().max(ORDER_NOTE_MAX_LENGTH).nullable(),
+    }),
+  )
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const note = normalizeOrderNote(parsedInput.note);
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, merchant_account_id')
+      .eq('id', parsedInput.orderId)
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .maybeSingle();
+
+    if (orderError) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    if (!order) {
+      return { ok: false as const, errorCode: 'order_not_found' as const };
+    }
+
+    const { error: rpcError } = await supabase.rpc('set_order_note', {
+      p_order_id: order.id,
+      p_note: note ?? '',
+    });
+
+    if (rpcError) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    const auditError = await writeOrderAuditLog({
+      action: 'order.note_updated',
+      actorUserId: ctx.user.id,
+      merchantAccountId: order.merchant_account_id,
+      orderId: order.id,
+      // Le CONTENU de la note n'est jamais recopié dans l'audit : c'est du
+      // texte libre saisi par un agent, potentiellement porteur de données
+      // personnelles du client. On journalise le geste, pas la donnée.
+      payload: { cleared: note === null, length: note?.length ?? 0 },
+    });
+
+    if (auditError) {
+      return { ok: false as const, errorCode: 'audit_failed' as const };
+    }
+
+    revalidateOrderPaths(order.id);
+
+    return { ok: true as const, note };
   });
