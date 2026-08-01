@@ -115,6 +115,12 @@ async function seedDeliveredCollectedOrder(
   {
     assignedDriverId,
     cashCollectedAt,
+    // Optionnel : seuls get_dashboard_shop_performance (created_at) en dépendent parmi
+    // les RPC exercées par ce fichier. Omis, `created_at` retombe sur `now()` — ce qui a
+    // cassé le test shop_performance au passage au 1er août 2026 : sa fenêtre [from,to]
+    // était codée en dur sur juillet 2026, et la commande créée par le fixture (created_at
+    // implicite = now(), donc en août) en sortait dès que "maintenant" a dépassé juillet.
+    createdAt,
     merchantAccountId,
     orderNumber,
     productId,
@@ -124,6 +130,7 @@ async function seedDeliveredCollectedOrder(
   }: {
     assignedDriverId?: string | null;
     cashCollectedAt: string;
+    createdAt?: string;
     merchantAccountId: string;
     orderNumber: string;
     productId: string;
@@ -150,6 +157,7 @@ async function seedDeliveredCollectedOrder(
       delivery_state: 'delivered',
       cash_state: 'collected',
       cash_collected_at: cashCollectedAt,
+      ...(createdAt ? { created_at: createdAt, created_at_shopify: createdAt } : {}),
       payment_channel_at_delivery: 'ESPECES',
     })
     .select('id')
@@ -328,77 +336,115 @@ describe('dashboard period metrics RPCs', () => {
     },
   );
 
+  // get_dashboard_shop_performance filtre sur orders.created_at (migration 0105) — la commande
+  // seedée doit donc avoir un created_at explicite DANS la fenêtre [from,to], et cette fenêtre
+  // doit être calculée à partir du MÊME ancrage que le seed, jamais une date absolue codée en
+  // dur : sinon, dès que « maintenant » dépasse la fenêtre codée en dur, created_at (qui
+  // retombe sur now() si non fourni) en sort silencieusement et le test casse au premier
+  // rollover de calendrier — exactement ce qui s'est produit le 1er août 2026 avec l'ancienne
+  // fenêtre [2026-07-01, 2026-07-31].
+  //
+  // Factorisé en scénario paramétré par un ANCRAGE arbitraire (pas nécessairement "maintenant")
+  // pour prouver la robustesse au rollover SANS faker l'horloge globale de Node (vi.useFakeTimers
+  // casserait les timeouts/retries internes de supabase-js, qui ne sont pas sous notre contrôle) :
+  // la commande et la fenêtre sont toutes deux dérivées du même ancrage passé en paramètre, donc
+  // rejouer ce scénario avec un ancrage de septembre 2026 (bien après la panne réelle du 1er août)
+  // exerce EXACTEMENT le même code que le run "aujourd'hui", ce qui est une preuve équivalente à
+  // une horloge système simulée pour ce test précis (le seed insère des ISO strings explicites,
+  // jamais un now() côté Postgres).
+  async function runShopPerformanceScenario(anchor: Date) {
+    const { admin, email, merchantAccountId } = await createOwnerFixture(
+      `shop-perf-rbac-${anchor.getTime()}`,
+    );
+    const { email: managerEmail } = await addMember(admin, merchantAccountId, 'manager');
+    const { email: agentEmail } = await addMember(admin, merchantAccountId, 'agent');
+    const outsider = await createOwnerFixture(`shop-perf-outsider-${anchor.getTime()}`);
+    const ownerClient = await signIn(email);
+    const managerClient = await signIn(managerEmail);
+    const agentClient = await signIn(agentEmail);
+    const outsiderClient = await signIn(outsider.email);
+    const shopId = await createShop(admin, merchantAccountId, 'shop-perf');
+    const productId = await createProduct(admin, merchantAccountId, 'Produit shop perf');
+
+    // Fenêtre RELATIVE à l'ancrage : ±3 jours, jamais une date absolue.
+    const from = new Date(anchor.getTime() - 3 * 86_400_000).toISOString();
+    const to = new Date(anchor.getTime() + 3 * 86_400_000).toISOString();
+    const orderCreatedAt = anchor.toISOString();
+
+    await seedDeliveredCollectedOrder(admin, {
+      cashCollectedAt: orderCreatedAt,
+      createdAt: orderCreatedAt,
+      merchantAccountId,
+      orderNumber: `SHOPPERF-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      productId,
+      shopId,
+      title: 'Produit shop perf',
+      totalAmount: 10_000,
+    });
+
+    const agentResult = await agentClient.rpc('get_dashboard_shop_performance', {
+      p_merchant_id: merchantAccountId,
+      p_from: from,
+      p_to: to,
+    });
+    expect(agentResult.error).not.toBeNull();
+
+    const outsiderResult = await outsiderClient.rpc('get_dashboard_shop_performance', {
+      p_merchant_id: merchantAccountId,
+      p_from: from,
+      p_to: to,
+    });
+    expect(outsiderResult.error).not.toBeNull();
+
+    // Preuve NULL-safe : un rôle explicitement rejeté (agent, membre du tenant) et un rôle
+    // NULL (outsider, non-membre) doivent produire EXACTEMENT la même erreur — sinon la garde
+    // fuite une information ("vous êtes membre mais mauvais rôle" vs "vous n'êtes pas membre")
+    // qu'un attaquant pourrait utiliser pour énumérer l'appartenance à un tenant.
+    expect(agentResult.error?.code).toBe('42501');
+    expect(agentResult.error?.message).toBe(outsiderResult.error?.message);
+    expect(agentResult.error?.code).toBe(outsiderResult.error?.code);
+    expect(agentResult.status).toBe(outsiderResult.status);
+
+    const ownerResult = await ownerClient.rpc('get_dashboard_shop_performance', {
+      p_merchant_id: merchantAccountId,
+      p_from: from,
+      p_to: to,
+    });
+    expect(ownerResult.error).toBeNull();
+    const ownerPayload = ownerResult.data as Array<{
+      id: string;
+      orders_count: number;
+      revenue: number;
+    }>;
+    expect(ownerPayload).toEqual([
+      expect.objectContaining({ id: shopId, orders_count: 1, revenue: 10_000 }),
+    ]);
+
+    const managerResult = await managerClient.rpc('get_dashboard_shop_performance', {
+      p_merchant_id: merchantAccountId,
+      p_from: from,
+      p_to: to,
+    });
+    expect(managerResult.error).toBeNull();
+    expect(managerResult.data).toEqual(ownerResult.data);
+  }
+
   skipIfNoServiceRole(
     'get_dashboard_shop_performance : agent et non-membre rejetés avec le même message (NULL-safe), owner/manager autorisés avec résultat inchangé',
     async () => {
-      const { admin, email, merchantAccountId } = await createOwnerFixture('shop-perf-rbac');
-      const { email: managerEmail } = await addMember(admin, merchantAccountId, 'manager');
-      const { email: agentEmail } = await addMember(admin, merchantAccountId, 'agent');
-      const outsider = await createOwnerFixture('shop-perf-outsider');
-      const ownerClient = await signIn(email);
-      const managerClient = await signIn(managerEmail);
-      const agentClient = await signIn(agentEmail);
-      const outsiderClient = await signIn(outsider.email);
-      const shopId = await createShop(admin, merchantAccountId, 'shop-perf');
-      const productId = await createProduct(admin, merchantAccountId, 'Produit shop perf');
-      const from = new Date('2026-07-01T00:00:00.000Z').toISOString();
-      const to = new Date('2026-07-31T23:59:59.999Z').toISOString();
+      await runShopPerformanceScenario(new Date());
+    },
+    20_000,
+  );
 
-      await seedDeliveredCollectedOrder(admin, {
-        cashCollectedAt: '2026-07-10T10:00:00.000Z',
-        merchantAccountId,
-        orderNumber: `SHOPPERF-${Date.now()}`,
-        productId,
-        shopId,
-        title: 'Produit shop perf',
-        totalAmount: 10_000,
-      });
-
-      const agentResult = await agentClient.rpc('get_dashboard_shop_performance', {
-        p_merchant_id: merchantAccountId,
-        p_from: from,
-        p_to: to,
-      });
-      expect(agentResult.error).not.toBeNull();
-
-      const outsiderResult = await outsiderClient.rpc('get_dashboard_shop_performance', {
-        p_merchant_id: merchantAccountId,
-        p_from: from,
-        p_to: to,
-      });
-      expect(outsiderResult.error).not.toBeNull();
-
-      // Preuve NULL-safe : un rôle explicitement rejeté (agent, membre du tenant) et un rôle
-      // NULL (outsider, non-membre) doivent produire EXACTEMENT la même erreur — sinon la garde
-      // fuite une information ("vous êtes membre mais mauvais rôle" vs "vous n'êtes pas membre")
-      // qu'un attaquant pourrait utiliser pour énumérer l'appartenance à un tenant.
-      expect(agentResult.error?.code).toBe('42501');
-      expect(agentResult.error?.message).toBe(outsiderResult.error?.message);
-      expect(agentResult.error?.code).toBe(outsiderResult.error?.code);
-      expect(agentResult.status).toBe(outsiderResult.status);
-
-      const ownerResult = await ownerClient.rpc('get_dashboard_shop_performance', {
-        p_merchant_id: merchantAccountId,
-        p_from: from,
-        p_to: to,
-      });
-      expect(ownerResult.error).toBeNull();
-      const ownerPayload = ownerResult.data as Array<{
-        id: string;
-        orders_count: number;
-        revenue: number;
-      }>;
-      expect(ownerPayload).toEqual([
-        expect.objectContaining({ id: shopId, orders_count: 1, revenue: 10_000 }),
-      ]);
-
-      const managerResult = await managerClient.rpc('get_dashboard_shop_performance', {
-        p_merchant_id: merchantAccountId,
-        p_from: from,
-        p_to: to,
-      });
-      expect(managerResult.error).toBeNull();
-      expect(managerResult.data).toEqual(ownerResult.data);
+  // Preuve de robustesse au rollover de calendrier : rejoue EXACTEMENT le même scénario avec un
+  // ancrage de septembre 2026 (après la panne réelle du 1er août) — si la fenêtre ou le seed
+  // redevenaient un jour une date absolue codée en dur, ce test-ci casserait immédiatement en CI,
+  // sans attendre le prochain rollover réel.
+  skipIfNoServiceRole(
+    'get_dashboard_shop_performance : robuste à un ancrage futur arbitraire (anti-régression rollover calendaire)',
+    async () => {
+      await runShopPerformanceScenario(new Date('2026-09-15T12:00:00.000Z'));
     },
     20_000,
   );

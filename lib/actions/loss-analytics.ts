@@ -123,7 +123,7 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
       let query = supabase
         .from('orders')
         .select(
-          'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at, returned_at',
+          'id, source, customer_id, assigned_driver_id, order_state, delivery_state, cancel_reason, created_at, returned_at, cash_collected_at',
         )
         .eq('merchant_account_id', merchantId)
         .gte('created_at', from)
@@ -210,6 +210,7 @@ export const getLossAnalyticsAction = requireRole('owner', 'manager')
       orders: orders.map((row) => ({
         assignedDriverId: row.assigned_driver_id,
         cancelReason: row.cancel_reason,
+        cashCollectedAt: row.cash_collected_at,
         createdAt: row.created_at,
         customerId: row.customer_id,
         deliveryState: row.delivery_state,
