@@ -9,6 +9,7 @@ import {
   type Revenue30dOrder,
   aggregateRevenue30d,
   normalizeCurrency,
+  revenue30dCashCollectedLowerBound,
   revenue30dLowerBound,
 } from '@/lib/dashboard/revenue-30d';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
@@ -474,9 +475,15 @@ async function fetchAlertsForUser({
 // max_rows=1000 (supabase/config.toml:8). Sans borne, ce select all-time (`.limit(5000)`
 // inopérant au-delà de max_rows) tronque aux 1000 LIVREE les plus récentes par created_at →
 // graphe 30j faux dès qu'un tenant dépasse 1000 commandes livrées cumulées (Lot perf 2, H3).
-// `revenue30dLowerBound` borne sur created_at (sûr car created_at ≥ created_at_shopify),
-// puis boucle .range() pour rester exact même si la fenêtre élargie dépasse 1000 lignes
-// sur un très gros tenant.
+//
+// 0119 : le graphe bucket désormais sur cash_collected_at (harmonisé finance_kpis/P&L/
+// Tableau), donc le fetch doit filtrer sur ce MÊME champ, sans marge (le filtre = le champ
+// de bucket, contrairement à avant où le filtre created_at protégeait un bucket sur un AUTRE
+// champ). Une commande créée il y a 6 mois mais livrée cette semaine (cash_collected_at
+// récent) doit apparaître — un filtre sur created_at seul l'aurait exclue.
+// La branche `.is('cash_collected_at', null)` couvre le repli : commandes livrées avant
+// l'existence du champ (avant 0096), toujours bucketées sur created_at_shopify ?? created_at
+// avec la marge historique de 60j (revenue30dLowerBound) — comportement inchangé pour elles.
 const REVENUE_30D_PAGE_SIZE = 500;
 
 async function fetchRevenue30dForUser({
@@ -488,16 +495,19 @@ async function fetchRevenue30dForUser({
   shopId?: string | null;
   supabase: SupabaseServerClient;
 }): Promise<DashboardRevenue30dActionResult> {
-  const lowerBound = revenue30dLowerBound();
+  const cashLowerBound = revenue30dCashCollectedLowerBound();
+  const legacyLowerBound = revenue30dLowerBound();
   const orders: Revenue30dOrder[] = [];
 
   for (let offset = 0; ; offset += REVENUE_30D_PAGE_SIZE) {
     let query = supabase
       .from('orders')
-      .select('created_at, created_at_shopify, currency, total_amount')
+      .select('cash_collected_at, created_at, created_at_shopify, currency, total_amount')
       .eq('merchant_account_id', merchantAccountId)
       .eq('cod_status', 'LIVREE')
-      .gte('created_at', lowerBound);
+      .or(
+        `cash_collected_at.gte.${cashLowerBound},and(cash_collected_at.is.null,created_at.gte.${legacyLowerBound})`,
+      );
 
     if (shopId) {
       query = query.eq('shop_id', shopId);
