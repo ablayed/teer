@@ -400,10 +400,15 @@ export async function getReportData({
       row,
     ]),
   );
-  const deliveredOrdersCount = statusBreakdownByStatus.get('LIVREE')?.count ?? 0;
+  // 0119 : marginMinor doit utiliser le MÊME compte de livraisons que ca_livre (kpis.ca_livre,
+  // finance_kpis — désormais daté sur cash_collected_at), pas statusBreakdownByStatus (
+  // get_report_status_breakdown, fenêtré sur created_at — reste volontairement tel quel pour
+  // statuses[] ci-dessous, un autre usage : répartition des commandes CRÉÉES dans la période).
+  // Mélanger un ca_livre daté cash_collected_at avec un delivered_orders_count daté created_at
+  // aurait réintroduit la même incohérence que ce lot corrige côté finance_kpis.
   const marginMinor = estimatedMarginMinor({
     caLivreMinor: kpis.ca_livre,
-    deliveredOrdersCount,
+    deliveredOrdersCount: kpis.delivered_orders_count,
     settlements,
     settings,
   });
