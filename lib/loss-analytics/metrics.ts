@@ -7,6 +7,11 @@ const CANCELLATION_PRIOR_STATES = new Set(['unassigned', 'scheduled']);
 export type LossAnalyticsOrder = {
   assignedDriverId: string | null;
   cancelReason: string | null;
+  // 0119 : date de livraison réelle (éditable depuis 0114), utilisée UNIQUEMENT par
+  // deriveCohortMaturityDays pour mesurer le délai création→livraison. N'affecte jamais le
+  // fenêtrage (quelles commandes entrent dans le calcul reste piloté par createdAt en amont,
+  // lib/actions/loss-analytics.ts).
+  cashCollectedAt?: string | null;
   createdAt: string;
   customerId: string | null;
   deliveryState: string | null;
@@ -376,6 +381,9 @@ export function deriveCohortMaturityDays(
   events: LossEvent[],
 ): number {
   const createdAtByOrderId = new Map(orders.map((order) => [order.id, order.createdAt]));
+  const cashCollectedAtByOrderId = new Map(
+    orders.map((order) => [order.id, order.cashCollectedAt]),
+  );
   // Le délai création→livraison ne se mesure que sur des livraisons réelles : une commande
   // invalidée fausserait la moyenne avec un délai qui ne correspond à aucune livraison.
   const deliveredOrderIds = deliveredOrderIdSet(orders);
@@ -389,7 +397,14 @@ export function deriveCohortMaturityDays(
       return [];
     }
 
-    const delayInDays = (Date.parse(event.createdAt) - Date.parse(createdAt)) / 86_400_000;
+    // 0119 : la date d'ARRIVÉE du délai est la livraison RÉELLE (cash_collected_at, éditable
+    // depuis 0114), pas le clic technique « Marquer livrée » (event.createdAt =
+    // audit_log.created_at). Fallback sur event.createdAt uniquement si cash_collected_at est
+    // absent (donnée historique antérieure à 0096) — ne fait jamais disparaître de commande du
+    // calcul. Le FENÊTRAGE (quelles commandes/événements entrent ici) reste géré en amont par
+    // orders.created_at/audit_log.created_at (lib/actions/loss-analytics.ts), inchangé.
+    const deliveredAt = cashCollectedAtByOrderId.get(event.orderId) ?? event.createdAt;
+    const delayInDays = (Date.parse(deliveredAt) - Date.parse(createdAt)) / 86_400_000;
     return Number.isFinite(delayInDays) && delayInDays >= 0 ? [delayInDays] : [];
   });
 

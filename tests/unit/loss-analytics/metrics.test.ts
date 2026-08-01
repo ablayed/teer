@@ -277,6 +277,84 @@ describe('computeLossAnalytics', () => {
     });
   });
 
+  it('0119 : mesure le délai sur cash_collected_at (livraison réelle éditée), pas sur event.createdAt (clic technique)', () => {
+    // Créée le 01/06, clic « Marquer livrée » (audit_log/event.createdAt) le 05/06 = 4 jours
+    // si on mesurait sur le clic. Mais cash_collected_at a été édité à 1 jour après la
+    // création (livraison réelle) — la mesure doit suivre cash_collected_at, pas le clic.
+    const result = computeLossAnalytics({
+      auditLogs: [
+        audit({
+          createdAt: '2026-06-05T09:00:00.000Z',
+          payload: {
+            nextDimensions: { delivery_state: 'delivered', order_state: 'completed' },
+            priorDimensions: { delivery_state: 'assigned', order_state: 'open' },
+          },
+          resourceId: 'order-delivered',
+        }),
+      ],
+      customers: [],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          cashCollectedAt: '2026-06-02T09:00:00.000Z',
+          createdAt: '2026-06-01T09:00:00.000Z',
+          deliveryState: 'delivered',
+          id: 'order-delivered',
+          orderState: 'completed',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    // 1 jour (cash_collected_at − createdAt), pas 4 (event.createdAt − createdAt) : preuve
+    // que la mesure a bien changé de source sans qu'on ait touché le fenêtrage (la commande
+    // est incluse par le même mécanisme deliveredOrderIds + event delivered_outcome).
+    expect(result.cohortMaturityDays).toBe(1);
+  });
+
+  it('0119 : le FENÊTRAGE (quelles commandes/événements entrent dans le calcul) reste inchangé — piloté en amont, pas par cash_collected_at', () => {
+    // cash_collected_at tombe très loin de fromISO/toISO ; deriveCohortMaturityDays n'a
+    // pourtant aucune logique d'exclusion sur cette date — seul deliveredOrderIds (état
+    // courant) + la présence d'un event delivered_outcome (déjà filtré en amont par
+    // lib/actions/loss-analytics.ts sur orders.created_at/audit_log.created_at, inchangé
+    // par ce lot) décide de l'inclusion.
+    const result = computeLossAnalytics({
+      auditLogs: [
+        audit({
+          createdAt: '2026-06-03T09:00:00.000Z',
+          payload: {
+            nextDimensions: { delivery_state: 'delivered', order_state: 'completed' },
+            priorDimensions: { delivery_state: 'assigned', order_state: 'open' },
+          },
+          resourceId: 'order-delivered',
+        }),
+      ],
+      customers: [],
+      drivers: [],
+      fromISO: '2026-06-01T00:00:00.000Z',
+      orderLines: [],
+      orders: [
+        order({
+          cashCollectedAt: '2099-01-01T00:00:00.000Z',
+          createdAt: '2026-06-01T09:00:00.000Z',
+          deliveryState: 'delivered',
+          id: 'order-delivered',
+          orderState: 'completed',
+        }),
+      ],
+      reliability: [],
+      toISO: '2026-06-07T23:59:59.999Z',
+    });
+
+    expect(result.trends.find((point) => point.date === '2026-06-01')).toMatchObject({
+      deliveredOrders: 1,
+      totalOrders: 1,
+    });
+  });
+
   it('uses a three-day maturity fallback when no delivered transition is available', () => {
     const result = computeLossAnalytics({
       auditLogs: [],
