@@ -247,6 +247,115 @@ export type Database = {
           },
         ];
       };
+      shopify_customer_redaction_tombstone: {
+        Row: {
+          created_at: string;
+          expires_at: string;
+          id: string;
+          merchant_account_id: string;
+          redacted_at: string;
+          shop_id: string;
+          shopify_customer_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          merchant_account_id: string;
+          redacted_at?: string;
+          shop_id: string;
+          shopify_customer_id: string;
+        };
+        Update: {
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          redacted_at?: string;
+          shop_id?: string;
+          shopify_customer_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shopify_customer_redaction_tombstone_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_customer_redaction_tombstone_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      shopify_dsar_artifact: {
+        Row: {
+          byte_size: number | null;
+          completed_at: string | null;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          merchant_account_id: string;
+          shop_id: string;
+          status: string;
+          storage_bucket: string;
+          storage_path: string;
+          webhook_event_id: string;
+        };
+        Insert: {
+          byte_size?: number | null;
+          completed_at?: string | null;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          merchant_account_id: string;
+          shop_id: string;
+          status?: string;
+          storage_bucket?: string;
+          storage_path: string;
+          webhook_event_id: string;
+        };
+        Update: {
+          byte_size?: number | null;
+          completed_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          shop_id?: string;
+          status?: string;
+          storage_bucket?: string;
+          storage_path?: string;
+          webhook_event_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shopify_dsar_artifact_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_artifact_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_artifact_webhook_event_id_fkey';
+            columns: ['webhook_event_id'];
+            isOneToOne: false;
+            referencedRelation: 'webhook_event';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       delivery_address: {
         Row: {
           created_at: string;
@@ -1799,10 +1908,16 @@ export type Database = {
       };
       webhook_event: {
         Row: {
+          attempt_count: number;
+          completed_at: string | null;
           id: string;
+          last_error_code: string | null;
+          lease_until: string | null;
           merchant_account_id: string | null;
+          next_attempt_at: string | null;
           payload: Json | null;
           processed: boolean;
+          processing_proof: Json | null;
           received_at: string;
           shop_domain: string | null;
           shop_id: string | null;
@@ -1812,10 +1927,16 @@ export type Database = {
           triggered_at: string | null;
         };
         Insert: {
+          attempt_count?: number;
+          completed_at?: string | null;
           id?: string;
+          last_error_code?: string | null;
+          lease_until?: string | null;
           merchant_account_id?: string | null;
+          next_attempt_at?: string | null;
           payload?: Json | null;
           processed?: boolean;
+          processing_proof?: Json | null;
           received_at?: string;
           shop_domain?: string | null;
           shop_id?: string | null;
@@ -1825,10 +1946,16 @@ export type Database = {
           triggered_at?: string | null;
         };
         Update: {
+          attempt_count?: number;
+          completed_at?: string | null;
           id?: string;
+          last_error_code?: string | null;
+          lease_until?: string | null;
           merchant_account_id?: string | null;
+          next_attempt_at?: string | null;
           payload?: Json | null;
           processed?: boolean;
+          processing_proof?: Json | null;
           received_at?: string;
           shop_domain?: string | null;
           shop_id?: string | null;
@@ -1876,6 +2003,18 @@ export type Database = {
         }[];
       };
       current_member_role: { Args: { p_account: string }; Returns: string };
+      claim_shopify_webhook_events: {
+        Args: { p_event_id?: string; p_limit: number; p_now?: string };
+        Returns: {
+          attempt_count: number;
+          id: string;
+          merchant_account_id: string | null;
+          payload: Json | null;
+          shop_domain: string | null;
+          shop_id: string | null;
+          topic: string;
+        }[];
+      };
       derive_legacy_cod_status: {
         Args: {
           p_call_state: string;
@@ -1884,6 +2023,25 @@ export type Database = {
           p_order_state: string;
         };
         Returns: string;
+      };
+      finish_shopify_webhook_event: {
+        Args: {
+          p_error_code?: string;
+          p_event_id: string;
+          p_outcome: string;
+          p_proof?: Json;
+        };
+        Returns: boolean;
+      };
+      redact_shopify_customer_copies: {
+        Args: {
+          p_merchant_account_id: string;
+          p_shop_id: string;
+          p_shopify_customer_id: string;
+          p_topic: string;
+          p_webhook_event_id?: string;
+        };
+        Returns: Json;
       };
       finance_kpis: {
         Args: {
