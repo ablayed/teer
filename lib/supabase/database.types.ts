@@ -202,6 +202,7 @@ export type Database = {
           shipping_address: Json | null;
           shopify_customer_gids: Json;
           shopify_customer_id: string | null;
+          shopify_last_activity_at: string | null;
           source: string;
           updated_at: string;
         };
@@ -218,6 +219,7 @@ export type Database = {
           shipping_address?: Json | null;
           shopify_customer_gids?: Json;
           shopify_customer_id?: string | null;
+          shopify_last_activity_at?: string | null;
           source?: string;
           updated_at?: string;
         };
@@ -234,6 +236,7 @@ export type Database = {
           shipping_address?: Json | null;
           shopify_customer_gids?: Json;
           shopify_customer_id?: string | null;
+          shopify_last_activity_at?: string | null;
           source?: string;
           updated_at?: string;
         };
@@ -300,6 +303,13 @@ export type Database = {
           expires_at: string;
           id: string;
           merchant_account_id: string;
+          purge_attempt_count: number;
+          purge_last_attempt_at: string | null;
+          purge_last_error_code: string | null;
+          purge_last_success_at: string | null;
+          purge_lease_until: string | null;
+          purge_next_attempt_at: string | null;
+          purged_at: string | null;
           shop_id: string;
           status: string;
           storage_bucket: string;
@@ -313,6 +323,13 @@ export type Database = {
           expires_at: string;
           id?: string;
           merchant_account_id: string;
+          purge_attempt_count?: number;
+          purge_last_attempt_at?: string | null;
+          purge_last_error_code?: string | null;
+          purge_last_success_at?: string | null;
+          purge_lease_until?: string | null;
+          purge_next_attempt_at?: string | null;
+          purged_at?: string | null;
           shop_id: string;
           status?: string;
           storage_bucket?: string;
@@ -326,6 +343,13 @@ export type Database = {
           expires_at?: string;
           id?: string;
           merchant_account_id?: string;
+          purge_attempt_count?: number;
+          purge_last_attempt_at?: string | null;
+          purge_last_error_code?: string | null;
+          purge_last_success_at?: string | null;
+          purge_lease_until?: string | null;
+          purge_next_attempt_at?: string | null;
+          purged_at?: string | null;
           shop_id?: string;
           status?: string;
           storage_bucket?: string;
@@ -355,6 +379,45 @@ export type Database = {
             referencedColumns: ['id'];
           },
         ];
+      };
+      shopify_pcd_purge_run: {
+        Row: {
+          completed_at: string | null;
+          error_code: string | null;
+          id: string;
+          last_attempt_at: string;
+          last_success_at: string | null;
+          limit_requested: number;
+          mode: string;
+          started_at: string;
+          status: string;
+          summary: Json;
+        };
+        Insert: {
+          completed_at?: string | null;
+          error_code?: string | null;
+          id?: string;
+          last_attempt_at?: string;
+          last_success_at?: string | null;
+          limit_requested: number;
+          mode: string;
+          started_at?: string;
+          status?: string;
+          summary?: Json;
+        };
+        Update: {
+          completed_at?: string | null;
+          error_code?: string | null;
+          id?: string;
+          last_attempt_at?: string;
+          last_success_at?: string | null;
+          limit_requested?: number;
+          mode?: string;
+          started_at?: string;
+          status?: string;
+          summary?: Json;
+        };
+        Relationships: [];
       };
       delivery_address: {
         Row: {
@@ -1144,6 +1207,7 @@ export type Database = {
           note: string | null;
           order_number: string | null;
           order_state: string | null;
+          pcd_finalized_at: string | null;
           payment_channel_at_delivery: string | null;
           returned_at: string | null;
           scheduled_for: string | null;
@@ -1189,6 +1253,7 @@ export type Database = {
           note?: string | null;
           order_number?: string | null;
           order_state?: string | null;
+          pcd_finalized_at?: string | null;
           payment_channel_at_delivery?: string | null;
           returned_at?: string | null;
           scheduled_for?: string | null;
@@ -1234,6 +1299,7 @@ export type Database = {
           note?: string | null;
           order_number?: string | null;
           order_state?: string | null;
+          pcd_finalized_at?: string | null;
           payment_channel_at_delivery?: string | null;
           returned_at?: string | null;
           scheduled_for?: string | null;
@@ -1919,6 +1985,11 @@ export type Database = {
           processed: boolean;
           processing_proof: Json | null;
           received_at: string;
+          retention_attempt_count: number;
+          retention_last_attempt_at: string | null;
+          retention_last_error_code: string | null;
+          retention_last_success_at: string | null;
+          retention_next_attempt_at: string | null;
           shop_domain: string | null;
           shop_id: string | null;
           shopify_webhook_id: string;
@@ -1938,6 +2009,11 @@ export type Database = {
           processed?: boolean;
           processing_proof?: Json | null;
           received_at?: string;
+          retention_attempt_count?: number;
+          retention_last_attempt_at?: string | null;
+          retention_last_error_code?: string | null;
+          retention_last_success_at?: string | null;
+          retention_next_attempt_at?: string | null;
           shop_domain?: string | null;
           shop_id?: string | null;
           shopify_webhook_id: string;
@@ -1957,6 +2033,11 @@ export type Database = {
           processed?: boolean;
           processing_proof?: Json | null;
           received_at?: string;
+          retention_attempt_count?: number;
+          retention_last_attempt_at?: string | null;
+          retention_last_error_code?: string | null;
+          retention_last_success_at?: string | null;
+          retention_next_attempt_at?: string | null;
           shop_domain?: string | null;
           shop_id?: string | null;
           shopify_webhook_id?: string;
@@ -2003,6 +2084,15 @@ export type Database = {
         }[];
       };
       current_member_role: { Args: { p_account: string }; Returns: string };
+      claim_shopify_dsar_artifacts: {
+        Args: { p_limit: number; p_now?: string };
+        Returns: {
+          id: string;
+          purge_attempt_count: number;
+          storage_bucket: string;
+          storage_path: string;
+        }[];
+      };
       claim_shopify_webhook_events: {
         Args: { p_event_id?: string; p_limit: number; p_now?: string };
         Returns: {
@@ -2013,6 +2103,25 @@ export type Database = {
           shop_domain: string | null;
           shop_id: string | null;
           topic: string;
+        }[];
+      };
+      execute_shopify_pcd_retention: {
+        Args: { p_limit: number; p_now?: string };
+        Returns: Json;
+      };
+      finalize_shopify_dsar_artifact_purge: {
+        Args: { p_error_code?: string; p_id: string; p_now?: string; p_success: boolean };
+        Returns: boolean;
+      };
+      preview_shopify_pcd_retention: {
+        Args: { p_now?: string };
+        Returns: {
+          blocked_count: number;
+          candidate_count: number;
+          category: string;
+          earliest_expiry: string | null;
+          latest_expiry: string | null;
+          shop_count: number;
         }[];
       };
       derive_legacy_cod_status: {
