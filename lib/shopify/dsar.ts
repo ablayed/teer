@@ -135,93 +135,73 @@ export async function createPrivateDsarArtifact(
   };
 }
 
-export async function createPrivateDsarSignedUrl(
-  admin: AdminClient,
+export async function issuePrivateDsarDownloadAuthorization(
+  client: AdminClient,
   {
     artifactId,
     merchantAccountId,
     shopId,
-    now = new Date(),
   }: {
     artifactId: string;
     merchantAccountId: string;
     shopId: string;
-    now?: Date;
   },
-): Promise<{ url: string; expiresAt: string }> {
-  const { data: artifact, error } = await admin
-    .from('shopify_dsar_artifact')
-    .select('storage_bucket, storage_path, status, expires_at')
-    .eq('id', artifactId)
-    .eq('merchant_account_id', merchantAccountId)
-    .eq('shop_id', shopId)
-    .eq('status', 'ready')
-    .maybeSingle();
-  assertResult({ error }, 'dsar_artifact_lookup');
-
-  if (!artifact) {
-    throw new Error('dsar_artifact_not_found');
+): Promise<{ downloadToken: string; expiresAt: string }> {
+  const { data, error } = await client.rpc('issue_shopify_dsar_download_authorization', {
+    p_artifact_id: artifactId,
+    p_shop_id: shopId,
+    p_tenant_id: merchantAccountId,
+  });
+  const row = Array.isArray(data) ? data[0] : null;
+  if (error || !row) {
+    throw new Error('dsar_download_authorization_failed');
   }
 
-  const expiresAtMs = Date.parse(artifact.expires_at);
-  const remainingSeconds = Math.floor((expiresAtMs - now.getTime()) / 1_000);
-  const expiresIn = Math.min(DSAR_MAX_TTL_SECONDS, remainingSeconds);
-  if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
-    const { error: expiryError } = await admin
-      .from('shopify_dsar_artifact')
-      .update({ status: 'expired' })
-      .eq('id', artifactId)
-      .eq('status', 'ready');
-    assertResult({ error: expiryError }, 'dsar_artifact_expiry_finalize');
-    throw new Error('dsar_artifact_expired');
-  }
-
-  const { data: signed, error: signedError } = await admin.storage
-    .from(artifact.storage_bucket)
-    .createSignedUrl(artifact.storage_path, expiresIn);
-  if (signedError || !signed?.signedUrl) {
-    throw new Error('dsar_signed_url_failed');
-  }
-
-  return { url: signed.signedUrl, expiresAt: artifact.expires_at };
+  return { downloadToken: row.download_token, expiresAt: row.expires_at };
 }
 
-export async function downloadPrivateDsarArtifact(
-  admin: AdminClient,
+export async function consumePrivateDsarDownloadAuthorization(
+  client: AdminClient,
   {
     artifactId,
+    downloadToken,
     merchantAccountId,
     shopId,
-    now = new Date(),
   }: {
     artifactId: string;
+    downloadToken: string;
     merchantAccountId: string;
     shopId: string;
-    now?: Date;
   },
-): Promise<{ body: Blob; byteSize: number }> {
-  const { data: artifact, error } = await admin
-    .from('shopify_dsar_artifact')
-    .select('storage_bucket, storage_path, status, expires_at, byte_size')
-    .eq('id', artifactId)
-    .eq('merchant_account_id', merchantAccountId)
-    .eq('shop_id', shopId)
-    .eq('status', 'ready')
-    .maybeSingle();
-  assertResult({ error }, 'dsar_artifact_lookup');
-
-  if (!artifact || Date.parse(artifact.expires_at) <= now.getTime()) {
-    throw new Error('dsar_artifact_not_found');
+): Promise<{ authorizationId: string; bucket: string; path: string; byteSize: number }> {
+  const { data, error } = await client.rpc('consume_shopify_dsar_download_authorization', {
+    p_artifact_id: artifactId,
+    p_download_token: downloadToken,
+    p_shop_id: shopId,
+    p_tenant_id: merchantAccountId,
+  });
+  const row = Array.isArray(data) ? data[0] : null;
+  if (error || !row) {
+    throw new Error('dsar_download_authorization_forbidden');
   }
 
-  const { data, error: downloadError } = await admin.storage
-    .from(artifact.storage_bucket)
-    .download(artifact.storage_path);
-  if (downloadError || !data) {
+  return {
+    authorizationId: row.authorization_id,
+    bucket: row.storage_bucket,
+    path: row.storage_path,
+    byteSize: row.byte_size,
+  };
+}
+
+export async function downloadPrivateDsarArtifactAtPath(
+  admin: AdminClient,
+  { bucket, path }: { bucket: string; path: string },
+): Promise<Blob> {
+  const { data, error } = await admin.storage.from(bucket).download(path);
+  if (error || !data) {
     throw new Error('dsar_artifact_download_failed');
   }
-
-  return { body: data, byteSize: artifact.byte_size ?? 0 };
+  return data;
 }
 
 export { createStorageAdminClient };

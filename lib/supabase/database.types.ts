@@ -39,6 +39,7 @@ export type Database = {
           actor_user_id: string | null;
           created_at: string;
           id: string;
+          idempotency_key: string | null;
           merchant_account_id: string;
           next_state: string | null;
           payload: Json | null;
@@ -53,6 +54,7 @@ export type Database = {
           actor_user_id?: string | null;
           created_at?: string;
           id?: string;
+          idempotency_key?: string | null;
           merchant_account_id: string;
           next_state?: string | null;
           payload?: Json | null;
@@ -67,6 +69,7 @@ export type Database = {
           actor_user_id?: string | null;
           created_at?: string;
           id?: string;
+          idempotency_key?: string | null;
           merchant_account_id?: string;
           next_state?: string | null;
           payload?: Json | null;
@@ -93,6 +96,7 @@ export type Database = {
           actor_user_id: string | null;
           data_category: string;
           id: string;
+          idempotency_key: string | null;
           metadata: Json;
           occurred_at: string;
           outcome: string;
@@ -110,6 +114,7 @@ export type Database = {
           actor_user_id?: string | null;
           data_category: string;
           id?: string;
+          idempotency_key?: string | null;
           metadata?: Json;
           occurred_at?: string;
           outcome: string;
@@ -127,6 +132,7 @@ export type Database = {
           actor_user_id?: string | null;
           data_category?: string;
           id?: string;
+          idempotency_key?: string | null;
           metadata?: Json;
           occurred_at?: string;
           outcome?: string;
@@ -161,6 +167,102 @@ export type Database = {
             referencedColumns: ['id'];
           },
         ];
+      };
+      pcd_access_quota_bucket: {
+        Row: {
+          action: string;
+          actor_scope_key: string;
+          count: number;
+          created_at: string;
+          id: string;
+          shop_id: string | null;
+          tenant_id: string;
+          updated_at: string;
+          window_start: string;
+        };
+        Insert: {
+          action: string;
+          actor_scope_key: string;
+          count?: number;
+          created_at?: string;
+          id?: string;
+          shop_id?: string | null;
+          tenant_id: string;
+          updated_at?: string;
+          window_start: string;
+        };
+        Update: {
+          action?: string;
+          actor_scope_key?: string;
+          count?: number;
+          created_at?: string;
+          id?: string;
+          shop_id?: string | null;
+          tenant_id?: string;
+          updated_at?: string;
+          window_start?: string;
+        };
+        Relationships: [];
+      };
+      pcd_access_quota_policy: {
+        Row: {
+          action: string;
+          max_count: number;
+          updated_at: string;
+          window_seconds: number;
+        };
+        Insert: {
+          action: string;
+          max_count: number;
+          updated_at?: string;
+          window_seconds: number;
+        };
+        Update: {
+          action?: string;
+          max_count?: number;
+          updated_at?: string;
+          window_seconds?: number;
+        };
+        Relationships: [];
+      };
+      shopify_dsar_download_authorization: {
+        Row: {
+          actor_user_id: string;
+          artifact_id: string;
+          consumed_at: string | null;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          purpose: string;
+          shop_id: string;
+          tenant_id: string;
+          token_hash: string;
+        };
+        Insert: {
+          actor_user_id: string;
+          artifact_id: string;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          purpose: string;
+          shop_id: string;
+          tenant_id: string;
+          token_hash: string;
+        };
+        Update: {
+          actor_user_id?: string;
+          artifact_id?: string;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          purpose?: string;
+          shop_id?: string;
+          tenant_id?: string;
+          token_hash?: string;
+        };
+        Relationships: [];
       };
       call_log: {
         Row: {
@@ -2681,6 +2783,7 @@ export type Database = {
           p_action: string;
           p_actor_kind: string;
           p_data_category: string;
+          p_idempotency_key?: string | null;
           p_metadata?: Json;
           p_outcome: string;
           p_purpose: string;
@@ -2692,6 +2795,43 @@ export type Database = {
           p_tenant_id: string;
         };
         Returns: string;
+      };
+      consume_pcd_access_quota: {
+        Args: {
+          p_action: string;
+          p_actor_kind: string;
+          p_service_kind?: string | null;
+          p_shop_id?: string | null;
+          p_tenant_id: string;
+        };
+        Returns: {
+          allowed: boolean;
+          current_count: number;
+          max_count: number;
+          window_start: string;
+        }[];
+      };
+      issue_shopify_dsar_download_authorization: {
+        Args: { p_artifact_id: string; p_shop_id: string; p_tenant_id: string };
+        Returns: { download_token: string; expires_at: string }[];
+      };
+      consume_shopify_dsar_download_authorization: {
+        Args: {
+          p_artifact_id: string;
+          p_download_token: string;
+          p_shop_id: string;
+          p_tenant_id: string;
+        };
+        Returns: {
+          authorization_id: string;
+          byte_size: number;
+          storage_bucket: string;
+          storage_path: string;
+        }[];
+      };
+      purge_pcd_access_controls: {
+        Args: { p_batch_size?: number; p_before: string };
+        Returns: { authorization_rows: number; quota_rows: number }[];
       };
       purge_pcd_access_audit: {
         Args: { p_batch_size?: number; p_before: string };

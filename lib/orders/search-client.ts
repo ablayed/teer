@@ -25,21 +25,21 @@ export async function fetchOrdersSearchPageData(
   input: OrdersSearchRequest,
   signal: AbortSignal,
 ): Promise<OrdersPageData> {
-  const params = new URLSearchParams({
-    dateFrom: input.dateFrom,
-    dateTo: input.dateTo,
-    q: input.search,
-    view: input.view,
-  });
-
-  if (input.shopId) {
-    params.set('shopId', input.shopId);
-  }
-
-  const response = await fetch(`/api/orders/search?${params.toString()}`, {
+  const response = await fetch('/api/orders/search', {
     cache: 'no-store',
-    headers: { Accept: 'application/json' },
-    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'x-teer-audit-request-id': crypto.randomUUID(),
+    },
+    method: 'POST',
+    body: JSON.stringify({
+      dateFrom: input.dateFrom,
+      dateTo: input.dateTo,
+      q: input.search,
+      shopId: input.shopId,
+      view: input.view,
+    }),
     signal,
   });
 

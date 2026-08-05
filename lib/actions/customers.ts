@@ -7,6 +7,8 @@ import {
   isRefuserCustomer,
 } from '@/lib/customers/enrichment';
 import type { ReliabilityTier } from '@/lib/customers/reliability';
+import { writePcdAccessAuditCategories } from '@/lib/security/pcd-access-audit';
+import { PcdAccessControlError, consumePcdQuota } from '@/lib/security/pcd-access-controls';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
@@ -102,6 +104,44 @@ export const listCustomersAction = requireRole('owner', 'manager', 'agent')
   .inputSchema(listCustomersSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
+    if (parsedInput.search?.trim()) {
+      try {
+        await consumePcdQuota(supabase, {
+          action: 'search',
+          actorKind: 'human',
+          tenantId: ctx.member.merchantAccountId,
+        });
+      } catch (error) {
+        try {
+          await writePcdAccessAuditCategories(
+            supabase,
+            {
+              tenantId: ctx.member.merchantAccountId,
+              actorKind: 'human',
+              action: 'search',
+              purpose: 'customer_support',
+              outcome: 'denied',
+              resourceType: 'customer',
+              surface: 'server_action',
+              metadata: {
+                reason_code:
+                  error instanceof PcdAccessControlError ? error.code : 'quota_unavailable',
+              },
+            },
+            ['customer_identity', 'customer_contact'],
+          );
+        } catch {
+          // L'accès reste fermé même si le journal de refus est indisponible.
+        }
+        return {
+          ok: false as const,
+          errorCode:
+            error instanceof PcdAccessControlError && error.code === 'quota_exceeded'
+              ? ('rate_limited' as const)
+              : ('quota_unavailable' as const),
+        };
+      }
+    }
     const customersResult = await supabase.rpc('list_customer_reliability', {
       p_merchant_id: ctx.member.merchantAccountId,
       p_search: parsedInput.search || undefined,
@@ -114,9 +154,32 @@ export const listCustomersAction = requireRole('owner', 'manager', 'agent')
       return { ok: false as const, errorCode: 'list_failed' as const };
     }
 
+    const customers = (customersResult.data ?? []).map(toListItem);
+    try {
+      await writePcdAccessAuditCategories(
+        supabase,
+        {
+          tenantId: ctx.member.merchantAccountId,
+          actorKind: 'human',
+          action: parsedInput.search?.trim() ? 'search' : 'list_access',
+          purpose: 'customer_support',
+          outcome: 'succeeded',
+          resourceType: 'customer',
+          surface: 'server_action',
+          metadata: {
+            page_size: Math.min(customers.length, 100),
+            result_count: Math.min(customers.length, 100),
+          },
+        },
+        ['customer_identity', 'customer_contact'],
+      );
+    } catch {
+      return { ok: false as const, errorCode: 'audit_unavailable' as const };
+    }
+
     return {
       ok: true as const,
-      customers: (customersResult.data ?? []).map(toListItem),
+      customers,
       readOnly: ctx.member.role === 'agent',
     };
   });
@@ -177,6 +240,25 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
       },
       history: (historyResult.data ?? []) as CustomerOrderHistoryItem[],
     };
+
+    try {
+      await writePcdAccessAuditCategories(
+        supabase,
+        {
+          tenantId: ctx.member.merchantAccountId,
+          actorKind: 'human',
+          action: 'view_detail',
+          purpose: 'customer_support',
+          outcome: 'succeeded',
+          resourceType: 'customer',
+          resourceId: parsedInput.customerId,
+          surface: 'server_action',
+        },
+        ['customer_identity', 'customer_contact', 'delivery_address'],
+      );
+    } catch {
+      return { ok: false as const, errorCode: 'audit_unavailable' as const };
+    }
 
     return {
       ok: true as const,

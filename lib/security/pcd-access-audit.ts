@@ -10,6 +10,7 @@ export const PCD_ACCESS_ACTIONS = [
   'generate_export',
   'download_export',
   'generate_signed_url',
+  'generate_download_authorization',
   'external_share',
   'privileged_read',
   'ai_processing',
@@ -50,6 +51,7 @@ export const PCD_ACCESS_SERVICE_KINDS = [
 ] as const;
 
 export const PCD_ACCESS_SURFACES = [
+  'server_component',
   'server_action',
   'route_handler',
   'rpc',
@@ -68,6 +70,8 @@ export const PCD_ACCESS_SURFACES = [
 export const PCD_ACCESS_RESOURCE_TYPES = [
   'order',
   'customer',
+  'driver',
+  'member',
   'delivery_address',
   'dsar_artifact',
   'export',
@@ -103,6 +107,7 @@ export type PcdAccessAuditEntry = {
   resourceId?: string | null;
   surface: PcdAccessSurface;
   metadata?: PcdAccessMetadata;
+  idempotencyKey?: string | null;
 };
 
 export class PcdAccessAuditError extends Error {
@@ -110,6 +115,13 @@ export class PcdAccessAuditError extends Error {
     super('pcd_access_audit_write_failed');
     this.name = 'PcdAccessAuditError';
   }
+}
+
+export function sanitizePcdIdempotencyKey(value: string | null | undefined): string | null {
+  if (!value || value.length > 96 || !/^[A-Za-z0-9._:-]+$/.test(value)) {
+    return null;
+  }
+  return value;
 }
 
 const ALLOWED_METADATA_KEYS = new Set([
@@ -122,6 +134,10 @@ const ALLOWED_METADATA_KEYS = new Set([
   'reason_code',
   'result_count',
   'source',
+  'page_number',
+  'page_size',
+  'quota_count',
+  'quota_limit',
 ]);
 
 const FORBIDDEN_METADATA_KEYS = new Set([
@@ -163,6 +179,10 @@ export function sanitizePcdAccessMetadata(metadata: PcdAccessMetadata = {}): Jso
       typeof value !== 'number' &&
       typeof value !== 'boolean'
     ) {
+      throw new PcdAccessAuditError();
+    }
+
+    if (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0 || value > 5000)) {
       throw new PcdAccessAuditError();
     }
 
@@ -208,6 +228,7 @@ export async function writePcdAccessAudit(
     p_shop_id: entry.shopId ?? null,
     p_surface: entry.surface,
     p_tenant_id: entry.tenantId,
+    p_idempotency_key: entry.idempotencyKey ?? null,
   });
 
   if (error || typeof data !== 'string') {
@@ -215,4 +236,18 @@ export async function writePcdAccessAudit(
   }
 
   return data;
+}
+
+export async function writePcdAccessAuditCategories(
+  client: TypedSupabaseClient,
+  entry: Omit<PcdAccessAuditEntry, 'dataCategory'>,
+  categories: readonly PcdAccessCategory[],
+): Promise<void> {
+  for (const dataCategory of categories) {
+    await writePcdAccessAudit(client, {
+      ...entry,
+      dataCategory,
+      idempotencyKey: entry.idempotencyKey ? `${entry.idempotencyKey}:${dataCategory}` : null,
+    });
+  }
 }

@@ -1,5 +1,10 @@
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
-import { createPrivateDsarSignedUrl, createStorageAdminClient } from '@/lib/shopify/dsar';
+import {
+  PcdAccessControlError,
+  consumePcdQuota,
+  requireRecentAuthentication,
+} from '@/lib/security/pcd-access-controls';
+import { issuePrivateDsarDownloadAuthorization } from '@/lib/shopify/dsar';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -42,7 +47,49 @@ export async function GET(
   }
 
   try {
-    const result = await createPrivateDsarSignedUrl(createStorageAdminClient(), {
+    await requireRecentAuthentication(auditClient);
+    await consumePcdQuota(auditClient, {
+      action: 'generate_download_authorization',
+      actorKind: 'human',
+      shopId: requestedShopId,
+      tenantId: member.merchant_account_id,
+    });
+  } catch (error) {
+    const status =
+      error instanceof PcdAccessControlError
+        ? error.code === 'recent_authentication_required'
+          ? 401
+          : error.code === 'quota_exceeded'
+            ? 429
+            : 503
+        : 503;
+    try {
+      await writePcdAccessAudit(auditClient, {
+        tenantId: member.merchant_account_id,
+        shopId: requestedShopId,
+        actorKind: 'human',
+        action: 'generate_download_authorization',
+        dataCategory: 'dsar_artifact',
+        purpose: 'legal_request',
+        outcome: 'denied',
+        resourceType: 'dsar_artifact',
+        resourceId: artifactId,
+        surface: 'dsar',
+        metadata: {
+          reason_code: error instanceof PcdAccessControlError ? error.code : 'control_unavailable',
+        },
+      });
+    } catch {
+      // Aucun artefact ni jeton n'est retourné.
+    }
+    return NextResponse.json(
+      { error: status === 429 ? 'rate_limited' : 'reauthentication_required' },
+      { status },
+    );
+  }
+
+  try {
+    const result = await issuePrivateDsarDownloadAuthorization(auditClient, {
       artifactId,
       merchantAccountId: member.merchant_account_id,
       shopId: requestedShopId,
@@ -53,7 +100,7 @@ export async function GET(
         tenantId: member.merchant_account_id,
         shopId: requestedShopId,
         actorKind: 'human',
-        action: 'generate_signed_url',
+        action: 'generate_download_authorization',
         dataCategory: 'dsar_artifact',
         purpose: 'legal_request',
         outcome: 'succeeded',
@@ -65,14 +112,20 @@ export async function GET(
       return NextResponse.json({ error: 'audit_unavailable' }, { status: 503 });
     }
 
-    return NextResponse.json(result, { headers: { 'cache-control': 'no-store' } });
+    return NextResponse.json(
+      {
+        ...result,
+        downloadPath: `/api/shopify/dsar/${artifactId}/download?shop_id=${requestedShopId}`,
+      },
+      { headers: { 'cache-control': 'private, no-store, max-age=0', pragma: 'no-cache' } },
+    );
   } catch {
     try {
       await writePcdAccessAudit(auditClient, {
         tenantId: member.merchant_account_id,
         shopId: requestedShopId,
         actorKind: 'human',
-        action: 'generate_signed_url',
+        action: 'generate_download_authorization',
         dataCategory: 'dsar_artifact',
         purpose: 'legal_request',
         outcome: 'denied',

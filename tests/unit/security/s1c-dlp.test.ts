@@ -110,7 +110,7 @@ describe('S1C-1 DLP contract', () => {
     expect(read('lib/shopify/shop-sync.ts')).not.toContain('extra: { payload');
     expect(read('lib/shopify/products-sync.ts')).not.toContain('extra: { payload');
     expect(read('app/api/shopify/dsar/[artifactId]/route.ts')).toContain('writePcdAccessAudit');
-    expect(read('lib/shopify/dsar.ts')).toContain(".eq('shop_id', shopId)");
+    expect(read('lib/shopify/dsar.ts')).toContain('p_shop_id: shopId');
     expect(read('app/api/shopify/dsar/[artifactId]/route.ts')).toContain("'audit_unavailable'");
     expect(read('components/whatsapp/whatsapp-compose-sheet.tsx')).toContain(
       'recordWhatsappShareAction',

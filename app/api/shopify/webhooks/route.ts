@@ -1,3 +1,4 @@
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { getRegisteredShopifyApps, getShopifyAppForShop } from '@/lib/shopify/apps';
 import { createPrivateDsarArtifact } from '@/lib/shopify/dsar';
@@ -76,6 +77,7 @@ const CONTROLLED_WEBHOOK_ERROR_CODES = new Set([
   'shopify_refund_order_lookup_failed',
   'shopify_refund_order_update_failed',
   'shopify_refund_audit_failed',
+  'shopify_pcd_audit_failed',
 ]);
 
 function sanitizeWebhookError(error: unknown): string {
@@ -980,6 +982,44 @@ async function processWebhook({
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
 }): Promise<GdprProcessResult | null> {
+  const pcdTopics = new Set([
+    'orders/create',
+    'orders/updated',
+    'orders/cancelled',
+    'orders/fulfilled',
+    'bulk_operations/finish',
+    'customers/data_request',
+    'customers/redact',
+    'shop/redact',
+  ]);
+  if (pcdTopics.has(topic) && shopDomain) {
+    const shop = await getShopByDomain({ shopDomain, supabase });
+    if (shop) {
+      try {
+        await writePcdAccessAudit(supabase, {
+          tenantId: shop.merchant_account_id,
+          shopId: shop.id,
+          actorKind: 'service',
+          serviceKind: 'webhook',
+          action: 'privileged_read',
+          dataCategory: 'shopify_payload',
+          purpose:
+            topic.startsWith('customers/') || topic === 'shop/redact'
+              ? 'legal_request'
+              : 'system_processing',
+          outcome: 'allowed',
+          resourceType: 'shopify_payload',
+          resourceId: eventId,
+          surface: 'shopify',
+          metadata: { source: 'webhook' },
+          idempotencyKey: `webhook:${eventId}:pcd-read`,
+        });
+      } catch {
+        throw new Error('shopify_pcd_audit_failed');
+      }
+    }
+  }
+
   switch (topic) {
     // orders/cancelled et orders/fulfilled portent un objet commande complet → miroir de canal
     // (shopify_*), JAMAIS les 4 dimensions. Un « fulfilled » Shopify ne marque pas LIVREE.

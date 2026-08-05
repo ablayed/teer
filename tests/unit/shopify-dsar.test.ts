@@ -1,105 +1,82 @@
-import { DSAR_MAX_TTL_SECONDS, createPrivateDsarSignedUrl } from '@/lib/shopify/dsar';
+import {
+  DSAR_MAX_TTL_SECONDS,
+  consumePrivateDsarDownloadAuthorization,
+  issuePrivateDsarDownloadAuthorization,
+} from '@/lib/shopify/dsar';
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it, vi } from 'vitest';
 
-function fakeAdmin(artifact: Record<string, string> | null) {
-  const createSignedUrl = vi
-    .fn()
-    .mockResolvedValue({ data: { signedUrl: 'https://private.test/url' }, error: null });
-  const update = vi.fn().mockReturnValue({
-    eq: vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ error: null }),
-    }),
-  });
-  const maybeSingle = vi.fn().mockResolvedValue({ data: artifact, error: null });
-  const eq = vi.fn().mockReturnThis();
-  const chain = {
-    select: vi.fn().mockReturnThis(),
-    eq,
-    maybeSingle,
-    update,
-  };
-  const admin = {
-    from: vi.fn(() => chain),
-    storage: {
-      from: vi.fn(() => ({ createSignedUrl })),
-    },
-  } as unknown as SupabaseClient<Database>;
-  return { admin, createSignedUrl, eq };
+function fakeClient(data: unknown, error: unknown = null) {
+  const rpc = vi.fn().mockResolvedValue({ data, error });
+  return { client: { rpc } as unknown as SupabaseClient<Database>, rpc };
 }
 
-describe('private Shopify DSAR artifacts', () => {
-  it('never signs beyond the artifact expiration or 24 hours', async () => {
-    const { admin, createSignedUrl } = fakeAdmin({
-      storage_bucket: 'shopify-dsar',
-      storage_path: 'merchant-1/event-1.json',
-      shop_id: 'shop-1',
-      status: 'ready',
-      expires_at: '2026-08-05T02:00:00.000Z',
-    });
+describe('private Shopify DSAR one-shot authorizations', () => {
+  it('issues an opaque authorization through the authenticated RPC', async () => {
+    const { client, rpc } = fakeClient([
+      { download_token: 'synthetic-download-token', expires_at: '2026-08-05T00:10:00.000Z' },
+    ]);
 
     await expect(
-      createPrivateDsarSignedUrl(admin, {
-        artifactId: 'artifact-1',
-        merchantAccountId: 'merchant-1',
-        shopId: 'shop-1',
-        now: new Date('2026-08-05T00:00:00.000Z'),
-      }),
-    ).resolves.toMatchObject({ expiresAt: '2026-08-05T02:00:00.000Z' });
-    expect(createSignedUrl).toHaveBeenCalledWith('merchant-1/event-1.json', 2 * 60 * 60);
-    expect(DSAR_MAX_TTL_SECONDS).toBe(24 * 60 * 60);
-  });
-
-  it('refuses an expired artifact', async () => {
-    const { admin, createSignedUrl } = fakeAdmin({
-      storage_bucket: 'shopify-dsar',
-      storage_path: 'merchant-1/event-1.json',
-      shop_id: 'shop-1',
-      status: 'ready',
-      expires_at: '2026-08-04T23:59:59.000Z',
-    });
-
-    await expect(
-      createPrivateDsarSignedUrl(admin, {
-        artifactId: 'artifact-1',
-        merchantAccountId: 'merchant-1',
-        shopId: 'shop-1',
-        now: new Date('2026-08-05T00:00:00.000Z'),
-      }),
-    ).rejects.toThrow('dsar_artifact_expired');
-    expect(createSignedUrl).not.toHaveBeenCalled();
-  });
-
-  it('always scopes the artifact lookup by tenant and shop', async () => {
-    const { admin, eq } = fakeAdmin({
-      storage_bucket: 'shopify-dsar',
-      storage_path: 'tenant-a/event-a.json',
-      shop_id: 'shop-a',
-      status: 'ready',
-      expires_at: '2026-08-05T02:00:00.000Z',
-    });
-
-    await createPrivateDsarSignedUrl(admin, {
-      artifactId: '00000000-0000-4000-8000-000000000001',
-      merchantAccountId: '00000000-0000-4000-8000-000000000002',
-      shopId: '00000000-0000-4000-8000-000000000003',
-      now: new Date('2026-08-05T00:00:00.000Z'),
-    });
-
-    expect(eq).toHaveBeenCalledWith('merchant_account_id', '00000000-0000-4000-8000-000000000002');
-    expect(eq).toHaveBeenCalledWith('shop_id', '00000000-0000-4000-8000-000000000003');
-  });
-
-  it('turns an artifact outside the tenant or shop scope into a closed denial', async () => {
-    const { admin } = fakeAdmin(null);
-
-    await expect(
-      createPrivateDsarSignedUrl(admin, {
+      issuePrivateDsarDownloadAuthorization(client, {
         artifactId: '00000000-0000-4000-8000-000000000001',
         merchantAccountId: '00000000-0000-4000-8000-000000000002',
         shopId: '00000000-0000-4000-8000-000000000003',
       }),
-    ).rejects.toThrow('dsar_artifact_not_found');
+    ).resolves.toEqual({
+      downloadToken: 'synthetic-download-token',
+      expiresAt: '2026-08-05T00:10:00.000Z',
+    });
+    expect(rpc).toHaveBeenCalledWith('issue_shopify_dsar_download_authorization', {
+      p_artifact_id: '00000000-0000-4000-8000-000000000001',
+      p_shop_id: '00000000-0000-4000-8000-000000000003',
+      p_tenant_id: '00000000-0000-4000-8000-000000000002',
+    });
+  });
+
+  it('consumes the authorization through a scoped RPC and never queries Storage by token', async () => {
+    const { client, rpc } = fakeClient([
+      {
+        authorization_id: '00000000-0000-4000-8000-000000000004',
+        byte_size: 128,
+        storage_bucket: 'shopify-dsar',
+        storage_path: 'synthetic-tenant/synthetic-event.json',
+      },
+    ]);
+
+    await expect(
+      consumePrivateDsarDownloadAuthorization(client, {
+        artifactId: '00000000-0000-4000-8000-000000000001',
+        downloadToken: 'synthetic-download-token',
+        merchantAccountId: '00000000-0000-4000-8000-000000000002',
+        shopId: '00000000-0000-4000-8000-000000000003',
+      }),
+    ).resolves.toEqual({
+      authorizationId: '00000000-0000-4000-8000-000000000004',
+      bucket: 'shopify-dsar',
+      path: 'synthetic-tenant/synthetic-event.json',
+      byteSize: 128,
+    });
+    expect(rpc).toHaveBeenCalledWith('consume_shopify_dsar_download_authorization', {
+      p_artifact_id: '00000000-0000-4000-8000-000000000001',
+      p_download_token: 'synthetic-download-token',
+      p_shop_id: '00000000-0000-4000-8000-000000000003',
+      p_tenant_id: '00000000-0000-4000-8000-000000000002',
+    });
+  });
+
+  it('fails closed when the authorization RPC rejects a second or expired use', async () => {
+    const { client } = fakeClient(null, { message: 'authorization_forbidden' });
+
+    await expect(
+      consumePrivateDsarDownloadAuthorization(client, {
+        artifactId: '00000000-0000-4000-8000-000000000001',
+        downloadToken: 'synthetic-download-token',
+        merchantAccountId: '00000000-0000-4000-8000-000000000002',
+        shopId: '00000000-0000-4000-8000-000000000003',
+      }),
+    ).rejects.toThrow('dsar_download_authorization_forbidden');
+    expect(DSAR_MAX_TTL_SECONDS).toBe(24 * 60 * 60);
   });
 });

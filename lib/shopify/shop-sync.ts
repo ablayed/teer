@@ -1,4 +1,5 @@
 import { env } from '@/lib/env';
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import { getShopifyAppForShop } from '@/lib/shopify/apps';
 import { shopifyGraphQL } from '@/lib/shopify/graphql';
 import {
@@ -126,6 +127,23 @@ export async function syncShopOrders({
     });
 
     const edges = data.orders.edges;
+    try {
+      await writePcdAccessAudit(admin, {
+        tenantId: merchantAccountId,
+        shopId: shop.id,
+        actorKind: 'service',
+        serviceKind: 'shopify_sync',
+        action: 'privileged_read',
+        dataCategory: 'shopify_payload',
+        purpose: 'system_processing',
+        outcome: 'allowed',
+        resourceType: 'shopify_payload',
+        surface: 'shopify',
+        metadata: { result_count: Math.min(edges.length, 500), source: 'sync' },
+      });
+    } catch {
+      return { ok: false, errorCode: 'sync_failed' };
+    }
     let syncedCount = 0;
     let failedCount = 0;
     const syncFailures: Array<{ error: unknown; orderId: string; step: string }> = [];

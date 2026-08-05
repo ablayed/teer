@@ -3,6 +3,7 @@
 // (upsert par (shop_id, shopify_order_id), miroir de canal, garde hors-ordre) → rattrape les
 // webhooks ratés. N'écrase JAMAIS l'état opérationnel (4 dimensions).
 
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import {
   type BulkOperation,
   downloadJsonl,
@@ -35,6 +36,24 @@ async function persistBulkOrders(
 
   const jsonl = await downloadJsonl(operation.url);
   const nodes = parseBulkOrdersJsonl(jsonl);
+
+  try {
+    await writePcdAccessAudit(admin, {
+      tenantId: shop.merchant_account_id,
+      shopId: shop.id,
+      actorKind: 'service',
+      serviceKind: 'shopify_sync',
+      action: 'privileged_read',
+      dataCategory: 'shopify_payload',
+      purpose: 'system_processing',
+      outcome: 'allowed',
+      resourceType: 'shopify_payload',
+      surface: 'shopify',
+      metadata: { result_count: Math.min(nodes.length, 500), source: 'bulk' },
+    });
+  } catch {
+    return { syncedCount: 0, failedCount: nodes.length };
+  }
 
   let syncedCount = 0;
   let failedCount = 0;

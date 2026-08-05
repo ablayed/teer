@@ -3,6 +3,7 @@
 import { type TeamRole, requireRole } from '@/lib/actions/safe-action';
 import { sendTeamInvitationEmail } from '@/lib/email/team-invitation';
 import { env } from '@/lib/env';
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import { generateInvitationToken, hashInvitationToken } from '@/lib/team/invitation-token';
 import {
@@ -11,7 +12,7 @@ import {
   canRemoveMember,
   isTeamRole,
 } from '@/lib/team/permissions';
-import { createClient } from '@supabase/supabase-js';
+import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -666,6 +667,22 @@ export const listTeamAction = requireRole('owner', 'manager')
     const invitations = (invitationsResult.data ?? []) as InvitationRow[];
     const drivers = (driversResult.data ?? []) as DriverRow[];
     const usersById = await getAuthUsersById(members.map((member) => member.user_id));
+
+    try {
+      await writePcdAccessAudit(ctx.supabase as unknown as SupabaseClient<Database>, {
+        tenantId: ctx.member.merchantAccountId,
+        actorKind: 'human',
+        action: 'list_access',
+        dataCategory: 'member_data',
+        purpose: 'system_processing',
+        outcome: 'succeeded',
+        resourceType: 'member',
+        surface: 'server_action',
+        metadata: { result_count: Math.min(members.length + drivers.length, 500), page_size: 500 },
+      });
+    } catch {
+      return { ok: false as const, errorCode: 'audit_unavailable' as const };
+    }
 
     return {
       ok: true as const,

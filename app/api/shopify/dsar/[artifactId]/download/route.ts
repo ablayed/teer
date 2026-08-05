@@ -1,5 +1,14 @@
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
-import { createStorageAdminClient, downloadPrivateDsarArtifact } from '@/lib/shopify/dsar';
+import {
+  PcdAccessControlError,
+  consumePcdQuota,
+  requireRecentAuthentication,
+} from '@/lib/security/pcd-access-controls';
+import {
+  consumePrivateDsarDownloadAuthorization,
+  createStorageAdminClient,
+  downloadPrivateDsarArtifactAtPath,
+} from '@/lib/shopify/dsar';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -37,7 +46,62 @@ export async function GET(
 
   const { artifactId } = await params;
   const shopId = new URL(request.url).searchParams.get('shop_id');
-  if (!UUID_PATTERN.test(artifactId) || !shopId || !UUID_PATTERN.test(shopId)) {
+  const downloadToken = request.headers.get('x-teer-dsar-download-token');
+  if (!UUID_PATTERN.test(artifactId) || !shopId || !UUID_PATTERN.test(shopId) || !downloadToken) {
+    return NextResponse.json({ error: 'artifact_unavailable' }, { status: 404 });
+  }
+
+  try {
+    await requireRecentAuthentication(auditClient);
+    await consumePcdQuota(auditClient, {
+      action: 'download_export',
+      actorKind: 'human',
+      shopId,
+      tenantId: member.merchant_account_id,
+    });
+  } catch (error) {
+    const status =
+      error instanceof PcdAccessControlError
+        ? error.code === 'recent_authentication_required'
+          ? 401
+          : error.code === 'quota_exceeded'
+            ? 429
+            : 503
+        : 503;
+    try {
+      await writePcdAccessAudit(auditClient, {
+        tenantId: member.merchant_account_id,
+        shopId,
+        actorKind: 'human',
+        action: 'download_export',
+        dataCategory: 'dsar_artifact',
+        purpose: 'legal_request',
+        outcome: 'denied',
+        resourceType: 'dsar_artifact',
+        resourceId: artifactId,
+        surface: 'dsar',
+        metadata: {
+          reason_code: error instanceof PcdAccessControlError ? error.code : 'control_unavailable',
+        },
+      });
+    } catch {
+      // Aucun contenu n'est retourné.
+    }
+    return NextResponse.json(
+      { error: status === 429 ? 'rate_limited' : 'reauthentication_required' },
+      { status },
+    );
+  }
+
+  let authorization: Awaited<ReturnType<typeof consumePrivateDsarDownloadAuthorization>>;
+  try {
+    authorization = await consumePrivateDsarDownloadAuthorization(auditClient, {
+      artifactId,
+      downloadToken,
+      merchantAccountId: member.merchant_account_id,
+      shopId,
+    });
+  } catch {
     return NextResponse.json({ error: 'artifact_unavailable' }, { status: 404 });
   }
 
@@ -59,17 +123,17 @@ export async function GET(
   }
 
   try {
-    const { body } = await downloadPrivateDsarArtifact(createStorageAdminClient(), {
-      artifactId,
-      merchantAccountId: member.merchant_account_id,
-      shopId,
+    const body = await downloadPrivateDsarArtifactAtPath(createStorageAdminClient(), {
+      bucket: authorization.bucket,
+      path: authorization.path,
     });
 
     return new NextResponse(body, {
       headers: {
-        'cache-control': 'no-store',
+        'cache-control': 'private, no-store, max-age=0',
         'content-disposition': 'attachment; filename="dsar-export.json"',
         'content-type': 'application/json; charset=utf-8',
+        pragma: 'no-cache',
         'x-content-type-options': 'nosniff',
       },
     });

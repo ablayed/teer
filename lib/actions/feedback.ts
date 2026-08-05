@@ -56,6 +56,23 @@ export const submitFeedbackAction = authActionClient
       return { ok: false as const, errorCode: 'sensitive_content_rejected' as const };
     }
 
+    try {
+      await writePcdAccessAudit(supabase, {
+        tenantId: member.merchant_account_id,
+        actorKind: 'human',
+        action: 'support_submission',
+        dataCategory: 'member_data',
+        purpose: 'customer_support',
+        outcome: 'allowed',
+        resourceType: 'feedback',
+        resourceId: null,
+        surface: 'feedback',
+        metadata: { source: 'feedback_form' },
+      });
+    } catch {
+      return { ok: false as const, errorCode: 'audit_error' as const };
+    }
+
     const { error } = await supabase.from('feedback').insert({
       merchant_account_id: member.merchant_account_id,
       actor_user_id: ctx.user.id,
@@ -67,23 +84,6 @@ export const submitFeedbackAction = authActionClient
 
     if (error) {
       return { ok: false as const, errorCode: 'insert_error' as const };
-    }
-
-    try {
-      await writePcdAccessAudit(supabase, {
-        tenantId: member.merchant_account_id,
-        actorKind: 'human',
-        action: 'support_submission',
-        dataCategory: 'member_data',
-        purpose: 'customer_support',
-        outcome: 'succeeded',
-        resourceType: 'feedback',
-        resourceId: null,
-        surface: 'feedback',
-        metadata: { source: 'feedback_form' },
-      });
-    } catch {
-      return { ok: false as const, errorCode: 'audit_error' as const };
     }
 
     // Email best-effort — ne fait jamais échouer l'action si Resend n'est pas configuré.

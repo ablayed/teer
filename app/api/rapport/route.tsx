@@ -1,9 +1,19 @@
 import { registerPdfFonts } from '@/lib/pdf/fonts';
 import { formatMoneyPdf } from '@/lib/pdf/format';
-import { getReportData, reportFilename } from '@/lib/report/data';
+import { getReportData } from '@/lib/report/data';
 import type { ReportData } from '@/lib/report/data';
 import { ReportDocument } from '@/lib/report/document';
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
+import {
+  PcdAccessControlError,
+  assertPcdExportBounds,
+  consumePcdQuota,
+  requireRecentAuthentication,
+} from '@/lib/security/pcd-access-controls';
+import type { Database } from '@/lib/supabase/database.types';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { renderToStream } from '@react-pdf/renderer';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getTranslations } from 'next-intl/server';
 
 export const runtime = 'nodejs';
@@ -59,12 +69,112 @@ export async function GET(request: Request) {
   const now = new Date();
   const to = parseDate(url.searchParams.get('to'), now, true);
   const from = parseDate(url.searchParams.get('from'), defaultFrom(now));
+  const requestedShopId = url.searchParams.get('shopId');
+  const supabase = (await createSupabaseServerClient()) as unknown as SupabaseClient<Database>;
+  let tenantId: string | null = null;
+  let actorReady = false;
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: member } = user
+      ? await supabase
+          .from('merchant_member')
+          .select('merchant_account_id, role')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+
+    if (!user) {
+      return new Response(t('unauthenticated'), { status: 401 });
+    }
+    if (!member || !['owner', 'manager'].includes(member.role)) {
+      return new Response(t('forbidden'), { status: 403 });
+    }
+
+    tenantId = member.merchant_account_id;
+    await requireRecentAuthentication(supabase);
+    actorReady = true;
+
+    if (requestedShopId) {
+      const { data: shop } = await supabase
+        .from('shop')
+        .select('id')
+        .eq('id', requestedShopId)
+        .eq('merchant_account_id', tenantId)
+        .maybeSingle();
+      if (!shop) {
+        return new Response(t('forbidden'), { status: 403 });
+      }
+    }
+
+    await consumePcdQuota(supabase, {
+      action: 'generate_export',
+      actorKind: 'human',
+      shopId: requestedShopId,
+      tenantId,
+    });
+
+    await writePcdAccessAudit(supabase, {
+      tenantId,
+      shopId: requestedShopId,
+      actorKind: 'human',
+      action: 'generate_export',
+      dataCategory: 'member_data',
+      purpose: 'cash_reconciliation',
+      outcome: 'allowed',
+      resourceType: 'export',
+      surface: 'route_handler',
+      metadata: { channel: 'pdf' },
+    });
+  } catch (error) {
+    if (actorReady && tenantId) {
+      try {
+        await writePcdAccessAudit(supabase, {
+          tenantId,
+          shopId: requestedShopId,
+          actorKind: 'human',
+          action: 'generate_export',
+          dataCategory: 'member_data',
+          purpose: 'cash_reconciliation',
+          outcome: 'denied',
+          resourceType: 'export',
+          surface: 'route_handler',
+          metadata: {
+            channel: 'pdf',
+            reason_code: error instanceof PcdAccessControlError ? error.code : 'audit_unavailable',
+          },
+        });
+      } catch {
+        // Le refus reste fermé et aucune donnée de rapport n'est retournée.
+      }
+    }
+    if (error instanceof PcdAccessControlError) {
+      const status =
+        error.code === 'recent_authentication_required'
+          ? 401
+          : error.code === 'quota_exceeded'
+            ? 429
+            : 503;
+      return new Response(
+        t(error.code === 'recent_authentication_required' ? 'unauthenticated' : 'error'),
+        {
+          status,
+          headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+        },
+      );
+    }
+    return new Response(t('error'), { status: 503 });
+  }
+
   let data: ReportData;
 
   try {
     data = await getReportData({
       from,
-      shopId: url.searchParams.get('shopId'),
+      shopId: requestedShopId,
       to,
     });
   } catch (error) {
@@ -77,6 +187,14 @@ export async function GET(request: Request) {
     }
 
     return new Response(t('error'), { status: 500 });
+  }
+  try {
+    assertPcdExportBounds(data.drivers.length + data.topProducts.length);
+  } catch {
+    return new Response(t('error'), {
+      status: 413,
+      headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+    });
   }
   const labels = {
     agingTitle: finance('charts.aging'),
@@ -147,13 +265,42 @@ export async function GET(request: Request) {
       labels={labels}
     />,
   );
-  const filename = reportFilename({ from: data.from, shopSlug: data.shop.slug, to: data.to });
+  if (!tenantId) {
+    return new Response(t('error'), { status: 503 });
+  }
+
+  try {
+    await writePcdAccessAudit(supabase, {
+      tenantId,
+      shopId: requestedShopId,
+      actorKind: 'human',
+      action: 'generate_export',
+      dataCategory: 'member_data',
+      purpose: 'cash_reconciliation',
+      outcome: 'succeeded',
+      resourceType: 'export',
+      surface: 'route_handler',
+      metadata: {
+        channel: 'pdf',
+        result_count: Math.min(data.drivers.length + data.topProducts.length, 500),
+      },
+    });
+  } catch {
+    return new Response(t('error'), {
+      status: 503,
+      headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+    });
+  }
+
+  const filename = 'teer-rapport.pdf';
 
   return new Response(stream as unknown as BodyInit, {
     headers: {
       'Cache-Control': 'private, no-store',
+      Pragma: 'no-cache',
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Type': 'application/pdf',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }
