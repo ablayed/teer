@@ -86,6 +86,82 @@ export type Database = {
           },
         ];
       };
+      pcd_access_audit: {
+        Row: {
+          action: string;
+          actor_kind: string;
+          actor_user_id: string | null;
+          data_category: string;
+          id: string;
+          metadata: Json;
+          occurred_at: string;
+          outcome: string;
+          purpose: string;
+          resource_id: string | null;
+          resource_type: string;
+          service_kind: string | null;
+          shop_id: string | null;
+          surface: string;
+          tenant_id: string;
+        };
+        Insert: {
+          action: string;
+          actor_kind: string;
+          actor_user_id?: string | null;
+          data_category: string;
+          id?: string;
+          metadata?: Json;
+          occurred_at?: string;
+          outcome: string;
+          purpose: string;
+          resource_id?: string | null;
+          resource_type: string;
+          service_kind?: string | null;
+          shop_id?: string | null;
+          surface: string;
+          tenant_id: string;
+        };
+        Update: {
+          action?: string;
+          actor_kind?: string;
+          actor_user_id?: string | null;
+          data_category?: string;
+          id?: string;
+          metadata?: Json;
+          occurred_at?: string;
+          outcome?: string;
+          purpose?: string;
+          resource_id?: string | null;
+          resource_type?: string;
+          service_kind?: string | null;
+          shop_id?: string | null;
+          surface?: string;
+          tenant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'pcd_access_audit_actor_user_id_fkey';
+            columns: ['actor_user_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'pcd_access_audit_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'pcd_access_audit_tenant_id_fkey';
+            columns: ['tenant_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       call_log: {
         Row: {
           agent_user_id: string;
@@ -784,6 +860,7 @@ export type Database = {
           allowed: boolean;
           conversation_id: string | null;
           created_at: string;
+          data_category: string;
           denied_reason: string | null;
           id: string;
           latency_ms: number | null;
@@ -797,6 +874,7 @@ export type Database = {
           allowed: boolean;
           conversation_id?: string | null;
           created_at?: string;
+          data_category?: string;
           denied_reason?: string | null;
           id?: string;
           latency_ms?: number | null;
@@ -810,6 +888,7 @@ export type Database = {
           allowed?: boolean;
           conversation_id?: string | null;
           created_at?: string;
+          data_category?: string;
           denied_reason?: string | null;
           id?: string;
           latency_ms?: number | null;
@@ -2587,6 +2666,7 @@ export type Database = {
         Args: {
           p_allowed: boolean;
           p_conversation_id?: string;
+          p_data_category?: string;
           p_denied_reason?: string;
           p_latency_ms?: number;
           p_merchant_account_id: string;
@@ -2595,6 +2675,27 @@ export type Database = {
           p_user_role: string;
         };
         Returns: string;
+      };
+      log_pcd_access_event: {
+        Args: {
+          p_action: string;
+          p_actor_kind: string;
+          p_data_category: string;
+          p_metadata?: Json;
+          p_outcome: string;
+          p_purpose: string;
+          p_resource_id?: string;
+          p_resource_type: string;
+          p_service_kind?: string;
+          p_shop_id?: string;
+          p_surface: string;
+          p_tenant_id: string;
+        };
+        Returns: string;
+      };
+      purge_pcd_access_audit: {
+        Args: { p_batch_size?: number; p_before: string };
+        Returns: number;
       };
       order_items_search_text: { Args: { p_items: Json }; Returns: string };
       orders_view_counts: {
