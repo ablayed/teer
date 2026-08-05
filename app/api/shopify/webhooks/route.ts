@@ -136,52 +136,19 @@ function mapWebhookAddress(rec: Record<string, unknown> | null): ShopifyAddress 
   };
 }
 
-// Consentement marketing REST : objet email_marketing_consent { state } (récent) ou champ legacy
-// accepts_marketing (bool). On normalise vers la forme GraphQL { marketingState } ; mapShopifyCustomer
-// dérive le booléen (SUBSCRIBED).
-function deriveWebhookConsent(
-  customer: Record<string, unknown>,
-): { marketingState: string | null } | null {
-  const consent = nestedRecord(customer, 'email_marketing_consent');
-  if (consent) {
-    return { marketingState: stringField(consent, 'state') };
-  }
-  const accepts = customer.accepts_marketing;
-  if (typeof accepts === 'boolean') {
-    return { marketingState: accepts ? 'SUBSCRIBED' : 'NOT_SUBSCRIBED' };
-  }
-  return null;
-}
-
-// Enrichissement client (Phase 7b) depuis le bloc customer d'un webhook commande REST.
+// Champs PCD strictement nécessaires depuis le bloc customer d'un webhook commande REST.
 function mapWebhookCustomer(
   customer: Record<string, unknown>,
   customerId: string,
   shippingAddress: Record<string, unknown> | null,
   shippingName: string | null,
 ): ShopifyCustomerNode {
-  const tagsRaw = customer.tags;
-  const tags =
-    typeof tagsRaw === 'string'
-      ? tagsRaw
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      : null;
-  const ordersCount = customer.orders_count;
-  const totalSpent = stringField(customer, 'total_spent');
-
   return {
     id: customerId,
     displayName: buildCustomerName(customer, shippingName),
     firstName: stringField(customer, 'first_name'),
     lastName: stringField(customer, 'last_name'),
     phone: stringField(customer, 'phone') ?? nullableStringField(shippingAddress, 'phone'),
-    numberOfOrders: typeof ordersCount === 'number' ? ordersCount : null,
-    amountSpent: totalSpent ? { amount: totalSpent } : null,
-    tags: tags && tags.length > 0 ? tags : null,
-    emailMarketingConsent: deriveWebhookConsent(customer),
-    createdAt: stringField(customer, 'created_at'),
     defaultAddress: mapWebhookAddress(nestedRecord(customer, 'default_address')),
   };
 }

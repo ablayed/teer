@@ -83,11 +83,7 @@ describe('customer enrichi — isolation tenant (RLS)', () => {
           phone: '+221771234567',
           phone_e164: '+221771234567',
           address: { raw: 'Cité Keur Gorgui, Dakar', city: 'Dakar', region: 'Dakar' },
-          tags: ['VIP'],
-          accepts_marketing: true,
           shopify_customer_gids: ['123456'],
-          shopify_orders_count: 3,
-          shopify_amount_spent_minor: 90000,
         })
         .select('id')
         .single();
@@ -100,7 +96,7 @@ describe('customer enrichi — isolation tenant (RLS)', () => {
       // Tenant B ne voit pas le client enrichi du tenant A.
       const { data: blocked, error: blockedError } = await tenantB.client
         .from('customer')
-        .select('id, phone_e164, address, tags')
+        .select('id, phone_e164, address')
         .eq('id', inserted.id);
       expect(blockedError).toBeNull();
       expect(blocked).toEqual([]);
@@ -108,14 +104,12 @@ describe('customer enrichi — isolation tenant (RLS)', () => {
       // Tenant A voit son client AVEC les colonnes enrichies.
       const { data: visible, error: visibleError } = await tenantA.client
         .from('customer')
-        .select('id, phone_e164, address, tags, accepts_marketing, shopify_amount_spent_minor')
+        .select('id, phone_e164, address, shopify_customer_gids')
         .eq('id', inserted.id)
         .single();
       expect(visibleError).toBeNull();
       expect(visible?.phone_e164).toBe('+221771234567');
-      expect(visible?.tags).toEqual(['VIP']);
-      expect(visible?.accepts_marketing).toBe(true);
-      expect(visible?.shopify_amount_spent_minor).toBe(90000);
+      expect(visible?.shopify_customer_gids).toEqual(['123456']);
 
       // Tenant B ne peut pas insérer un client chez le tenant A (WITH CHECK).
       const { data: crossInsert, error: crossInsertError } = await tenantB.client

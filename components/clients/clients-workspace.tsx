@@ -428,18 +428,6 @@ function CustomerSheet({
                         {customer.addressText ?? t('contact.noAddress')}
                       </span>
                     </p>
-                    {customer.tags && customer.tags.length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {customer.tags.map((tag) => (
-                          <span
-                            className="inline-flex items-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted"
-                            key={tag}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
                 </section>
 
@@ -539,22 +527,6 @@ function CustomerSheet({
                       {formatMoney(customer.deliveredLifetime)}
                     </p>
                   </div>
-                  {customer.shopifyOrdersCount !== null ? (
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted">{t('stats.shopifyOrders')}</p>
-                      <p className="font-mono text-lg font-semibold tabular-nums">
-                        {customer.shopifyOrdersCount}
-                      </p>
-                    </div>
-                  ) : null}
-                  {customer.shopifyAmountSpentMinor !== null ? (
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted">{t('stats.shopifySpent')}</p>
-                      <p className="font-mono text-sm font-semibold tabular-nums">
-                        {formatMoney(customer.shopifyAmountSpentMinor)}
-                      </p>
-                    </div>
-                  ) : null}
                 </section>
               </div>
             ) : null}

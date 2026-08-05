@@ -29,11 +29,6 @@ query Orders($cursor: String) {
           firstName
           lastName
           phone
-          numberOfOrders
-          amountSpent { amount currencyCode }
-          tags
-          emailMarketingConsent { marketingState }
-          createdAt
           defaultAddress { address1 address2 city province country zip phone name }
         }
         shippingAddress { address1 address2 city province country zip phone name }
@@ -77,18 +72,11 @@ export type ShopifyCustomerNode = {
   id: string;
   displayName: string | null;
   phone: string | null;
-  // Champs d'enrichissement (Phase 7b). Forme GraphQL brute ; les adaptateurs bulk JSONL et
-  // webhook REST synthétisent la MÊME forme. La normalisation (string→int, consentement→bool)
-  // se fait dans mapShopifyCustomer.
+  // Champs PCD strictement nécessaires au MVP COD ; les adaptateurs bulk JSONL et webhook REST
+  // synthétisent la même forme.
   firstName?: string | null;
   lastName?: string | null;
-  // numberOfOrders : GraphQL renvoie un UnsignedInt64 (string) ; REST orders_count (number).
-  numberOfOrders?: number | string | null;
-  amountSpent?: ShopifyMoney | null;
-  tags?: string[] | null;
-  emailMarketingConsent?: { marketingState: string | null } | null;
   defaultAddress?: ShopifyAddress | null;
-  createdAt?: string | null;
 };
 
 // Attribut clé/valeur générique (customAttributes GraphQL, "properties" ligne REST,
@@ -171,12 +159,8 @@ export type ExistingCustomerForMerge = {
   phone_e164: string | null;
   address: Json | null;
   shipping_address: Json | null;
-  tags: string[] | null;
-  accepts_marketing: boolean | null;
   shopify_customer_gids: Json;
   shopify_customer_id: string | null;
-  shopify_orders_count: number | null;
-  shopify_amount_spent_minor: number | null;
 };
 type OrderShopifyUpdate = Pick<
   TablesUpdate<'orders'>,
@@ -324,41 +308,12 @@ export function mapFlexibleAddress(address: ShopifyAddress | null | undefined): 
   };
 }
 
-// Montant Shopify (chaîne décimale en unité majeure) → bigint en unité mineure.
-// FCFA est à 0 décimale : l'unité mineure = l'entier FCFA. Hint d'affichage, pas un calcul finance.
-export function parseAmountToMinor(amount: string | null | undefined): number | null {
-  if (!amount) {
-    return null;
-  }
-  const value = Number.parseFloat(amount);
-  return Number.isFinite(value) ? Math.round(value) : null;
-}
-
-function toIntOrNull(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function joinName(
   first: string | null | undefined,
   last: string | null | undefined,
 ): string | null {
   const name = [first, last].filter(Boolean).join(' ').trim();
   return name || null;
-}
-
-// Consentement marketing : SUBSCRIBED (insensible à la casse) → true ; autre état → false ;
-// bloc absent → null (on ne présume rien).
-function deriveAcceptsMarketing(
-  consent: { marketingState: string | null } | null | undefined,
-): boolean | null {
-  if (!consent || !consent.marketingState) {
-    return null;
-  }
-  return consent.marketingState.toUpperCase() === 'SUBSCRIBED';
 }
 
 export function mapShopifyCustomer(
@@ -388,13 +343,8 @@ export function mapShopifyCustomer(
     last_name: customer.lastName ?? null,
     phone: rawPhone,
     phone_e164: rawPhone ? normalizeSenegalPhone(rawPhone) : null,
-    accepts_marketing: deriveAcceptsMarketing(customer.emailMarketingConsent),
-    tags: customer.tags ?? null,
     address: mapFlexibleAddress(flexibleSource),
     shipping_address: mapShippingAddress(node.shippingAddress),
-    shopify_orders_count: toIntOrNull(customer.numberOfOrders),
-    shopify_amount_spent_minor: parseAmountToMinor(customer.amountSpent?.amount),
-    first_seen_at: customer.createdAt ?? null,
   };
 }
 
@@ -424,11 +374,6 @@ export function buildCustomerMergePatch(
     phone_e164: existing.phone_e164 ?? incoming.phone_e164 ?? null,
     address: existing.address ?? incoming.address ?? null,
     shipping_address: existing.shipping_address ?? incoming.shipping_address ?? null,
-    tags: existing.tags ?? incoming.tags ?? null,
-    accepts_marketing: existing.accepts_marketing ?? incoming.accepts_marketing ?? null,
-    shopify_orders_count: incoming.shopify_orders_count ?? existing.shopify_orders_count ?? null,
-    shopify_amount_spent_minor:
-      incoming.shopify_amount_spent_minor ?? existing.shopify_amount_spent_minor ?? null,
     shopify_customer_gids: mergeGids(existing.shopify_customer_gids, incoming.shopify_customer_id),
     shopify_customer_id: existing.shopify_customer_id ?? incoming.shopify_customer_id ?? null,
     updated_at: new Date().toISOString(),
@@ -510,7 +455,7 @@ export function mapShopifyOrder(
 }
 
 const MERGE_SELECT =
-  'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_customer_gids, shopify_customer_id, shopify_orders_count, shopify_amount_spent_minor';
+  'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, shopify_customer_gids, shopify_customer_id';
 
 // Dédup robuste à travers boutiques ET canaux : on cherche d'abord par téléphone E.164
 // (identité principale), sinon par GID Shopify (tableau ou colonne legacy).

@@ -54,9 +54,6 @@ export type CustomerDetail = CustomerListItem & {
     hardToReach: boolean;
   };
   history: CustomerOrderHistoryItem[];
-  shopifyAmountSpentMinor: number | null;
-  shopifyOrdersCount: number | null;
-  tags: string[] | null;
 };
 
 const listCustomersSchema = z.object({
@@ -146,7 +143,7 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
       // Colonnes PII enrichies (Phase 7b) absentes de la RPC de fiabilité.
       supabase
         .from('customer')
-        .select('address, shipping_address, tags, shopify_orders_count, shopify_amount_spent_minor')
+        .select('address, shipping_address')
         .eq('merchant_account_id', ctx.member.merchantAccountId)
         .eq('id', parsedInput.customerId)
         .maybeSingle(),
@@ -179,9 +176,6 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
         hardToReach: row.flag_hard_to_reach,
       },
       history: (historyResult.data ?? []) as CustomerOrderHistoryItem[],
-      shopifyAmountSpentMinor: enrichment?.shopify_amount_spent_minor ?? null,
-      shopifyOrdersCount: enrichment?.shopify_orders_count ?? null,
-      tags: enrichment?.tags ?? null,
     };
 
     return {

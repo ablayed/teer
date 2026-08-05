@@ -1,5 +1,6 @@
 import {
   type ExistingCustomerForMerge,
+  SHOPIFY_ORDERS_QUERY,
   type ShopifyOrderNode,
   buildCustomerMergePatch,
   buildShopifyLineItemAttributes,
@@ -84,8 +85,6 @@ describe('mapShopifyCustomer', () => {
       last_name: null,
       phone: '+221771234567',
       phone_e164: '+221771234567',
-      accepts_marketing: null,
-      tags: null,
       address: {
         raw: 'Rue 10, Dakar, Dakar',
         landmark: null,
@@ -102,13 +101,10 @@ describe('mapShopifyCustomer', () => {
         country: 'Senegal',
         zip: '12500',
       },
-      shopify_orders_count: null,
-      shopify_amount_spent_minor: null,
-      first_seen_at: null,
     });
   });
 
-  it('enrichit nom/numberOfOrders/amountSpent/tags/consentement/adresse par defaut', () => {
+  it('conserve nom/téléphone/adresse et identifiants techniques', () => {
     const enriched = mapShopifyCustomer(
       makeOrder({
         customer: {
@@ -117,11 +113,6 @@ describe('mapShopifyCustomer', () => {
           firstName: 'Fatou',
           lastName: 'Sow',
           phone: '771112233',
-          numberOfOrders: '4',
-          amountSpent: { amount: '125000.00', currencyCode: 'XOF' },
-          tags: ['VIP', 'fidele'],
-          emailMarketingConsent: { marketingState: 'SUBSCRIBED' },
-          createdAt: '2025-01-15T08:00:00Z',
           defaultAddress: {
             address1: 'Cite Keur Gorgui',
             address2: 'Pres de la mosquee',
@@ -143,11 +134,6 @@ describe('mapShopifyCustomer', () => {
       first_name: 'Fatou',
       last_name: 'Sow',
       phone_e164: '+221771112233',
-      accepts_marketing: true,
-      tags: ['VIP', 'fidele'],
-      shopify_orders_count: 4,
-      shopify_amount_spent_minor: 125000,
-      first_seen_at: '2025-01-15T08:00:00Z',
       address: {
         raw: 'Cite Keur Gorgui, Pres de la mosquee, Dakar, Dakar',
         landmark: 'Pres de la mosquee',
@@ -157,6 +143,37 @@ describe('mapShopifyCustomer', () => {
         notes: null,
       },
     });
+  });
+
+  it('ne propage pas les champs Shopify retirés présents dans un payload legacy', () => {
+    const legacyCustomer = {
+      id: 'gid://shopify/Customer/777',
+      displayName: 'Mame Fall',
+      phone: '+221771234567',
+      tags: ['VIP'],
+      numberOfOrders: '9',
+      amountSpent: { amount: '90000' },
+      emailMarketingConsent: { marketingState: 'SUBSCRIBED' },
+      createdAt: '2024-01-01T00:00:00Z',
+    } as unknown as ShopifyOrderNode['customer'];
+
+    const mapped = mapShopifyCustomer(makeOrder({ customer: legacyCustomer }), 'merchant_123');
+    expect(mapped).not.toHaveProperty('tags');
+    expect(mapped).not.toHaveProperty('accepts_marketing');
+    expect(mapped).not.toHaveProperty('shopify_orders_count');
+    expect(mapped).not.toHaveProperty('shopify_amount_spent_minor');
+    expect(mapped).not.toHaveProperty('first_seen_at');
+  });
+
+  it('ne demande pas les champs Shopify retirés dans la query normale', () => {
+    expect(SHOPIFY_ORDERS_QUERY).not.toMatch(
+      /numberOfOrders|amountSpent|emailMarketingConsent|\btags\b/,
+    );
+    expect(SHOPIFY_ORDERS_QUERY.match(/\bcreatedAt\b/g)).toHaveLength(1);
+    expect(SHOPIFY_ORDERS_QUERY).toContain('displayName');
+    expect(SHOPIFY_ORDERS_QUERY).toContain('phone');
+    expect(SHOPIFY_ORDERS_QUERY).toContain('defaultAddress');
+    expect(SHOPIFY_ORDERS_QUERY).toContain('shippingAddress');
   });
 
   it('returns null when the Shopify customer is missing', () => {
@@ -499,12 +516,8 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
       phone_e164: '+221771234567',
       address: null,
       shipping_address: null,
-      tags: null,
-      accepts_marketing: null,
       shopify_customer_gids: ['111'],
       shopify_customer_id: '111',
-      shopify_orders_count: null,
-      shopify_amount_spent_minor: null,
       ...overrides,
     };
   }
@@ -520,13 +533,8 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
       last_name: 'Diop',
       phone: '+221770000000',
       phone_e164: '+221770000000',
-      accepts_marketing: true,
-      tags: ['VIP'],
       address: { raw: 'Dakar' },
       shipping_address: null,
-      shopify_orders_count: 5,
-      shopify_amount_spent_minor: 90000,
-      first_seen_at: null,
     });
 
     // existant non vide conservé
@@ -534,11 +542,10 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
     expect(patch.phone_e164).toBe('+221771234567');
     // trous remplis depuis l'entrant
     expect(patch.first_name).toBe('Awa');
-    expect(patch.accepts_marketing).toBe(true);
-    expect(patch.tags).toEqual(['VIP']);
-    // compteurs Shopify = derniere valeur connue (entrant prioritaire)
-    expect(patch.shopify_orders_count).toBe(5);
-    expect(patch.shopify_amount_spent_minor).toBe(90000);
+    expect(patch).not.toHaveProperty('tags');
+    expect(patch).not.toHaveProperty('accepts_marketing');
+    expect(patch).not.toHaveProperty('shopify_orders_count');
+    expect(patch).not.toHaveProperty('shopify_amount_spent_minor');
     // union des GID (manuel/legacy + nouvelle boutique)
     expect(patch.shopify_customer_gids).toEqual(['111', '222']);
   });

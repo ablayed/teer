@@ -190,11 +190,9 @@ export type Database = {
       };
       customer: {
         Row: {
-          accepts_marketing: boolean | null;
           address: Json | null;
           created_at: string;
           first_name: string | null;
-          first_seen_at: string | null;
           full_name: string | null;
           id: string;
           last_name: string | null;
@@ -202,20 +200,15 @@ export type Database = {
           phone: string | null;
           phone_e164: string | null;
           shipping_address: Json | null;
-          shopify_amount_spent_minor: number | null;
           shopify_customer_gids: Json;
           shopify_customer_id: string | null;
-          shopify_orders_count: number | null;
           source: string;
-          tags: string[] | null;
           updated_at: string;
         };
         Insert: {
-          accepts_marketing?: boolean | null;
           address?: Json | null;
           created_at?: string;
           first_name?: string | null;
-          first_seen_at?: string | null;
           full_name?: string | null;
           id?: string;
           last_name?: string | null;
@@ -223,20 +216,15 @@ export type Database = {
           phone?: string | null;
           phone_e164?: string | null;
           shipping_address?: Json | null;
-          shopify_amount_spent_minor?: number | null;
           shopify_customer_gids?: Json;
           shopify_customer_id?: string | null;
-          shopify_orders_count?: number | null;
           source?: string;
-          tags?: string[] | null;
           updated_at?: string;
         };
         Update: {
-          accepts_marketing?: boolean | null;
           address?: Json | null;
           created_at?: string;
           first_name?: string | null;
-          first_seen_at?: string | null;
           full_name?: string | null;
           id?: string;
           last_name?: string | null;
@@ -244,12 +232,9 @@ export type Database = {
           phone?: string | null;
           phone_e164?: string | null;
           shipping_address?: Json | null;
-          shopify_amount_spent_minor?: number | null;
           shopify_customer_gids?: Json;
           shopify_customer_id?: string | null;
-          shopify_orders_count?: number | null;
           source?: string;
-          tags?: string[] | null;
           updated_at?: string;
         };
         Relationships: [

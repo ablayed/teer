@@ -94,11 +94,7 @@ async function seedRecurringEnrichedCustomer(
       phone: '+221771234567',
       phone_e164: '+221771234567',
       address: { raw: 'Cité Keur Gorgui, près de la mosquée', city: 'Dakar', region: 'Dakar' },
-      tags: ['VIP'],
-      accepts_marketing: true,
       shopify_customer_gids: ['123456'],
-      shopify_orders_count: 4,
-      shopify_amount_spent_minor: 90000,
     })
     .select('id')
     .single();

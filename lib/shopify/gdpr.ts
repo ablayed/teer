@@ -1,7 +1,7 @@
 // Conformité GDPR Shopify (Phase 7a, PII réelle en Phase 7b) — handlers réels (gate de publication).
 // La PII client de Tëër vit dans `customer` (nom/prénoms/téléphone/phone_e164/adresse flexible/
-// adresse de livraison/tags/consentement) et dans `orders.shipping_address`. On conserve ce qui est
-// légalement requis (montants/statuts comptables sur orders ; agrégats Shopify non identifiants).
+// adresse de livraison) et dans `orders.shipping_address`. Les GID Shopify restent les identifiants
+// techniques nécessaires à la déduplication et à la rédaction.
 //
 // Dédup multi-boutiques (7b) : un client peut porter plusieurs GID Shopify dans
 // `shopify_customer_gids`. On retrouve donc un client par la colonne legacy `shopify_customer_id`
@@ -62,7 +62,7 @@ export async function compileCustomerData(
   const { data: customers } = await admin
     .from('customer')
     .select(
-      'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_orders_count, shopify_amount_spent_minor, first_seen_at, created_at',
+      'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, created_at',
     )
     .in('id', ids);
 
@@ -76,8 +76,8 @@ export async function compileCustomerData(
 }
 
 // Anonymise un client : on efface TOUTE la PII directe (nom/prénoms/téléphone/phone_e164/
-// adresse flexible/adresse de livraison/tags/consentement) en gardant la ligne et les identifiants
-// Shopify (shopify_customer_id/gids) + agrégats non identifiants pour le rattachement comptable.
+// adresse flexible/adresse de livraison) en gardant la ligne et les identifiants Shopify
+// (shopify_customer_id/gids) pour le rattachement et la rédaction.
 async function anonymizeCustomerRows(admin: AdminClient, customerIds: string[]): Promise<void> {
   if (customerIds.length === 0) {
     return;
@@ -92,8 +92,6 @@ async function anonymizeCustomerRows(admin: AdminClient, customerIds: string[]):
       phone_e164: null,
       address: null,
       shipping_address: null,
-      tags: null,
-      accepts_marketing: null,
       updated_at: new Date().toISOString(),
     })
     .in('id', customerIds);
