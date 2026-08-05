@@ -7,7 +7,11 @@ type RouteHarness = {
   POST: (request: Request) => Promise<Response>;
 };
 
-function buildWebhookRequest(shopDomain: string, webhookId = `wh-${shopDomain}`): Request {
+function buildWebhookRequest(
+  shopDomain: string,
+  webhookId = `wh-${shopDomain}`,
+  hmac = 'valid-signature',
+): Request {
   const body = JSON.stringify({
     id: 123,
     myshopify_domain: shopDomain,
@@ -18,7 +22,7 @@ function buildWebhookRequest(shopDomain: string, webhookId = `wh-${shopDomain}`)
     body,
     headers: {
       'content-type': 'application/json',
-      'x-shopify-hmac-sha256': 'valid-signature',
+      'x-shopify-hmac-sha256': hmac,
       'x-shopify-shop-domain': shopDomain,
       'x-shopify-topic': 'orders/create',
       'x-shopify-triggered-at': '2026-06-21T10:00:00.000Z',
@@ -54,7 +58,9 @@ async function loadRouteHarness(rateLimitResults: RateLimitResult[]): Promise<Ro
     getShopifyAppForShop: vi.fn(() => ({ clientId: 'app-1', clientSecret: 'secret-1' })),
   }));
   vi.doMock('@/lib/shopify/webhook-verify', () => ({
-    verifyWebhookHmacAnySecret: vi.fn(() => true),
+    verifyWebhookHmacAnySecret: vi.fn(
+      (_body: string, signature: string | null) => signature === 'valid-signature',
+    ),
   }));
   vi.doMock('@/lib/shopify/gdpr', () => ({
     compileCustomerData: vi.fn(),
@@ -164,6 +170,17 @@ describe('POST /api/shopify/webhooks rate limit', () => {
     expect(inserts[0]).toMatchObject({
       table: 'webhook_event',
     });
+  });
+
+  it('refuses an invalid HMAC before inserting a durable event', async () => {
+    const { POST, inserts } = await loadRouteHarness([]);
+
+    const response = await POST(
+      buildWebhookRequest('boutique-a.myshopify.com', 'wh-invalid-hmac', 'invalid-signature'),
+    );
+
+    expect(response.status).toBe(401);
+    expect(inserts).toHaveLength(0);
   });
 
   it('passes when the limiter fails open', async () => {

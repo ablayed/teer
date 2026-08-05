@@ -1,6 +1,12 @@
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { getRegisteredShopifyApps, getShopifyAppForShop } from '@/lib/shopify/apps';
-import { compileCustomerData, redactCustomer, redactShop } from '@/lib/shopify/gdpr';
+import { createPrivateDsarArtifact } from '@/lib/shopify/dsar';
+import {
+  compileCustomerData,
+  redactCustomer,
+  redactShop,
+  toGdprAuditPayload,
+} from '@/lib/shopify/gdpr';
 import {
   type ShopifyAddress,
   type ShopifyCustomAttribute,
@@ -46,6 +52,35 @@ function logWebhookInfo(message: string, ...details: unknown[]) {
 function logWebhookError(message: string, ...details: unknown[]) {
   // biome-ignore lint/suspicious/noConsole: 5A webhook foundation intentionally logs invalid signatures and storage failures.
   console.error(message, ...details);
+}
+
+const CONTROLLED_WEBHOOK_ERROR_CODES = new Set([
+  'gdpr_shop_domain_missing',
+  'gdpr_shop_lookup_failed',
+  'gdpr_shop_not_found',
+  'gdpr_customer_id_missing',
+  'gdpr_topic_not_supported',
+  'gdpr_customer_lookup_failed',
+  'gdpr_customer_shop_scope_lookup_failed',
+  'gdpr_customer_export_failed',
+  'gdpr_order_export_failed',
+  'gdpr_delivery_address_export_failed',
+  'gdpr_redaction_failed',
+  'gdpr_audit_failed',
+  'dsar_artifact_metadata_failed',
+  'dsar_artifact_metadata_missing',
+  'dsar_artifact_upload_failed',
+  'dsar_artifact_finalize_failed',
+  'shopify_order_persist_failed',
+  'shopify_product_persist_failed',
+  'shopify_refund_order_lookup_failed',
+  'shopify_refund_order_update_failed',
+  'shopify_refund_audit_failed',
+]);
+
+function sanitizeWebhookError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : '';
+  return CONTROLLED_WEBHOOK_ERROR_CODES.has(raw) ? raw : 'internal_processing_error';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -330,6 +365,24 @@ async function getShopByDomain({
   return data;
 }
 
+async function getGdprShopByDomain({
+  shopDomain,
+  supabase,
+}: {
+  shopDomain: string;
+  supabase: NonNullable<SupabaseAdminClient>;
+}) {
+  const { data, error } = await supabase
+    .from('shop')
+    .select('id, merchant_account_id, shop_domain, status, shopify_client_id')
+    .eq('shop_domain', shopDomain)
+    .maybeSingle();
+  if (error) {
+    throw new Error('gdpr_shop_lookup_failed');
+  }
+  return data;
+}
+
 async function handleOrderWebhook({
   payload,
   shopDomain,
@@ -377,11 +430,12 @@ async function handleOrderWebhook({
     });
   } else {
     logWebhookError('[webhook] order persist failed', {
-      error: result.error,
+      errorCode: sanitizeWebhookError(result.error),
       orderId: orderNode.id,
       topic,
       shopDomain: resolvedShopDomain,
     });
+    throw new Error('shopify_order_persist_failed');
   }
 }
 
@@ -431,11 +485,12 @@ async function handleProductWebhook({
     });
   } else {
     logWebhookError('[webhook] product persist failed', {
-      error: result.error,
+      errorCode: sanitizeWebhookError(result.error),
       productId: productNode.id,
       topic,
       shopDomain: resolvedShopDomain,
     });
+    throw new Error('shopify_product_persist_failed');
   }
 }
 
@@ -551,13 +606,13 @@ async function handleRefundWebhook({
 
     if (orderLookupError) {
       logWebhookError('[webhook] refund order lookup failed', {
-        error: orderLookupError.message,
+        errorCode: sanitizeWebhookError(orderLookupError.message),
         orderId: refund.orderId,
         resolvedShopDomain,
       });
-    } else {
-      localOrderId = localOrder?.id ?? null;
+      throw new Error('shopify_refund_order_lookup_failed');
     }
+    localOrderId = localOrder?.id ?? null;
   }
 
   if (refund.shouldUpdateFinancialStatus && localOrderId) {
@@ -572,15 +627,16 @@ async function handleRefundWebhook({
 
     if (orderUpdateError) {
       logWebhookError('[webhook] refund order update failed', {
-        error: orderUpdateError.message,
+        errorCode: sanitizeWebhookError(orderUpdateError.message),
         localOrderId,
         orderId: refund.orderId,
         resolvedShopDomain,
       });
+      throw new Error('shopify_refund_order_update_failed');
     }
   }
 
-  await supabase.from('audit_log').insert({
+  const { error: refundAuditError } = await supabase.from('audit_log').insert({
     merchant_account_id: shop.merchant_account_id,
     actor_user_id: null,
     action: 'shopify.refund_received',
@@ -597,6 +653,9 @@ async function handleRefundWebhook({
       transactionSummary: refund.transactionSummary,
     }),
   });
+  if (refundAuditError) {
+    throw new Error('shopify_refund_audit_failed');
+  }
 }
 
 // bulk_operations/finish : la bulk operation est terminée → traite le JSONL (fallback du polling).
@@ -640,79 +699,109 @@ async function handleBulkFinishWebhook({
   logWebhookInfo('[webhook] bulk finish processed', { resolvedShopDomain, ok: result.ok });
 }
 
+type GdprProcessResult = {
+  proof: {
+    customer_count: number;
+    order_count: number;
+    delivery_address_count: number;
+    tombstone_count: number;
+    webhook_payload_count: number;
+  };
+  artifactId: string | null;
+  artifactExpiresAt: string | null;
+};
+
 async function handleGdprWebhook({
+  eventId,
   payload,
   shopDomain,
   supabase,
   topic,
 }: {
+  eventId: string;
   payload: unknown;
   shopDomain: string | null;
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
-}) {
+}): Promise<GdprProcessResult> {
   const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
 
   logWebhookInfo(`[webhook] GDPR ${topic} received`, {
-    payload,
     shopDomain: resolvedShopDomain,
   });
 
   if (!resolvedShopDomain) {
-    logWebhookError('[webhook] GDPR audit skipped: missing shop domain', { topic });
-    return;
+    throw new Error('gdpr_shop_domain_missing');
   }
 
-  const shop = await getShopByDomain({ shopDomain: resolvedShopDomain, supabase });
+  const shop = await getGdprShopByDomain({ shopDomain: resolvedShopDomain, supabase });
 
   if (!shop) {
-    logWebhookError('[webhook] GDPR audit skipped: shop not found', {
-      shopDomain: resolvedShopDomain,
-      topic,
-    });
-    return;
+    throw new Error('gdpr_shop_not_found');
   }
 
   // Identifiant client Shopify (numérique) depuis le payload, pour data_request / redact.
   const customerRecord = isRecord(payload) ? nestedRecord(payload, 'customer') : null;
   const shopifyCustomerId = customerRecord ? stringField(customerRecord, 'id') : null;
 
-  let outcome: Json = { shopDomain: resolvedShopDomain, topic };
-  try {
-    switch (topic) {
-      case 'customers/data_request': {
-        if (!shopifyCustomerId) break;
-        const data = await compileCustomerData(supabase, {
-          merchantAccountId: shop.merchant_account_id,
-          shopifyCustomerId,
-        });
-        // La donnée compilée est consignée pour que le marchand puisse la fournir au client.
-        outcome = toJson({ compiled: data, shopDomain: resolvedShopDomain, topic });
-        break;
+  let proof: GdprProcessResult['proof'] = {
+    customer_count: 0,
+    order_count: 0,
+    delivery_address_count: 0,
+    tombstone_count: 0,
+    webhook_payload_count: 0,
+  };
+  let artifactId: string | null = null;
+  let artifactExpiresAt: string | null = null;
+
+  switch (topic) {
+    case 'customers/data_request': {
+      if (!shopifyCustomerId) {
+        throw new Error('gdpr_customer_id_missing');
       }
-      case 'customers/redact': {
-        if (!shopifyCustomerId) break;
-        const result = await redactCustomer(supabase, {
-          merchantAccountId: shop.merchant_account_id,
-          shopifyCustomerId,
-        });
-        outcome = toJson({ ...result, shopDomain: resolvedShopDomain, topic });
-        break;
-      }
-      case 'shop/redact': {
-        const result = await redactShop(supabase, {
-          merchantAccountId: shop.merchant_account_id,
-          shopId: shop.id,
-        });
-        outcome = toJson({ ...result, shopDomain: resolvedShopDomain, topic });
-        break;
-      }
-      default:
-        break;
+      const data = await compileCustomerData(supabase, {
+        merchantAccountId: shop.merchant_account_id,
+        shopId: shop.id,
+        shopifyCustomerId,
+      });
+      const artifact = await createPrivateDsarArtifact(supabase, {
+        eventId,
+        merchantAccountId: shop.merchant_account_id,
+        shopId: shop.id,
+        data,
+      });
+      artifactId = artifact.artifactId;
+      artifactExpiresAt = artifact.expiresAt;
+      proof = {
+        customer_count: data.customers.length,
+        order_count: data.orders.length,
+        delivery_address_count: data.delivery_addresses.length,
+        tombstone_count: 0,
+        webhook_payload_count: 0,
+      };
+      break;
     }
-  } catch (gdprError) {
-    logWebhookError('[webhook] GDPR processing failed', { topic, shopDomain: resolvedShopDomain });
-    throw gdprError;
+    case 'customers/redact': {
+      if (!shopifyCustomerId) {
+        throw new Error('gdpr_customer_id_missing');
+      }
+      proof = await redactCustomer(supabase, {
+        merchantAccountId: shop.merchant_account_id,
+        shopId: shop.id,
+        shopifyCustomerId,
+        webhookEventId: eventId,
+      });
+      break;
+    }
+    case 'shop/redact':
+      proof = await redactShop(supabase, {
+        merchantAccountId: shop.merchant_account_id,
+        shopId: shop.id,
+        webhookEventId: eventId,
+      });
+      break;
+    default:
+      throw new Error('gdpr_topic_not_supported');
   }
 
   const { error } = await supabase.from('audit_log').insert({
@@ -721,24 +810,25 @@ async function handleGdprWebhook({
     action: `gdpr.${topic}`,
     resource_type: 'shop',
     resource_id: shop.id,
-    payload: outcome,
+    payload: toGdprAuditPayload({
+      topic,
+      status: 'done',
+      artifactId,
+      artifactExpiresAt,
+      proof,
+    }),
   });
 
   if (error) {
-    logWebhookError('[webhook] GDPR audit failed', {
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      message: error.message,
-      shopDomain: resolvedShopDomain,
-      topic,
-    });
+    throw new Error('gdpr_audit_failed');
   }
+
+  return { proof, artifactId, artifactExpiresAt };
 }
 
-// Idempotence : insert dédup par webhook_id (contrainte unique). Un conflit (23505) = rejeu →
-// duplicate. On stocke le contexte boutique/tenant + triggered_at + payload brut pour la
-// réconciliation et la garde hors-ordre. Un rejeu identique n'a donc aucun effet métier.
+// Idempotence : insert dédup par webhook_id (contrainte unique). Un conflit
+// retrouve l'état durable : done/terminal sont ignorés, retryable est réclamé
+// à nouveau après son échéance.
 async function recordWebhookReceipt({
   supabase,
   webhookId,
@@ -757,7 +847,14 @@ async function recordWebhookReceipt({
   merchantAccountId: string | null;
   triggeredAt: string | null;
   payload: Json;
-}): Promise<{ duplicate: boolean; eventId: string | null }> {
+}): Promise<{
+  duplicate: boolean;
+  eventId: string | null;
+  status: string | null;
+  payload: Json | null;
+  nextAttemptAt: string | null;
+  error: boolean;
+}> {
   const { data, error } = await supabase
     .from('webhook_event')
     .insert({
@@ -769,14 +866,39 @@ async function recordWebhookReceipt({
       triggered_at: triggeredAt,
       payload,
       status: 'processing',
+      attempt_count: 1,
+      lease_until: new Date(Date.now() + 5 * 60_000).toISOString(),
     })
     .select('id')
     .single();
 
   if (error) {
     if (error.code === '23505') {
-      logWebhookInfo('[webhook] duplicate ignored', { topic, webhookId });
-      return { duplicate: true, eventId: null };
+      const { data: existing, error: existingError } = await supabase
+        .from('webhook_event')
+        .select('id, status, payload, next_attempt_at')
+        .eq('shopify_webhook_id', webhookId)
+        .maybeSingle();
+      if (existingError || !existing) {
+        logWebhookError('[webhook] duplicate lookup failed', { topic, webhookId });
+        return {
+          duplicate: true,
+          eventId: null,
+          status: null,
+          payload: null,
+          nextAttemptAt: null,
+          error: true,
+        };
+      }
+      logWebhookInfo('[webhook] duplicate received', { topic, webhookId, status: existing.status });
+      return {
+        duplicate: true,
+        eventId: existing.id,
+        status: existing.status,
+        payload: existing.payload,
+        nextAttemptAt: existing.next_attempt_at,
+        error: false,
+      };
     }
 
     logWebhookError('[webhook] dedup insert failed', {
@@ -787,49 +909,77 @@ async function recordWebhookReceipt({
       topic,
       webhookId,
     });
-    return { duplicate: false, eventId: null };
+    return {
+      duplicate: false,
+      eventId: null,
+      status: null,
+      payload: null,
+      nextAttemptAt: null,
+      error: true,
+    };
   }
 
-  return { duplicate: false, eventId: data.id };
+  return {
+    duplicate: false,
+    eventId: data.id,
+    status: 'processing',
+    payload,
+    nextAttemptAt: null,
+    error: false,
+  };
 }
 
-async function markWebhookStatus({
+async function finishWebhookStatus({
   supabase,
   eventId,
-  status,
+  outcome,
+  errorCode,
+  proof,
 }: {
   supabase: NonNullable<SupabaseAdminClient>;
   eventId: string;
-  status: 'done' | 'error';
+  outcome: 'done' | 'retryable' | 'terminal';
+  errorCode?: string;
+  proof?: Json;
 }) {
-  const { error } = await supabase
-    .from('webhook_event')
-    .update({ status, processed: status === 'done' })
-    .eq('id', eventId);
-
-  if (error) {
-    logWebhookError('[webhook] status update failed', {
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      message: error.message,
+  const { data, error } = await supabase.rpc('finish_shopify_webhook_event', {
+    p_event_id: eventId,
+    p_outcome: outcome,
+    p_error_code: errorCode,
+    p_proof: proof,
+  });
+  if (error || data !== true) {
+    logWebhookError('[webhook] durable status update failed', {
       eventId,
-      status,
+      outcome,
+      code: error?.code ?? 'not_claimed',
     });
   }
 }
 
+function isTerminalWebhookError(error: unknown): boolean {
+  const code = sanitizeWebhookError(error);
+  return new Set([
+    'gdpr_shop_domain_missing',
+    'gdpr_shop_not_found',
+    'gdpr_customer_id_missing',
+    'gdpr_topic_not_supported',
+  ]).has(code);
+}
+
 async function processWebhook({
+  eventId,
   payload,
   shopDomain,
   supabase,
   topic,
 }: {
+  eventId: string;
   payload: unknown;
   shopDomain: string | null;
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
-}) {
+}): Promise<GdprProcessResult | null> {
   switch (topic) {
     // orders/cancelled et orders/fulfilled portent un objet commande complet → miroir de canal
     // (shopify_*), JAMAIS les 4 dimensions. Un « fulfilled » Shopify ne marque pas LIVREE.
@@ -838,28 +988,102 @@ async function processWebhook({
     case 'orders/cancelled':
     case 'orders/fulfilled':
       await handleOrderWebhook({ payload, shopDomain, supabase, topic });
-      break;
+      return null;
     case 'refunds/create':
       await handleRefundWebhook({ payload, shopDomain, supabase, topic });
-      break;
+      return null;
     case 'bulk_operations/finish':
       await handleBulkFinishWebhook({ payload, shopDomain, supabase, topic });
-      break;
+      return null;
     case 'products/create':
     case 'products/update':
       await handleProductWebhook({ payload, shopDomain, supabase, topic });
-      break;
+      return null;
     case 'app/uninstalled':
       await handleAppUninstalledWebhook({ payload, shopDomain, supabase, topic });
-      break;
+      return null;
     case 'customers/data_request':
     case 'customers/redact':
     case 'shop/redact':
-      await handleGdprWebhook({ payload, shopDomain, supabase, topic });
-      break;
+      return handleGdprWebhook({ eventId, payload, shopDomain, supabase, topic });
     default:
       logWebhookInfo('[webhook] unhandled topic', topic);
-      break;
+      return null;
+  }
+}
+
+async function runWebhookEvent({
+  eventId,
+  payload,
+  shopDomain,
+  supabase,
+  topic,
+  replay,
+}: {
+  eventId: string;
+  payload: unknown;
+  shopDomain: string | null;
+  supabase: NonNullable<SupabaseAdminClient>;
+  topic: string;
+  replay: boolean;
+}) {
+  let effectivePayload = payload;
+  let effectiveShopDomain = shopDomain;
+  let effectiveTopic = topic;
+
+  if (replay) {
+    const { data: claimed, error } = await supabase.rpc('claim_shopify_webhook_events', {
+      p_event_id: eventId,
+      p_limit: 1,
+    });
+    if (error) {
+      logWebhookError('[webhook] retry claim failed', { eventId, code: error.code });
+      return;
+    }
+    const event = claimed?.[0];
+    if (!event || event.payload === null) {
+      return;
+    }
+    effectivePayload = event.payload;
+    effectiveShopDomain = event.shop_domain;
+    effectiveTopic = event.topic;
+  }
+
+  try {
+    const result = await processWebhook({
+      eventId,
+      payload: effectivePayload,
+      shopDomain: effectiveShopDomain,
+      supabase,
+      topic: effectiveTopic,
+    });
+    await finishWebhookStatus({
+      supabase,
+      eventId,
+      outcome: 'done',
+      proof: result
+        ? toJson({
+            ...result.proof,
+            artifact_id: result.artifactId,
+            artifact_expires_at: result.artifactExpiresAt,
+          })
+        : undefined,
+    });
+  } catch (error) {
+    const errorCode = sanitizeWebhookError(error);
+    const outcome = isTerminalWebhookError(error) ? 'terminal' : 'retryable';
+    logWebhookError('[webhook] async processing failed', {
+      eventId,
+      topic: effectiveTopic,
+      outcome,
+      errorCode,
+    });
+    await finishWebhookStatus({
+      supabase,
+      eventId,
+      outcome,
+      errorCode,
+    });
   }
 }
 
@@ -928,8 +1152,9 @@ export async function POST(request: Request) {
       : await getShopByDomain({ shopDomain: resolvedShopDomain, supabase })
     : null;
 
-  // Idempotence : insert dédup par webhook_id. Rejeu → duplicate → 200 sans effet.
-  const { duplicate, eventId } = await recordWebhookReceipt({
+  // Idempotence : insert dédup par webhook_id. Un événement retryable arrivé
+  // à échéance est réclamé à nouveau dans after().
+  const receipt = await recordWebhookReceipt({
     supabase,
     webhookId,
     topic,
@@ -940,26 +1165,40 @@ export async function POST(request: Request) {
     payload: toJson(payload),
   });
 
-  if (duplicate) {
+  if (receipt.error) {
+    return new Response(null, { status: 503 });
+  }
+
+  if (receipt.duplicate) {
+    const due =
+      receipt.status === 'retryable' &&
+      (receipt.nextAttemptAt === null || Date.parse(receipt.nextAttemptAt) <= Date.now());
+    if (due && receipt.eventId) {
+      after(() =>
+        runWebhookEvent({
+          eventId: receipt.eventId as string,
+          payload: receipt.payload,
+          shopDomain,
+          supabase,
+          topic,
+          replay: true,
+        }),
+      );
+    }
     return ok();
   }
 
   // 200 rapide (< 5 s) : le traitement métier s'exécute APRÈS la réponse (after()).
-  // Les upserts sont idempotents par clé naturelle (shop_id, shopify_order_id) et la garde
-  // hors-ordre protège ; un échec est rattrapé par la réconciliation nocturne (pas de retry).
-  after(async () => {
-    try {
-      await processWebhook({ payload, shopDomain, supabase, topic });
-      if (eventId) {
-        await markWebhookStatus({ supabase, eventId, status: 'done' });
-      }
-    } catch (error) {
-      logWebhookError('[webhook] async processing failed', { error, topic });
-      if (eventId) {
-        await markWebhookStatus({ supabase, eventId, status: 'error' });
-      }
-    }
-  });
+  after(() =>
+    runWebhookEvent({
+      eventId: receipt.eventId as string,
+      payload,
+      shopDomain,
+      supabase,
+      topic,
+      replay: false,
+    }),
+  );
 
   return ok();
 }

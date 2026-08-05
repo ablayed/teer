@@ -1,176 +1,235 @@
-// Conformité GDPR Shopify (Phase 7a, PII réelle en Phase 7b) — handlers réels (gate de publication).
-// La PII client de Tëër vit dans `customer` (nom/prénoms/téléphone/phone_e164/adresse flexible/
-// adresse de livraison) et dans `orders.shipping_address`. Les GID Shopify restent les identifiants
-// techniques nécessaires à la déduplication et à la rédaction.
-//
-// Dédup multi-boutiques (7b) : un client peut porter plusieurs GID Shopify dans
-// `shopify_customer_gids`. On retrouve donc un client par la colonne legacy `shopify_customer_id`
-// ET par le tableau de GID.
+// Traitements GDPR Shopify. Les mutations de redaction sont exécutées par la
+// RPC SQL transactionnelle 0121 : aucune étape intermédiaire n'est présentée
+// comme réussie si une copie PCD échoue.
 
-import type { Database } from '@/lib/supabase/database.types';
+import type { Database, Json } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 type AdminClient = SupabaseClient<Database>;
 
-const REDACTED_NAME = '[client supprimé]';
+type Scope = {
+  merchantAccountId: string;
+  shopId: string;
+};
 
-// Retrouve les clients de ce marchand rattachés à un identifiant client Shopify (numérique),
-// via la colonne legacy shopify_customer_id ET le tableau shopify_customer_gids.
+export type GdprProof = {
+  customer_count: number;
+  order_count: number;
+  delivery_address_count: number;
+  tombstone_count: number;
+  webhook_payload_count: number;
+};
+
+export type CustomerDataExport = {
+  customers: unknown[];
+  orders: unknown[];
+  delivery_addresses: unknown[];
+};
+
+function asJsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asCount(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function parseProof(value: unknown): GdprProof {
+  const record = asJsonRecord(value);
+  return {
+    customer_count: asCount(record.customer_count),
+    order_count: asCount(record.order_count),
+    delivery_address_count: asCount(record.delivery_address_count),
+    tombstone_count: asCount(record.tombstone_count),
+    webhook_payload_count: asCount(record.webhook_payload_count),
+  };
+}
+
+function assertSupabase<T extends { error: { message: string } | null }>(
+  result: T,
+  operation: string,
+): asserts result is T & { error: null } {
+  if (result.error) {
+    throw new Error(`${operation}_failed`);
+  }
+}
+
 async function findCustomerIdsByShopifyId(
   admin: AdminClient,
-  merchantAccountId: string,
+  { merchantAccountId, shopId }: Scope,
   shopifyCustomerId: string,
 ): Promise<string[]> {
-  const ids = new Set<string>();
-
-  const { data: byLegacy } = await admin
+  const { data: customerRows, error: customerError } = await admin
     .from('customer')
     .select('id')
     .eq('merchant_account_id', merchantAccountId)
-    .eq('shopify_customer_id', shopifyCustomerId);
-  for (const row of byLegacy ?? []) {
-    ids.add((row as { id: string }).id);
+    .or(
+      `shopify_customer_id.eq.${shopifyCustomerId},shopify_customer_gids.cs.${JSON.stringify([
+        shopifyCustomerId,
+      ])}`,
+    );
+  assertSupabase({ error: customerError }, 'gdpr_customer_lookup');
+
+  if (!customerRows || customerRows.length === 0) {
+    return [];
   }
 
-  const { data: byGid } = await admin
-    .from('customer')
-    .select('id')
-    .eq('merchant_account_id', merchantAccountId)
-    // jsonb containment : passer une chaîne JSON (et non un tableau JS) — sinon postgrest-js émet
-    // un littéral tableau Postgres `{...}` invalide en json. Cf. lib/shopify/orders-sync.ts.
-    .contains('shopify_customer_gids', JSON.stringify([shopifyCustomerId]));
-  for (const row of byGid ?? []) {
-    ids.add((row as { id: string }).id);
-  }
-
-  return [...ids];
-}
-
-// customers/data_request : compile TOUT ce qu'on détient sur ce client pour ce marchand.
-export async function compileCustomerData(
-  admin: AdminClient,
-  {
-    merchantAccountId,
-    shopifyCustomerId,
-  }: { merchantAccountId: string; shopifyCustomerId: string },
-): Promise<{ customers: unknown[]; orders: unknown[] }> {
-  const ids = await findCustomerIdsByShopifyId(admin, merchantAccountId, shopifyCustomerId);
-  if (ids.length === 0) {
-    return { customers: [], orders: [] };
-  }
-
-  const { data: customers } = await admin
-    .from('customer')
-    .select(
-      'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, created_at',
-    )
-    .in('id', ids);
-
-  const { data: orders } = await admin
-    .from('orders')
-    .select('id, order_number, total_amount, currency, shipping_address, created_at_shopify')
-    .eq('merchant_account_id', merchantAccountId)
-    .in('customer_id', ids);
-
-  return { customers: customers ?? [], orders: orders ?? [] };
-}
-
-// Anonymise un client : on efface TOUTE la PII directe (nom/prénoms/téléphone/phone_e164/
-// adresse flexible/adresse de livraison) en gardant la ligne et les identifiants Shopify
-// (shopify_customer_id/gids) pour le rattachement et la rédaction.
-async function anonymizeCustomerRows(admin: AdminClient, customerIds: string[]): Promise<void> {
-  if (customerIds.length === 0) {
-    return;
-  }
-  await admin
-    .from('customer')
-    .update({
-      full_name: REDACTED_NAME,
-      first_name: null,
-      last_name: null,
-      phone: null,
-      phone_e164: null,
-      address: null,
-      shipping_address: null,
-      updated_at: new Date().toISOString(),
-    })
-    .in('id', customerIds);
-}
-
-async function nullOrdersShippingAddress(admin: AdminClient, customerIds: string[]): Promise<void> {
-  if (customerIds.length === 0) {
-    return;
-  }
-  await admin
-    .from('orders')
-    .update({ shipping_address: null, updated_at: new Date().toISOString() })
-    .in('customer_id', customerIds);
-}
-
-// customers/redact : supprime la PII de CE client pour ce marchand (à travers ses boutiques).
-export async function redactCustomer(
-  admin: AdminClient,
-  {
-    merchantAccountId,
-    shopifyCustomerId,
-  }: { merchantAccountId: string; shopifyCustomerId: string },
-): Promise<{ redactedCustomerCount: number }> {
-  const ids = await findCustomerIdsByShopifyId(admin, merchantAccountId, shopifyCustomerId);
-  await anonymizeCustomerRows(admin, ids);
-  await nullOrdersShippingAddress(admin, ids);
-  return { redactedCustomerCount: ids.length };
-}
-
-// shop/redact : 48 h après désinstallation, efface la PII client liée à CETTE boutique.
-// Dédup multi-boutiques oblige : on n'anonymise QUE les clients EXCLUSIFS à cette boutique
-// (sans aucune commande dans une autre boutique ni manuelle) — un client encore actif ailleurs
-// chez le même marchand garde une base légale. On nulle toujours les adresses des commandes
-// de la boutique.
-export async function redactShop(
-  admin: AdminClient,
-  { shopId, merchantAccountId }: { shopId: string; merchantAccountId: string },
-): Promise<{ redactedCustomerCount: number }> {
-  const { data: shopOrders } = await admin
+  const candidateIds = customerRows.map((row) => row.id);
+  const { data: shopOrders, error: orderError } = await admin
     .from('orders')
     .select('customer_id')
     .eq('merchant_account_id', merchantAccountId)
     .eq('shop_id', shopId)
-    .not('customer_id', 'is', null);
+    .in('customer_id', candidateIds);
+  assertSupabase({ error: orderError }, 'gdpr_customer_shop_scope_lookup');
 
-  const candidateIds = [
+  return [
     ...new Set(
       (shopOrders ?? [])
-        .map((o) => (o as { customer_id: string | null }).customer_id)
-        .filter((id): id is string => id !== null),
+        .map((row) => row.customer_id)
+        .filter((id): id is string => typeof id === 'string'),
     ),
   ];
+}
 
-  let exclusiveIds = candidateIds;
-  if (candidateIds.length > 0) {
-    // Clients ayant AUSSI une commande hors de cette boutique (autre shop_id, ou manuelle null).
-    const { data: otherOrders } = await admin
-      .from('orders')
-      .select('customer_id')
-      .eq('merchant_account_id', merchantAccountId)
-      .in('customer_id', candidateIds)
-      .or(`shop_id.neq.${shopId},shop_id.is.null`);
-
-    const sharedIds = new Set(
-      (otherOrders ?? [])
-        .map((o) => (o as { customer_id: string | null }).customer_id)
-        .filter((id): id is string => id !== null),
-    );
-    exclusiveIds = candidateIds.filter((id) => !sharedIds.has(id));
+// DSAR : seules les données de la boutique qui a émis la demande sont
+// exportées. Les journaux internes, payloads webhook et artefacts ne sont pas
+// destinés à la personne concernée.
+export async function compileCustomerData(
+  admin: AdminClient,
+  { merchantAccountId, shopId, shopifyCustomerId }: Scope & { shopifyCustomerId: string },
+): Promise<CustomerDataExport> {
+  const ids = await findCustomerIdsByShopifyId(
+    admin,
+    { merchantAccountId, shopId },
+    shopifyCustomerId,
+  );
+  if (ids.length === 0) {
+    return { customers: [], orders: [], delivery_addresses: [] };
   }
 
-  await anonymizeCustomerRows(admin, exclusiveIds);
-
-  // Null les adresses de livraison de toutes les commandes de la boutique (PII).
-  await admin
-    .from('orders')
-    .update({ shipping_address: null, updated_at: new Date().toISOString() })
+  const customersResult = await admin
+    .from('customer')
+    .select(
+      'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, created_at',
+    )
     .eq('merchant_account_id', merchantAccountId)
-    .eq('shop_id', shopId);
+    .in('id', ids);
+  const ordersResult = await admin
+    .from('orders')
+    .select(
+      'id, order_number, total_amount, currency, shipping_address, note, shopify_order_attributes, shopify_line_item_attributes, created_at_shopify',
+    )
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
+    .in('customer_id', ids);
 
-  return { redactedCustomerCount: exclusiveIds.length };
+  assertSupabase({ error: customersResult.error }, 'gdpr_customer_export');
+  assertSupabase({ error: ordersResult.error }, 'gdpr_order_export');
+
+  const orderIds = (ordersResult.data ?? []).map((order) => order.id);
+  const addressFilter = [
+    `customer_id.in.(${ids.join(',')})`,
+    ...(orderIds.length > 0 ? [`order_id.in.(${orderIds.join(',')})`] : []),
+  ].join(',');
+  const addressesResult = await admin
+    .from('delivery_address')
+    .select(
+      'id, customer_id, order_id, quartier_commune, ville, repere, indications_acces, telephone_principal, telephone_alternatif, gps_lat, gps_lng, created_at',
+    )
+    .eq('merchant_account_id', merchantAccountId)
+    .or(addressFilter);
+  assertSupabase({ error: addressesResult.error }, 'gdpr_delivery_address_export');
+
+  return {
+    customers: customersResult.data ?? [],
+    orders: ordersResult.data ?? [],
+    delivery_addresses: addressesResult.data ?? [],
+  };
+}
+
+async function redactCopies(
+  admin: AdminClient,
+  {
+    merchantAccountId,
+    shopId,
+    shopifyCustomerId,
+    topic,
+    webhookEventId,
+  }: Scope & {
+    shopifyCustomerId: string | null;
+    topic: 'customers/redact' | 'shop/redact';
+    webhookEventId: string;
+  },
+): Promise<GdprProof> {
+  const { data, error } = await admin.rpc('redact_shopify_customer_copies', {
+    p_merchant_account_id: merchantAccountId,
+    p_shop_id: shopId,
+    p_shopify_customer_id: shopifyCustomerId as string,
+    p_topic: topic,
+    p_webhook_event_id: webhookEventId,
+  });
+  assertSupabase({ error }, 'gdpr_redaction');
+  return parseProof(data);
+}
+
+export async function redactCustomer(
+  admin: AdminClient,
+  {
+    merchantAccountId,
+    shopId,
+    shopifyCustomerId,
+    webhookEventId,
+  }: Scope & { shopifyCustomerId: string; webhookEventId: string },
+): Promise<GdprProof> {
+  return redactCopies(admin, {
+    merchantAccountId,
+    shopId,
+    shopifyCustomerId,
+    webhookEventId,
+    topic: 'customers/redact',
+  });
+}
+
+export async function redactShop(
+  admin: AdminClient,
+  { shopId, merchantAccountId, webhookEventId }: Scope & { webhookEventId: string },
+): Promise<GdprProof> {
+  return redactCopies(admin, {
+    merchantAccountId,
+    shopId,
+    shopifyCustomerId: null,
+    webhookEventId,
+    topic: 'shop/redact',
+  });
+}
+
+export function toGdprAuditPayload({
+  artifactId,
+  artifactExpiresAt,
+  proof,
+  status,
+  topic,
+}: {
+  artifactId?: string | null;
+  artifactExpiresAt?: string | null;
+  proof?: Partial<GdprProof>;
+  status: 'done' | 'retryable' | 'terminal';
+  topic: string;
+}): Json {
+  return {
+    topic,
+    status,
+    artifact_id: artifactId ?? null,
+    artifact_expires_at: artifactExpiresAt ?? null,
+    counts: {
+      customer_count: proof?.customer_count ?? 0,
+      order_count: proof?.order_count ?? 0,
+      delivery_address_count: proof?.delivery_address_count ?? 0,
+      tombstone_count: proof?.tombstone_count ?? 0,
+      webhook_payload_count: proof?.webhook_payload_count ?? 0,
+    },
+  };
 }
