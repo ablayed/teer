@@ -1,4 +1,5 @@
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
+import { isShopifyCustomerActivityRetained } from '@/lib/shopify/pcd-retention';
 import {
   parseItemsummary,
   resolveAndInsertOrderLines,
@@ -161,6 +162,7 @@ export type ExistingCustomerForMerge = {
   shipping_address: Json | null;
   shopify_customer_gids: Json;
   shopify_customer_id: string | null;
+  shopify_last_activity_at?: string | null;
 };
 type OrderShopifyUpdate = Pick<
   TablesUpdate<'orders'>,
@@ -346,6 +348,9 @@ export function mapShopifyCustomer(
     phone_e164: rawPhone ? normalizeSenegalPhone(rawPhone) : null,
     address: mapFlexibleAddress(flexibleSource),
     shipping_address: mapShippingAddress(node.shippingAddress),
+    // Activité Shopify certaine : événement de commande observé par Shopify.
+    // Ni le passage de sync ni updated_at local ne sont utilisés.
+    shopify_last_activity_at: node.updatedAt ?? node.createdAt ?? null,
   };
 }
 
@@ -367,6 +372,15 @@ export function buildCustomerMergePatch(
   existing: ExistingCustomerForMerge,
   incoming: CustomerUpsert,
 ): TablesUpdate<'customer'> {
+  const existingActivity = existing.shopify_last_activity_at;
+  const incomingActivity = incoming.shopify_last_activity_at ?? null;
+  const lastActivity =
+    existingActivity && incomingActivity
+      ? Date.parse(incomingActivity) > Date.parse(existingActivity)
+        ? incomingActivity
+        : existingActivity
+      : (existingActivity ?? incomingActivity);
+
   return {
     full_name: existing.full_name ?? incoming.full_name ?? null,
     first_name: existing.first_name ?? incoming.first_name ?? null,
@@ -377,6 +391,7 @@ export function buildCustomerMergePatch(
     shipping_address: existing.shipping_address ?? incoming.shipping_address ?? null,
     shopify_customer_gids: mergeGids(existing.shopify_customer_gids, incoming.shopify_customer_id),
     shopify_customer_id: existing.shopify_customer_id ?? incoming.shopify_customer_id ?? null,
+    shopify_last_activity_at: lastActivity,
     updated_at: new Date().toISOString(),
   };
 }
@@ -456,7 +471,7 @@ export function mapShopifyOrder(
 }
 
 const MERGE_SELECT =
-  'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, shopify_customer_gids, shopify_customer_id';
+  'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, shopify_customer_gids, shopify_customer_id, shopify_last_activity_at';
 
 // Dédup robuste à travers boutiques ET canaux : on cherche d'abord par téléphone E.164
 // (identité principale), sinon par GID Shopify (tableau ou colonne legacy).
@@ -468,6 +483,7 @@ async function resolveShopifyCustomer(
   incoming: CustomerUpsert,
 ): Promise<
   | { ok: true; customerId: string; tombstoned: false }
+  | { ok: true; customerId: string; tombstoned: true }
   | { ok: true; customerId: null; tombstoned: true }
   | { ok: false; error: string }
 > {
@@ -538,12 +554,23 @@ async function resolveShopifyCustomer(
   }
 
   if (existing) {
+    // Un événement ancien ne réhydrate pas les PCD, mais conserve le
+    // rattachement technique afin que les faits non-PCD restent réconciliables.
+    if (!isShopifyCustomerActivityRetained(incoming.shopify_last_activity_at)) {
+      return { ok: true, customerId: existing.id, tombstoned: true };
+    }
+
     const patch = buildCustomerMergePatch(existing, incoming);
     const { error } = await admin.from('customer').update(patch).eq('id', existing.id);
     if (error) {
       return { ok: false, error: error.message };
     }
     return { ok: true, customerId: existing.id, tombstoned: false };
+  }
+
+  // Aucun client existant ne doit être créé depuis un événement hors fenêtre.
+  if (gid && !isShopifyCustomerActivityRetained(incoming.shopify_last_activity_at)) {
+    return { ok: true, customerId: null, tombstoned: true };
   }
 
   const { data: inserted, error } = await admin
