@@ -218,6 +218,7 @@ export function OrderDetailPanel({
     .join(', ');
   const formattedDeliveryAddress = formatAddress(shippingAddress, emptyValue);
   const whatsappOrderData: WhatsappOrderData = {
+    orderId: order.id,
     numeroCommande: order.order_number,
     telephone: phone,
     adresse: formattedDeliveryAddress === emptyValue ? null : formattedDeliveryAddress,

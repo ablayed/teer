@@ -10,6 +10,7 @@ import {
   getOrderRequiredStockAction,
   updateOrderAmountsAction,
 } from '@/lib/actions/orders';
+import { recordWhatsappShareAction } from '@/lib/actions/pcd-access';
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
 import {
   dateTimeInputsToIso,
@@ -66,6 +67,7 @@ export function AssignmentDetailsDialog({
   const fetchRequiredStock = useAction(getOrderRequiredStockAction);
   const update = useAction(updateOrderAmountsAction);
   const startDelivery = useAction(performTransition);
+  const recordShare = useAction(recordWhatsappShareAction);
 
   const [loaded, setLoaded] = useState(false);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export function AssignmentDetailsDialog({
   const [stockShortages, setStockShortages] = useState<StockShortageRow[]>([]);
   const [stockCheckFailed, setStockCheckFailed] = useState(false);
 
-  const isExecuting = update.isExecuting || startDelivery.isExecuting;
+  const isExecuting = update.isExecuting || startDelivery.isExecuting || recordShare.isExecuting;
 
   // Chargement initial des montants/détails (la LISTE ne porte pas delivery_fee_minor).
   useEffect(() => {
@@ -264,6 +266,13 @@ export function AssignmentDetailsDialog({
           ? started.data.message
           : 'Le passage en livraison a échoué.';
       setFeedback(message);
+      return;
+    }
+
+    const audited = await recordShare.executeAsync({ orderId });
+    if (!audited?.data?.ok) {
+      whatsappWindow?.close();
+      setFeedback('Le partage est indisponible : aucun message n’a été ouvert.');
       return;
     }
 

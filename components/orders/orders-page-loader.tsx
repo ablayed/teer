@@ -278,6 +278,7 @@ export function OrdersPageLoader({
                     phone={order.customer?.phone ?? null}
                     scheduledFor={order.scheduled_for}
                     whatsappOrderData={{
+                      orderId: order.id,
                       numeroCommande: order.order_number,
                       telephone: order.customer?.phone ?? null,
                       adresse: formatOrderAddress(order.shipping_address),

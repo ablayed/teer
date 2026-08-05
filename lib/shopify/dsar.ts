@@ -1,3 +1,4 @@
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { CustomerDataExport } from '@/lib/shopify/gdpr';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -102,6 +103,31 @@ export async function createPrivateDsarArtifact(
     .eq('status', 'pending');
   assertResult({ error: readyError }, 'dsar_artifact_finalize');
 
+  try {
+    await writePcdAccessAudit(admin, {
+      tenantId: merchantAccountId,
+      shopId,
+      actorKind: 'service',
+      serviceKind: 'dsar_worker',
+      action: 'generate_export',
+      dataCategory: 'dsar_artifact',
+      purpose: 'legal_request',
+      outcome: 'succeeded',
+      resourceType: 'dsar_artifact',
+      resourceId: artifact.id,
+      surface: 'dsar',
+    });
+  } catch {
+    await admin.storage.from(SHOPIFY_DSAR_BUCKET).remove([storagePath]);
+    const { error: auditFailureError } = await admin
+      .from('shopify_dsar_artifact')
+      .update({ status: 'failed' })
+      .eq('id', artifact.id)
+      .eq('status', 'ready');
+    assertResult({ error: auditFailureError }, 'dsar_audit_failure_finalize');
+    throw new Error('dsar_audit_unavailable');
+  }
+
   return {
     artifactId: artifact.id,
     expiresAt: artifact.expires_at,
@@ -114,10 +140,12 @@ export async function createPrivateDsarSignedUrl(
   {
     artifactId,
     merchantAccountId,
+    shopId,
     now = new Date(),
   }: {
     artifactId: string;
     merchantAccountId: string;
+    shopId: string;
     now?: Date;
   },
 ): Promise<{ url: string; expiresAt: string }> {
@@ -126,6 +154,7 @@ export async function createPrivateDsarSignedUrl(
     .select('storage_bucket, storage_path, status, expires_at')
     .eq('id', artifactId)
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .eq('status', 'ready')
     .maybeSingle();
   assertResult({ error }, 'dsar_artifact_lookup');
@@ -155,6 +184,44 @@ export async function createPrivateDsarSignedUrl(
   }
 
   return { url: signed.signedUrl, expiresAt: artifact.expires_at };
+}
+
+export async function downloadPrivateDsarArtifact(
+  admin: AdminClient,
+  {
+    artifactId,
+    merchantAccountId,
+    shopId,
+    now = new Date(),
+  }: {
+    artifactId: string;
+    merchantAccountId: string;
+    shopId: string;
+    now?: Date;
+  },
+): Promise<{ body: Blob; byteSize: number }> {
+  const { data: artifact, error } = await admin
+    .from('shopify_dsar_artifact')
+    .select('storage_bucket, storage_path, status, expires_at, byte_size')
+    .eq('id', artifactId)
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
+    .eq('status', 'ready')
+    .maybeSingle();
+  assertResult({ error }, 'dsar_artifact_lookup');
+
+  if (!artifact || Date.parse(artifact.expires_at) <= now.getTime()) {
+    throw new Error('dsar_artifact_not_found');
+  }
+
+  const { data, error: downloadError } = await admin.storage
+    .from(artifact.storage_bucket)
+    .download(artifact.storage_path);
+  if (downloadError || !data) {
+    throw new Error('dsar_artifact_download_failed');
+  }
+
+  return { body: data, byteSize: artifact.byte_size ?? 0 };
 }
 
 export { createStorageAdminClient };

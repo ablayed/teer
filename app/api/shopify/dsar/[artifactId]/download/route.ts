@@ -1,5 +1,5 @@
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
-import { createPrivateDsarSignedUrl, createStorageAdminClient } from '@/lib/shopify/dsar';
+import { createStorageAdminClient, downloadPrivateDsarArtifact } from '@/lib/shopify/dsar';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -7,6 +7,8 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function GET(
   request: Request,
@@ -28,61 +30,66 @@ export async function GET(
     .eq('user_id', user.id)
     .limit(1)
     .maybeSingle();
-
   const member = memberData as { merchant_account_id: string; role: string } | null;
   if (memberError || !member || !['owner', 'manager'].includes(member.role)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   const { artifactId } = await params;
-  const requestedShopId = new URL(request.url).searchParams.get('shop_id');
-  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (!uuidPattern.test(artifactId) || !requestedShopId || !uuidPattern.test(requestedShopId)) {
+  const shopId = new URL(request.url).searchParams.get('shop_id');
+  if (!UUID_PATTERN.test(artifactId) || !shopId || !UUID_PATTERN.test(shopId)) {
     return NextResponse.json({ error: 'artifact_unavailable' }, { status: 404 });
   }
 
   try {
-    const result = await createPrivateDsarSignedUrl(createStorageAdminClient(), {
+    await writePcdAccessAudit(auditClient, {
+      tenantId: member.merchant_account_id,
+      shopId,
+      actorKind: 'human',
+      action: 'download_export',
+      dataCategory: 'dsar_artifact',
+      purpose: 'legal_request',
+      outcome: 'allowed',
+      resourceType: 'dsar_artifact',
+      resourceId: artifactId,
+      surface: 'dsar',
+    });
+  } catch {
+    return NextResponse.json({ error: 'audit_unavailable' }, { status: 503 });
+  }
+
+  try {
+    const { body } = await downloadPrivateDsarArtifact(createStorageAdminClient(), {
       artifactId,
       merchantAccountId: member.merchant_account_id,
-      shopId: requestedShopId,
+      shopId,
     });
 
-    try {
-      await writePcdAccessAudit(auditClient, {
-        tenantId: member.merchant_account_id,
-        shopId: requestedShopId,
-        actorKind: 'human',
-        action: 'generate_signed_url',
-        dataCategory: 'dsar_artifact',
-        purpose: 'legal_request',
-        outcome: 'succeeded',
-        resourceType: 'dsar_artifact',
-        resourceId: artifactId,
-        surface: 'dsar',
-      });
-    } catch {
-      return NextResponse.json({ error: 'audit_unavailable' }, { status: 503 });
-    }
-
-    return NextResponse.json(result, { headers: { 'cache-control': 'no-store' } });
+    return new NextResponse(body, {
+      headers: {
+        'cache-control': 'no-store',
+        'content-disposition': 'attachment; filename="dsar-export.json"',
+        'content-type': 'application/json; charset=utf-8',
+        'x-content-type-options': 'nosniff',
+      },
+    });
   } catch {
     try {
       await writePcdAccessAudit(auditClient, {
         tenantId: member.merchant_account_id,
-        shopId: requestedShopId,
+        shopId,
         actorKind: 'human',
-        action: 'generate_signed_url',
+        action: 'download_export',
         dataCategory: 'dsar_artifact',
         purpose: 'legal_request',
-        outcome: 'denied',
+        outcome: 'failed',
         resourceType: 'dsar_artifact',
         resourceId: artifactId,
         surface: 'dsar',
         metadata: { reason_code: 'artifact_unavailable' },
       });
     } catch {
-      // L'accès reste refusé ; aucun artefact ni URL n'est retourné.
+      // Aucun contenu n'a été retourné ; le refus reste fermé.
     }
     return NextResponse.json({ error: 'artifact_unavailable' }, { status: 404 });
   }
