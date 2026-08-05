@@ -108,7 +108,7 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
       return;
     }
 
-    const result = await recordShare.executeAsync({ orderId: order.numeroCommande ?? '' });
+    const result = await recordShare.executeAsync({ orderId: order.orderId });
     if (!result?.data?.ok) {
       popup.close();
       setShareError(true);
