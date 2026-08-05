@@ -202,10 +202,10 @@ export async function writePcdAccessAudit(
     p_metadata: metadata,
     p_outcome: entry.outcome,
     p_purpose: entry.purpose,
-    p_resource_id: entry.resourceId ?? undefined,
+    p_resource_id: entry.resourceId ?? null,
     p_resource_type: entry.resourceType,
-    p_service_kind: entry.serviceKind ?? undefined,
-    p_shop_id: entry.shopId ?? undefined,
+    p_service_kind: entry.serviceKind ?? null,
+    p_shop_id: entry.shopId ?? null,
     p_surface: entry.surface,
     p_tenant_id: entry.tenantId,
   });

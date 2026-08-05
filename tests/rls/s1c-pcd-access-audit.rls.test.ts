@@ -156,15 +156,15 @@ describe('S1C-1 PCD access audit RLS', () => {
 
     const { data: eventId, error: rpcError } = await owner.client.rpc('log_pcd_access_event', {
       p_tenant_id: owner.accountId,
-      p_shop_id: undefined,
+      p_shop_id: null,
       p_actor_kind: 'human',
-      p_service_kind: undefined,
+      p_service_kind: null,
       p_action: 'search',
       p_data_category: 'customer_contact',
       p_purpose: 'customer_support',
       p_outcome: 'succeeded',
       p_resource_type: 'customer',
-      p_resource_id: undefined,
+      p_resource_id: null,
       p_surface: 'server_action',
       p_metadata: { source: 'rls_test' },
     });
@@ -181,6 +181,36 @@ describe('S1C-1 PCD access audit RLS', () => {
     expect(row?.actor_kind).toBe('human');
     expect(row?.service_kind).toBeNull();
     expect(row?.occurred_at).toBeTruthy();
+
+    const { data: serviceEventId, error: serviceRpcError } = await service.rpc(
+      'log_pcd_access_event',
+      {
+        p_tenant_id: owner.accountId,
+        p_shop_id: null,
+        p_actor_kind: 'service',
+        p_service_kind: 'worker',
+        p_action: 'privileged_read',
+        p_data_category: 'shopify_payload',
+        p_purpose: 'system_processing',
+        p_outcome: 'succeeded',
+        p_resource_type: 'shopify_payload',
+        p_resource_id: null,
+        p_surface: 'worker',
+        p_metadata: { source: 'rls_test' },
+      },
+    );
+    expect(serviceRpcError).toBeNull();
+    expect(serviceEventId).toBeTruthy();
+
+    const { data: serviceRow, error: serviceRowError } = await service
+      .from('pcd_access_audit')
+      .select('actor_user_id, actor_kind, service_kind')
+      .eq('id', serviceEventId as string)
+      .single();
+    expect(serviceRowError).toBeNull();
+    expect(serviceRow?.actor_user_id).toBeNull();
+    expect(serviceRow?.actor_kind).toBe('service');
+    expect(serviceRow?.service_kind).toBe('worker');
 
     const { error: updateError } = await service
       .from('pcd_access_audit')

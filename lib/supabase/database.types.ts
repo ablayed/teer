@@ -2684,10 +2684,10 @@ export type Database = {
           p_metadata?: Json;
           p_outcome: string;
           p_purpose: string;
-          p_resource_id?: string;
+          p_resource_id?: string | null;
           p_resource_type: string;
-          p_service_kind?: string;
-          p_shop_id?: string;
+          p_service_kind?: string | null;
+          p_shop_id?: string | null;
           p_surface: string;
           p_tenant_id: string;
         };
