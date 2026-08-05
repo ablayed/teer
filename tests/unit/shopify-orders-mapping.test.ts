@@ -252,6 +252,21 @@ describe('mapShopifyOrder', () => {
     expect(order.shipping_address).toBeNull();
   });
 
+  it('scrubs PCD de commande quand le client est protégé par un tombstone', () => {
+    const order = mapShopifyOrder(makeOrder({ note: 'Appeler avant livraison' }), {
+      merchantAccountId: 'merchant_123',
+      shopId: 'shop_123',
+      customerId: null,
+      customerTombstoned: true,
+    });
+
+    expect(order.customer_id).toBeNull();
+    expect(order.shipping_address).toBeNull();
+    expect(order.shopify_order_attributes).toBeNull();
+    expect(order.shopify_line_item_attributes).toBeNull();
+    expect(order.items_summary).toHaveLength(1);
+  });
+
   it('pose les 4 dimensions aux defauts a l_insert (Shopify n_ecrase pas l_etat operationnel)', () => {
     const order = mapShopifyOrder(makeOrder(), {
       merchantAccountId: 'merchant_123',

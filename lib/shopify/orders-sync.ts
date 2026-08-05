@@ -248,6 +248,7 @@ type OrderMappingContext = {
   merchantAccountId: string;
   shopId: string;
   customerId: string | null;
+  customerTombstoned?: boolean;
 };
 
 function parseAmount(amount: string): number {
@@ -415,7 +416,7 @@ export function buildShopifyLineItemAttributes(node: ShopifyOrderNode): Json | n
 
 export function mapShopifyOrder(
   node: ShopifyOrderNode,
-  { merchantAccountId, shopId, customerId }: OrderMappingContext,
+  { merchantAccountId, shopId, customerId, customerTombstoned = false }: OrderMappingContext,
 ): OrderUpsert {
   const money = node.currentTotalPriceSet.shopMoney;
 
@@ -447,10 +448,10 @@ export function mapShopifyOrder(
       shopify_variant_id: lineItem.variant?.id ? extractShopifyId(lineItem.variant.id) : null,
       shopify_product_id: lineItem.product?.id ? extractShopifyId(lineItem.product.id) : null,
     })),
-    shipping_address: mapShippingAddress(node.shippingAddress),
+    shipping_address: customerTombstoned ? null : mapShippingAddress(node.shippingAddress),
     created_at_shopify: node.createdAt,
-    shopify_order_attributes: buildShopifyOrderAttributes(node),
-    shopify_line_item_attributes: buildShopifyLineItemAttributes(node),
+    shopify_order_attributes: customerTombstoned ? null : buildShopifyOrderAttributes(node),
+    shopify_line_item_attributes: customerTombstoned ? null : buildShopifyLineItemAttributes(node),
   };
 }
 
@@ -463,10 +464,32 @@ const MERGE_SELECT =
 async function resolveShopifyCustomer(
   admin: SupabaseClient<Database>,
   merchantAccountId: string,
+  shopId: string,
   incoming: CustomerUpsert,
-): Promise<{ ok: true; customerId: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; customerId: string; tombstoned: false }
+  | { ok: true; customerId: null; tombstoned: true }
+  | { ok: false; error: string }
+> {
   const phoneE164 = incoming.phone_e164 ?? null;
   const gid = incoming.shopify_customer_id ?? null;
+
+  if (gid) {
+    const { data: tombstone, error: tombstoneError } = await admin
+      .from('shopify_customer_redaction_tombstone')
+      .select('id')
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .eq('shopify_customer_id', gid)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (tombstoneError) {
+      return { ok: false, error: 'shopify_customer_tombstone_lookup_failed' };
+    }
+    if (tombstone) {
+      return { ok: true, customerId: null, tombstoned: true };
+    }
+  }
 
   let existing: ExistingCustomerForMerge | null = null;
 
@@ -520,7 +543,7 @@ async function resolveShopifyCustomer(
     if (error) {
       return { ok: false, error: error.message };
     }
-    return { ok: true, customerId: existing.id };
+    return { ok: true, customerId: existing.id, tombstoned: false };
   }
 
   const { data: inserted, error } = await admin
@@ -531,7 +554,7 @@ async function resolveShopifyCustomer(
   if (error || !inserted) {
     return { ok: false, error: error?.message ?? 'Insert returned no row' };
   }
-  return { ok: true, customerId: inserted.id };
+  return { ok: true, customerId: inserted.id, tombstoned: false };
 }
 
 export async function persistShopifyOrder({
@@ -543,23 +566,27 @@ export async function persistShopifyOrder({
   try {
     const customerData = mapShopifyCustomer(orderNode, merchantAccountId);
     let customerId: string | null = null;
+    let customerTombstoned = false;
 
     if (customerData) {
       const resolved = await resolveShopifyCustomer(
         supabaseServiceClient,
         merchantAccountId,
+        shopId,
         customerData,
       );
       if (!resolved.ok) {
         return { ok: false, error: resolved.error };
       }
       customerId = resolved.customerId;
+      customerTombstoned = resolved.tombstoned;
     }
 
     const orderData = mapShopifyOrder(orderNode, {
       merchantAccountId,
       shopId,
       customerId,
+      customerTombstoned,
     });
     const shopifyOrderId = orderData.shopify_order_id;
 
