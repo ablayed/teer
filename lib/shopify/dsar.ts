@@ -82,7 +82,12 @@ export async function createPrivateDsarArtifact(
       upsert: true,
     });
   if (uploadError) {
-    await admin.from('shopify_dsar_artifact').update({ status: 'failed' }).eq('id', artifact.id);
+    const { error: failureError } = await admin
+      .from('shopify_dsar_artifact')
+      .update({ status: 'failed' })
+      .eq('id', artifact.id)
+      .eq('status', 'pending');
+    assertResult({ error: failureError }, 'dsar_artifact_failure_finalize');
     throw new Error('dsar_artifact_upload_failed');
   }
 
@@ -133,11 +138,12 @@ export async function createPrivateDsarSignedUrl(
   const remainingSeconds = Math.floor((expiresAtMs - now.getTime()) / 1_000);
   const expiresIn = Math.min(DSAR_MAX_TTL_SECONDS, remainingSeconds);
   if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
-    await admin
+    const { error: expiryError } = await admin
       .from('shopify_dsar_artifact')
       .update({ status: 'expired' })
       .eq('id', artifactId)
       .eq('status', 'ready');
+    assertResult({ error: expiryError }, 'dsar_artifact_expiry_finalize');
     throw new Error('dsar_artifact_expired');
   }
 

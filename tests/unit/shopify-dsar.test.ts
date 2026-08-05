@@ -7,7 +7,11 @@ function fakeAdmin(artifact: Record<string, string>) {
   const createSignedUrl = vi
     .fn()
     .mockResolvedValue({ data: { signedUrl: 'https://private.test/url' }, error: null });
-  const update = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ eq: vi.fn() }) });
+  const update = vi.fn().mockReturnValue({
+    eq: vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    }),
+  });
   const maybeSingle = vi.fn().mockResolvedValue({ data: artifact, error: null });
   const chain = {
     select: vi.fn().mockReturnThis(),
