@@ -145,6 +145,28 @@ describe('Shopify PCD retention', () => {
     });
   });
 
+  it('traite un objet Storage déjà absent comme une suppression idempotente', async () => {
+    const { admin, rpc } = fakeAdmin({
+      claimRows: [
+        {
+          id: 'already-absent-artifact',
+          storage_bucket: 'shopify-dsar',
+          storage_path: 'technical/already-absent.json',
+          purge_attempt_count: 1,
+        },
+      ],
+    });
+
+    await executeShopifyPcdRetention(admin, 1);
+
+    expect(rpc).toHaveBeenLastCalledWith('finalize_shopify_dsar_artifact_purge', {
+      p_id: 'already-absent-artifact',
+      p_success: true,
+      p_error_code: undefined,
+      p_now: expect.any(String),
+    });
+  });
+
   it('deux exécutions successives sont idempotentes lorsque la seconde ne reçoit aucun candidat', async () => {
     const admin = fakeAdmin({
       executeRows: {
@@ -231,6 +253,21 @@ describe('Shopify PCD retention', () => {
     expect(migration).toContain('pcd_finalized_at := null');
     expect(migration).toContain('shopify_last_activity_at');
     expect(migration).not.toContain('set pcd_finalized_at = updated_at');
+  });
+
+  it('réutilise le même garde dans les chemins normal, webhook et Bulk/réconciliation', () => {
+    const ordersSync = readFileSync(resolve(process.cwd(), 'lib/shopify/orders-sync.ts'), 'utf8');
+    const shopSync = readFileSync(resolve(process.cwd(), 'lib/shopify/shop-sync.ts'), 'utf8');
+    const webhooks = readFileSync(
+      resolve(process.cwd(), 'app/api/shopify/webhooks/route.ts'),
+      'utf8',
+    );
+    const reconcile = readFileSync(resolve(process.cwd(), 'lib/shopify/reconcile.ts'), 'utf8');
+
+    expect(ordersSync).toContain('isShopifyCustomerActivityRetained');
+    expect(shopSync).toContain('persistShopifyOrder');
+    expect(webhooks).toContain('persistShopifyOrder');
+    expect(reconcile).toContain('persistShopifyOrder');
   });
 
   it('bloque une activité Shopify ancienne ou inconnue avant toute réhydratation PCD', () => {
