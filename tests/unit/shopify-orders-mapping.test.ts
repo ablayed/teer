@@ -101,6 +101,7 @@ describe('mapShopifyCustomer', () => {
         country: 'Senegal',
         zip: '12500',
       },
+      shopify_last_activity_at: '2026-05-30T12:00:00Z',
     });
   });
 
@@ -131,6 +132,7 @@ describe('mapShopifyCustomer', () => {
     expect(enriched).toMatchObject({
       shopify_customer_id: '555',
       shopify_customer_gids: ['555'],
+      shopify_last_activity_at: '2026-05-30T12:00:00Z',
       first_name: 'Fatou',
       last_name: 'Sow',
       phone_e164: '+221771112233',
