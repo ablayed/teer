@@ -32,10 +32,10 @@ function createSupabaseAdminClient() {
   });
 }
 
-function logSyncError(prefix: string, error: unknown, payload?: unknown) {
+function logSyncError(prefix: string, error: unknown, _payload?: unknown) {
   Sentry.captureException(error, {
     tags: { module: 'shopify.shop-sync' },
-    extra: { payload, prefix },
+    extra: { error_code: 'shopify_sync_failed', prefix },
   });
 }
 

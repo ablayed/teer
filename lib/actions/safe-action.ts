@@ -18,15 +18,14 @@ export const actionClient = createSafeActionClient({
     });
   },
   handleServerError(error, utils) {
-    // DIAG (temporaire, branche diag/analyses-error-logging) : révéler l'exception
-    // avalée par next-safe-action. Ne change PAS la valeur de retour opaque.
-    // biome-ignore lint/suspicious/noConsole: diagnostic temporaire (branche diag)
+    // Ne jamais écrire le message ou la stack : les exceptions peuvent contenir
+    // des valeurs PCD provenant d'une requête avalée.
+    // biome-ignore lint/suspicious/noConsole: code sanitaire nécessaire au diagnostic serveur
     console.error(
       '[action-error]',
       JSON.stringify({
         actionName: utils?.metadata?.actionName,
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        error_code: 'unexpected_error',
       }),
     );
     Sentry.captureException(error, {

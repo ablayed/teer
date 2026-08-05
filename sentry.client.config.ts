@@ -2,6 +2,7 @@ import {
   getClientErrorMessage,
   isNetworkRequestError,
 } from '@/lib/monitoring/client-error-classification';
+import { sanitizeSentryEvent } from '@/lib/security/telemetry-sanitize';
 
 // Sentry client chargé en import DYNAMIQUE : le SDK sort du bundle initial
 // (chunk async) au lieu d'être livré à toutes les pages. Bénéfices :
@@ -69,12 +70,11 @@ if (
             documentVisibilityState: document.visibilityState,
             navigatorOnline: navigator.onLine,
             pathname: window.location.pathname,
-            search: window.location.search,
             userAgent: navigator.userAgent,
           };
         }
 
-        return event;
+        return sanitizeSentryEvent(event);
       },
     });
   });

@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/nextjs';
+import { sanitizeSentryEvent } from './lib/security/telemetry-sanitize';
 
 // Voir sentry.server.config.ts : désactivé en E2E prod-build pour éviter le flush réseau
 // bloquant au teardown du webServer Playwright.
@@ -9,4 +10,5 @@ Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   enabled: sentryEnabled,
   tracesSampleRate: 0.1,
+  beforeSend: (event) => sanitizeSentryEvent(event),
 });
