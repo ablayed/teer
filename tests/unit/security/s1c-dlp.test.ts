@@ -115,6 +115,12 @@ describe('S1C-1 DLP contract', () => {
     expect(read('components/whatsapp/whatsapp-compose-sheet.tsx')).toContain(
       'recordWhatsappShareAction',
     );
+    expect(read('components/whatsapp/whatsapp-compose-sheet.tsx')).toContain(
+      'orderId: order.orderId',
+    );
+    expect(read('components/whatsapp/whatsapp-compose-sheet.tsx')).not.toContain(
+      'orderId: order.numeroCommande',
+    );
     expect(read('lib/actions/feedback.ts')).toContain('detectPcdCategories');
     expect(read('supabase/migrations/0123_s1c_pcd_access_audit.sql')).toContain(
       "tool_args = '{}'::jsonb",
