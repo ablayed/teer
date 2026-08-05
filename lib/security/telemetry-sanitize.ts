@@ -100,6 +100,14 @@ export function sanitizePostHogEvent(event: CaptureResult | null): CaptureResult
     const normalizedKey = key.toLowerCase();
     if (
       normalizedKey === 'q' ||
+      normalizedKey === 'name' ||
+      normalizedKey === 'fullname' ||
+      normalizedKey.endsWith('_name') ||
+      normalizedKey.includes('phone') ||
+      normalizedKey.includes('telephone') ||
+      normalizedKey.includes('email') ||
+      normalizedKey.includes('address') ||
+      normalizedKey.includes('signed') ||
       normalizedKey.includes('query') ||
       normalizedKey.includes('search') ||
       normalizedKey.includes('token') ||
