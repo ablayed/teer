@@ -1,12 +1,37 @@
-import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
+import {
+  type PcdAccessAuditEntry,
+  PcdAccessAuditError,
+  writePcdAccessAudit,
+} from '@/lib/security/pcd-access-audit';
 import type { CustomerDataExport } from '@/lib/shopify/gdpr';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 
 export const SHOPIFY_DSAR_BUCKET = 'shopify-dsar';
 export const DSAR_MAX_TTL_SECONDS = 24 * 60 * 60;
+export const DSAR_TEST_AUDIT_FAILURE_HEADER = 'x-teer-e2e-force-audit-failure';
 
 type AdminClient = SupabaseClient<Database>;
+
+export function isDsarAuditFailureTestHookEnabled(request: Request): boolean {
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.E2E_TEST_MODE === '1' &&
+    request.headers.get(DSAR_TEST_AUDIT_FAILURE_HEADER) === '1'
+  );
+}
+
+export async function writePcdAccessAuditThroughDsarRoute(
+  request: Request,
+  client: AdminClient,
+  entry: PcdAccessAuditEntry,
+): Promise<string> {
+  if (isDsarAuditFailureTestHookEnabled(request)) {
+    throw new PcdAccessAuditError();
+  }
+
+  return writePcdAccessAudit(client, entry);
+}
 
 function createStorageAdminClient(): AdminClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

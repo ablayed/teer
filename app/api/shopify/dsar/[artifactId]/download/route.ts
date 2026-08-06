@@ -1,4 +1,3 @@
-import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import {
   PcdAccessControlError,
   consumePcdQuota,
@@ -8,6 +7,7 @@ import {
   consumePrivateDsarDownloadAuthorization,
   createStorageAdminClient,
   downloadPrivateDsarArtifactAtPath,
+  writePcdAccessAuditThroughDsarRoute,
 } from '@/lib/shopify/dsar';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -69,7 +69,7 @@ export async function GET(
             : 503
         : 503;
     try {
-      await writePcdAccessAudit(auditClient, {
+      await writePcdAccessAuditThroughDsarRoute(request, auditClient, {
         tenantId: member.merchant_account_id,
         shopId,
         actorKind: 'human',
@@ -106,7 +106,7 @@ export async function GET(
   }
 
   try {
-    await writePcdAccessAudit(auditClient, {
+    await writePcdAccessAuditThroughDsarRoute(request, auditClient, {
       tenantId: member.merchant_account_id,
       shopId,
       actorKind: 'human',
@@ -139,7 +139,7 @@ export async function GET(
     });
   } catch {
     try {
-      await writePcdAccessAudit(auditClient, {
+      await writePcdAccessAuditThroughDsarRoute(request, auditClient, {
         tenantId: member.merchant_account_id,
         shopId,
         actorKind: 'human',

@@ -36,6 +36,7 @@ function loadEnvFile(path: string) {
 
 loadEnvFile('.env.test.local');
 loadEnvFile('.env.test');
+process.env.E2E_TEST_MODE = '1';
 
 const isCI = !!process.env.CI;
 
