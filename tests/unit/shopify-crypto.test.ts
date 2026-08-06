@@ -13,6 +13,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Reflect.deleteProperty(process.env, 'SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS');
   if (originalKey === undefined) {
     unsetEncryptionKey();
     return;
@@ -35,6 +36,15 @@ describe('Shopify token crypto', () => {
     expect(encryptToken(plaintext)).not.toBe(encryptToken(plaintext));
   });
 
+  it('uses the expected IV, authentication tag and ciphertext format', () => {
+    const [iv, authTag, ciphertext] = encryptToken('shpat_format_token').split(':');
+
+    expect(iv).toMatch(/^[0-9a-f]{24}$/);
+    expect(authTag).toMatch(/^[0-9a-f]{32}$/);
+    expect(ciphertext).toMatch(/^[0-9a-f]+$/);
+    expect(ciphertext.length % 2).toBe(0);
+  });
+
   it('throws when decrypting a malformed token', () => {
     expect(() => decryptToken('not-a-valid-token')).toThrow(
       'decryptToken: invalid encrypted token format',
@@ -49,6 +59,38 @@ describe('Shopify token crypto', () => {
     expect(() => decryptToken([iv, alteredAuthTag, ciphertext].join(':'))).toThrow(
       'decryptToken: authentication failed or token is corrupted',
     );
+  });
+
+  it('throws a generic error when the ciphertext has been altered', () => {
+    const encrypted = encryptToken('shpat_sensitive_token');
+    const [iv, authTag, ciphertext] = encrypted.split(':');
+    const alteredCiphertext = `${ciphertext.slice(0, -1)}${ciphertext.endsWith('0') ? '1' : '0'}`;
+
+    expect(() => decryptToken([iv, authTag, alteredCiphertext].join(':'))).toThrow(
+      'decryptToken: authentication failed or token is corrupted',
+    );
+  });
+
+  it('throws a generic error when the active key is incorrect', () => {
+    const encrypted = encryptToken('shpat_wrong_key_token');
+    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY =
+      'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+
+    expect(() => decryptToken(encrypted)).toThrow(
+      'decryptToken: authentication failed or token is corrupted',
+    );
+  });
+
+  it('reads with the previous key during a non-destructive rotation', () => {
+    const previousKey = process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY;
+    const activeKey = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY = previousKey;
+    const encryptedWithPreviousKey = encryptToken('shpat_rotating_token');
+
+    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS = previousKey;
+    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY = activeKey;
+
+    expect(decryptToken(encryptedWithPreviousKey)).toBe('shpat_rotating_token');
   });
 
   it('throws when the encryption key is absent', () => {
