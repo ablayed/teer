@@ -21,6 +21,8 @@ Le navigateur ne reçoit que les variables `NEXT_PUBLIC_*` explicitement déclar
 
 Le client Supabase navigateur utilise uniquement l’URL publique et la clé anon. Les clients admin/service-role sont créés dans des modules serveur ou des routes serveur. La preuve locale est statique et le contrôle du bundle de production est exécuté par `pnpm security:s1d4:client-bundle`; une vérification du déploiement réel reste manuelle.
 
+Fraunces est auto-hébergée via `@fontsource-variable/fraunces` (licence OFL-1.1), avec les variantes variable romaine et italique. Aucun téléchargement Google Fonts n’est requis pendant le build.
+
 ## Authentification humaine
 
 Le contrôle local actuel impose un mot de passe d’au moins 10 caractères avec majuscule, minuscule, chiffre et caractère spécial lors de la création et du changement. Le changement de mot de passe et les opérations DSAR sensibles ré-authentifient l’utilisateur. Les connexions sont limitées par IP lorsque Upstash est configuré, avec des réponses génériques qui n’énumèrent pas les comptes. Le timeout d’inactivité et l’invalidation locale de session sont testés avec des valeurs synthétiques.

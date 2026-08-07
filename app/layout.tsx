@@ -1,33 +1,12 @@
 import { env } from '@/lib/env';
+import '@fontsource-variable/fraunces/wght.css';
+import '@fontsource-variable/fraunces/wght-italic.css';
 import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata, Viewport } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { Fraunces } from 'next/font/google';
 import type { ReactNode } from 'react';
 import './globals.css';
-
-// Serif éditorial de marque. On charge des instances STATIQUES (pas le fichier
-// variable, plus lourd) et on ne PRELOAD que le roman latin — c'est ce que peint
-// le H1 hero (élément LCP). 400 = titres, 600 = numéros d'étapes.
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  weight: ['400', '600'],
-  display: 'swap',
-  variable: '--font-fraunces',
-  preload: true,
-});
-
-// Italique réservé aux mots d'accent (« Livrez. »). Hors chemin critique : non
-// preloadé, chargé après coup (swap), métriquement compatible (pas de CLS).
-const frauncesItalic = Fraunces({
-  subsets: ['latin'],
-  weight: ['400'],
-  style: 'italic',
-  display: 'swap',
-  variable: '--font-fraunces-italic',
-  preload: false,
-});
 
 export async function generateMetadata(): Promise<Metadata> {
   const common = await getTranslations('common');
@@ -61,7 +40,7 @@ export const viewport: Viewport = {
 // /connexion, /onboarding. Les Server Components lisent l'i18n via getTranslations.
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr-SN" className={`${fraunces.variable} ${frauncesItalic.variable}`}>
+    <html lang="fr-SN">
       <body className={`${GeistSans.variable} ${GeistMono.variable} min-h-dvh bg-canvas`}>
         {children}
       </body>
