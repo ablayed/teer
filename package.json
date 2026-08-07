@@ -12,6 +12,7 @@
     "test:unit": "vitest run tests/unit",
     "test:s1d2:format": "vitest run tests/unit/s1d2-backup-format.test.ts",
     "test:s1d2:local-cycle": "node scripts/s1d2-local-cycle.mjs",
+    "test:s1d3:incident": "vitest run tests/unit/security/s1d3-access-incident.test.ts",
     "test:rls": "vitest run tests/rls",
     "test:e2e": "playwright test tests/e2e",
     "test:visual:desktop": "playwright test tests/visual --project=chromium",

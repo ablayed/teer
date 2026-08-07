@@ -185,15 +185,8 @@ jobs:
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
-            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
-            echo "RESEND_API_KEY=test-resend-api-key"
-            echo "SHOPIFY_API_KEY=test-shopify-api-key"
-            echo "SHOPIFY_API_SECRET=test-shopify-api-secret"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
-          cp .env.production .env.test
       # NEXT_PUBLIC_DISABLE_UIR=1 inliné ICI dans le bundle middleware/edge → la CSP du
       # build de test n'émet pas `upgrade-insecure-requests` (sinon WebKit/iphone-14
       # blanchit sur http://localhost). En prod réelle ce flag est absent → UIR émis.
@@ -227,6 +220,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
       # Diagnostic : sur échec, on remonte les traces Playwright (call log + snapshots DOM/ARIA
       # par action) pour voir EXACTEMENT quelle action pend, plutôt que de supposer.
       - uses: actions/upload-artifact@v4
@@ -310,13 +306,8 @@ jobs:
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
-            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
-            echo "RESEND_API_KEY=test-resend-api-key"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
-          cp .env.production .env.test
       - name: Build production
         run: pnpm build
         env:
@@ -336,6 +327,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -418,13 +412,8 @@ jobs:
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
-            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
-            echo "RESEND_API_KEY=test-resend-api-key"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
-          cp .env.production .env.test
       - name: Build production
         run: pnpm build
         env:
@@ -444,6 +433,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
       - uses: actions/upload-artifact@v4
         if: always()
         with:

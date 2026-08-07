@@ -91,7 +91,7 @@ export type PcdAccessServiceKind = (typeof PCD_ACCESS_SERVICE_KINDS)[number];
 export type PcdAccessSurface = (typeof PCD_ACCESS_SURFACES)[number];
 export type PcdAccessResourceType = (typeof PCD_ACCESS_RESOURCE_TYPES)[number];
 
-type AuditMetadataValue = string | number | boolean | null;
+type AuditMetadataValue = string | number | boolean;
 export type PcdAccessMetadata = Record<string, AuditMetadataValue>;
 
 export type PcdAccessAuditEntry = {
@@ -158,7 +158,11 @@ const SENSITIVE_VALUE_PATTERNS = [
   /https?:\/\//i,
   /\b[^\s@]+@[^\s@]+\.[^\s@]+\b/i,
   /(?:\+?\d[\s().-]?){8,}/,
+  /^(?:bearer|basic)[ \t]+/i,
+  /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/,
+  /^[A-Za-z-]{2,32}:[^:]+$/,
 ];
+const TECHNICAL_CODE_PATTERN = /^[A-Za-z0-9._:-]+$/;
 
 export function sanitizePcdAccessMetadata(metadata: PcdAccessMetadata = {}): Json {
   const keys = Object.keys(metadata);
@@ -173,12 +177,7 @@ export function sanitizePcdAccessMetadata(metadata: PcdAccessMetadata = {}): Jso
     }
 
     const value = metadata[key];
-    if (
-      value !== null &&
-      typeof value !== 'string' &&
-      typeof value !== 'number' &&
-      typeof value !== 'boolean'
-    ) {
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
       throw new PcdAccessAuditError();
     }
 
@@ -187,7 +186,11 @@ export function sanitizePcdAccessMetadata(metadata: PcdAccessMetadata = {}): Jso
     }
 
     if (typeof value === 'string') {
-      if (value.length > 128 || SENSITIVE_VALUE_PATTERNS.some((pattern) => pattern.test(value))) {
+      if (
+        value.length > 128 ||
+        !TECHNICAL_CODE_PATTERN.test(value) ||
+        SENSITIVE_VALUE_PATTERNS.some((pattern) => pattern.test(value))
+      ) {
         throw new PcdAccessAuditError();
       }
     }
