@@ -49,6 +49,9 @@ if (process.env.E2E_SHOPIFY_WEBHOOKS === '1') {
 }
 
 process.env.E2E_TEST_MODE = '1';
+// La galerie primitive est une surface explicitement test-only ; les baselines doivent atteindre
+// ses composants au lieu de capturer le 404 produit par sa garde d’environnement.
+process.env.ENABLE_PRIMITIVES_DEMO = '1';
 
 const isCI = !!process.env.CI;
 const externalServer = process.env.E2E_EXTERNAL_SERVER === '1';

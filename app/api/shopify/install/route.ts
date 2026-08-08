@@ -12,6 +12,14 @@ export const dynamic = 'force-dynamic';
 const OAUTH_STATE_COOKIE = 'shopify_oauth_state';
 const STATE_MAX_AGE_SECONDS = 10 * 60;
 
+function safeReturnPath(value: string | null): string | undefined {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return undefined;
+  }
+
+  return value.startsWith('/shopify/embedded') ? value : undefined;
+}
+
 function redirectTo(path: string, request: NextRequest) {
   return NextResponse.redirect(new URL(path, request.url));
 }
@@ -33,6 +41,7 @@ export async function GET(request: NextRequest) {
   }
 
   const shop = request.nextUrl.searchParams.get('shop')?.trim() ?? '';
+  const returnTo = safeReturnPath(request.nextUrl.searchParams.get('return_to'));
 
   if (!validateShopDomain(shop)) {
     return redirectTo('/boutiques?error=invalid_shop', request);
@@ -67,6 +76,7 @@ export async function GET(request: NextRequest) {
     shopDomain: shop,
     exp: Date.now() + STATE_MAX_AGE_SECONDS * 1000,
     clientId: app.clientId,
+    returnTo,
   });
   const authorizeUrl = buildAuthorizeUrl({
     shop,

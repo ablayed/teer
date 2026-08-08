@@ -23,12 +23,37 @@ export type ShopAccessTokenResult =
   | { ok: true; accessToken: string }
   | { ok: false; reason: 'needs_reauth' | 'token_error' };
 
+const refreshInFlight = new Map<string, Promise<ShopAccessTokenResult>>();
+
 // Renvoie un access token valide pour la boutique, en le renouvelant si nécessaire.
 // - access non expirant (legacy, expires_at null) → utilisé tel quel ;
 // - expirant et loin de l'expiration → utilisé tel quel ;
 // - expirant et proche/échu → refresh, persistance du nouveau couple, renvoi du nouveau token ;
 // - refresh absent/expiré ou refusé → needs_reauth (re-OAuth requis).
 export async function getValidShopAccessToken(
+  admin: SupabaseClient<Database>,
+  shop: ShopTokenRow,
+  clientId: string,
+  clientSecret: string,
+): Promise<ShopAccessTokenResult> {
+  const existingRefresh = refreshInFlight.get(shop.id);
+  if (existingRefresh) {
+    return existingRefresh;
+  }
+
+  const refreshPromise = getValidShopAccessTokenInternal(admin, shop, clientId, clientSecret);
+  refreshInFlight.set(shop.id, refreshPromise);
+
+  try {
+    return await refreshPromise;
+  } finally {
+    if (refreshInFlight.get(shop.id) === refreshPromise) {
+      refreshInFlight.delete(shop.id);
+    }
+  }
+}
+
+async function getValidShopAccessTokenInternal(
   admin: SupabaseClient<Database>,
   shop: ShopTokenRow,
   clientId: string,
@@ -80,7 +105,7 @@ export async function getValidShopAccessToken(
   }
 
   // Un seul couple vivant par boutique : on remplace l'ancien couple chiffré.
-  const { error } = await admin
+  const { data, error } = await admin
     .from('shop')
     .update({
       access_token_encrypted: encryptToken(refreshed.accessToken),
@@ -92,9 +117,12 @@ export async function getValidShopAccessToken(
         refreshed.refreshTokenExpiresAt?.toISOString() ?? shop.refresh_token_expires_at,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', shop.id);
+    .eq('id', shop.id)
+    .eq('access_token_encrypted', shop.access_token_encrypted)
+    .select('id')
+    .maybeSingle();
 
-  if (error) {
+  if (error || !data) {
     return { ok: false, reason: 'token_error' };
   }
 

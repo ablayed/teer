@@ -12,15 +12,47 @@ Ce document prépare la vérification manuelle de Teer Public. Il ne constitue n
 
 ## Parcours local constaté
 
-Le code actuel propose encore une connexion depuis Tëër → Boutiques → Connecter Shopify → `/api/shopify/install`. Le domaine `myshopify.com`, le state, le nonce, le callback et le HMAC OAuth sont validés côté serveur.
+Le parcours reviewer commence exclusivement dans Shopify Admin, sur la surface embarquée
+`/shopify/embedded`. L'installation et l'autorisation Shopify passent par le flux OAuth existant ;
+le state, le nonce, le callback et le HMAC sont validés côté serveur. Après l'arrivée dans la
+surface, App Bridge fournit un session token vérifié côté serveur avant toute lecture de boutique.
 
-Ce parcours ne prouve pas l'installation initiée depuis une surface Shopify. Il exige une session Tëër avant l'OAuth et ne fournit pas encore de surface embarquée App Bridge.
+L'association à Tëër reste explicite : une boutique peut d'abord être affichée comme
+`not configured`, puis le marchand choisit l'association avec son compte Tëër. Le bouton public
+Tëër ne demande plus de domaine `myshopify.com` et ne lance pas une installation.
 
-## Blocage critique
+## Surface embarquée livrée localement
 
-`shopify.app.toml` indique `embedded = false`. Le dépôt ne contient pas App Bridge, session tokens Shopify ni point d'entrée embarqué. Une correction sûre nécessite une décision d'architecture sur l'authentification de la surface embarquée ; elle est donc classée `BLOCKED — EMBEDDED APP REMEDIATION REQUIRED` dans S2.
+L’entrée Shopify est `/shopify/embedded`. Elle affiche uniquement l’identité publique de la
+boutique, l’état d’installation, l’état ou la date de dernière synchronisation, la prochaine
+action, le lien volontaire vers le cockpit complet, le support et les instructions de
+désinstallation/suppression. Elle n’embarque pas le cockpit et ne demande pas de domaine
+`myshopify.com` depuis Tëër.
 
-## Instructions reviewer à finaliser après déblocage
+App Bridge est chargé avant la surface applicative. Les appels backend portent un session token
+Shopify vérifié côté serveur ; aucun token Admin API, secret ou cookie tiers ne passe dans le
+navigateur, l’URL ou les logs. L’association à Tëër reste une action explicite après confirmation
+de l’installation Shopify ; elle ne crée pas silencieusement d’utilisateur ni de rôle owner.
+
+`shopify.app.toml` indique désormais `embedded = true` et pointe vers `/shopify/embedded`. La
+surface, la route de session token, l’installation depuis Shopify et les tests synthétiques sont
+versionnés localement. La configuration distante Partner Dashboard reste à appliquer en S3.
+
+Les jetons offline expirables utilisent les colonnes existantes chiffrées
+`access_token_encrypted`, `refresh_token_encrypted`, `access_token_expires_at` et
+`refresh_token_expires_at`. Le refresh est synthétique en local, protégé contre une rotation
+concurrente par boutique et invalidé fonctionnellement après désinstallation ; aucun token réel
+n’est migré ou révoqué.
+
+## Gate UX reviewer
+
+Les fixtures visuelles doivent atteindre une page métier authentifiée ou échouer explicitement si
+`/connexion` reste visible. Les snapshots ne sont jamais régénérés en masse. Chaque différence
+est classée `HARNESS/AUTH FIXTURE`, `SNAPSHOT OBSOLETE`, `PLATFORM-SPECIFIC BASELINE`, `REAL UX
+DEFECT` ou `NOT TESTABLE LOCALLY` avant toute correction.
+
+Backlog non-P0 après ce lot : `P1` cycle COD critique, `P2` mobile/compréhension, `P3` finition
+visuelle.
 
 1. Installer l'application depuis la fiche Shopify.
 2. Autoriser l'accès demandé et vérifier le retour dans l'interface.

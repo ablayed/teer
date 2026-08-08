@@ -22,7 +22,7 @@
 //     un JSON-LD de confiance), zéro auth/session/secret. Le 'unsafe-inline' ne
 //     touche JAMAIS l'app authentifiée. Cache statique + Lighthouse préservés.
 
-export type CspRegime = 'app' | 'static';
+export type CspRegime = 'app' | 'embedded' | 'static';
 
 // Pages publiques statiquement prérendues (○ au build). Tout le reste relève du
 // régime « app » strict (défaut sécuritaire : une nouvelle route authentifiée hérite
@@ -38,6 +38,10 @@ const STATIC_PUBLIC_PATHS = new Set<string>([
 ]);
 
 export function cspRegimeForPath(pathname: string): CspRegime {
+  if (pathname === '/shopify/embedded' || pathname.startsWith('/shopify/embedded/')) {
+    return 'embedded';
+  }
+
   return STATIC_PUBLIC_PATHS.has(pathname) ? 'static' : 'app';
 }
 
@@ -89,6 +93,9 @@ export function buildCspHeader({ regime, isDev, nonce }: BuildCspOptions): strin
       : // App : ingestion analytics (Sentry passe par le tunnel same-origin /monitoring).
         ["'self'", ...posthogConnectHosts(), isDev ? 'ws:' : ''].filter(Boolean);
 
+  const frameAncestors =
+    regime === 'embedded' ? 'https://admin.shopify.com https://*.myshopify.com' : "'none'";
+
   const directives: Array<[string, string]> = [
     ['default-src', "'self'"],
     ['script-src', scriptSrc.join(' ')],
@@ -99,7 +106,7 @@ export function buildCspHeader({ regime, isDev, nonce }: BuildCspOptions): strin
     ['img-src', "'self' data: https:"],
     ['font-src', "'self'"], // Geist + Fraunces auto-hébergés via next/font
     ['connect-src', connectSrc.join(' ')],
-    ['frame-ancestors', "'none'"], // app Shopify NON-embarquée → aucun iframe légitime
+    ['frame-ancestors', frameAncestors],
     ['base-uri', "'self'"],
     ['form-action', "'self'"],
     ['object-src', "'none'"],

@@ -13,6 +13,8 @@ KOBA reste le connecteur custom du pilote. Une custom app peut rester un parcour
 | Exigence | État | Où |
 |---|---|---|
 | Version API épinglée | ✅ `2026-04` | `shopify.app.toml` `[webhooks] api_version`, `lib/shopify/graphql.ts` `SHOPIFY_API_VERSION` |
+| Expérience embarquée Shopify | ✅ code local | `shopify.app.toml` (`embedded = true`), `/shopify/embedded`, App Bridge `beforeInteractive` |
+| Session tokens Shopify | ✅ code local | `lib/shopify/session-token.ts`, `/api/shopify/embedded/session` : HS256, aud/iss/dest/exp/nbf/iat, boutique et app |
 | GraphQL Admin API uniquement (pas de REST legacy) | ✅ | `lib/shopify/graphql.ts`, `bulk.ts` |
 | Tokens offline **expirants** + refresh proactif | ✅ | `lib/shopify/token.ts` (`getValidShopAccessToken`), `oauth.ts` (`refreshAccessToken`) |
 | Tokens **chiffrés au repos** (AES-256-GCM) | ✅ | `lib/shopify/crypto.ts`, clé `SHOPIFY_TOKEN_ENCRYPTION_KEY` |

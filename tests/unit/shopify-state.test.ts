@@ -28,6 +28,18 @@ describe('Shopify OAuth state', () => {
     expect(verifyState(signState(payload))).toEqual(payload);
   });
 
+  it('round-trips the embedded return path without changing the signed contract', () => {
+    const payload = {
+      nonce: 'nonce_embedded',
+      merchantAccountId: 'merchant_123',
+      shopDomain: 'teer-test.myshopify.com',
+      exp: Date.now() + 60_000,
+      returnTo: '/shopify/embedded?host=synthetic-host',
+    };
+
+    expect(verifyState(signState(payload))).toEqual(payload);
+  });
+
   it('returns null when the signature is altered', () => {
     const token = signState({
       nonce: 'nonce_123',

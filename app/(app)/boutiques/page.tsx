@@ -1,11 +1,9 @@
-import { ConnectShopForm } from '@/components/shops/connect-shop-form';
 import { DisconnectShopButton } from '@/components/shops/disconnect-shop-button';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { formatDateAbsolute } from '@/lib/format/date';
 import { hasShopifyScope } from '@/lib/shopify/oauth';
 import { AlertCircle, CheckCircle2, Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 
 type BoutiquesPageProps = {
   searchParams: Promise<{
@@ -92,12 +90,7 @@ export default async function BoutiquesPage({ searchParams }: BoutiquesPageProps
             <p className="text-sm font-medium">{t('messages.productsScopeRequired')}</p>
           </div>
           <div>
-            <Link
-              className="inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-canvas px-4 text-sm font-medium text-text shadow-1"
-              href={`/api/shopify/install?shop=${encodeURIComponent(shopConnection.shop_domain)}`}
-            >
-              {t('messages.productsScopeCta')}
-            </Link>
+            <p className="text-sm text-muted">{t('messages.productsScopeInstructions')}</p>
           </div>
         </div>
       ) : null}
@@ -113,7 +106,7 @@ export default async function BoutiquesPage({ searchParams }: BoutiquesPageProps
               <p className="text-sm leading-6 text-muted">{t('connect.description')}</p>
             </div>
           </div>
-          <ConnectShopForm />
+          <p className="text-sm leading-6 text-muted">{t('connect.instructions')}</p>
         </section>
       ) : (
         <section className="max-w-3xl rounded-lg border border-border bg-surface p-6 shadow-1">

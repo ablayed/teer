@@ -25,7 +25,6 @@ export type ShopListItem = {
   domain: string;
   installedAt: string;
   lastSyncAt: string | null;
-  reconnectUrl: string;
   reason: 'token_expired' | null;
   scopes: string;
   status: 'connected' | 'error' | 'uninstalled';
@@ -50,10 +49,6 @@ function shopStatus(shop: ShopRow): Pick<ShopListItem, 'reason' | 'status'> {
   }
 
   return { reason: null, status: 'connected' };
-}
-
-function reconnectUrl(domain: string): string {
-  return `/api/shopify/install?shop=${encodeURIComponent(domain)}`;
 }
 
 async function getLastSyncByShopId(
@@ -123,7 +118,6 @@ export const listShopsAction = requireRole('owner', 'manager')
           domain: shop.shop_domain,
           installedAt: shop.installed_at,
           lastSyncAt: lastSyncByShopId.get(shop.id) ?? null,
-          reconnectUrl: reconnectUrl(shop.shop_domain),
           reason: status.reason,
           scopes: shop.scopes,
           status: status.status,

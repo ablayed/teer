@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return redirectTo('/boutiques?connected=1', request);
+    return redirectTo(payload.returnTo ?? '/boutiques?connected=1', request);
   } catch (error) {
     Sentry.captureException(error, {
       tags: { route: 'shopify.callback' },
