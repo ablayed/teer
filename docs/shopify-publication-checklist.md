@@ -1,12 +1,14 @@
-# Checklist publication app Shopify — Tëër (Phase 7a)
+# Checklist publication app Shopify — Tëër (S2 — bêta gratuite)
 
 La préparation de publication concerne **Teer Public**. Son statut de distribution réel doit être confirmé dans le Partner Dashboard ; ce document ne le prouve pas.
 
 **Gating de facturation :** un marchand acquis via l'App Store qui accède à des fonctionnalités payantes doit être facturé via Shopify Billing. Un client Tëër effectivement payant avant sa première connexion Shopify peut conserver une facturation externe, à condition de conserver une preuve non modifiable de son paiement antérieur et de l'ordre chronologique. Le modèle détaillé et la décision de Shopify Support font foi dans [phase-0c-shopify-billing.md](./phase-0c-shopify-billing.md).
 
+**Mode S2 retenu :** la soumission candidate est une bêta réellement gratuite : aucun abonnement, aucune carte bancaire et aucun checkout externe dans le parcours App Store. Les fonctionnalités Pro restent annoncées comme « bientôt » et ne sont pas accessibles par paiement. L'implémentation Shopify Billing est reportée à la Phase 6, avant toute activation d'une fonctionnalité payante pour un marchand acquis via l'App Store.
+
 KOBA reste le connecteur custom du pilote. Une custom app peut rester un parcours accompagné transitoire ; elle n'est pas la voie durable de distribution multi-marchands.
 
-## Exigences techniques (état Phase 7a)
+## Exigences techniques (état S2)
 
 | Exigence | État | Où |
 |---|---|---|
@@ -40,10 +42,10 @@ KOBA reste le connecteur custom du pilote. Une custom app peut rester un parcour
    - Justifier la **minimisation** : conservation limitée aux données nécessaires à la livraison COD. S1B-2A couvre la redaction transactionnelle et les tombstones anti-réimport de 12 mois. S1B-2B encode localement les durées produit : adresses 90 jours après finalisation certaine, identité 12 mois après activité Shopify certaine, payloads retryable 7 jours et DSAR 24 heures ; aucune preuve de production n'est établie.
    - **S1A/S1B-2B appliqués localement :** l'ingestion normale, bulk et webhook ne demande ni ne stocke `tags`, `numberOfOrders`, `amountSpent`, le `createdAt` du client Shopify ou le consentement marketing. Les données conservées sont le nom/prénom, le téléphone, l'adresse et les identifiants techniques Shopify strictement nécessaires ; `orders.shipping_address` reste une copie opérationnelle pour la livraison. Les durées de rétention et la route sont codées et testées localement, mais leur activation quotidienne et leur preuve de production restent à établir ; le chiffrement de production, la DLP, la journalisation générale des lectures PCD, les sauvegardes et la réponse aux incidents restent S1C/S1D.
 4. Vérifier que la version API stable courante = `2026-04` sur shopify.dev avant soumission ; sinon ré-épingler.
-5. Choisir et confirmer la distribution de Teer Public dans le Partner Dashboard. Toute offre App Store réellement gratuite/bêta ne doit afficher ni déclencher de souscription externe. Avant toute fonctionnalité payante pour un marchand acquis via l'App Store, Shopify Billing devra être implémenté en Phase 7.
+5. Choisir et confirmer la distribution de Teer Public dans le Partner Dashboard. Toute offre App Store réellement gratuite/bêta ne doit afficher ni déclencher de souscription externe. Avant toute fonctionnalité payante pour un marchand acquis via l'App Store, Shopify Billing devra être implémenté en Phase 6.
 6. Variables d'env prod (Vercel) : `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_TOKEN_ENCRYPTION_KEY` (64 hex), `CRON_SECRET`. **Multi-app** : pour une app pilote custom (KOBA), ajouter ses variables dédiées en Prod + Preview sans toucher aux clés de Teer Public ; elles doivent être présentes par paire sinon l'app est ignorée au boot. Routage par `client_id` → `shop.shopify_client_id` (cf. CLAUDE.md « Shopify multi-app »).
 
-## Restes connus (non bloquants pour 7a, à traiter en 7b/7c)
+## Restes connus (non bloquants pour la bêta gratuite S2, à traiter ultérieurement)
 
 - Backoff THROTTLED sur les mutations/queries bulk (durcissement).
 - S1B-2B : la migration 0122 et la route de purge sont préparées localement ; aucune activation quotidienne distante, aucun cron Vercel/Supabase et aucune preuve de purge de production ne sont établis.

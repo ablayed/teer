@@ -2,12 +2,16 @@ import { createHmac } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { SHOPIFY_E2E_HMAC_SECRET } from './helpers/shopify-webhook-harness';
 
-// Playwright charge .env.test dans process.env (cf. playwright.config). Le serveur dev verifie
-// l'HMAC avec process.env.SHOPIFY_API_SECRET ; on signe avec la meme valeur (?? '').
+// Playwright charge la configuration de test dans process.env (cf. playwright.config). Le mode
+// E2E_SHOPIFY_WEBHOOKS explicite impose une clé synthétique commune au serveur et au signeur.
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-const apiSecret = process.env.SHOPIFY_API_SECRET ?? '';
+const apiSecret =
+  process.env.E2E_SHOPIFY_WEBHOOKS === '1'
+    ? SHOPIFY_E2E_HMAC_SECRET
+    : (process.env.SHOPIFY_API_SECRET ?? '');
 const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
 
 type AdminClient = SupabaseClient;
