@@ -221,8 +221,11 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
 
     let injectedSearchFailure = false;
     await page.route('**/api/orders/search**', async (route) => {
-      const url = new URL(route.request().url());
-      if (!injectedSearchFailure && url.searchParams.get('q') === `${sharedToken} Client 1`) {
+      // 53bd42f (S1C-2) a fait passer fetchOrdersSearchPageData de GET+query-string à
+      // POST+corps JSON (le terme de recherche ne doit plus transiter par l'URL/logs
+      // d'accès — minimisation PCD). Le `q` intercepté vit donc dans le corps POST.
+      const searchQuery = route.request().postDataJSON()?.q as string | undefined;
+      if (!injectedSearchFailure && searchQuery === `${sharedToken} Client 1`) {
         injectedSearchFailure = true;
         await route.abort('failed');
         return;
