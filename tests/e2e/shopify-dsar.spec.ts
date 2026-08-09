@@ -254,34 +254,33 @@ test.afterEach(async () => {
 
 test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
   test('le hook d’audit est borné au contexte serveur de test local', () => {
+    // Le discriminant "vraie prod" est VERCEL_ENV (cf. isProductionEnvironment,
+    // lib/security/environment-validation.ts), pas NODE_ENV : la suite E2E de ce projet
+    // tourne systématiquement sous `next start` (E2E_PROD_BUILD=1, cf. CLAUDE.md
+    // "Validation finale E2E build-prod"), donc NODE_ENV vaut toujours 'production' ici
+    // même pour un build de test. VERCEL_ENV=preview (posé par ci.yml pour toute la suite)
+    // distingue ce contexte d'une vraie prod Vercel (VERCEL_ENV=production).
     const previousMode = process.env.E2E_TEST_MODE;
-    const previousNodeEnv = process.env.NODE_ENV;
-    const setNodeEnv = (value: string | undefined) => {
-      Object.defineProperty(process.env, 'NODE_ENV', {
-        configurable: true,
-        enumerable: true,
-        value,
-        writable: true,
-      });
-    };
+    const previousVercelEnv = process.env.VERCEL_ENV;
     const request = new Request('http://localhost/api/shopify/dsar/synthetic', {
       headers: { [DSAR_TEST_AUDIT_FAILURE_HEADER]: '1' },
     });
 
     try {
       process.env.E2E_TEST_MODE = undefined;
-      setNodeEnv('development');
+      process.env.VERCEL_ENV = 'preview';
       expect(isDsarAuditFailureTestHookEnabled(request)).toBe(false);
 
       process.env.E2E_TEST_MODE = '1';
       expect(isDsarAuditFailureTestHookEnabled(request)).toBe(true);
 
-      setNodeEnv('production');
+      process.env.VERCEL_ENV = 'production';
       expect(isDsarAuditFailureTestHookEnabled(request)).toBe(false);
     } finally {
       if (previousMode === undefined) process.env.E2E_TEST_MODE = undefined;
       else process.env.E2E_TEST_MODE = previousMode;
-      setNodeEnv(previousNodeEnv);
+      if (previousVercelEnv === undefined) process.env.VERCEL_ENV = undefined;
+      else process.env.VERCEL_ENV = previousVercelEnv;
     }
   });
 

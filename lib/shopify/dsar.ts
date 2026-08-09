@@ -1,3 +1,4 @@
+import { isProductionEnvironment } from '@/lib/security/environment-validation';
 import {
   type PcdAccessAuditEntry,
   PcdAccessAuditError,
@@ -14,8 +15,12 @@ export const DSAR_TEST_AUDIT_FAILURE_HEADER = 'x-teer-e2e-force-audit-failure';
 type AdminClient = SupabaseClient<Database>;
 
 export function isDsarAuditFailureTestHookEnabled(request: Request): boolean {
+  // NODE_ENV vaut toujours 'production' sous `next start` (E2E_PROD_BUILD=1, cf. CLAUDE.md
+  // "Validation finale E2E build-prod") : ce hook doit distinguer un vrai environnement de
+  // production (VERCEL_ENV=production) d'un build de test qui tourne en mode prod par
+  // construction. isProductionEnvironment() lit VERCEL_ENV en priorité pour ça.
   return (
-    process.env.NODE_ENV !== 'production' &&
+    !isProductionEnvironment(process.env) &&
     process.env.E2E_TEST_MODE === '1' &&
     request.headers.get(DSAR_TEST_AUDIT_FAILURE_HEADER) === '1'
   );

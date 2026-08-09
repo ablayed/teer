@@ -141,7 +141,7 @@ async function signIn(page: Page, email: string, redirectTo = '/clients') {
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E clients');
 
-test('fiche client enrichie : badge récurrent + adresse + stats Shopify', async ({ page }) => {
+test('fiche client enrichie : badge récurrent + adresse', async ({ page }) => {
   const { email, merchantAccountId } = await createOwnerFixture('recurring');
   const fullName = `Awa Recurrente ${Date.now()}`;
   await seedRecurringEnrichedCustomer(adminClient(), merchantAccountId, fullName);
@@ -159,5 +159,4 @@ test('fiche client enrichie : badge récurrent + adresse + stats Shopify', async
   // exact:true évite le substring match sur le span masqué de la liste (« · Client récurrent »)
   await expect(page.getByText(messages.clients.badges.recurring, { exact: true })).toBeVisible();
   await expect(page.getByText('Cité Keur Gorgui, près de la mosquée')).toBeVisible();
-  await expect(page.getByText(messages.clients.stats.shopifyOrders)).toBeVisible();
 });

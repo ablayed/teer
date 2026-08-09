@@ -900,9 +900,7 @@
       "orders": "Commandes",
       "cancelled": "Annulations",
       "delivered": "Livré",
-      "refused": "Refus",
-      "shopifyOrders": "Commandes Shopify",
-      "shopifySpent": "Total Shopify"
+      "refused": "Refus"
     },
     "errors": {
       "list": "Une erreur est survenue, réessayez.",
