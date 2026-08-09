@@ -10,4 +10,7 @@ description = "Faux positifs fixtures / lockfile"
 paths = [
   '''pnpm-lock\.yaml''',
   '''\.env\.example''',
+  '''tests/unit/shopify-crypto\.test\.ts''',
+  '''tests/unit/security/s1d1-environment\.test\.ts''',
+  '''tests/unit/security/s1d3-access-incident\.test\.ts''',
 ]
