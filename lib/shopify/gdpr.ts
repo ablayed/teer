@@ -7,6 +7,7 @@
 // `shopify_customer_gids`. On retrouve donc un client par la colonne legacy `shopify_customer_id`
 // ET par le tableau de GID.
 
+import { getCustomerPcdColumnsAvailable } from '@/lib/shopify/customer-pcd-columns';
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -59,12 +60,15 @@ export async function compileCustomerData(
     return { customers: [], orders: [] };
   }
 
-  const { data: customers } = await admin
-    .from('customer')
-    .select(
-      'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_orders_count, shopify_amount_spent_minor, first_seen_at, created_at',
-    )
-    .in('id', ids);
+  // Bridge 0120 : les 5 colonnes PCD ne sont incluses que si elles existent encore — un select
+  // référençant une colonne absente du schema cache échoue en bloc (aucune ligne renvoyée, pas
+  // même les colonnes valides), ce qui viderait silencieusement toute réponse DSAR post-0120.
+  const pcdColumnsAvailable = await getCustomerPcdColumnsAvailable(admin);
+  const customerSelect = pcdColumnsAvailable
+    ? 'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_orders_count, shopify_amount_spent_minor, first_seen_at, created_at'
+    : 'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, created_at';
+
+  const { data: customers } = await admin.from('customer').select(customerSelect).in('id', ids);
 
   const { data: orders } = await admin
     .from('orders')
@@ -82,21 +86,27 @@ async function anonymizeCustomerRows(admin: AdminClient, customerIds: string[]):
   if (customerIds.length === 0) {
     return;
   }
-  await admin
-    .from('customer')
-    .update({
-      full_name: REDACTED_NAME,
-      first_name: null,
-      last_name: null,
-      phone: null,
-      phone_e164: null,
-      address: null,
-      shipping_address: null,
-      tags: null,
-      accepts_marketing: null,
-      updated_at: new Date().toISOString(),
-    })
-    .in('id', customerIds);
+
+  const baseUpdate = {
+    full_name: REDACTED_NAME,
+    first_name: null,
+    last_name: null,
+    phone: null,
+    phone_e164: null,
+    address: null,
+    shipping_address: null,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Bridge 0120 : `tags`/`accepts_marketing` ne sont posés que si les colonnes existent encore —
+  // un UPDATE référençant une colonne absente est rejeté EN BLOC par PostgREST, ce qui laisserait
+  // la PII (nom/téléphone/adresse) intacte au lieu d'être redacted (violation RGPD silencieuse).
+  const pcdColumnsAvailable = await getCustomerPcdColumnsAvailable(admin);
+  const update = pcdColumnsAvailable
+    ? { ...baseUpdate, tags: null, accepts_marketing: null }
+    : baseUpdate;
+
+  await admin.from('customer').update(update).in('id', customerIds);
 }
 
 async function nullOrdersShippingAddress(admin: AdminClient, customerIds: string[]): Promise<void> {
