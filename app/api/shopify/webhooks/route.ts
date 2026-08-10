@@ -826,6 +826,20 @@ async function recordWebhookReceipt({
   return { duplicate: false, eventId: data.id };
 }
 
+// Migration 0121 remplace la contrainte `status in ('processing','done','error')` par
+// `status in ('processing','retryable','terminal','done')` — écrire `'error'` sous le nouveau
+// schéma viole `webhook_event_status_check` (23514, check_violation). 0121 traite explicitement
+// l'ancien `error` comme récupérable ("Les anciens états `error` et `processing` sont
+// récupérables"), donc l'équivalent post-0121 d'un échec est `'retryable'`, jamais `'terminal'`.
+//
+// On ne détecte PAS la disponibilité du nouveau schéma par avance (pas de requête
+// information_schema, pas d'appel aux RPC claim/finish introduites par 0121) : on écrit
+// directement l'ancienne valeur `'error'` (comportement historique inchangé tant que 0121 n'est
+// pas appliqué) et on ne bascule sur le fallback QUE si l'erreur renvoyée est EXACTEMENT cette
+// violation de contrainte précise. Toute autre erreur SQL est journalisée et relancée — jamais
+// avalée silencieusement.
+const WEBHOOK_STATUS_CHECK_CONSTRAINT = 'webhook_event_status_check';
+
 async function markWebhookStatus({
   supabase,
   eventId,
@@ -840,7 +854,17 @@ async function markWebhookStatus({
     .update({ status, processed: status === 'done' })
     .eq('id', eventId);
 
-  if (error) {
+  if (!error) {
+    return;
+  }
+
+  const isLegacyErrorStatusRejectedByNewSchema =
+    status === 'error' &&
+    error.code === '23514' &&
+    typeof error.message === 'string' &&
+    error.message.includes(WEBHOOK_STATUS_CHECK_CONSTRAINT);
+
+  if (!isLegacyErrorStatusRejectedByNewSchema) {
     logWebhookError('[webhook] status update failed', {
       code: error.code,
       details: error.details,
@@ -849,7 +873,31 @@ async function markWebhookStatus({
       eventId,
       status,
     });
+    throw new Error(`webhook_event status update failed (${error.code ?? 'unknown'})`);
   }
+
+  // Schéma post-0121 : `'error'` n'existe plus dans la contrainte. On pose `'retryable'`, la
+  // valeur que 0121 réserve explicitement à ce même cas ("récupérable"). On ne pose aucun autre
+  // champ introduit par 0121 (next_attempt_at, lease_until, attempt_count…) : le bridge ne prend
+  // aucune dépendance forte sur le nouveau cycle de reprise, il se contente de rester dans un état
+  // valide et honnête (jamais `'done'`) pour les deux schémas.
+  const { error: fallbackError } = await supabase
+    .from('webhook_event')
+    .update({ status: 'retryable', processed: false })
+    .eq('id', eventId);
+
+  if (fallbackError) {
+    logWebhookError('[webhook] retryable fallback status update failed', {
+      code: fallbackError.code,
+      details: fallbackError.details,
+      hint: fallbackError.hint,
+      message: fallbackError.message,
+      eventId,
+    });
+    throw new Error(`webhook_event retryable fallback failed (${fallbackError.code ?? 'unknown'})`);
+  }
+
+  logWebhookInfo('[webhook] status downgraded to retryable (post-0121 schema)', { eventId });
 }
 
 async function processWebhook({
