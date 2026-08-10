@@ -1,4 +1,5 @@
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
+import { getCustomerPcdColumnsAvailable } from '@/lib/shopify/customer-pcd-columns';
 import {
   parseItemsummary,
   resolveAndInsertOrderLines,
@@ -162,6 +163,8 @@ export type OrderUpsert = Omit<
   'cod_status' | 'created_at' | 'id' | 'updated_at'
 >;
 // Sous-ensemble des colonnes client nécessaires à la fusion (dédup) — sélectionné en base.
+// Les 5 champs PCD (migration 0120) sont optionnels : absents du résultat quand la migration est
+// appliquée (bridge dual-schema, cf. lib/shopify/customer-pcd-columns.ts).
 export type ExistingCustomerForMerge = {
   id: string;
   full_name: string | null;
@@ -171,12 +174,12 @@ export type ExistingCustomerForMerge = {
   phone_e164: string | null;
   address: Json | null;
   shipping_address: Json | null;
-  tags: string[] | null;
-  accepts_marketing: boolean | null;
   shopify_customer_gids: Json;
   shopify_customer_id: string | null;
-  shopify_orders_count: number | null;
-  shopify_amount_spent_minor: number | null;
+  tags?: string[] | null;
+  accepts_marketing?: boolean | null;
+  shopify_orders_count?: number | null;
+  shopify_amount_spent_minor?: number | null;
 };
 type OrderShopifyUpdate = Pick<
   TablesUpdate<'orders'>,
@@ -361,9 +364,13 @@ function deriveAcceptsMarketing(
   return consent.marketingState.toUpperCase() === 'SUBSCRIBED';
 }
 
+// `pcdColumnsAvailable` par défaut à `true` : préserve le comportement historique (schéma
+// avant 0120) pour tout appelant qui ne le passe pas explicitement — dont les tests unitaires
+// existants. `persistShopifyOrder` le détecte réellement via getCustomerPcdColumnsAvailable.
 export function mapShopifyCustomer(
   node: ShopifyOrderNode,
   merchantAccountId: string,
+  pcdColumnsAvailable = true,
 ): CustomerUpsert | null {
   const customer = node.customer;
   if (!customer) {
@@ -374,7 +381,7 @@ export function mapShopifyCustomer(
   const rawPhone = customer.phone ?? node.shippingAddress?.phone ?? null;
   const flexibleSource = customer.defaultAddress ?? node.shippingAddress ?? null;
 
-  return {
+  const base: CustomerUpsert = {
     merchant_account_id: merchantAccountId,
     source: 'shopify',
     shopify_customer_id: gid,
@@ -388,10 +395,18 @@ export function mapShopifyCustomer(
     last_name: customer.lastName ?? null,
     phone: rawPhone,
     phone_e164: rawPhone ? normalizeSenegalPhone(rawPhone) : null,
-    accepts_marketing: deriveAcceptsMarketing(customer.emailMarketingConsent),
-    tags: customer.tags ?? null,
     address: mapFlexibleAddress(flexibleSource),
     shipping_address: mapShippingAddress(node.shippingAddress),
+  };
+
+  if (!pcdColumnsAvailable) {
+    return base;
+  }
+
+  return {
+    ...base,
+    accepts_marketing: deriveAcceptsMarketing(customer.emailMarketingConsent),
+    tags: customer.tags ?? null,
     shopify_orders_count: toIntOrNull(customer.numberOfOrders),
     shopify_amount_spent_minor: parseAmountToMinor(customer.amountSpent?.amount),
     first_seen_at: customer.createdAt ?? null,
@@ -412,11 +427,15 @@ export function mergeGids(existing: Json, incomingGid: string | null | undefined
 // Fusion NON destructive : on garde la PII existante non vide, on remplit les trous depuis
 // l'entrant. Les compteurs Shopify sont la dernière valeur connue (autoritative côté Shopify)
 // quand fournie. Les GID sont unionnés. La source d'origine n'est jamais écrasée.
+// `pcdColumnsAvailable` par défaut à `true` (cf. mapShopifyCustomer) : omet les 4 champs PCD
+// du patch quand la migration 0120 a supprimé les colonnes, pour ne jamais soumettre à
+// PostgREST une clé qui n'existe plus (rejet total de l'UPDATE, pas seulement de cette valeur).
 export function buildCustomerMergePatch(
   existing: ExistingCustomerForMerge,
   incoming: CustomerUpsert,
+  pcdColumnsAvailable = true,
 ): TablesUpdate<'customer'> {
-  return {
+  const patch: TablesUpdate<'customer'> = {
     full_name: existing.full_name ?? incoming.full_name ?? null,
     first_name: existing.first_name ?? incoming.first_name ?? null,
     last_name: existing.last_name ?? incoming.last_name ?? null,
@@ -424,14 +443,22 @@ export function buildCustomerMergePatch(
     phone_e164: existing.phone_e164 ?? incoming.phone_e164 ?? null,
     address: existing.address ?? incoming.address ?? null,
     shipping_address: existing.shipping_address ?? incoming.shipping_address ?? null,
+    shopify_customer_gids: mergeGids(existing.shopify_customer_gids, incoming.shopify_customer_id),
+    shopify_customer_id: existing.shopify_customer_id ?? incoming.shopify_customer_id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (!pcdColumnsAvailable) {
+    return patch;
+  }
+
+  return {
+    ...patch,
     tags: existing.tags ?? incoming.tags ?? null,
     accepts_marketing: existing.accepts_marketing ?? incoming.accepts_marketing ?? null,
     shopify_orders_count: incoming.shopify_orders_count ?? existing.shopify_orders_count ?? null,
     shopify_amount_spent_minor:
       incoming.shopify_amount_spent_minor ?? existing.shopify_amount_spent_minor ?? null,
-    shopify_customer_gids: mergeGids(existing.shopify_customer_gids, incoming.shopify_customer_id),
-    shopify_customer_id: existing.shopify_customer_id ?? incoming.shopify_customer_id ?? null,
-    updated_at: new Date().toISOString(),
   };
 }
 
@@ -509,8 +536,19 @@ export function mapShopifyOrder(
   };
 }
 
-const MERGE_SELECT =
-  'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, tags, accepts_marketing, shopify_customer_gids, shopify_customer_id, shopify_orders_count, shopify_amount_spent_minor';
+const MERGE_SELECT_BASE =
+  'id, full_name, first_name, last_name, phone, phone_e164, address, shipping_address, shopify_customer_gids, shopify_customer_id';
+const MERGE_SELECT_PCD_COLUMNS =
+  'tags, accepts_marketing, shopify_orders_count, shopify_amount_spent_minor';
+
+// Bridge 0120 : les 4 colonnes PCD sont incluses dans le select UNIQUEMENT quand elles existent
+// encore — un select PostgREST référençant une colonne absente du schema cache échoue en bloc
+// (rien n'est renvoyé, pas même les colonnes valides du même select).
+function buildMergeSelect(pcdColumnsAvailable: boolean): string {
+  return pcdColumnsAvailable
+    ? `${MERGE_SELECT_BASE}, ${MERGE_SELECT_PCD_COLUMNS}`
+    : MERGE_SELECT_BASE;
+}
 
 // Dédup robuste à travers boutiques ET canaux : on cherche d'abord par téléphone E.164
 // (identité principale), sinon par GID Shopify (tableau ou colonne legacy).
@@ -519,9 +557,11 @@ async function resolveShopifyCustomer(
   admin: SupabaseClient<Database>,
   merchantAccountId: string,
   incoming: CustomerUpsert,
+  pcdColumnsAvailable: boolean,
 ): Promise<{ ok: true; customerId: string } | { ok: false; error: string }> {
   const phoneE164 = incoming.phone_e164 ?? null;
   const gid = incoming.shopify_customer_id ?? null;
+  const mergeSelect = buildMergeSelect(pcdColumnsAvailable);
 
   let existing: ExistingCustomerForMerge | null = null;
 
@@ -529,7 +569,7 @@ async function resolveShopifyCustomer(
   if (phoneE164) {
     const { data, error } = await admin
       .from('customer')
-      .select(MERGE_SELECT)
+      .select<string, ExistingCustomerForMerge>(mergeSelect)
       .eq('merchant_account_id', merchantAccountId)
       .eq('phone_e164', phoneE164)
       .maybeSingle();
@@ -543,7 +583,7 @@ async function resolveShopifyCustomer(
   if (!existing && gid) {
     const { data, error } = await admin
       .from('customer')
-      .select(MERGE_SELECT)
+      .select<string, ExistingCustomerForMerge>(mergeSelect)
       .eq('merchant_account_id', merchantAccountId)
       // jsonb containment : postgrest-js sérialise un tableau JS en littéral tableau Postgres
       // `{...}` (invalide en json → "invalid input syntax for type json") ; on passe une chaîne
@@ -558,7 +598,7 @@ async function resolveShopifyCustomer(
     if (!existing) {
       const { data: legacy, error: legacyError } = await admin
         .from('customer')
-        .select(MERGE_SELECT)
+        .select<string, ExistingCustomerForMerge>(mergeSelect)
         .eq('merchant_account_id', merchantAccountId)
         .eq('shopify_customer_id', gid)
         .maybeSingle();
@@ -570,7 +610,7 @@ async function resolveShopifyCustomer(
   }
 
   if (existing) {
-    const patch = buildCustomerMergePatch(existing, incoming);
+    const patch = buildCustomerMergePatch(existing, incoming, pcdColumnsAvailable);
     const { error } = await admin.from('customer').update(patch).eq('id', existing.id);
     if (error) {
       return { ok: false, error: error.message };
@@ -596,7 +636,8 @@ export async function persistShopifyOrder({
   supabaseServiceClient,
 }: PersistShopifyOrderInput): Promise<{ ok: boolean; error?: string; skipped?: 'stale' }> {
   try {
-    const customerData = mapShopifyCustomer(orderNode, merchantAccountId);
+    const pcdColumnsAvailable = await getCustomerPcdColumnsAvailable(supabaseServiceClient);
+    const customerData = mapShopifyCustomer(orderNode, merchantAccountId, pcdColumnsAvailable);
     let customerId: string | null = null;
 
     if (customerData) {
@@ -604,6 +645,7 @@ export async function persistShopifyOrder({
         supabaseServiceClient,
         merchantAccountId,
         customerData,
+        pcdColumnsAvailable,
       );
       if (!resolved.ok) {
         return { ok: false, error: resolved.error };

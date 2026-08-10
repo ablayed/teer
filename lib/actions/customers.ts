@@ -7,6 +7,7 @@ import {
   isRefuserCustomer,
 } from '@/lib/customers/enrichment';
 import type { ReliabilityTier } from '@/lib/customers/reliability';
+import { getCustomerPcdColumnsAvailable } from '@/lib/shopify/customer-pcd-columns';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
@@ -129,6 +130,22 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
   .inputSchema(getCustomerSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
+    // Bridge 0120 : `tags`/`shopify_orders_count`/`shopify_amount_spent_minor` sont retirés du
+    // select quand la migration a supprimé les colonnes — sinon PostgREST rejette TOUT le select
+    // (y compris address/shipping_address, toujours présentes), et la fiche client entière
+    // retournerait `get_failed` (cf. le check d'erreurs groupé juste après).
+    const pcdColumnsAvailable = await getCustomerPcdColumnsAvailable(supabase);
+    type CustomerEnrichmentRow = {
+      address: Tables<'customer'>['address'];
+      shipping_address: Tables<'customer'>['shipping_address'];
+      tags?: string[] | null;
+      shopify_orders_count?: number | null;
+      shopify_amount_spent_minor?: number | null;
+    };
+    const enrichmentSelect = pcdColumnsAvailable
+      ? 'address, shipping_address, tags, shopify_orders_count, shopify_amount_spent_minor'
+      : 'address, shipping_address';
+
     const [customerResult, historyResult, enrichmentResult] = await Promise.all([
       supabase.rpc('get_customer_reliability', {
         p_merchant_id: ctx.member.merchantAccountId,
@@ -146,7 +163,7 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
       // Colonnes PII enrichies (Phase 7b) absentes de la RPC de fiabilité.
       supabase
         .from('customer')
-        .select('address, shipping_address, tags, shopify_orders_count, shopify_amount_spent_minor')
+        .select<string, CustomerEnrichmentRow>(enrichmentSelect)
         .eq('merchant_account_id', ctx.member.merchantAccountId)
         .eq('id', parsedInput.customerId)
         .maybeSingle(),

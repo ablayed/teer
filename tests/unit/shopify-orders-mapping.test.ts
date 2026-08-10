@@ -162,6 +162,38 @@ describe('mapShopifyCustomer', () => {
   it('returns null when the Shopify customer is missing', () => {
     expect(mapShopifyCustomer(makeOrder({ customer: null }), 'merchant_123')).toBeNull();
   });
+
+  it('bridge 0120 : omet les 5 champs PCD quand pcdColumnsAvailable=false (colonnes supprimées)', () => {
+    const mapped = mapShopifyCustomer(
+      makeOrder({
+        customer: {
+          id: 'gid://shopify/Customer/555',
+          displayName: 'Fatou Sow',
+          phone: '771112233',
+          numberOfOrders: '4',
+          amountSpent: { amount: '125000.00', currencyCode: 'XOF' },
+          tags: ['VIP'],
+          emailMarketingConsent: { marketingState: 'SUBSCRIBED' },
+          createdAt: '2025-01-15T08:00:00Z',
+        },
+      }),
+      'merchant_123',
+      false,
+    );
+
+    expect(mapped).not.toBeNull();
+    expect(mapped).not.toHaveProperty('tags');
+    expect(mapped).not.toHaveProperty('accepts_marketing');
+    expect(mapped).not.toHaveProperty('shopify_orders_count');
+    expect(mapped).not.toHaveProperty('shopify_amount_spent_minor');
+    expect(mapped).not.toHaveProperty('first_seen_at');
+    // Les colonnes non touchées par 0120 restent présentes et correctement mappées.
+    expect(mapped).toMatchObject({
+      shopify_customer_id: '555',
+      full_name: 'Fatou Sow',
+      phone_e164: '+221771112233',
+    });
+  });
 });
 
 describe('mapShopifyOrder', () => {
@@ -562,5 +594,35 @@ describe('buildCustomerMergePatch (fusion non destructive)', () => {
     expect(patch.full_name).toBe('Client Manuel');
     expect(patch.shopify_customer_gids).toEqual(['999']);
     expect(patch.shopify_customer_id).toBe('999');
+  });
+
+  it('bridge 0120 : omet les 4 champs PCD du patch quand pcdColumnsAvailable=false', () => {
+    const patch = buildCustomerMergePatch(
+      makeExisting(),
+      {
+        merchant_account_id: 'm',
+        source: 'shopify',
+        shopify_customer_id: '222',
+        shopify_customer_gids: ['222'],
+        full_name: 'Autre Nom',
+        phone: '+221770000000',
+        phone_e164: '+221770000000',
+        accepts_marketing: true,
+        tags: ['VIP'],
+        address: null,
+        shipping_address: null,
+        shopify_orders_count: 5,
+        shopify_amount_spent_minor: 90000,
+      },
+      false,
+    );
+
+    expect(patch).not.toHaveProperty('tags');
+    expect(patch).not.toHaveProperty('accepts_marketing');
+    expect(patch).not.toHaveProperty('shopify_orders_count');
+    expect(patch).not.toHaveProperty('shopify_amount_spent_minor');
+    // La fusion non-PCD reste inchangée.
+    expect(patch.full_name).toBe('Awa Diop');
+    expect(patch.shopify_customer_gids).toEqual(['111', '222']);
   });
 });
