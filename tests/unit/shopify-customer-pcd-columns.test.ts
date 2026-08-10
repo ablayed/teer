@@ -46,7 +46,42 @@ describe('getCustomerPcdColumnsAvailable', () => {
     await expect(getCustomerPcdColumnsAvailable(admin)).rejects.toMatchObject({ code: '42501' });
   });
 
-  it('met en cache le résultat par instance de client (un seul appel réseau)', async () => {
+  // Cache ASYMÉTRIQUE (S3-A3-F) : un résultat NÉGATIF est sûr à mettre en cache à vie pour un
+  // client donné (les migrations de ce projet sont append-only, une colonne supprimée ne revient
+  // jamais). Prouvé par ce test : un seul appel réseau sur 2 invocations successives.
+  it('met en cache un résultat NÉGATIF par instance de client (un seul appel réseau)', async () => {
+    let calls = 0;
+    const admin = {
+      from(_table: string) {
+        return {
+          select(_columns: string) {
+            return {
+              limit(_n: number) {
+                calls += 1;
+                return Promise.resolve({
+                  data: null,
+                  error: { code: '42703', message: 'column "tags" does not exist' },
+                });
+              },
+            };
+          },
+        };
+      },
+    } as unknown as Parameters<typeof getCustomerPcdColumnsAvailable>[0];
+
+    await expect(getCustomerPcdColumnsAvailable(admin)).resolves.toBe(false);
+    await expect(getCustomerPcdColumnsAvailable(admin)).resolves.toBe(false);
+
+    expect(calls).toBe(1);
+  });
+
+  // Un résultat POSITIF n'est JAMAIS mis en cache : un même client peut traverser 0119 -> 0120
+  // sans jamais être recréé (boucle bulk/cron qui réutilise un seul client sur plusieurs
+  // opérations, cf. lib/shopify/customer-pcd-columns.ts). Mettre `true` en cache ferait échouer
+  // irrémédiablement la première opération post-0120 de ce même client au lieu de s'auto-corriger
+  // dès cette même opération. Prouvé ici : 2 appels réseau sur 2 invocations successives tant que
+  // le résultat reste vrai.
+  it('ne met JAMAIS en cache un résultat POSITIF (resonde à chaque appel)', async () => {
     let calls = 0;
     const admin = {
       from(_table: string) {
@@ -63,9 +98,42 @@ describe('getCustomerPcdColumnsAvailable', () => {
       },
     } as unknown as Parameters<typeof getCustomerPcdColumnsAvailable>[0];
 
-    await getCustomerPcdColumnsAvailable(admin);
-    await getCustomerPcdColumnsAvailable(admin);
+    await expect(getCustomerPcdColumnsAvailable(admin)).resolves.toBe(true);
+    await expect(getCustomerPcdColumnsAvailable(admin)).resolves.toBe(true);
 
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
+  });
+
+  // L'invariant central de S3-A3-F : un client qui a sondé `true` avant 0120 et traverse la
+  // migration SANS être recréé doit obtenir `false` dès son tout premier appel post-migration —
+  // jamais un `true` périmé qui casserait l'opération métier en cours.
+  it("un client qui sondait true avant migration obtient false dès l'appel suivant, sans redémarrage ni recréation", async () => {
+    let migrated = false;
+    const admin = {
+      from(_table: string) {
+        return {
+          select(_columns: string) {
+            return {
+              limit(_n: number) {
+                return Promise.resolve(
+                  migrated
+                    ? {
+                        data: null,
+                        error: { code: '42703', message: 'column "tags" does not exist' },
+                      }
+                    : { data: [], error: null },
+                );
+              },
+            };
+          },
+        };
+      },
+    } as unknown as Parameters<typeof getCustomerPcdColumnsAvailable>[0];
+
+    await expect(getCustomerPcdColumnsAvailable(admin)).resolves.toBe(true);
+
+    migrated = true; // migration 0120 appliquée à la base, même processus, même client `admin`.
+
+    await expect(getCustomerPcdColumnsAvailable(admin)).resolves.toBe(false);
   });
 });
