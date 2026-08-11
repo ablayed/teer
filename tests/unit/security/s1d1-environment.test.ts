@@ -110,4 +110,84 @@ describe('S1D-1 production environment validation', () => {
       ),
     ).toThrow(/SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS:must-differ/);
   });
+
+  describe('NEXT_PUBLIC_SENTRY_DSN validation (S3-A7H hotfix)', () => {
+    // Synthetic values only — never a real Sentry DSN or key.
+    const syntheticDsn = 'https://syntheticPublicKey@o0.ingest.sentry.io/123';
+
+    it('accepts a normal public Sentry DSN shape (publicKey@host, no password)', () => {
+      expect(() =>
+        validateEnvironmentSafety(productionEnvironment({ NEXT_PUBLIC_SENTRY_DSN: syntheticDsn })),
+      ).not.toThrow();
+    });
+
+    it('is optional: absent NEXT_PUBLIC_SENTRY_DSN does not fail production validation', () => {
+      expect(() =>
+        validateEnvironmentSafety(productionEnvironment({ NEXT_PUBLIC_SENTRY_DSN: undefined })),
+      ).not.toThrow();
+    });
+
+    it('rejects an insecure (http) DSN', () => {
+      expect(() =>
+        validateEnvironmentSafety(
+          productionEnvironment({
+            NEXT_PUBLIC_SENTRY_DSN: 'http://syntheticPublicKey@o0.ingest.sentry.io/123',
+          }),
+        ),
+      ).toThrow(/NEXT_PUBLIC_SENTRY_DSN:https-required/);
+    });
+
+    it('rejects a local-hostname DSN', () => {
+      expect(() =>
+        validateEnvironmentSafety(
+          productionEnvironment({
+            NEXT_PUBLIC_SENTRY_DSN: 'https://syntheticPublicKey@localhost/123',
+          }),
+        ),
+      ).toThrow(/NEXT_PUBLIC_SENTRY_DSN:https-required/);
+    });
+
+    it('rejects a malformed DSN URL', () => {
+      expect(() =>
+        validateEnvironmentSafety(productionEnvironment({ NEXT_PUBLIC_SENTRY_DSN: 'not-a-url' })),
+      ).toThrow(/NEXT_PUBLIC_SENTRY_DSN:https-required/);
+    });
+
+    it('rejects a DSN containing a password/secret component', () => {
+      expect(() =>
+        validateEnvironmentSafety(
+          productionEnvironment({
+            NEXT_PUBLIC_SENTRY_DSN:
+              'https://syntheticPublicKey:syntheticSecret@o0.ingest.sentry.io/123',
+          }),
+        ),
+      ).toThrow(/NEXT_PUBLIC_SENTRY_DSN:https-required/);
+    });
+  });
+
+  describe('NEXT_PUBLIC_APP_URL / NEXT_PUBLIC_SUPABASE_URL protections remain unchanged', () => {
+    it('still rejects a userinfo (username/password) component on the app URL', () => {
+      expect(() =>
+        validateEnvironmentSafety(
+          productionEnvironment({
+            NEXT_PUBLIC_APP_URL: 'https://synthetic-user:synthetic-pass@app.teer.example.com',
+          }),
+        ),
+      ).toThrow(/NEXT_PUBLIC_APP_URL:https-required/);
+    });
+
+    it('still rejects a userinfo component on the Supabase URL', () => {
+      expect(() =>
+        validateEnvironmentSafety(
+          productionEnvironment({
+            NEXT_PUBLIC_SUPABASE_URL: 'https://synthetic-user@project.supabase.co',
+          }),
+        ),
+      ).toThrow(/NEXT_PUBLIC_SUPABASE_URL:https-required/);
+    });
+
+    it('still accepts a plain secure app URL with no userinfo', () => {
+      expect(() => validateEnvironmentSafety(productionEnvironment())).not.toThrow();
+    });
+  });
 });
