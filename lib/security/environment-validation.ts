@@ -52,6 +52,26 @@ function isAes256GcmKey(value: string | undefined): boolean {
   return isPresent(value) && /^[0-9a-f]{64}$/i.test(value);
 }
 
+/**
+ * A public Sentry DSN is `https://<publicKey>@<host>/<projectId>` — the public key is
+ * carried in the URL's userinfo/username slot by design, unlike a plain app URL.
+ * `isSecurePublicUrl` rejects any username component, so it cannot validate this shape;
+ * this validator allows a username but still rejects a password (a real secret) and any
+ * insecure/local/malformed URL.
+ */
+function isValidSentryDsn(value: string | undefined): boolean {
+  if (!isPresent(value)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && !isLocalHostname(parsed.hostname) && !parsed.password;
+  } catch {
+    return false;
+  }
+}
+
 function addRequiredSecretIssue(
   issues: string[],
   values: EnvironmentVariables,
@@ -90,11 +110,14 @@ export function validateEnvironmentSafety(values: EnvironmentVariables): void {
     }
   }
 
-  for (const name of ['NEXT_PUBLIC_SENTRY_DSN', 'NEXT_PUBLIC_POSTHOG_HOST'] as const) {
-    const value = values[name];
-    if (isPresent(value) && !isSecurePublicUrl(value)) {
-      issues.push(`${name}:https-required`);
-    }
+  const sentryDsn = values.NEXT_PUBLIC_SENTRY_DSN;
+  if (isPresent(sentryDsn) && !isValidSentryDsn(sentryDsn)) {
+    issues.push('NEXT_PUBLIC_SENTRY_DSN:https-required');
+  }
+
+  const posthogHost = values.NEXT_PUBLIC_POSTHOG_HOST;
+  if (isPresent(posthogHost) && !isSecurePublicUrl(posthogHost)) {
+    issues.push('NEXT_PUBLIC_POSTHOG_HOST:https-required');
   }
 
   for (const name of [
