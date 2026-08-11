@@ -1,3 +1,4 @@
+import { validateEnvironmentSafety } from '@/lib/security/environment-validation';
 import { z } from 'zod';
 
 const publicEnvSchema = z.object({
@@ -35,6 +36,7 @@ const serverEnvSchema = z.object({
   SHOPIFY_KOBA_API_KEY: z.string().optional(),
   SHOPIFY_KOBA_API_SECRET: z.string().optional(),
   SHOPIFY_TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS: z.string().optional(),
   // Rate-limiting auth par IP (Upstash Redis). Serveur uniquement (jamais NEXT_PUBLIC_).
   // Optionnelles : posées sur Vercel (Prod+Preview) → limiter actif en prod ; absentes
   // en CI/local → le limiter fait fail-open (cf. lib/security/auth-rate-limit.ts), pour
@@ -43,15 +45,51 @@ const serverEnvSchema = z.object({
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
 });
 
-const rawPublicEnv = {
+const rawEnvironment = {
+  NODE_ENV: process.env.NODE_ENV,
+  VERCEL_ENV: process.env.VERCEL_ENV,
+  E2E_TEST_MODE: process.env.E2E_TEST_MODE,
+  E2E_PROD_BUILD: process.env.E2E_PROD_BUILD,
+  ENABLE_PRIMITIVES_DEMO: process.env.ENABLE_PRIMITIVES_DEMO,
+  NEXT_PUBLIC_DISABLE_UIR: process.env.NEXT_PUBLIC_DISABLE_UIR,
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
   NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
-  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || undefined,
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   NEXT_PUBLIC_SUPPORT_WHATSAPP: process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP,
   NEXT_PUBLIC_SUPPORT_EMAIL: process.env.NEXT_PUBLIC_SUPPORT_EMAIL,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
+  CRON_SECRET: process.env.CRON_SECRET,
+  GROQ_API_KEY: process.env.GROQ_API_KEY,
+  SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY,
+  SHOPIFY_API_SECRET: process.env.SHOPIFY_API_SECRET,
+  SHOPIFY_PILOTE_API_KEY: process.env.SHOPIFY_PILOTE_API_KEY,
+  SHOPIFY_PILOTE_API_SECRET: process.env.SHOPIFY_PILOTE_API_SECRET,
+  SHOPIFY_MARCHAND_API_KEY: process.env.SHOPIFY_MARCHAND_API_KEY,
+  SHOPIFY_MARCHAND_API_SECRET: process.env.SHOPIFY_MARCHAND_API_SECRET,
+  SHOPIFY_KOBA_API_KEY: process.env.SHOPIFY_KOBA_API_KEY,
+  SHOPIFY_KOBA_API_SECRET: process.env.SHOPIFY_KOBA_API_SECRET,
+  SHOPIFY_TOKEN_ENCRYPTION_KEY: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
+  SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS,
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+};
+
+validateEnvironmentSafety(rawEnvironment);
+
+const rawPublicEnv = {
+  NEXT_PUBLIC_SUPABASE_URL: rawEnvironment.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: rawEnvironment.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  NEXT_PUBLIC_SENTRY_DSN: rawEnvironment.NEXT_PUBLIC_SENTRY_DSN,
+  NEXT_PUBLIC_POSTHOG_KEY: rawEnvironment.NEXT_PUBLIC_POSTHOG_KEY,
+  NEXT_PUBLIC_POSTHOG_HOST: rawEnvironment.NEXT_PUBLIC_POSTHOG_HOST,
+  NEXT_PUBLIC_APP_URL: rawEnvironment.NEXT_PUBLIC_APP_URL || undefined,
+  NEXT_PUBLIC_SUPPORT_WHATSAPP: rawEnvironment.NEXT_PUBLIC_SUPPORT_WHATSAPP,
+  NEXT_PUBLIC_SUPPORT_EMAIL: rawEnvironment.NEXT_PUBLIC_SUPPORT_EMAIL,
 };
 
 export const publicEnv = publicEnvSchema.parse(rawPublicEnv);
@@ -59,21 +97,22 @@ export const publicEnv = publicEnvSchema.parse(rawPublicEnv);
 export const env = {
   ...publicEnv,
   ...serverEnvSchema.parse({
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    RESEND_API_KEY: process.env.RESEND_API_KEY,
-    RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || undefined,
-    CRON_SECRET: process.env.CRON_SECRET,
-    GROQ_API_KEY: process.env.GROQ_API_KEY,
-    SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY,
-    SHOPIFY_API_SECRET: process.env.SHOPIFY_API_SECRET,
-    SHOPIFY_PILOTE_API_KEY: process.env.SHOPIFY_PILOTE_API_KEY,
-    SHOPIFY_PILOTE_API_SECRET: process.env.SHOPIFY_PILOTE_API_SECRET,
-    SHOPIFY_MARCHAND_API_KEY: process.env.SHOPIFY_MARCHAND_API_KEY,
-    SHOPIFY_MARCHAND_API_SECRET: process.env.SHOPIFY_MARCHAND_API_SECRET,
-    SHOPIFY_KOBA_API_KEY: process.env.SHOPIFY_KOBA_API_KEY,
-    SHOPIFY_KOBA_API_SECRET: process.env.SHOPIFY_KOBA_API_SECRET,
-    SHOPIFY_TOKEN_ENCRYPTION_KEY: process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
-    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
-    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+    SUPABASE_SERVICE_ROLE_KEY: rawEnvironment.SUPABASE_SERVICE_ROLE_KEY,
+    RESEND_API_KEY: rawEnvironment.RESEND_API_KEY,
+    RESEND_FROM_EMAIL: rawEnvironment.RESEND_FROM_EMAIL || undefined,
+    CRON_SECRET: rawEnvironment.CRON_SECRET,
+    GROQ_API_KEY: rawEnvironment.GROQ_API_KEY,
+    SHOPIFY_API_KEY: rawEnvironment.SHOPIFY_API_KEY,
+    SHOPIFY_API_SECRET: rawEnvironment.SHOPIFY_API_SECRET,
+    SHOPIFY_PILOTE_API_KEY: rawEnvironment.SHOPIFY_PILOTE_API_KEY,
+    SHOPIFY_PILOTE_API_SECRET: rawEnvironment.SHOPIFY_PILOTE_API_SECRET,
+    SHOPIFY_MARCHAND_API_KEY: rawEnvironment.SHOPIFY_MARCHAND_API_KEY,
+    SHOPIFY_MARCHAND_API_SECRET: rawEnvironment.SHOPIFY_MARCHAND_API_SECRET,
+    SHOPIFY_KOBA_API_KEY: rawEnvironment.SHOPIFY_KOBA_API_KEY,
+    SHOPIFY_KOBA_API_SECRET: rawEnvironment.SHOPIFY_KOBA_API_SECRET,
+    SHOPIFY_TOKEN_ENCRYPTION_KEY: rawEnvironment.SHOPIFY_TOKEN_ENCRYPTION_KEY,
+    SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS: rawEnvironment.SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS,
+    UPSTASH_REDIS_REST_URL: rawEnvironment.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: rawEnvironment.UPSTASH_REDIS_REST_TOKEN,
   }),
 };

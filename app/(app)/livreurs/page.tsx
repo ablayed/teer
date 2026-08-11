@@ -14,7 +14,10 @@ import {
   getDriverStockOnHand,
 } from '@/lib/actions/drivers';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
+import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { LockKeyhole } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -72,6 +75,21 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     .order('full_name');
 
   const drivers = (driversData ?? []) as DriverRow[];
+  try {
+    await writePcdAccessAudit(supabase as unknown as SupabaseClient<Database>, {
+      tenantId: merchantAccountId,
+      actorKind: 'human',
+      action: 'list_access',
+      dataCategory: 'member_data',
+      purpose: 'delivery_execution',
+      outcome: 'succeeded',
+      resourceType: 'driver',
+      surface: 'server_component',
+      metadata: { result_count: Math.min(drivers.length, 500), page_size: 500 },
+    });
+  } catch {
+    throw new Error('pcd_access_audit_unavailable');
+  }
   const selectedId =
     params.driver && drivers.some((d) => d.id === params.driver) ? params.driver : null;
   const selected = drivers.find((d) => d.id === selectedId) ?? null;

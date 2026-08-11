@@ -2,6 +2,8 @@
 
 import { authActionClient } from '@/lib/actions/safe-action';
 import { sendFeedbackEmail } from '@/lib/email/feedback-notification';
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
+import { detectPcdCategories } from '@/lib/security/pcd-detection';
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
@@ -29,6 +31,46 @@ export const submitFeedbackAction = authActionClient
 
     if (!member) {
       return { ok: false as const, errorCode: 'forbidden' as const };
+    }
+
+    const detectedCategories = detectPcdCategories(parsedInput.message);
+    if (detectedCategories.length > 0) {
+      try {
+        for (const dataCategory of detectedCategories) {
+          await writePcdAccessAudit(supabase, {
+            tenantId: member.merchant_account_id,
+            actorKind: 'human',
+            action: 'support_submission',
+            dataCategory,
+            purpose: 'customer_support',
+            outcome: 'denied',
+            resourceType: 'feedback',
+            resourceId: null,
+            surface: 'feedback',
+            metadata: { reason_code: 'sensitive_content_rejected' },
+          });
+        }
+      } catch {
+        return { ok: false as const, errorCode: 'audit_error' as const };
+      }
+      return { ok: false as const, errorCode: 'sensitive_content_rejected' as const };
+    }
+
+    try {
+      await writePcdAccessAudit(supabase, {
+        tenantId: member.merchant_account_id,
+        actorKind: 'human',
+        action: 'support_submission',
+        dataCategory: 'member_data',
+        purpose: 'customer_support',
+        outcome: 'allowed',
+        resourceType: 'feedback',
+        resourceId: null,
+        surface: 'feedback',
+        metadata: { source: 'feedback_form' },
+      });
+    } catch {
+      return { ok: false as const, errorCode: 'audit_error' as const };
     }
 
     const { error } = await supabase.from('feedback').insert({

@@ -7,7 +7,8 @@ import {
   isRefuserCustomer,
 } from '@/lib/customers/enrichment';
 import type { ReliabilityTier } from '@/lib/customers/reliability';
-import { getCustomerPcdColumnsAvailable } from '@/lib/shopify/customer-pcd-columns';
+import { writePcdAccessAuditCategories } from '@/lib/security/pcd-access-audit';
+import { PcdAccessControlError, consumePcdQuota } from '@/lib/security/pcd-access-controls';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
@@ -55,9 +56,6 @@ export type CustomerDetail = CustomerListItem & {
     hardToReach: boolean;
   };
   history: CustomerOrderHistoryItem[];
-  shopifyAmountSpentMinor: number | null;
-  shopifyOrdersCount: number | null;
-  tags: string[] | null;
 };
 
 const listCustomersSchema = z.object({
@@ -106,6 +104,44 @@ export const listCustomersAction = requireRole('owner', 'manager', 'agent')
   .inputSchema(listCustomersSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
+    if (parsedInput.search?.trim()) {
+      try {
+        await consumePcdQuota(supabase, {
+          action: 'search',
+          actorKind: 'human',
+          tenantId: ctx.member.merchantAccountId,
+        });
+      } catch (error) {
+        try {
+          await writePcdAccessAuditCategories(
+            supabase,
+            {
+              tenantId: ctx.member.merchantAccountId,
+              actorKind: 'human',
+              action: 'search',
+              purpose: 'customer_support',
+              outcome: 'denied',
+              resourceType: 'customer',
+              surface: 'server_action',
+              metadata: {
+                reason_code:
+                  error instanceof PcdAccessControlError ? error.code : 'quota_unavailable',
+              },
+            },
+            ['customer_identity', 'customer_contact'],
+          );
+        } catch {
+          // L'accès reste fermé même si le journal de refus est indisponible.
+        }
+        return {
+          ok: false as const,
+          errorCode:
+            error instanceof PcdAccessControlError && error.code === 'quota_exceeded'
+              ? ('rate_limited' as const)
+              : ('quota_unavailable' as const),
+        };
+      }
+    }
     const customersResult = await supabase.rpc('list_customer_reliability', {
       p_merchant_id: ctx.member.merchantAccountId,
       p_search: parsedInput.search || undefined,
@@ -118,9 +154,32 @@ export const listCustomersAction = requireRole('owner', 'manager', 'agent')
       return { ok: false as const, errorCode: 'list_failed' as const };
     }
 
+    const customers = (customersResult.data ?? []).map(toListItem);
+    try {
+      await writePcdAccessAuditCategories(
+        supabase,
+        {
+          tenantId: ctx.member.merchantAccountId,
+          actorKind: 'human',
+          action: parsedInput.search?.trim() ? 'search' : 'list_access',
+          purpose: 'customer_support',
+          outcome: 'succeeded',
+          resourceType: 'customer',
+          surface: 'server_action',
+          metadata: {
+            page_size: Math.min(customers.length, 100),
+            result_count: Math.min(customers.length, 100),
+          },
+        },
+        ['customer_identity', 'customer_contact'],
+      );
+    } catch {
+      return { ok: false as const, errorCode: 'audit_unavailable' as const };
+    }
+
     return {
       ok: true as const,
-      customers: (customersResult.data ?? []).map(toListItem),
+      customers,
       readOnly: ctx.member.role === 'agent',
     };
   });
@@ -130,22 +189,6 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
   .inputSchema(getCustomerSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
-    // Bridge 0120 : `tags`/`shopify_orders_count`/`shopify_amount_spent_minor` sont retirés du
-    // select quand la migration a supprimé les colonnes — sinon PostgREST rejette TOUT le select
-    // (y compris address/shipping_address, toujours présentes), et la fiche client entière
-    // retournerait `get_failed` (cf. le check d'erreurs groupé juste après).
-    const pcdColumnsAvailable = await getCustomerPcdColumnsAvailable(supabase);
-    type CustomerEnrichmentRow = {
-      address: Tables<'customer'>['address'];
-      shipping_address: Tables<'customer'>['shipping_address'];
-      tags?: string[] | null;
-      shopify_orders_count?: number | null;
-      shopify_amount_spent_minor?: number | null;
-    };
-    const enrichmentSelect = pcdColumnsAvailable
-      ? 'address, shipping_address, tags, shopify_orders_count, shopify_amount_spent_minor'
-      : 'address, shipping_address';
-
     const [customerResult, historyResult, enrichmentResult] = await Promise.all([
       supabase.rpc('get_customer_reliability', {
         p_merchant_id: ctx.member.merchantAccountId,
@@ -163,7 +206,7 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
       // Colonnes PII enrichies (Phase 7b) absentes de la RPC de fiabilité.
       supabase
         .from('customer')
-        .select<string, CustomerEnrichmentRow>(enrichmentSelect)
+        .select('address, shipping_address')
         .eq('merchant_account_id', ctx.member.merchantAccountId)
         .eq('id', parsedInput.customerId)
         .maybeSingle(),
@@ -196,10 +239,26 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
         hardToReach: row.flag_hard_to_reach,
       },
       history: (historyResult.data ?? []) as CustomerOrderHistoryItem[],
-      shopifyAmountSpentMinor: enrichment?.shopify_amount_spent_minor ?? null,
-      shopifyOrdersCount: enrichment?.shopify_orders_count ?? null,
-      tags: enrichment?.tags ?? null,
     };
+
+    try {
+      await writePcdAccessAuditCategories(
+        supabase,
+        {
+          tenantId: ctx.member.merchantAccountId,
+          actorKind: 'human',
+          action: 'view_detail',
+          purpose: 'customer_support',
+          outcome: 'succeeded',
+          resourceType: 'customer',
+          resourceId: parsedInput.customerId,
+          surface: 'server_action',
+        },
+        ['customer_identity', 'customer_contact', 'delivery_address'],
+      );
+    } catch {
+      return { ok: false as const, errorCode: 'audit_unavailable' as const };
+    }
 
     return {
       ok: true as const,

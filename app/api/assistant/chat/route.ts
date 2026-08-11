@@ -3,6 +3,8 @@ import { persistMessage, touchConversation, validateConversation } from '@/lib/i
 import { checkToolRateLimit } from '@/lib/ia/rate-limit';
 import { resolveIaContext } from '@/lib/ia/server-context';
 import { buildSystemPrompt } from '@/lib/ia/system-prompt';
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
+import { detectPcdCategories } from '@/lib/security/pcd-detection';
 import { groq } from '@ai-sdk/groq';
 import { type UIMessage, convertToModelMessages, stepCountIs, streamText } from 'ai';
 
@@ -35,6 +37,16 @@ function lastUserText(messages: UIMessage[]): string {
   return '';
 }
 
+function allTextParts(messages: UIMessage[]): string {
+  return messages
+    .flatMap((message) =>
+      message.parts
+        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+        .map((part) => part.text),
+    )
+    .join('\n');
+}
+
 export async function POST(req: Request): Promise<Response> {
   const auth = await resolveIaContext();
   if (!auth.ok) {
@@ -60,6 +72,32 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (userText.length > MAX_INPUT_CHARS) {
     return jsonError('input_too_long', 413);
+  }
+
+  // Contrôle déterministe MVP : aucune conversation contenant une forme
+  // explicitement identifiable de PCD ne doit être persistée ou envoyée à Groq.
+  // Le détecteur ne prétend pas couvrir les noms ou adresses sémantiques libres.
+  const detectedCategories = detectPcdCategories(allTextParts(messages));
+  if (detectedCategories.length > 0) {
+    try {
+      for (const dataCategory of detectedCategories) {
+        await writePcdAccessAudit(auth.ctx.supabase, {
+          tenantId: auth.ctx.merchantAccountId,
+          actorKind: 'human',
+          action: 'ai_processing',
+          dataCategory,
+          purpose: 'customer_support',
+          outcome: 'denied',
+          resourceType: 'assistant',
+          resourceId: null,
+          surface: 'assistant',
+          metadata: { reason_code: 'sensitive_content_rejected' },
+        });
+      }
+    } catch {
+      return jsonError('audit_unavailable', 503);
+    }
+    return jsonError('sensitive_content_rejected', 422);
   }
 
   // Rate-limit par utilisateur (appels d'outils récents).

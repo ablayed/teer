@@ -301,7 +301,6 @@ function makeCustomers(merchantAccountId, total) {
       created_at: new Date().toISOString(),
       source: 'manual',
       shopify_customer_gids: [],
-      first_seen_at: new Date().toISOString(),
     });
   }
 

@@ -8,6 +8,7 @@ import {
   settlementMethods,
 } from '@/lib/finance/cash';
 import { buildDriverSettlements } from '@/lib/finance/driver-settlements';
+import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
@@ -328,6 +329,22 @@ export const listDriverOutstandingAction = requireRole('owner', 'manager')
       });
       current.outstandingMinor += outstandingMinor;
       byDriver.set(order.assigned_driver_id, current);
+    }
+
+    try {
+      await writePcdAccessAudit(supabase, {
+        tenantId: ctx.member.merchantAccountId,
+        actorKind: 'human',
+        action: 'list_access',
+        dataCategory: 'member_data',
+        purpose: 'cash_reconciliation',
+        outcome: 'succeeded',
+        resourceType: 'driver',
+        surface: 'server_action',
+        metadata: { result_count: Math.min(byDriver.size, 500), page_size: 500 },
+      });
+    } catch {
+      return { ok: false as const, errorCode: 'audit_unavailable' as const };
     }
 
     return {

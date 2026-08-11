@@ -683,7 +683,7 @@
       "restricted": "Accès réservé au propriétaire et aux gestionnaires.",
       "title": "Boutiques",
       "description": "Gérez la connexion Shopify utilisée pour synchroniser vos commandes.",
-      "connectNew": "Connecter une nouvelle boutique",
+      "connectNew": "Voir le parcours Shopify",
       "retry": "Réessayer",
       "installedAt": "Installée le",
       "lastSync": "Dernière sync",
@@ -698,12 +698,14 @@
         "uninstalled": "Déconnectée"
       },
       "reasons": {
-        "tokenExpired": "Le jeton Shopify a expiré. Reconnectez la boutique pour relancer la synchronisation.",
+        "tokenExpired": "Le jeton Shopify a expiré. Réinstallez Tëër depuis Shopify Admin pour relancer la synchronisation.",
+        "reconnectInstructions": "La réinstallation doit être initiée depuis Shopify Admin ; Tëër ne demande pas de domaine ici.",
         "generic": "La connexion Shopify doit être vérifiée."
       },
       "empty": {
         "title": "Aucune boutique connectée",
-        "description": "Connectez Shopify pour importer les commandes, clients et produits."
+        "description": "Installez Tëër depuis Shopify Admin pour importer les commandes, clients et produits.",
+        "instructions": "L’installation et l’autorisation commencent depuis la surface Shopify embarquée. Aucun domaine Shopify ne doit être saisi dans Tëër."
       },
       "disconnect": {
         "submit": "Déconnecter",
@@ -769,10 +771,11 @@
   },
   "shops": {
     "title": "Boutiques",
-    "subtitle": "Connectez votre boutique Shopify pour synchroniser vos commandes.",
+    "subtitle": "Installez Tëër depuis Shopify Admin pour synchroniser vos commandes.",
     "connect": {
       "title": "Connecter Shopify",
       "description": "Tëër utilisera cette connexion pour lire vos commandes, clients et produits Shopify.",
+      "instructions": "Ouvrez Tëër depuis Shopify Admin. L’installation et l’autorisation commencent depuis cette surface Shopify ; aucune saisie de domaine n’est nécessaire ici.",
       "domainLabel": "Domaine de votre boutique",
       "domainPlaceholder": "ma-boutique.myshopify.com",
       "submit": "Connecter ma boutique"
@@ -792,7 +795,8 @@
     "messages": {
       "connected": "Boutique connectée avec succès !",
       "productsScopeRequired": "Cette boutique doit être reconnectée pour autoriser la synchronisation du catalogue produit Shopify.",
-      "productsScopeCta": "Reconnecter pour les produits"
+      "productsScopeCta": "Reconnecter pour les produits",
+      "productsScopeInstructions": "Réinstallez ou réautorisez Tëër depuis Shopify Admin pour mettre à jour cette autorisation."
     },
     "disconnect": {
       "submit": "Déconnecter",
@@ -896,9 +900,7 @@
       "orders": "Commandes",
       "cancelled": "Annulations",
       "delivered": "Livré",
-      "refused": "Refus",
-      "shopifyOrders": "Commandes Shopify",
-      "shopifySpent": "Total Shopify"
+      "refused": "Refus"
     },
     "errors": {
       "list": "Une erreur est survenue, réessayez.",

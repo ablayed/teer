@@ -72,13 +72,8 @@ jobs:
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
-            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
-            echo "RESEND_API_KEY=test-resend-api-key"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
-          cp .env.production .env.test
       - name: Build production
         run: pnpm build
         env:
@@ -119,6 +114,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
       - name: Commit generated baselines
         if: always()
         run: |

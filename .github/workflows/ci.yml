@@ -185,21 +185,19 @@ jobs:
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
-            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
-            echo "RESEND_API_KEY=test-resend-api-key"
-            echo "SHOPIFY_API_KEY=test-shopify-api-key"
-            echo "SHOPIFY_API_SECRET=test-shopify-api-secret"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
-          cp .env.production .env.test
       # NEXT_PUBLIC_DISABLE_UIR=1 inliné ICI dans le bundle middleware/edge → la CSP du
       # build de test n'émet pas `upgrade-insecure-requests` (sinon WebKit/iphone-14
       # blanchit sur http://localhost). En prod réelle ce flag est absent → UIR émis.
       - name: Build production
         run: pnpm build
         env:
+          # VERCEL_ENV=preview : ce build tourne avec des secrets synthétiques (RESEND_API_KEY
+          # factice, pas de CRON_SECRET/UPSTASH réels) — sans ce flag, isProductionEnvironment()
+          # (lib/security/environment-validation.ts, 142dfa8) le traite comme un build de
+          # production réel et échoue sur "Unsafe production environment configuration".
+          VERCEL_ENV: preview
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
@@ -218,6 +216,9 @@ jobs:
       - run: pnpm test:e2e --project=${{ matrix.project }}
         env:
           E2E_PROD_BUILD: '1'
+          # webServer (playwright.config.ts) hérite de cet env pour spawn `next start` ;
+          # sans VERCEL_ENV=preview le runtime retombe aussi sous le garde-fou 142dfa8.
+          VERCEL_ENV: preview
           # Secret de test contrôlé : le serveur Next et les specs Playwright signent/vérifient
           # la même valeur. Ne jamais substituer un secret Partner ou de production ici.
           SHOPIFY_API_KEY: test-shopify-api-key
@@ -227,6 +228,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
       # Diagnostic : sur échec, on remonte les traces Playwright (call log + snapshots DOM/ARIA
       # par action) pour voir EXACTEMENT quelle action pend, plutôt que de supposer.
       - uses: actions/upload-artifact@v4
@@ -310,16 +314,16 @@ jobs:
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
-            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
-            echo "RESEND_API_KEY=test-resend-api-key"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
-          cp .env.production .env.test
       - name: Build production
         run: pnpm build
         env:
+          # VERCEL_ENV=preview : ce build tourne avec des secrets synthétiques (RESEND_API_KEY
+          # factice, pas de CRON_SECRET/UPSTASH réels) — sans ce flag, isProductionEnvironment()
+          # (lib/security/environment-validation.ts, 142dfa8) le traite comme un build de
+          # production réel et échoue sur "Unsafe production environment configuration".
+          VERCEL_ENV: preview
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
@@ -330,12 +334,18 @@ jobs:
       - run: pnpm test:visual:desktop
         env:
           E2E_PROD_BUILD: '1'
+          # webServer hérite de cet env pour spawn `next start` ; sans VERCEL_ENV=preview
+          # le runtime retombe sous le garde-fou 142dfa8 (rejette aussi ENABLE_PRIMITIVES_DEMO).
+          VERCEL_ENV: preview
           ENABLE_PRIMITIVES_DEMO: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -418,16 +428,16 @@ jobs:
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
-            echo "SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
-            echo "RESEND_API_KEY=test-resend-api-key"
             echo "NEXT_PUBLIC_DISABLE_UIR=1"
           } > .env.production
-          cp .env.production .env.test
       - name: Build production
         run: pnpm build
         env:
+          # VERCEL_ENV=preview : ce build tourne avec des secrets synthétiques (RESEND_API_KEY
+          # factice, pas de CRON_SECRET/UPSTASH réels) — sans ce flag, isProductionEnvironment()
+          # (lib/security/environment-validation.ts, 142dfa8) le traite comme un build de
+          # production réel et échoue sur "Unsafe production environment configuration".
+          VERCEL_ENV: preview
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
@@ -438,12 +448,18 @@ jobs:
       - run: pnpm test:visual:mobile
         env:
           E2E_PROD_BUILD: '1'
+          # webServer hérite de cet env pour spawn `next start` ; sans VERCEL_ENV=preview
+          # le runtime retombe sous le garde-fou 142dfa8 (rejette aussi ENABLE_PRIMITIVES_DEMO).
+          VERCEL_ENV: preview
           ENABLE_PRIMITIVES_DEMO: '1'
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
       - uses: actions/upload-artifact@v4
         if: always()
         with:

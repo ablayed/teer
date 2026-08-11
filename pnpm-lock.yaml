@@ -20,6 +20,9 @@ importers:
       '@dnd-kit/sortable':
         specifier: ^10.0.0
         version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      '@fontsource-variable/fraunces':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@radix-ui/react-dialog':
         specifier: ^1.1.17
         version: 1.1.17(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -783,6 +786,9 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@fontsource-variable/fraunces@5.3.0':
+    resolution: {integrity: sha512-9BYGySn4AHEJdgp9Z28tQ3X+laJMEOITXkQarZXeloWQZDq5oOvXJ3kDA8c7MGIfpogIaZfjrQBqmda8POOCKA==}
 
   '@formatjs/fast-memoize@3.1.5':
     resolution: {integrity: sha512-KLi3fan6WnCHmigd9pmEEN8Hid0v4wiFBW576M/d07KMWYecf1CvyMI3n34vCmHT4AoVqG2n702kiHbXjzZX2A==}
@@ -4941,6 +4947,8 @@ snapshots:
       react-dom: 19.2.6(react@19.2.6)
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@fontsource-variable/fraunces@5.3.0': {}
 
   '@formatjs/fast-memoize@3.1.5': {}
 

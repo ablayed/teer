@@ -10,6 +10,7 @@ export type WhatsappOrderItem = {
 export type WhatsappOrderData = {
   adresse: string | null | undefined;
   items: WhatsappOrderItem[];
+  orderId: string;
   numeroCommande: string | null | undefined;
   telephone: string | null | undefined;
   total: number | null | undefined;

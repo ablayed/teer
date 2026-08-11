@@ -87,9 +87,24 @@ export async function cleanupVisualFixture(fixture: VisualFixture): Promise<void
 }
 
 export async function signInToRoute(page: Page, email: string, redirectTo: string): Promise<void> {
-  await loginViaForm(page, email, e2ePassword, redirectTo);
-  await page.waitForURL(`**${redirectTo}`, { timeout: 45_000 });
-  await expect(page.locator('main#main')).toBeVisible({ timeout: 45_000 });
+  // Supabase peut terminer le POST 303 avant que le cookie SSR soit visible par la première
+  // navigation RSC. Trois tentatives bornées absorbent cette course sans jamais transformer
+  // /connexion en réussite silencieuse pour une page métier.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await loginViaForm(page, email, e2ePassword, redirectTo);
+    await page.waitForURL(`**${redirectTo}`, { timeout: 45_000 }).catch(() => undefined);
+    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => undefined);
+
+    const currentUrl = new URL(page.url());
+    const stillOnLogin = /\/connexion(?:\?|$)/.test(currentUrl.pathname + currentUrl.search);
+    if (!stillOnLogin) {
+      await expect(page).not.toHaveURL(/\/connexion(?:\?|$)/);
+      await expect(page.locator('body')).toBeVisible({ timeout: 45_000 });
+      return;
+    }
+  }
+
+  throw new Error(`Visual auth fixture did not establish a session for ${redirectTo}`);
 }
 
 export async function waitForFonts(page: Page): Promise<void> {

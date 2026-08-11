@@ -77,6 +77,7 @@ export type ReportData = {
   revenue: ReportRevenuePoint[];
   shop: {
     domain: string | null;
+    id: string | null;
     name: string;
     slug: string;
   };
@@ -245,15 +246,15 @@ async function getReportContext() {
 }
 
 export function reportFilename({
-  from,
-  shopSlug,
-  to,
+  from: _from,
+  shopSlug: _shopSlug,
+  to: _to,
 }: {
   from: Date;
   shopSlug: string;
   to: Date;
 }): string {
-  return `teer-rapport-${shopSlug}-${dateKey(from)}_${dateKey(to)}.pdf`;
+  return 'teer-rapport.pdf';
 }
 
 export async function getReportData({
@@ -374,6 +375,9 @@ export async function getReportData({
   const merchant = merchantResult.data as MerchantRow | null;
   const shops = (shopsResult.data ?? []) as ShopRow[];
   const selectedShop = shopId ? shops.find((shop) => shop.id === shopId) : shops[0];
+  if (shopId && !selectedShop) {
+    throw new Error('FORBIDDEN');
+  }
   const settings = toSettings(settingsResult.data as Partial<MerchantFeeSettings> | null);
   const settlements = (
     (settlementsResult.data ?? []) as Array<{
@@ -529,6 +533,7 @@ export async function getReportData({
     ),
     shop: {
       domain: selectedShop?.shop_domain ?? null,
+      id: selectedShop?.id ?? null,
       name: shopName,
       slug: slugify(shopName),
     },

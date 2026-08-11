@@ -4,6 +4,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // RLS tests use a real local Supabase/PostgREST stack. Under the full
+    // suite, database startup and serialized cleanup can exceed Vitest's
+    // 5-second default even when the assertions complete successfully.
+    // Keep the bound finite and evidence-based; this is not a retry or skip.
+    testTimeout: 15_000,
     include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx', 'tests/rls/**/*.test.ts'],
     setupFiles: ['tests/setup-env.ts'],
     coverage: {

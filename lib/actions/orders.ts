@@ -32,6 +32,11 @@ import { positiveOrderTotalSchema } from '@/lib/orders/order-amount-validation';
 import { ORDER_NOTE_MAX_LENGTH, normalizeOrderNote } from '@/lib/orders/order-note';
 import { filterOrdersBySearch, legacySearchLookbackIso } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
+import {
+  writePcdAccessAudit,
+  writePcdAccessAuditCategories,
+} from '@/lib/security/pcd-access-audit';
+import { PcdAccessControlError, consumePcdQuota } from '@/lib/security/pcd-access-controls';
 import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -972,7 +977,8 @@ export async function getOrders({
   shopId,
 }: GetOrdersInput = {}): Promise<OrderListItem[]> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
-  const role = await getCurrentMemberRole(supabase);
+  const currentMember = await getCurrentMember(supabase);
+  const role = currentMember?.role ?? null;
   let query = supabase
     .from('orders')
     .select(
@@ -988,16 +994,65 @@ export async function getOrders({
     query = query.eq('shop_id', shopId);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(500);
 
   if (error) {
     throw error;
   }
 
-  return ((data ?? []) as Array<Omit<OrderListItem, 'allowedActions'>>).map((order) => ({
+  const orders = ((data ?? []) as Array<Omit<OrderListItem, 'allowedActions'>>).map((order) => ({
     ...order,
     allowedActions: allowedActionsForOrderRow(order, role),
   }));
+
+  if (currentMember) {
+    await writePcdAccessAuditCategories(
+      asTypedSupabaseClient(supabase),
+      {
+        tenantId: currentMember.merchantAccountId,
+        shopId: shopId ?? null,
+        actorKind: 'human',
+        action: 'list_access',
+        purpose: 'order_fulfillment',
+        outcome: 'succeeded',
+        resourceType: 'order',
+        surface: 'server_action',
+        metadata: { result_count: Math.min(orders.length, 500), page_size: 500 },
+      },
+      ['customer_identity', 'customer_contact', 'delivery_address'],
+    );
+  }
+
+  return orders;
+}
+
+async function auditOrdersPageAccess(
+  supabase: SupabaseServerClient,
+  tenantId: string,
+  shopId: string | null,
+  search: string,
+  data: OrdersPageData,
+  idempotencyKey?: string | null,
+): Promise<void> {
+  await writePcdAccessAuditCategories(
+    supabase,
+    {
+      tenantId,
+      shopId,
+      actorKind: 'human',
+      action: search.trim() ? 'search' : 'list_access',
+      purpose: 'order_fulfillment',
+      outcome: 'succeeded',
+      resourceType: 'order',
+      surface: 'server_action',
+      idempotencyKey,
+      metadata: {
+        page_size: Math.min(data.orders.length, 500),
+        result_count: Math.min(data.orders.length, 500),
+      },
+    },
+    ['customer_identity', 'customer_contact', 'delivery_address'],
+  );
 }
 
 export async function getOrdersPageData(
@@ -1008,6 +1063,7 @@ export async function getOrdersPageData(
     search = '',
     shopId = null,
     view,
+    auditIdempotencyKey,
   }: {
     cursor?: OrderListCursor | null;
     dateFrom?: string;
@@ -1015,6 +1071,7 @@ export async function getOrdersPageData(
     search?: string;
     shopId?: string | null;
     view?: string;
+    auditIdempotencyKey?: string | null;
   } = {},
   signal?: AbortSignal,
 ): Promise<OrdersPageData> {
@@ -1034,7 +1091,42 @@ export async function getOrdersPageData(
     };
   }
 
-  return fetchOrdersPageData({
+  if (search.trim()) {
+    try {
+      await consumePcdQuota(supabase, {
+        action: 'search',
+        actorKind: 'human',
+        shopId,
+        tenantId: member.merchantAccountId,
+      });
+    } catch (error) {
+      try {
+        await writePcdAccessAuditCategories(
+          supabase,
+          {
+            tenantId: member.merchantAccountId,
+            shopId,
+            actorKind: 'human',
+            action: 'search',
+            purpose: 'order_fulfillment',
+            outcome: 'denied',
+            resourceType: 'order',
+            surface: 'server_action',
+            metadata: {
+              reason_code:
+                error instanceof PcdAccessControlError ? error.code : 'quota_unavailable',
+            },
+          },
+          ['customer_identity', 'customer_contact', 'delivery_address'],
+        );
+      } catch {
+        // L'accès reste fermé même si le journal de refus est indisponible.
+      }
+      throw error;
+    }
+  }
+
+  const data = await fetchOrdersPageData({
     activeView: parseOrderSavedViewId(view),
     cursor,
     filters: { dateFrom, dateTo, shopId },
@@ -1043,6 +1135,16 @@ export async function getOrdersPageData(
     signal,
     supabase,
   });
+
+  await auditOrdersPageAccess(
+    supabase,
+    member.merchantAccountId,
+    shopId,
+    search,
+    data,
+    auditIdempotencyKey,
+  );
+  return data;
 }
 
 export const loadMoreOrdersAction = requireRole('owner', 'manager', 'agent')
@@ -1078,6 +1180,14 @@ export const loadMoreOrdersAction = requireRole('owner', 'manager', 'agent')
       search: parsedInput.search,
       supabase: asTypedSupabaseClient(ctx.supabase),
     });
+
+    await auditOrdersPageAccess(
+      asTypedSupabaseClient(ctx.supabase),
+      ctx.member.merchantAccountId,
+      parsedInput.shopId ?? null,
+      parsedInput.search,
+      data,
+    );
 
     return {
       ok: true as const,
@@ -1130,6 +1240,22 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
   if (customerAddressResult.error) {
     throw customerAddressResult.error;
   }
+
+  await writePcdAccessAuditCategories(
+    supabase,
+    {
+      tenantId: data.merchant_account_id,
+      shopId: data.shop_id,
+      actorKind: 'human',
+      action: 'view_detail',
+      purpose: 'order_fulfillment',
+      outcome: 'succeeded',
+      resourceType: 'order',
+      resourceId: data.id,
+      surface: 'server_action',
+    },
+    ['customer_identity', 'customer_contact', 'delivery_address'],
+  );
 
   return {
     ...(data as Tables<'orders'> & { customer: CustomerDetail | null }),

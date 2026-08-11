@@ -27,7 +27,9 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/(.*)',
+        // L’exception embarquée ne reçoit pas X-Frame-Options : sa CSP dédiée porte
+        // `frame-ancestors` sur les seuls conteneurs Shopify autorisés.
+        source: '/((?!shopify/embedded(?:/.*)?$).*)',
         headers: [
           {
             key: 'Strict-Transport-Security',

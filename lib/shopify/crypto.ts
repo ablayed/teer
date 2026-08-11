@@ -13,18 +13,30 @@ function isEvenLength(value: string): boolean {
   return value.length % 2 === 0;
 }
 
+function getKeyFromEnvironment(
+  name: 'SHOPIFY_TOKEN_ENCRYPTION_KEY' | 'SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS',
+): Buffer | null {
+  const key = process.env[name];
+
+  if (!key) {
+    return null;
+  }
+
+  if (key.length !== ENCRYPTION_KEY_HEX_LENGTH || !isHex(key)) {
+    throw new Error(`${name} must be 64 hex characters`);
+  }
+
+  return Buffer.from(key, 'hex');
+}
+
 export function getEncryptionKey(): Buffer {
-  const key = process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY;
+  const key = getKeyFromEnvironment('SHOPIFY_TOKEN_ENCRYPTION_KEY');
 
   if (!key) {
     throw new Error('SHOPIFY_TOKEN_ENCRYPTION_KEY is required to encrypt Shopify tokens');
   }
 
-  if (key.length !== ENCRYPTION_KEY_HEX_LENGTH || !isHex(key)) {
-    throw new Error('SHOPIFY_TOKEN_ENCRYPTION_KEY must be 64 hex characters');
-  }
-
-  return Buffer.from(key, 'hex');
+  return key;
 }
 
 export function encryptToken(plaintext: string): string {
@@ -58,21 +70,27 @@ export function decryptToken(encrypted: string): string {
     throw new Error('decryptToken: invalid encrypted token format');
   }
 
-  try {
-    const key = getEncryptionKey();
-    const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(ivHex, 'hex'));
-    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-    const plaintext = Buffer.concat([
-      decipher.update(Buffer.from(ciphertextHex, 'hex')),
-      decipher.final(),
-    ]);
-
-    return plaintext.toString('utf8');
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('SHOPIFY_TOKEN_ENCRYPTION_KEY')) {
-      throw error;
-    }
-
-    throw new Error('decryptToken: authentication failed or token is corrupted');
+  const keys = [getEncryptionKey()];
+  const previousKey = getKeyFromEnvironment('SHOPIFY_TOKEN_ENCRYPTION_KEY_PREVIOUS');
+  if (previousKey) {
+    keys.push(previousKey);
   }
+
+  for (const key of keys) {
+    try {
+      const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(ivHex, 'hex'));
+      decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+      const plaintext = Buffer.concat([
+        decipher.update(Buffer.from(ciphertextHex, 'hex')),
+        decipher.final(),
+      ]);
+
+      return plaintext.toString('utf8');
+    } catch {
+      // During a controlled rotation, try the previous key without exposing
+      // provider or crypto details to logs or callers.
+    }
+  }
+
+  throw new Error('decryptToken: authentication failed or token is corrupted');
 }

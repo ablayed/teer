@@ -1,6 +1,5 @@
 'use client';
 
-import { ConnectShopForm } from '@/components/shops/connect-shop-form';
 import { Button } from '@/components/ui/button';
 import {
   type ShopListItem,
@@ -152,7 +151,7 @@ export function SettingsShops({ currentRole }: SettingsShopsProps) {
               <p className="mt-1 text-sm leading-6 text-muted">{t('empty.description')}</p>
             </div>
           </div>
-          <ConnectShopForm />
+          <p className="text-sm leading-6 text-muted">{t('empty.instructions')}</p>
         </section>
       ) : null}
 
@@ -259,12 +258,7 @@ function ShopCard({
               <p>
                 {shop.reason === 'token_expired' ? t('reasons.tokenExpired') : t('reasons.generic')}
               </p>
-              <Link
-                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-surface px-4 font-medium text-text shadow-1"
-                href={shop.reconnectUrl}
-              >
-                {t('reconnect')}
-              </Link>
+              <p className="mt-3 text-sm text-muted">{t('reasons.reconnectInstructions')}</p>
             </div>
           ) : null}
         </div>

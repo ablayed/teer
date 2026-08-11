@@ -36,11 +36,6 @@ export function buildBulkOrdersQuery(updatedSinceIso: string | null): string {
           firstName
           lastName
           phone
-          numberOfOrders
-          amountSpent { amount currencyCode }
-          tags
-          emailMarketingConsent { marketingState }
-          createdAt
           defaultAddress { address1 address2 city province country zip phone name }
         }
         shippingAddress { address1 address2 city province country zip phone name }
@@ -276,12 +271,7 @@ function mapBulkCustomer(customer: Record<string, unknown>): ShopifyCustomerNode
   if (typeof customer.id !== 'string') {
     return null;
   }
-  const amountSpent = customer.amountSpent as Record<string, unknown> | null;
-  const consent = customer.emailMarketingConsent as Record<string, unknown> | null;
   const defaultAddress = customer.defaultAddress as Record<string, unknown> | null;
-  const tags = Array.isArray(customer.tags)
-    ? customer.tags.filter((tag): tag is string => typeof tag === 'string')
-    : null;
 
   return {
     id: customer.id,
@@ -289,19 +279,6 @@ function mapBulkCustomer(customer: Record<string, unknown>): ShopifyCustomerNode
     firstName: (customer.firstName as string | null) ?? null,
     lastName: (customer.lastName as string | null) ?? null,
     phone: (customer.phone as string | null) ?? null,
-    numberOfOrders: (customer.numberOfOrders as string | null) ?? null,
-    amountSpent:
-      amountSpent && typeof amountSpent.amount === 'string'
-        ? {
-            amount: amountSpent.amount,
-            currencyCode: (amountSpent.currencyCode as string | undefined) ?? undefined,
-          }
-        : null,
-    tags,
-    emailMarketingConsent: consent
-      ? { marketingState: (consent.marketingState as string | null) ?? null }
-      : null,
-    createdAt: (customer.createdAt as string | null) ?? null,
     defaultAddress: mapAddressRecord(defaultAddress),
   };
 }

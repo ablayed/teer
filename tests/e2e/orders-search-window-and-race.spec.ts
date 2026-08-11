@@ -242,18 +242,19 @@ test.describe('Fix triage — invalidation des réponses de recherche obsolètes
     let firstRequestFailed = false;
     page.on('requestfailed', (request) => {
       const url = new URL(request.url());
-      if (
-        url.pathname === '/api/orders/search' &&
-        url.searchParams.get('q') === 'Premiere Recherche'
-      ) {
+      // 53bd42f (S1C-2) : fetchOrdersSearchPageData envoie `q` dans un corps POST JSON,
+      // plus en query-string (minimisation PCD — le terme de recherche ne doit pas
+      // transiter par l'URL/logs d'accès).
+      const searchQuery = request.postDataJSON()?.q as string | undefined;
+      if (url.pathname === '/api/orders/search' && searchQuery === 'Premiere Recherche') {
         firstRequestFailed = true;
       }
     });
 
-    // La seconde génération doit interrompre le fetch GET, pas seulement ignorer sa réponse.
+    // La seconde génération doit interrompre le fetch, pas seulement ignorer sa réponse.
     await page.route('**/api/orders/search**', async (route) => {
-      const url = new URL(route.request().url());
-      if (url.searchParams.get('q') === 'Premiere Recherche') {
+      const searchQuery = route.request().postDataJSON()?.q as string | undefined;
+      if (searchQuery === 'Premiere Recherche') {
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
       await route.continue().catch(() => undefined);
@@ -298,8 +299,8 @@ test.describe('Fix triage — invalidation des réponses de recherche obsolètes
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.route('**/api/orders/search**', async (route) => {
-      const url = new URL(route.request().url());
-      if (url.searchParams.get('q') === customerName) {
+      const searchQuery = route.request().postDataJSON()?.q as string | undefined;
+      if (searchQuery === customerName) {
         await route.abort('failed');
         return;
       }

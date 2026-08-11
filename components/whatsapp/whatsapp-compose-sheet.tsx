@@ -10,6 +10,7 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer';
 import { Textarea } from '@/components/ui/textarea';
+import { recordWhatsappShareAction } from '@/lib/actions/pcd-access';
 import {
   type WhatsappOrderData,
   buildWhatsappDirectUrl,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/whatsapp/format';
 import { MessageCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useAction } from 'next-safe-action/hooks';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 
 type Template = 'clientConfirmation' | 'livreur';
@@ -57,6 +59,8 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
   const t = useTranslations('whatsapp');
   const [internalOpen, setInternalOpen] = useState(false);
   const [message, setMessage] = useState('');
+  const [shareError, setShareError] = useState(false);
+  const recordShare = useAction(recordWhatsappShareAction);
   // Lot 3 (Sujet C) : suit la dernière valeur connue de isOpen pour détecter une
   // VRAIE transition fermé→ouvert, y compris quand le composant est monté avec
   // open=true dès son premier rendu (mode compact/liste — voir order-actions-menu.tsx).
@@ -72,6 +76,7 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       setMessage(buildMessage(t, template, order));
+      setShareError(false);
     }
     wasOpenRef.current = isOpen;
   }, [isOpen, template, order, t]);
@@ -92,6 +97,28 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
       ? buildWhatsappShareUrl(message)
       : buildWhatsappDirectUrl(order.telephone, message);
 
+  async function handleShare() {
+    if (recordShare.status === 'executing') return;
+
+    // Ouvrir une fenêtre neutre dans le geste utilisateur évite qu'un
+    // navigateur bloque la navigation après l'aller-retour de l'audit.
+    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      setShareError(true);
+      return;
+    }
+
+    const result = await recordShare.executeAsync({ orderId: order.orderId });
+    if (!result?.data?.ok) {
+      popup.close();
+      setShareError(true);
+      return;
+    }
+
+    popup.location.replace(shareUrl);
+    handleOpenChange(false);
+  }
+
   return (
     <Drawer open={isOpen} onOpenChange={handleOpenChange}>
       {trigger ? <DrawerTrigger asChild>{trigger}</DrawerTrigger> : null}
@@ -109,17 +136,22 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
           />
         </div>
 
+        {shareError ? (
+          <p className="px-4 text-sm text-danger" role="alert">
+            Le partage est indisponible. Aucun message n'a été ouvert.
+          </p>
+        ) : null}
+
         <DrawerFooter className="flex-row gap-2">
-          <a
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1ebe5d]"
-            href={shareUrl}
-            onClick={() => handleOpenChange(false)}
-            rel="noopener noreferrer"
-            target="_blank"
+          <button
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1ebe5d] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={recordShare.status === 'executing'}
+            onClick={() => void handleShare()}
+            type="button"
           >
             <MessageCircle aria-hidden="true" className="size-4" />
             {t('openWhatsapp')}
-          </a>
+          </button>
           <DrawerClose asChild>
             <button
               className="rounded-lg border border-border px-4 py-3 text-sm font-medium text-text hover:bg-canvas"

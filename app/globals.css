@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
 :root {
+  --font-fraunces: "Fraunces Variable";
+  --font-fraunces-italic: "Fraunces Variable";
+
   /* Crème — 3 couches pour le rythme des sections */
   --canvas: #f4f3ed; /* base */
   --surface: #ffffff; /* cartes app (inchangé) */

@@ -1,5 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
+import {
+  SHOPIFY_E2E_CLIENT_ID,
+  SHOPIFY_E2E_HMAC_SECRET,
+} from './tests/e2e/helpers/shopify-webhook-harness';
 
 function loadEnvFile(path: string) {
   if (!existsSync(path)) {
@@ -37,7 +41,20 @@ function loadEnvFile(path: string) {
 loadEnvFile('.env.test.local');
 loadEnvFile('.env.test');
 
+if (process.env.E2E_SHOPIFY_WEBHOOKS === '1') {
+  // Le serveur Next charge parfois une configuration locale différente du processus Playwright.
+  // Le mode explicite impose une paire synthétique commune aux deux côtés du test.
+  process.env.SHOPIFY_API_KEY = SHOPIFY_E2E_CLIENT_ID;
+  process.env.SHOPIFY_API_SECRET = SHOPIFY_E2E_HMAC_SECRET;
+}
+
+process.env.E2E_TEST_MODE = '1';
+// La galerie primitive est une surface explicitement test-only ; les baselines doivent atteindre
+// ses composants au lieu de capturer le 404 produit par sa garde d’environnement.
+process.env.ENABLE_PRIMITIVES_DEMO = '1';
+
 const isCI = !!process.env.CI;
+const externalServer = process.env.E2E_EXTERNAL_SERVER === '1';
 
 export default defineConfig({
   testDir: 'tests',
@@ -68,16 +85,23 @@ export default defineConfig({
     { name: 'pixel-7', use: { ...devices['Pixel 7'] } },
     { name: 'iphone-14', use: { ...devices['iPhone 14'] }, timeout: 90_000 },
   ],
-  webServer: {
-    // En mode E2E_PROD_BUILD=1, on sert un VRAI build de prod (`next start`) pour
-    // reproduire les bugs PROD-ONLY (Router Cache client, cf. issue #3) que `next dev`
-    // ne montre pas. Le build doit avoir été produit AVANT (cf. workflow e2e-prod.yml).
-    // Sinon, dev classique.
-    command: process.env.E2E_PROD_BUILD === '1' ? 'pnpm start' : 'pnpm dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    timeout: 180_000,
-  },
+  webServer: externalServer
+    ? undefined
+    : {
+        // En mode E2E_PROD_BUILD=1, on sert un VRAI build de prod (`next start`) pour
+        // reproduire les bugs PROD-ONLY (Router Cache client, cf. issue #3) que `next dev`
+        // ne montre pas. Le build doit avoir été produit AVANT (cf. workflow e2e-prod.yml).
+        // Sinon, dev classique.
+        // Exécuter Next directement évite de laisser un wrapper pnpm survivre à l'arrêt
+        // du serveur sur Windows, ce qui faisait expirer Playwright après des tests réussis.
+        command:
+          process.env.E2E_PROD_BUILD === '1'
+            ? 'node node_modules/next/dist/bin/next start'
+            : 'node node_modules/next/dist/bin/next dev',
+        url: 'http://localhost:3000',
+        reuseExistingServer: !process.env.CI,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        timeout: 180_000,
+      },
 });

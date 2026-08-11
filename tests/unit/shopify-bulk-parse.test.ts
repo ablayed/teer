@@ -12,6 +12,16 @@ describe('buildBulkOrdersQuery', () => {
     const query = buildBulkOrdersQuery(null);
     expect(query).not.toContain('updated_at');
   });
+
+  it('ne demande que les PCD nécessaires dans la query bulk', () => {
+    const query = buildBulkOrdersQuery(null);
+    expect(query).not.toMatch(/numberOfOrders|amountSpent|emailMarketingConsent|\btags\b/);
+    expect(query.match(/\bcreatedAt\b/g)).toHaveLength(1);
+    expect(query).toContain('displayName');
+    expect(query).toContain('phone');
+    expect(query).toContain('defaultAddress');
+    expect(query).toContain('shippingAddress');
+  });
 });
 
 describe('parseBulkOrdersJsonl', () => {
@@ -27,7 +37,17 @@ describe('parseBulkOrdersJsonl', () => {
         displayFinancialStatus: 'PAID',
         displayFulfillmentStatus: 'UNFULFILLED',
         currentTotalPriceSet: { shopMoney: { amount: '15000', currencyCode: 'XOF' } },
-        customer: { id: 'gid://shopify/Customer/9', displayName: 'Awa', phone: null },
+        customer: {
+          id: 'gid://shopify/Customer/9',
+          displayName: 'Awa',
+          phone: null,
+          tags: ['VIP'],
+          numberOfOrders: '4',
+          amountSpent: { amount: '50000' },
+          emailMarketingConsent: { marketingState: 'SUBSCRIBED' },
+          createdAt: '2024-01-01T00:00:00Z',
+          defaultAddress: { address1: 'Rue 1', city: 'Dakar' },
+        },
         shippingAddress: { address1: 'Rue 1', city: 'Dakar' },
       }),
       JSON.stringify({
@@ -60,8 +80,15 @@ describe('parseBulkOrdersJsonl', () => {
     expect(order.id).toBe('gid://shopify/Order/1');
     expect(order.name).toBe('#1001');
     expect(order.updatedAt).toBe('2026-06-01T10:00:00Z');
+    expect(order.createdAt).toBe('2026-06-01T09:00:00Z');
     expect(order.currentTotalPriceSet.shopMoney.amount).toBe('15000');
     expect(order.customer?.displayName).toBe('Awa');
+    expect(order.customer).not.toHaveProperty('tags');
+    expect(order.customer).not.toHaveProperty('numberOfOrders');
+    expect(order.customer).not.toHaveProperty('amountSpent');
+    expect(order.customer).not.toHaveProperty('emailMarketingConsent');
+    expect(order.customer).not.toHaveProperty('createdAt');
+    expect(order.customer?.defaultAddress?.address1).toBe('Rue 1');
     expect(order.lineItems.edges).toHaveLength(2);
     expect(order.lineItems.edges[0].node.title).toBe('Sac');
     expect(order.lineItems.edges[0].node.quantity).toBe(2);

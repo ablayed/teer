@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 client_id = "1d6727179a64b9d78a8466802c16ca3a"
 name = "Teer Dev"
-application_url = "https://teer-dev.vercel.app"
-embedded = false
+application_url = "https://teer-dev.vercel.app/shopify/embedded"
+embedded = true
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes

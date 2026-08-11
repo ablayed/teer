@@ -173,8 +173,6 @@ const getCustomerReliability = defineTool({
     }
     return {
       found: true,
-      customerId: row.customer_id,
-      fullName: row.full_name,
       tier: row.tier,
       score: row.score,
       orderCount: row.order_count,
@@ -436,7 +434,6 @@ export async function runTool(
   if (!tool) {
     await logToolAudit(ctx, {
       toolName,
-      toolArgs: rawArgs,
       allowed: false,
       deniedReason: 'unknown_tool',
     });
@@ -448,7 +445,6 @@ export async function runTool(
   if (!tool.allowedRoles.includes(ctx.role)) {
     await logToolAudit(ctx, {
       toolName,
-      toolArgs: rawArgs,
       allowed: false,
       deniedReason: 'forbidden_role',
       latencyMs: Date.now() - startedAt,
@@ -460,7 +456,6 @@ export async function runTool(
   if (!parsed.success) {
     await logToolAudit(ctx, {
       toolName,
-      toolArgs: rawArgs,
       allowed: false,
       deniedReason: 'invalid_args',
       latencyMs: Date.now() - startedAt,
@@ -472,19 +467,17 @@ export async function runTool(
     const data = await tool.execute(ctx, parsed.data);
     await logToolAudit(ctx, {
       toolName,
-      toolArgs: parsed.data,
       allowed: true,
       latencyMs: Date.now() - startedAt,
     });
     return { ok: true, data };
-  } catch (error) {
-    // Appel autorisé mais en erreur d'exécution : on journalise (allowed=true)
-    // avec la cause, sans interrompre la conversation.
+  } catch {
+    // Appel autorisé mais en erreur d'exécution : seul le code contrôlé est
+    // journalisé, sans interrompre la conversation.
     await logToolAudit(ctx, {
       toolName,
-      toolArgs: parsed.data,
       allowed: true,
-      deniedReason: `execution_error: ${error instanceof Error ? error.message : 'unknown'}`,
+      deniedReason: 'execution_error',
       latencyMs: Date.now() - startedAt,
     });
     return { ok: false, error: 'execution_error' };

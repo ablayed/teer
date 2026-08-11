@@ -38,6 +38,8 @@ describe('red-team — fuite de rôle (couche B : runTool refuse un appel forcé
     expect(denied?.args.p_allowed).toBe(false);
     expect(denied?.args.p_denied_reason).toBe('forbidden_role');
     expect(denied?.args.p_tool_name).toBe('get_margin');
+    expect(denied?.args.p_tool_args).toEqual({});
+    expect(denied?.args.p_data_category).toBe('merchant_data');
   });
 
   it('un manager forçant get_net_profit échoue (forbidden_role)', async () => {
@@ -71,6 +73,7 @@ describe('red-team — surface stricte (anti-fabrication / outils figés)', () =
     const { ctx, audit } = fakeContext('agent');
     await runTool(ctx, 'get_margin', { period: '30d' });
     expect(audit.filter((c) => c.name === 'log_ia_tool_audit')).toHaveLength(1);
+    expect(audit[0]?.args.p_tool_args).toEqual({});
   });
 });
 

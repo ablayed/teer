@@ -73,10 +73,10 @@ type SyncProductsForShopInput = {
   auditAction?: 'shopify.products_synced' | 'shop_synced';
 };
 
-function logProductSyncError(prefix: string, error: unknown, payload?: unknown) {
+function logProductSyncError(prefix: string, error: unknown, _payload?: unknown) {
   Sentry.captureException(error, {
     tags: { module: 'shopify.products-sync' },
-    extra: { payload, prefix },
+    extra: { error_code: 'shopify_product_sync_failed', prefix },
   });
 }
 
