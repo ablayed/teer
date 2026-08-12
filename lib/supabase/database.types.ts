@@ -1,8 +1,6 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: '14.5';
   };
@@ -39,7 +37,6 @@ export type Database = {
           actor_user_id: string | null;
           created_at: string;
           id: string;
-          idempotency_key: string | null;
           merchant_account_id: string;
           next_state: string | null;
           payload: Json | null;
@@ -54,7 +51,6 @@ export type Database = {
           actor_user_id?: string | null;
           created_at?: string;
           id?: string;
-          idempotency_key?: string | null;
           merchant_account_id: string;
           next_state?: string | null;
           payload?: Json | null;
@@ -69,7 +65,6 @@ export type Database = {
           actor_user_id?: string | null;
           created_at?: string;
           id?: string;
-          idempotency_key?: string | null;
           merchant_account_id?: string;
           next_state?: string | null;
           payload?: Json | null;
@@ -89,181 +84,6 @@ export type Database = {
           },
         ];
       };
-      pcd_access_audit: {
-        Row: {
-          action: string;
-          actor_kind: string;
-          actor_user_id: string | null;
-          data_category: string;
-          id: string;
-          idempotency_key: string | null;
-          metadata: Json;
-          occurred_at: string;
-          outcome: string;
-          purpose: string;
-          resource_id: string | null;
-          resource_type: string;
-          service_kind: string | null;
-          shop_id: string | null;
-          surface: string;
-          tenant_id: string;
-        };
-        Insert: {
-          action: string;
-          actor_kind: string;
-          actor_user_id?: string | null;
-          data_category: string;
-          id?: string;
-          idempotency_key?: string | null;
-          metadata?: Json;
-          occurred_at?: string;
-          outcome: string;
-          purpose: string;
-          resource_id?: string | null;
-          resource_type: string;
-          service_kind?: string | null;
-          shop_id?: string | null;
-          surface: string;
-          tenant_id: string;
-        };
-        Update: {
-          action?: string;
-          actor_kind?: string;
-          actor_user_id?: string | null;
-          data_category?: string;
-          id?: string;
-          idempotency_key?: string | null;
-          metadata?: Json;
-          occurred_at?: string;
-          outcome?: string;
-          purpose?: string;
-          resource_id?: string | null;
-          resource_type?: string;
-          service_kind?: string | null;
-          shop_id?: string | null;
-          surface?: string;
-          tenant_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'pcd_access_audit_actor_user_id_fkey';
-            columns: ['actor_user_id'];
-            isOneToOne: false;
-            referencedRelation: 'users';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'pcd_access_audit_shop_id_fkey';
-            columns: ['shop_id'];
-            isOneToOne: false;
-            referencedRelation: 'shop';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'pcd_access_audit_tenant_id_fkey';
-            columns: ['tenant_id'];
-            isOneToOne: false;
-            referencedRelation: 'merchant_account';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
-      pcd_access_quota_bucket: {
-        Row: {
-          action: string;
-          actor_scope_key: string;
-          count: number;
-          created_at: string;
-          id: string;
-          shop_id: string | null;
-          tenant_id: string;
-          updated_at: string;
-          window_start: string;
-        };
-        Insert: {
-          action: string;
-          actor_scope_key: string;
-          count?: number;
-          created_at?: string;
-          id?: string;
-          shop_id?: string | null;
-          tenant_id: string;
-          updated_at?: string;
-          window_start: string;
-        };
-        Update: {
-          action?: string;
-          actor_scope_key?: string;
-          count?: number;
-          created_at?: string;
-          id?: string;
-          shop_id?: string | null;
-          tenant_id?: string;
-          updated_at?: string;
-          window_start?: string;
-        };
-        Relationships: [];
-      };
-      pcd_access_quota_policy: {
-        Row: {
-          action: string;
-          max_count: number;
-          updated_at: string;
-          window_seconds: number;
-        };
-        Insert: {
-          action: string;
-          max_count: number;
-          updated_at?: string;
-          window_seconds: number;
-        };
-        Update: {
-          action?: string;
-          max_count?: number;
-          updated_at?: string;
-          window_seconds?: number;
-        };
-        Relationships: [];
-      };
-      shopify_dsar_download_authorization: {
-        Row: {
-          actor_user_id: string;
-          artifact_id: string;
-          consumed_at: string | null;
-          created_at: string;
-          expires_at: string;
-          id: string;
-          purpose: string;
-          shop_id: string;
-          tenant_id: string;
-          token_hash: string;
-        };
-        Insert: {
-          actor_user_id: string;
-          artifact_id: string;
-          consumed_at?: string | null;
-          created_at?: string;
-          expires_at: string;
-          id?: string;
-          purpose: string;
-          shop_id: string;
-          tenant_id: string;
-          token_hash: string;
-        };
-        Update: {
-          actor_user_id?: string;
-          artifact_id?: string;
-          consumed_at?: string | null;
-          created_at?: string;
-          expires_at?: string;
-          id?: string;
-          purpose?: string;
-          shop_id?: string;
-          tenant_id?: string;
-          token_hash?: string;
-        };
-        Relationships: [];
-      };
       call_log: {
         Row: {
           agent_user_id: string;
@@ -274,6 +94,7 @@ export type Database = {
           note_fr: string | null;
           order_id: string;
           outcome: string;
+          shop_id: string;
         };
         Insert: {
           agent_user_id: string;
@@ -284,6 +105,7 @@ export type Database = {
           note_fr?: string | null;
           order_id: string;
           outcome: string;
+          shop_id?: string | null;
         };
         Update: {
           agent_user_id?: string;
@@ -294,6 +116,7 @@ export type Database = {
           note_fr?: string | null;
           order_id?: string;
           outcome?: string;
+          shop_id?: string;
         };
         Relationships: [
           {
@@ -309,6 +132,20 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'orders';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'call_log_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'call_log_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
       };
@@ -378,6 +215,7 @@ export type Database = {
           phone: string | null;
           phone_e164: string | null;
           shipping_address: Json | null;
+          shop_id: string;
           shopify_customer_gids: Json;
           shopify_customer_id: string | null;
           shopify_last_activity_at: string | null;
@@ -395,6 +233,7 @@ export type Database = {
           phone?: string | null;
           phone_e164?: string | null;
           shipping_address?: Json | null;
+          shop_id?: string | null;
           shopify_customer_gids?: Json;
           shopify_customer_id?: string | null;
           shopify_last_activity_at?: string | null;
@@ -412,6 +251,7 @@ export type Database = {
           phone?: string | null;
           phone_e164?: string | null;
           shipping_address?: Json | null;
+          shop_id?: string;
           shopify_customer_gids?: Json;
           shopify_customer_id?: string | null;
           shopify_last_activity_at?: string | null;
@@ -426,176 +266,21 @@ export type Database = {
             referencedRelation: 'merchant_account';
             referencedColumns: ['id'];
           },
-        ];
-      };
-      shopify_customer_redaction_tombstone: {
-        Row: {
-          created_at: string;
-          expires_at: string;
-          id: string;
-          merchant_account_id: string;
-          redacted_at: string;
-          shop_id: string;
-          shopify_customer_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          expires_at: string;
-          id?: string;
-          merchant_account_id: string;
-          redacted_at?: string;
-          shop_id: string;
-          shopify_customer_id: string;
-        };
-        Update: {
-          created_at?: string;
-          expires_at?: string;
-          id?: string;
-          merchant_account_id?: string;
-          redacted_at?: string;
-          shop_id?: string;
-          shopify_customer_id?: string;
-        };
-        Relationships: [
           {
-            foreignKeyName: 'shopify_customer_redaction_tombstone_merchant_account_id_fkey';
-            columns: ['merchant_account_id'];
+            foreignKeyName: 'customer_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
             isOneToOne: false;
-            referencedRelation: 'merchant_account';
-            referencedColumns: ['id'];
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
           },
           {
-            foreignKeyName: 'shopify_customer_redaction_tombstone_shop_id_fkey';
-            columns: ['shop_id'];
+            foreignKeyName: 'customer_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
             isOneToOne: false;
             referencedRelation: 'shop';
-            referencedColumns: ['id'];
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
-      };
-      shopify_dsar_artifact: {
-        Row: {
-          byte_size: number | null;
-          completed_at: string | null;
-          created_at: string;
-          expires_at: string;
-          id: string;
-          merchant_account_id: string;
-          purge_attempt_count: number;
-          purge_last_attempt_at: string | null;
-          purge_last_error_code: string | null;
-          purge_last_success_at: string | null;
-          purge_lease_until: string | null;
-          purge_next_attempt_at: string | null;
-          purged_at: string | null;
-          shop_id: string;
-          status: string;
-          storage_bucket: string;
-          storage_path: string;
-          webhook_event_id: string;
-        };
-        Insert: {
-          byte_size?: number | null;
-          completed_at?: string | null;
-          created_at?: string;
-          expires_at: string;
-          id?: string;
-          merchant_account_id: string;
-          purge_attempt_count?: number;
-          purge_last_attempt_at?: string | null;
-          purge_last_error_code?: string | null;
-          purge_last_success_at?: string | null;
-          purge_lease_until?: string | null;
-          purge_next_attempt_at?: string | null;
-          purged_at?: string | null;
-          shop_id: string;
-          status?: string;
-          storage_bucket?: string;
-          storage_path: string;
-          webhook_event_id: string;
-        };
-        Update: {
-          byte_size?: number | null;
-          completed_at?: string | null;
-          created_at?: string;
-          expires_at?: string;
-          id?: string;
-          merchant_account_id?: string;
-          purge_attempt_count?: number;
-          purge_last_attempt_at?: string | null;
-          purge_last_error_code?: string | null;
-          purge_last_success_at?: string | null;
-          purge_lease_until?: string | null;
-          purge_next_attempt_at?: string | null;
-          purged_at?: string | null;
-          shop_id?: string;
-          status?: string;
-          storage_bucket?: string;
-          storage_path?: string;
-          webhook_event_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'shopify_dsar_artifact_merchant_account_id_fkey';
-            columns: ['merchant_account_id'];
-            isOneToOne: false;
-            referencedRelation: 'merchant_account';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'shopify_dsar_artifact_shop_id_fkey';
-            columns: ['shop_id'];
-            isOneToOne: false;
-            referencedRelation: 'shop';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'shopify_dsar_artifact_webhook_event_id_fkey';
-            columns: ['webhook_event_id'];
-            isOneToOne: false;
-            referencedRelation: 'webhook_event';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
-      shopify_pcd_purge_run: {
-        Row: {
-          completed_at: string | null;
-          error_code: string | null;
-          id: string;
-          last_attempt_at: string;
-          last_success_at: string | null;
-          limit_requested: number;
-          mode: string;
-          started_at: string;
-          status: string;
-          summary: Json;
-        };
-        Insert: {
-          completed_at?: string | null;
-          error_code?: string | null;
-          id?: string;
-          last_attempt_at?: string;
-          last_success_at?: string | null;
-          limit_requested: number;
-          mode: string;
-          started_at?: string;
-          status?: string;
-          summary?: Json;
-        };
-        Update: {
-          completed_at?: string | null;
-          error_code?: string | null;
-          id?: string;
-          last_attempt_at?: string;
-          last_success_at?: string | null;
-          limit_requested?: number;
-          mode?: string;
-          started_at?: string;
-          status?: string;
-          summary?: Json;
-        };
-        Relationships: [];
       };
       delivery_address: {
         Row: {
@@ -609,6 +294,7 @@ export type Database = {
           order_id: string | null;
           quartier_commune: string;
           repere: string | null;
+          shop_id: string;
           telephone_alternatif: string | null;
           telephone_principal: string;
           updated_at: string;
@@ -625,6 +311,7 @@ export type Database = {
           order_id?: string | null;
           quartier_commune: string;
           repere?: string | null;
+          shop_id?: string | null;
           telephone_alternatif?: string | null;
           telephone_principal: string;
           updated_at?: string;
@@ -641,6 +328,7 @@ export type Database = {
           order_id?: string | null;
           quartier_commune?: string;
           repere?: string | null;
+          shop_id?: string;
           telephone_alternatif?: string | null;
           telephone_principal?: string;
           updated_at?: string;
@@ -667,6 +355,20 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'orders';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'delivery_address_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'delivery_address_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
       };
@@ -1260,6 +962,7 @@ export type Database = {
           raw_shopify_variant_id: string | null;
           raw_sku: string | null;
           raw_title: string;
+          shop_id: string;
         };
         Insert: {
           created_at?: string;
@@ -1273,6 +976,7 @@ export type Database = {
           raw_shopify_variant_id?: string | null;
           raw_sku?: string | null;
           raw_title: string;
+          shop_id?: string | null;
         };
         Update: {
           created_at?: string;
@@ -1286,6 +990,7 @@ export type Database = {
           raw_shopify_variant_id?: string | null;
           raw_sku?: string | null;
           raw_title?: string;
+          shop_id?: string;
         };
         Relationships: [
           {
@@ -1309,6 +1014,20 @@ export type Database = {
             referencedRelation: 'product';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'order_line_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'order_line_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
         ];
       };
       order_state_transition: {
@@ -1320,6 +1039,7 @@ export type Database = {
           merchant_account_id: string;
           note: string | null;
           order_id: string;
+          shop_id: string;
           to_status: string;
         };
         Insert: {
@@ -1330,6 +1050,7 @@ export type Database = {
           merchant_account_id: string;
           note?: string | null;
           order_id: string;
+          shop_id?: string | null;
           to_status: string;
         };
         Update: {
@@ -1340,6 +1061,7 @@ export type Database = {
           merchant_account_id?: string;
           note?: string | null;
           order_id?: string;
+          shop_id?: string;
           to_status?: string;
         };
         Relationships: [
@@ -1356,6 +1078,20 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'orders';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'order_state_transition_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'order_state_transition_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
       };
@@ -1388,12 +1124,12 @@ export type Database = {
           note: string | null;
           order_number: string | null;
           order_state: string | null;
-          pcd_finalized_at: string | null;
           payment_channel_at_delivery: string | null;
+          pcd_finalized_at: string | null;
           returned_at: string | null;
           scheduled_for: string | null;
           shipping_address: Json | null;
-          shop_id: string | null;
+          shop_id: string;
           shopify_cancelled_at: string | null;
           shopify_financial_status: string | null;
           shopify_fulfillment_status: string | null;
@@ -1434,8 +1170,8 @@ export type Database = {
           note?: string | null;
           order_number?: string | null;
           order_state?: string | null;
-          pcd_finalized_at?: string | null;
           payment_channel_at_delivery?: string | null;
+          pcd_finalized_at?: string | null;
           returned_at?: string | null;
           scheduled_for?: string | null;
           shipping_address?: Json | null;
@@ -1480,12 +1216,12 @@ export type Database = {
           note?: string | null;
           order_number?: string | null;
           order_state?: string | null;
-          pcd_finalized_at?: string | null;
           payment_channel_at_delivery?: string | null;
+          pcd_finalized_at?: string | null;
           returned_at?: string | null;
           scheduled_for?: string | null;
           shipping_address?: Json | null;
-          shop_id?: string | null;
+          shop_id?: string;
           shopify_cancelled_at?: string | null;
           shopify_financial_status?: string | null;
           shopify_fulfillment_status?: string | null;
@@ -1517,10 +1253,196 @@ export type Database = {
             foreignKeyName: 'orders_shop_id_fkey';
             columns: ['shop_id'];
             isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'orders_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
             referencedRelation: 'shop';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'orders_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'orders_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
         ];
+      };
+      pcd_access_audit: {
+        Row: {
+          action: string;
+          actor_kind: string;
+          actor_user_id: string | null;
+          data_category: string;
+          id: string;
+          idempotency_key: string | null;
+          metadata: Json;
+          occurred_at: string;
+          outcome: string;
+          purpose: string;
+          resource_id: string | null;
+          resource_type: string;
+          service_kind: string | null;
+          shop_id: string | null;
+          surface: string;
+          tenant_id: string;
+        };
+        Insert: {
+          action: string;
+          actor_kind: string;
+          actor_user_id?: string | null;
+          data_category: string;
+          id?: string;
+          idempotency_key?: string | null;
+          metadata?: Json;
+          occurred_at?: string;
+          outcome: string;
+          purpose: string;
+          resource_id?: string | null;
+          resource_type: string;
+          service_kind?: string | null;
+          shop_id?: string | null;
+          surface: string;
+          tenant_id: string;
+        };
+        Update: {
+          action?: string;
+          actor_kind?: string;
+          actor_user_id?: string | null;
+          data_category?: string;
+          id?: string;
+          idempotency_key?: string | null;
+          metadata?: Json;
+          occurred_at?: string;
+          outcome?: string;
+          purpose?: string;
+          resource_id?: string | null;
+          resource_type?: string;
+          service_kind?: string | null;
+          shop_id?: string | null;
+          surface?: string;
+          tenant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'pcd_access_audit_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'pcd_access_audit_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'pcd_access_audit_tenant_id_fkey';
+            columns: ['tenant_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      pcd_access_quota_bucket: {
+        Row: {
+          action: string;
+          actor_scope_key: string;
+          count: number;
+          created_at: string;
+          id: string;
+          shop_id: string | null;
+          tenant_id: string;
+          updated_at: string;
+          window_start: string;
+        };
+        Insert: {
+          action: string;
+          actor_scope_key: string;
+          count?: number;
+          created_at?: string;
+          id?: string;
+          shop_id?: string | null;
+          tenant_id: string;
+          updated_at?: string;
+          window_start: string;
+        };
+        Update: {
+          action?: string;
+          actor_scope_key?: string;
+          count?: number;
+          created_at?: string;
+          id?: string;
+          shop_id?: string | null;
+          tenant_id?: string;
+          updated_at?: string;
+          window_start?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'pcd_access_quota_bucket_action_fkey';
+            columns: ['action'];
+            isOneToOne: false;
+            referencedRelation: 'pcd_access_quota_policy';
+            referencedColumns: ['action'];
+          },
+          {
+            foreignKeyName: 'pcd_access_quota_bucket_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'pcd_access_quota_bucket_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'pcd_access_quota_bucket_tenant_id_fkey';
+            columns: ['tenant_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      pcd_access_quota_policy: {
+        Row: {
+          action: string;
+          max_count: number;
+          updated_at: string;
+          window_seconds: number;
+        };
+        Insert: {
+          action: string;
+          max_count: number;
+          updated_at?: string;
+          window_seconds: number;
+        };
+        Update: {
+          action?: string;
+          max_count?: number;
+          updated_at?: string;
+          window_seconds?: number;
+        };
+        Relationships: [];
       };
       product: {
         Row: {
@@ -1529,6 +1451,7 @@ export type Database = {
           is_active: boolean;
           is_bundle: boolean;
           merchant_account_id: string;
+          shop_id: string;
           shopify_product_id: string | null;
           shopify_variant_id: string | null;
           sku: string | null;
@@ -1542,6 +1465,7 @@ export type Database = {
           is_active?: boolean;
           is_bundle?: boolean;
           merchant_account_id: string;
+          shop_id?: string | null;
           shopify_product_id?: string | null;
           shopify_variant_id?: string | null;
           sku?: string | null;
@@ -1555,6 +1479,7 @@ export type Database = {
           is_active?: boolean;
           is_bundle?: boolean;
           merchant_account_id?: string;
+          shop_id?: string;
           shopify_product_id?: string | null;
           shopify_variant_id?: string | null;
           sku?: string | null;
@@ -1570,6 +1495,20 @@ export type Database = {
             referencedRelation: 'merchant_account';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'product_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'product_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
         ];
       };
       product_bundle_component: {
@@ -1580,6 +1519,7 @@ export type Database = {
           id: string;
           merchant_account_id: string;
           quantity: number;
+          shop_id: string;
           updated_at: string;
         };
         Insert: {
@@ -1589,6 +1529,7 @@ export type Database = {
           id?: string;
           merchant_account_id: string;
           quantity: number;
+          shop_id?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -1598,6 +1539,7 @@ export type Database = {
           id?: string;
           merchant_account_id?: string;
           quantity?: number;
+          shop_id?: string;
           updated_at?: string;
         };
         Relationships: [
@@ -1622,6 +1564,20 @@ export type Database = {
             referencedRelation: 'merchant_account';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'product_bundle_component_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'product_bundle_component_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
         ];
       };
       product_stock: {
@@ -1631,6 +1587,7 @@ export type Database = {
           product_id: string;
           qty_on_hand: number;
           qty_reserved: number;
+          shop_id: string;
           unit_cost: number;
           updated_at: string;
         };
@@ -1640,6 +1597,7 @@ export type Database = {
           product_id: string;
           qty_on_hand?: number;
           qty_reserved?: number;
+          shop_id?: string | null;
           unit_cost?: number;
           updated_at?: string;
         };
@@ -1649,6 +1607,7 @@ export type Database = {
           product_id?: string;
           qty_on_hand?: number;
           qty_reserved?: number;
+          shop_id?: string;
           unit_cost?: number;
           updated_at?: string;
         };
@@ -1666,6 +1625,20 @@ export type Database = {
             isOneToOne: true;
             referencedRelation: 'product';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_stock_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'product_stock_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
       };
@@ -1685,6 +1658,7 @@ export type Database = {
           received_at: string | null;
           reference: string | null;
           shipping_mode: string;
+          shop_id: string;
           status: string;
           supplier_name: string;
           supplier_prep_days: number;
@@ -1707,6 +1681,7 @@ export type Database = {
           received_at?: string | null;
           reference?: string | null;
           shipping_mode?: string;
+          shop_id?: string | null;
           status?: string;
           supplier_name: string;
           supplier_prep_days?: number;
@@ -1729,6 +1704,7 @@ export type Database = {
           received_at?: string | null;
           reference?: string | null;
           shipping_mode?: string;
+          shop_id?: string;
           status?: string;
           supplier_name?: string;
           supplier_prep_days?: number;
@@ -1743,6 +1719,20 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'merchant_account';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
       };
@@ -1759,6 +1749,7 @@ export type Database = {
           purchase_lot_id: string;
           purchase_price_total: number | null;
           qty: number;
+          shop_id: string;
           unit_purchase_price: number | null;
         };
         Insert: {
@@ -1773,6 +1764,7 @@ export type Database = {
           purchase_lot_id: string;
           purchase_price_total?: number | null;
           qty: number;
+          shop_id?: string | null;
           unit_purchase_price?: number | null;
         };
         Update: {
@@ -1787,6 +1779,7 @@ export type Database = {
           purchase_lot_id?: string;
           purchase_price_total?: number | null;
           qty?: number;
+          shop_id?: string;
           unit_purchase_price?: number | null;
         };
         Relationships: [
@@ -1810,6 +1803,20 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'purchase_lot';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
       };
@@ -1925,11 +1932,13 @@ export type Database = {
       };
       shop: {
         Row: {
-          access_token_encrypted: string;
+          access_token_encrypted: string | null;
           access_token_expires_at: string | null;
           api_version: string;
+          display_name: string;
           id: string;
           installed_at: string;
+          is_default: boolean;
           last_reconciled_at: string | null;
           merchant_account_id: string;
           refresh_token_encrypted: string | null;
@@ -1939,33 +1948,39 @@ export type Database = {
           shop_gid: string | null;
           shopify_client_id: string | null;
           status: string;
+          store_kind: string;
           uninstalled_at: string | null;
           updated_at: string;
         };
         Insert: {
-          access_token_encrypted: string;
+          access_token_encrypted?: string | null;
           access_token_expires_at?: string | null;
           api_version?: string;
+          display_name?: string;
           id?: string;
           installed_at?: string;
+          is_default?: boolean;
           last_reconciled_at?: string | null;
           merchant_account_id: string;
           refresh_token_encrypted?: string | null;
           refresh_token_expires_at?: string | null;
-          scopes: string;
+          scopes?: string;
           shop_domain: string;
           shop_gid?: string | null;
           shopify_client_id?: string | null;
           status?: string;
+          store_kind?: string;
           uninstalled_at?: string | null;
           updated_at?: string;
         };
         Update: {
-          access_token_encrypted?: string;
+          access_token_encrypted?: string | null;
           access_token_expires_at?: string | null;
           api_version?: string;
+          display_name?: string;
           id?: string;
           installed_at?: string;
+          is_default?: boolean;
           last_reconciled_at?: string | null;
           merchant_account_id?: string;
           refresh_token_encrypted?: string | null;
@@ -1975,6 +1990,7 @@ export type Database = {
           shop_gid?: string | null;
           shopify_client_id?: string | null;
           status?: string;
+          store_kind?: string;
           uninstalled_at?: string | null;
           updated_at?: string;
         };
@@ -1987,6 +2003,320 @@ export type Database = {
             referencedColumns: ['id'];
           },
         ];
+      };
+      shop_member: {
+        Row: {
+          created_at: string;
+          id: string;
+          merchant_account_id: string;
+          role: string;
+          shop_id: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          merchant_account_id: string;
+          role: string;
+          shop_id?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          role?: string;
+          shop_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shop_member_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shop_member_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'shop_member_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shop_member_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'shop_member_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
+      shopify_customer_redaction_tombstone: {
+        Row: {
+          created_at: string;
+          expires_at: string;
+          id: string;
+          merchant_account_id: string;
+          redacted_at: string;
+          shop_id: string;
+          shopify_customer_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          merchant_account_id: string;
+          redacted_at?: string;
+          shop_id?: string | null;
+          shopify_customer_id: string;
+        };
+        Update: {
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          redacted_at?: string;
+          shop_id?: string;
+          shopify_customer_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shopify_customer_redaction_tombstone_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_customer_redaction_tombstone_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'shopify_customer_redaction_tombstone_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      shopify_dsar_artifact: {
+        Row: {
+          byte_size: number | null;
+          completed_at: string | null;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          merchant_account_id: string;
+          purge_attempt_count: number;
+          purge_last_attempt_at: string | null;
+          purge_last_error_code: string | null;
+          purge_last_success_at: string | null;
+          purge_lease_until: string | null;
+          purge_next_attempt_at: string | null;
+          purged_at: string | null;
+          shop_id: string;
+          status: string;
+          storage_bucket: string;
+          storage_path: string;
+          webhook_event_id: string;
+        };
+        Insert: {
+          byte_size?: number | null;
+          completed_at?: string | null;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          merchant_account_id: string;
+          purge_attempt_count?: number;
+          purge_last_attempt_at?: string | null;
+          purge_last_error_code?: string | null;
+          purge_last_success_at?: string | null;
+          purge_lease_until?: string | null;
+          purge_next_attempt_at?: string | null;
+          purged_at?: string | null;
+          shop_id?: string | null;
+          status?: string;
+          storage_bucket?: string;
+          storage_path: string;
+          webhook_event_id: string;
+        };
+        Update: {
+          byte_size?: number | null;
+          completed_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          merchant_account_id?: string;
+          purge_attempt_count?: number;
+          purge_last_attempt_at?: string | null;
+          purge_last_error_code?: string | null;
+          purge_last_success_at?: string | null;
+          purge_lease_until?: string | null;
+          purge_next_attempt_at?: string | null;
+          purged_at?: string | null;
+          shop_id?: string;
+          status?: string;
+          storage_bucket?: string;
+          storage_path?: string;
+          webhook_event_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shopify_dsar_artifact_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_artifact_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_artifact_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_artifact_webhook_event_id_fkey';
+            columns: ['webhook_event_id'];
+            isOneToOne: true;
+            referencedRelation: 'webhook_event';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      shopify_dsar_download_authorization: {
+        Row: {
+          actor_user_id: string;
+          artifact_id: string;
+          consumed_at: string | null;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          purpose: string;
+          shop_id: string;
+          tenant_id: string;
+          token_hash: string;
+        };
+        Insert: {
+          actor_user_id: string;
+          artifact_id: string;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          purpose: string;
+          shop_id?: string | null;
+          tenant_id: string;
+          token_hash: string;
+        };
+        Update: {
+          actor_user_id?: string;
+          artifact_id?: string;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          purpose?: string;
+          shop_id?: string;
+          tenant_id?: string;
+          token_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shopify_dsar_download_authorization_artifact_id_fkey';
+            columns: ['artifact_id'];
+            isOneToOne: false;
+            referencedRelation: 'shopify_dsar_artifact';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_download_authorization_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_download_authorization_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'shopify_dsar_download_authorization_tenant_id_fkey';
+            columns: ['tenant_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      shopify_pcd_purge_run: {
+        Row: {
+          completed_at: string | null;
+          error_code: string | null;
+          id: string;
+          last_attempt_at: string;
+          last_success_at: string | null;
+          limit_requested: number;
+          mode: string;
+          started_at: string;
+          status: string;
+          summary: Json;
+        };
+        Insert: {
+          completed_at?: string | null;
+          error_code?: string | null;
+          id?: string;
+          last_attempt_at?: string;
+          last_success_at?: string | null;
+          limit_requested: number;
+          mode: string;
+          started_at?: string;
+          status?: string;
+          summary?: Json;
+        };
+        Update: {
+          completed_at?: string | null;
+          error_code?: string | null;
+          id?: string;
+          last_attempt_at?: string;
+          last_success_at?: string | null;
+          limit_requested?: number;
+          mode?: string;
+          started_at?: string;
+          status?: string;
+          summary?: Json;
+        };
+        Relationships: [];
       };
       stock_movement: {
         Row: {
@@ -2001,6 +2331,7 @@ export type Database = {
           product_id: string;
           qty: number;
           reason: string | null;
+          shop_id: string;
           transition_id: string | null;
           unit_cost: number | null;
         };
@@ -2016,6 +2347,7 @@ export type Database = {
           product_id: string;
           qty: number;
           reason?: string | null;
+          shop_id?: string | null;
           transition_id?: string | null;
           unit_cost?: number | null;
         };
@@ -2031,6 +2363,7 @@ export type Database = {
           product_id?: string;
           qty?: number;
           reason?: string | null;
+          shop_id?: string;
           transition_id?: string | null;
           unit_cost?: number | null;
         };
@@ -2062,6 +2395,20 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'product';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movement_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'stock_movement_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
           {
             foreignKeyName: 'stock_movement_transition_id_fkey';
@@ -2238,6 +2585,13 @@ export type Database = {
             foreignKeyName: 'webhook_event_shop_id_fkey';
             columns: ['shop_id'];
             isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['shop_id'];
+          },
+          {
+            foreignKeyName: 'webhook_event_shop_id_fkey';
+            columns: ['shop_id'];
+            isOneToOne: false;
             referencedRelation: 'shop';
             referencedColumns: ['id'];
           },
@@ -2245,7 +2599,44 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      organization_consolidated_operations: {
+        Row: {
+          customer_count: number | null;
+          delivered_order_count: number | null;
+          display_name: string | null;
+          merchant_account_id: string | null;
+          order_count: number | null;
+          product_count: number | null;
+          shop_id: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shop_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      organization_driver_cash: {
+        Row: {
+          driver_id: string | null;
+          driver_name: string | null;
+          merchant_account_id: string | null;
+          outstanding_minor: number | null;
+          outstanding_orders: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'orders_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Functions: {
       accept_invitation: { Args: { p_token: string }; Returns: Json };
@@ -2264,7 +2655,6 @@ export type Database = {
           outstanding_minor: number;
         }[];
       };
-      current_member_role: { Args: { p_account: string }; Returns: string };
       claim_shopify_dsar_artifacts: {
         Args: { p_limit: number; p_now?: string };
         Returns: {
@@ -2279,32 +2669,44 @@ export type Database = {
         Returns: {
           attempt_count: number;
           id: string;
-          merchant_account_id: string | null;
-          payload: Json | null;
-          shop_domain: string | null;
-          shop_id: string | null;
+          merchant_account_id: string;
+          payload: Json;
+          shop_domain: string;
+          shop_id: string;
           topic: string;
         }[];
       };
-      execute_shopify_pcd_retention: {
-        Args: { p_limit: number; p_now?: string };
-        Returns: Json;
-      };
-      finalize_shopify_dsar_artifact_purge: {
-        Args: { p_error_code?: string; p_id: string; p_now?: string; p_success: boolean };
-        Returns: boolean;
-      };
-      preview_shopify_pcd_retention: {
-        Args: { p_now?: string };
+      consume_pcd_access_quota: {
+        Args: {
+          p_action: string;
+          p_actor_kind: string;
+          p_service_kind?: string | null;
+          p_shop_id?: string | null;
+          p_tenant_id: string;
+        };
         Returns: {
-          blocked_count: number;
-          candidate_count: number;
-          category: string;
-          earliest_expiry: string | null;
-          latest_expiry: string | null;
-          shop_count: number;
+          allowed: boolean;
+          current_count: number;
+          max_count: number;
+          window_start: string;
         }[];
       };
+      consume_shopify_dsar_download_authorization: {
+        Args: {
+          p_artifact_id: string;
+          p_download_token: string;
+          p_shop_id: string;
+          p_tenant_id: string;
+        };
+        Returns: {
+          authorization_id: string;
+          byte_size: number;
+          storage_bucket: string;
+          storage_path: string;
+        }[];
+      };
+      current_member_role: { Args: { p_account: string }; Returns: string };
+      current_shop_role: { Args: { p_shop_id: string }; Returns: string };
       derive_legacy_cod_status: {
         Args: {
           p_call_state: string;
@@ -2314,24 +2716,18 @@ export type Database = {
         };
         Returns: string;
       };
-      finish_shopify_webhook_event: {
+      execute_shopify_pcd_retention: {
+        Args: { p_limit: number; p_now?: string };
+        Returns: Json;
+      };
+      finalize_shopify_dsar_artifact_purge: {
         Args: {
           p_error_code?: string;
-          p_event_id: string;
-          p_outcome: string;
-          p_proof?: Json;
+          p_id: string;
+          p_now?: string;
+          p_success: boolean;
         };
         Returns: boolean;
-      };
-      redact_shopify_customer_copies: {
-        Args: {
-          p_merchant_account_id: string;
-          p_shop_id: string;
-          p_shopify_customer_id: string;
-          p_topic: string;
-          p_webhook_event_id?: string;
-        };
-        Returns: Json;
       };
       finance_kpis: {
         Args: {
@@ -2348,6 +2744,15 @@ export type Database = {
           encaisse: number;
           taux_refus: number;
         }[];
+      };
+      finish_shopify_webhook_event: {
+        Args: {
+          p_error_code?: string;
+          p_event_id: string;
+          p_outcome: string;
+          p_proof?: Json;
+        };
+        Returns: boolean;
       };
       get_customer_reliability: {
         Args: { p_customer_id: string; p_merchant_id: string };
@@ -2498,6 +2903,19 @@ export type Database = {
         };
         Returns: Json;
       };
+      get_my_store: {
+        Args: { p_shop_id: string };
+        Returns: {
+          display_name: string;
+          id: string;
+          is_default: boolean;
+          merchant_account_id: string;
+          role: string;
+          shop_domain: string;
+          status: string;
+          store_kind: string;
+        }[];
+      };
       get_order_view_counts: {
         Args: {
           p_from: string;
@@ -2561,6 +2979,37 @@ export type Database = {
           title: string;
         }[];
       };
+      get_store_customer_reliability: {
+        Args: {
+          p_customer_id: string;
+          p_merchant_id: string;
+          p_shop_id: string;
+        };
+        Returns: {
+          attempts_weighted: number;
+          cancelled_count: number;
+          confirm_score: number;
+          confirmed_weighted: number;
+          customer_id: string;
+          decided: number;
+          delivered_count: number;
+          delivered_lifetime: number;
+          delivered_weighted: number;
+          delivery_score: number;
+          flag_cancels_often: boolean;
+          flag_confirms_then_refuses: boolean;
+          flag_hard_to_reach: boolean;
+          full_name: string;
+          is_provisional: boolean;
+          no_response_weighted: number;
+          order_count: number;
+          phone: string;
+          refused_count: number;
+          refused_weighted: number;
+          score: number;
+          tier: string;
+        }[];
+      };
       ia_count_recent_tool_calls: {
         Args: { p_merchant_account_id: string; p_since: string };
         Returns: number;
@@ -2585,6 +3034,14 @@ export type Database = {
       is_member_of: {
         Args: { p_merchant_account_id: string };
         Returns: boolean;
+      };
+      is_shop_member_of: { Args: { p_shop_id: string }; Returns: boolean };
+      issue_shopify_dsar_download_authorization: {
+        Args: { p_artifact_id: string; p_shop_id: string; p_tenant_id: string };
+        Returns: {
+          download_token: string;
+          expires_at: string;
+        }[];
       };
       list_customer_reliability: {
         Args: {
@@ -2627,6 +3084,19 @@ export type Database = {
           merchant_account_id: string;
           org_name: string;
           role: string;
+        }[];
+      };
+      list_my_stores: {
+        Args: never;
+        Returns: {
+          display_name: string;
+          id: string;
+          is_default: boolean;
+          merchant_account_id: string;
+          role: string;
+          shop_domain: string;
+          status: string;
+          store_kind: string;
         }[];
       };
       list_orders_keyset: {
@@ -2710,6 +3180,40 @@ export type Database = {
           tier: string;
         }[];
       };
+      list_store_customer_reliability: {
+        Args: {
+          p_limit?: number;
+          p_merchant_id: string;
+          p_offset?: number;
+          p_search?: string;
+          p_shop_id: string;
+          p_sort_by_risk?: boolean;
+        };
+        Returns: {
+          attempts_weighted: number;
+          cancelled_count: number;
+          confirm_score: number;
+          confirmed_weighted: number;
+          customer_id: string;
+          decided: number;
+          delivered_count: number;
+          delivered_lifetime: number;
+          delivered_weighted: number;
+          delivery_score: number;
+          flag_cancels_often: boolean;
+          flag_confirms_then_refuses: boolean;
+          flag_hard_to_reach: boolean;
+          full_name: string;
+          is_provisional: boolean;
+          no_response_weighted: number;
+          order_count: number;
+          phone: string;
+          refused_count: number;
+          refused_weighted: number;
+          score: number;
+          tier: string;
+        }[];
+      };
       lock_order_cart_replaceable: {
         Args: { p_order_id: string };
         Returns: {
@@ -2741,10 +3245,11 @@ export type Database = {
           order_number: string | null;
           order_state: string | null;
           payment_channel_at_delivery: string | null;
+          pcd_finalized_at: string | null;
           returned_at: string | null;
           scheduled_for: string | null;
           shipping_address: Json | null;
-          shop_id: string | null;
+          shop_id: string;
           shopify_cancelled_at: string | null;
           shopify_financial_status: string | null;
           shopify_fulfillment_status: string | null;
@@ -2796,47 +3301,6 @@ export type Database = {
         };
         Returns: string;
       };
-      consume_pcd_access_quota: {
-        Args: {
-          p_action: string;
-          p_actor_kind: string;
-          p_service_kind?: string | null;
-          p_shop_id?: string | null;
-          p_tenant_id: string;
-        };
-        Returns: {
-          allowed: boolean;
-          current_count: number;
-          max_count: number;
-          window_start: string;
-        }[];
-      };
-      issue_shopify_dsar_download_authorization: {
-        Args: { p_artifact_id: string; p_shop_id: string; p_tenant_id: string };
-        Returns: { download_token: string; expires_at: string }[];
-      };
-      consume_shopify_dsar_download_authorization: {
-        Args: {
-          p_artifact_id: string;
-          p_download_token: string;
-          p_shop_id: string;
-          p_tenant_id: string;
-        };
-        Returns: {
-          authorization_id: string;
-          byte_size: number;
-          storage_bucket: string;
-          storage_path: string;
-        }[];
-      };
-      purge_pcd_access_controls: {
-        Args: { p_batch_size?: number; p_before: string };
-        Returns: { authorization_rows: number; quota_rows: number }[];
-      };
-      purge_pcd_access_audit: {
-        Args: { p_batch_size?: number; p_before: string };
-        Returns: number;
-      };
       order_items_search_text: { Args: { p_items: Json }; Returns: string };
       orders_view_counts: {
         Args: { p_merchant_id: string; p_search?: string };
@@ -2866,6 +3330,28 @@ export type Database = {
           p_unit_cost?: number;
         };
         Returns: string;
+      };
+      preview_shopify_pcd_retention: {
+        Args: { p_now?: string };
+        Returns: {
+          blocked_count: number;
+          candidate_count: number;
+          category: string;
+          earliest_expiry: string;
+          latest_expiry: string;
+          shop_count: number;
+        }[];
+      };
+      purge_pcd_access_audit: {
+        Args: { p_batch_size?: number; p_before: string };
+        Returns: number;
+      };
+      purge_pcd_access_controls: {
+        Args: { p_batch_size?: number; p_before: string };
+        Returns: {
+          authorization_rows: number;
+          quota_rows: number;
+        }[];
       };
       reassign_order_driver: {
         Args: {
@@ -2918,6 +3404,16 @@ export type Database = {
         };
         Returns: Json;
       };
+      redact_shopify_customer_copies: {
+        Args: {
+          p_merchant_account_id: string;
+          p_shop_id: string;
+          p_shopify_customer_id: string;
+          p_topic: string;
+          p_webhook_event_id?: string;
+        };
+        Returns: Json;
+      };
       reduce_order_cart_post_assignment: {
         Args: { p_lines: Json; p_order_id: string };
         Returns: undefined;
@@ -2945,6 +3441,17 @@ export type Database = {
         Args: { p_note: string; p_order_id: string };
         Returns: string;
       };
+      shopify_pcd_retention_candidates: {
+        Args: { p_now?: string };
+        Returns: {
+          blocked_reason: string;
+          category: string;
+          expires_at: string;
+          merchant_account_id: string;
+          shop_id: string;
+          target_id: string;
+        }[];
+      };
       sn_phone_e164: { Args: { p_value: string }; Returns: string };
       transition_order: {
         Args: {
@@ -2970,6 +3477,10 @@ export type Database = {
           p_scheduled_for?: string;
         };
         Returns: string;
+      };
+      validate_pcd_access_audit_metadata: {
+        Args: { p_metadata: Json };
+        Returns: boolean;
       };
       write_off_shortfall: {
         Args: {
