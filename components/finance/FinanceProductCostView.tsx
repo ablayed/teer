@@ -13,6 +13,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 type Props = {
   from: string;
   report: FinanceProductCostReport;
+  storeId: string;
   scopeNote?: string;
   to: string;
 };
@@ -283,7 +284,7 @@ function ProductCard({
   );
 }
 
-export function FinanceProductCostView({ from, report, scopeNote, to }: Props) {
+export function FinanceProductCostView({ from, report, scopeNote, storeId, to }: Props) {
   const t = useTranslations('finance.products');
   const [rows, setRows] = useState<FinanceProductCostRow[]>(report.rows);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -341,13 +342,13 @@ export function FinanceProductCostView({ from, report, scopeNote, to }: Props) {
           <div className="flex flex-wrap gap-2">
             <Link
               className="min-h-11 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-canvas hover:text-text"
-              href="/finances?tab=global#depenses"
+              href={`/s/${storeId}/finances?tab=global#depenses`}
             >
               {t('editExpenses')}
             </Link>
             <Link
               className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-text hover:bg-accent-hover"
-              href="/commandes"
+              href={`/s/${storeId}/commandes`}
             >
               {t('editOrders')}
             </Link>

@@ -76,7 +76,11 @@ export function ProductsPageLoader({
 
   return (
     <div className="space-y-8">
-      <ProductSearchBar initialQuery={searchQuery} tab={view === 'stock' ? 'stock' : undefined} />
+      <ProductSearchBar
+        initialQuery={searchQuery}
+        storeId={activeStoreId}
+        tab={view === 'stock' ? 'stock' : undefined}
+      />
 
       {view === 'catalogue' ? (
         <section className="space-y-4">

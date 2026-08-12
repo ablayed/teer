@@ -30,7 +30,7 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
     return (
       <main className="space-y-8" id="main">
         <h1 className="font-display text-4xl md:text-5xl">{nav('produits')}</h1>
-        <TabBar isOwner={isOwner} tab="achats" />
+        <TabBar isOwner={isOwner} storeId={storeId} tab="achats" />
         {!isOwner ? (
           <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
             Accès réservé au propriétaire.
@@ -56,7 +56,7 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
   return (
     <main className="space-y-8" id="main">
       <h1 className="font-display text-4xl md:text-5xl">{nav('produits')}</h1>
-      <TabBar isOwner={isOwner} tab={tab} />
+      <TabBar isOwner={isOwner} storeId={storeId} tab={tab} />
       {!productsResult.ok ? (
         <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
           {productsResult.errorCode === 'unauthenticated'
@@ -81,7 +81,7 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
   );
 }
 
-function TabBar({ isOwner, tab }: { isOwner: boolean; tab: Tab }) {
+function TabBar({ isOwner, storeId, tab }: { isOwner: boolean; storeId: string; tab: Tab }) {
   const tabClass = (active: boolean) =>
     `px-4 py-2 text-sm font-medium ${
       active ? 'border-b-2 border-accent text-text' : 'text-muted hover:text-text'
@@ -92,14 +92,14 @@ function TabBar({ isOwner, tab }: { isOwner: boolean; tab: Tab }) {
       <Link
         aria-current={tab === 'catalogue' ? 'page' : undefined}
         className={tabClass(tab === 'catalogue')}
-        href="/produits"
+        href={`/s/${storeId}/produits`}
       >
         Catalogue
       </Link>
       <Link
         aria-current={tab === 'stock' ? 'page' : undefined}
         className={tabClass(tab === 'stock')}
-        href="/produits?tab=stock"
+        href={`/s/${storeId}/produits?tab=stock`}
       >
         Stock
       </Link>
@@ -107,7 +107,7 @@ function TabBar({ isOwner, tab }: { isOwner: boolean; tab: Tab }) {
         <Link
           aria-current={tab === 'achats' ? 'page' : undefined}
           className={tabClass(tab === 'achats')}
-          href="/produits?tab=achats"
+          href={`/s/${storeId}/produits?tab=achats`}
         >
           Achats fournisseur
         </Link>

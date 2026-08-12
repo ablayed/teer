@@ -40,6 +40,7 @@ type DriversWorkspaceProps = {
   periodKey: string;
   selected: DriverRow | null;
   selectedId: string | null;
+  storeId: string;
 };
 
 function statCard(label: string, value: string, accent?: boolean) {
@@ -61,6 +62,7 @@ export function DriversWorkspace({
   periodKey,
   selected,
   selectedId,
+  storeId,
 }: DriversWorkspaceProps) {
   const t = useTranslations('livreurs.stock');
   const [pendingDriverId, setPendingDriverId] = useState<string | null>(null);
@@ -263,7 +265,7 @@ export function DriversWorkspace({
                             <td className="px-4 py-3">
                               <Link
                                 className="text-accent hover:underline"
-                                href={`/commandes/${order.id}`}
+                                href={`/s/${storeId}/commandes/${order.id}`}
                               >
                                 {order.order_number ?? order.id.slice(0, 8)}
                               </Link>
@@ -280,7 +282,7 @@ export function DriversWorkspace({
                   <div className="overflow-hidden rounded-lg border border-border bg-surface md:hidden">
                     {detail.orders.map((order) => (
                       <ResourceRow
-                        href={`/commandes/${order.id}`}
+                        href={`/s/${storeId}/commandes/${order.id}`}
                         key={order.id}
                         meta={order.cod_status}
                         primaryAction={

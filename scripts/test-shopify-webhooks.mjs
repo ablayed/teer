@@ -7,7 +7,7 @@ const nodeCommand = process.execPath;
 const playwrightCli = 'node_modules/@playwright/test/cli.js';
 const hmacSecret = createHash('sha256').update('teer-s2-shopify-webhook-harness').digest('hex');
 
-function loadEnvFile(path) {
+function loadEnvFile(path, override = false) {
   if (!existsSync(path)) return;
   for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -22,12 +22,14 @@ function loadEnvFile(path) {
         : rawValue.startsWith("'") && rawValue.endsWith("'")
           ? rawValue.slice(1, -1)
           : rawValue;
-    if (!(key in process.env)) process.env[key] = value;
+    if (override || !(key in process.env)) process.env[key] = value;
   }
 }
 
-loadEnvFile('.env.test.local');
-loadEnvFile('.env.test');
+// This harness creates and removes fixture data. Force the isolated test
+// Supabase target even when the shell inherited cloud values from `.env.local`.
+loadEnvFile('.env.test', true);
+loadEnvFile('.env.test.local', true);
 
 const environment = {
   ...process.env,

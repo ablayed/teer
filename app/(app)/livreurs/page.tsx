@@ -17,9 +17,11 @@ import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LockKeyhole } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 
 type LivreursPageProps = {
   searchParams: Promise<{ driver?: string; from?: string; period?: string; to?: string }>;
@@ -53,6 +55,10 @@ async function getCurrentMember() {
 export default async function LivreursPage({ searchParams }: LivreursPageProps) {
   const nav = await getTranslations('nav');
   const params = await searchParams;
+  const storeId = await getRequestStoreId();
+  if (!storeId) {
+    redirect('/s');
+  }
   const { merchantAccountId, role, supabase } = await getCurrentMember();
 
   if (!merchantAccountId || (role !== 'owner' && role !== 'manager')) {
@@ -175,6 +181,7 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
         periodKey={`${params.period ?? ''}|${params.from ?? ''}|${params.to ?? ''}`}
         selected={selected}
         selectedId={selectedId}
+        storeId={storeId}
       />
 
       <section className="space-y-3">

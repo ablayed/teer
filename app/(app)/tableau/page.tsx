@@ -688,7 +688,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
         <ShopFilterPersistence storageKey="teer.tableau.shop" />
       </Suspense>
       <Suspense fallback={null}>
-        <TableauPeriodPersistence />
+        <TableauPeriodPersistence storeId={requestStoreId} />
       </Suspense>
       <DashboardMotion>
         <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">

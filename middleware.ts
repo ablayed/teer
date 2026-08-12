@@ -21,9 +21,14 @@ export function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   const workspaceMatch = request.nextUrl.pathname.match(/^\/s\/([^/]+)(\/.*)?$/);
   if (workspaceMatch) {
+    requestHeaders.set('x-teer-workspace-entry', '0');
     requestHeaders.set('x-teer-store-id', workspaceMatch[1]);
   } else if (request.nextUrl.pathname === '/s') {
+    requestHeaders.delete('x-teer-store-id');
     requestHeaders.set('x-teer-workspace-entry', '1');
+  } else {
+    requestHeaders.delete('x-teer-store-id');
+    requestHeaders.delete('x-teer-workspace-entry');
   }
 
   let rewriteUrl: URL | null = null;

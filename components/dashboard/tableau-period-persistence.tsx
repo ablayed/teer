@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 
 const STORAGE_KEY = 'teer.tableau.period';
 
-export function TableauPeriodPersistence() {
+export function TableauPeriodPersistence({ storeId }: { storeId: string }) {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -53,12 +53,12 @@ export function TableauPeriodPersistence() {
       }
 
       if (next.toString() !== (shop ? `shop=${shop}` : '')) {
-        router.replace(`/tableau?${next.toString()}`);
+        router.replace(`/s/${storeId}/tableau?${next.toString()}`);
       }
     } catch {
       // entrée corrompue → on ignore
     }
-  }, [params, router]);
+  }, [params, router, storeId]);
 
   return null;
 }
