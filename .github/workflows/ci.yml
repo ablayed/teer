@@ -490,7 +490,15 @@ jobs:
           pattern: blob-report-*
           path: all-blob-reports
           merge-multiple: true
-      - run: pnpm exec playwright merge-reports --reporter html ./all-blob-reports
+      - name: Merge Playwright reports when E2E produced artifacts
+        run: |
+          shopt -s nullglob
+          reports=(all-blob-reports/*.zip)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "No Playwright blob reports were produced; E2E jobs were skipped."
+            exit 0
+          fi
+          pnpm exec playwright merge-reports --reporter html ./all-blob-reports
       - uses: actions/upload-artifact@v4
         with:
           name: playwright-report
