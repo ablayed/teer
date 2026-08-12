@@ -4,6 +4,7 @@ import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Wordmark } from '@/components/wordmark';
 import { cn } from '@/lib/utils';
+import type { WorkspaceStore } from '@/lib/workspace/store';
 import {
   ChartColumnIncreasing,
   LayoutDashboard,
@@ -63,7 +64,13 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Sidebar({ currentRole }: { currentRole?: string | null }) {
+export function Sidebar({
+  currentRole,
+  currentStore,
+}: {
+  currentRole?: string | null;
+  currentStore?: WorkspaceStore;
+}) {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const items = sidebarItems.filter(
@@ -71,6 +78,7 @@ export function Sidebar({ currentRole }: { currentRole?: string | null }) {
       (!item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager') &&
       (!item.ownerOnly || currentRole === 'owner'),
   );
+  const storePath = (href: string) => (currentStore ? `/s/${currentStore.id}${href}` : href);
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] flex-col border-border border-r bg-surface md:flex">
@@ -82,7 +90,8 @@ export function Sidebar({ currentRole }: { currentRole?: string | null }) {
         <ul className="space-y-1">
           {items.map((item) => {
             const Icon = item.icon;
-            const active = isActivePath(pathname, item.href);
+            const href = storePath(item.href);
+            const active = isActivePath(pathname, href);
 
             return (
               <li key={item.href}>
@@ -93,7 +102,7 @@ export function Sidebar({ currentRole }: { currentRole?: string | null }) {
                     'relative flex h-11 items-center gap-3 rounded-md px-4 text-[15px] font-medium transition',
                     active ? 'bg-canvas text-text' : 'text-muted hover:bg-canvas hover:text-text',
                   )}
-                  href={item.href}
+                  href={href}
                   prefetch
                 >
                   {active ? (

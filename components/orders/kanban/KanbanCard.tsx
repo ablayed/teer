@@ -7,6 +7,7 @@ import { formatDateRelative } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 type KanbanCardProps = {
@@ -17,6 +18,8 @@ type KanbanCardProps = {
 };
 
 export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: KanbanCardProps) {
+  const pathname = usePathname();
+  const orderHref = `${pathname.replace(/\/$/, '')}/${order.id}`;
   const orderLabel = order.order_number ?? emptyLabel;
   const customerLabel = order.customer?.full_name ?? emptyLabel;
   const orderDate = order.created_at_shopify ?? order.created_at;
@@ -31,7 +34,7 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
       <div className="flex items-start justify-between gap-3">
         <Link
           className="min-h-11 min-w-0 flex-1 font-mono text-sm font-semibold tabular-nums text-text focus-visible:outline-none"
-          href={`/commandes/${order.id}`}
+          href={orderHref}
         >
           {orderLabel}
         </Link>
@@ -45,13 +48,13 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
       </div>
       <Link
         className="min-h-11 min-w-0 text-sm text-text focus-visible:outline-none"
-        href={`/commandes/${order.id}`}
+        href={orderHref}
       >
         <span className="block truncate">{customerLabel}</span>
       </Link>
       <Link
         className="mt-auto flex min-h-11 items-end justify-between gap-3 focus-visible:outline-none"
-        href={`/commandes/${order.id}`}
+        href={orderHref}
       >
         <span className="font-mono text-sm font-medium tabular-nums text-text">
           {formatMoney(order.total_amount, order.currency)}

@@ -303,7 +303,7 @@ export type PurchaseLotPageData =
   | { ok: true; lots: PurchaseLotData[] }
   | { ok: false; message: string };
 
-export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
+export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLotPageData> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -329,6 +329,7 @@ export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
     .from('purchase_lot')
     .select('*')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .order('ordered_at', { ascending: false });
 
   if (lotErr) return { ok: false, message: lotErr.message };
@@ -340,7 +341,8 @@ export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
     .from('purchase_lot_line')
     .select('*, product(id, title, sku)')
     .in('purchase_lot_id', lotIds)
-    .eq('merchant_account_id', merchantAccountId);
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId);
 
   if (lineErr) return { ok: false, message: lineErr.message };
 

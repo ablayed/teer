@@ -18,11 +18,26 @@ import { type NextRequest, NextResponse } from 'next/server';
 export function middleware(request: NextRequest) {
   const isDev = process.env.NODE_ENV === 'development';
   const regime = cspRegimeForPath(request.nextUrl.pathname);
+  const requestHeaders = new Headers(request.headers);
+  const workspaceMatch = request.nextUrl.pathname.match(/^\/s\/([^/]+)(\/.*)?$/);
+  if (workspaceMatch) {
+    requestHeaders.set('x-teer-store-id', workspaceMatch[1]);
+  } else if (request.nextUrl.pathname === '/s') {
+    requestHeaders.set('x-teer-workspace-entry', '1');
+  }
+
+  let rewriteUrl: URL | null = null;
+  if (workspaceMatch) {
+    rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = workspaceMatch[2] || '/tableau';
+  }
 
   // Régime statique : en-tête déterministe, pas de nonce → la réponse reste
   // cacheable (le corps prérendu n'est pas réécrit).
   if (regime === 'static') {
-    const response = NextResponse.next();
+    const response = rewriteUrl
+      ? NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } })
+      : NextResponse.next({ request: { headers: requestHeaders } });
     response.headers.set('Content-Security-Policy', buildCspHeader({ regime, isDev }));
     return response;
   }
@@ -32,7 +47,6 @@ export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const csp = buildCspHeader({ regime, isDev, nonce });
 
-  const requestHeaders = new Headers(request.headers);
   // Défense en profondeur CVE-2025-29927 : on neutralise l'en-tête interne
   // potentiellement usurpé par un client. (La vraie protection reste la version
   // Next 15.5.x ≥ 15.2.3, et il n'y a de toute façon plus de middleware d'auth à
@@ -41,7 +55,9 @@ export function middleware(request: NextRequest) {
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
 
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  const response = rewriteUrl
+    ? NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } })
+    : NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);
   return response;
 }

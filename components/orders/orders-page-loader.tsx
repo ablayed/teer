@@ -32,6 +32,7 @@ import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search'
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
 import { useTranslations } from 'next-intl';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 
 type ReliabilityTier = 'new' | 'reliable' | 'risk' | 'watch';
@@ -78,6 +79,7 @@ export function OrdersPageLoader({
   onTransitionApplied,
 }: Props) {
   const t = useTranslations('orders');
+  const pathname = usePathname();
   const [orders, setOrders] = useState(initialOrders);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
@@ -227,7 +229,7 @@ export function OrdersPageLoader({
               key={order.id}
             >
               <ResourceRow
-                href={`/commandes/${order.id}`}
+                href={`${pathname.replace(/\/$/, '')}/${order.id}`}
                 prefetch={false}
                 meta={
                   <span className="inline-flex flex-wrap items-center gap-x-1.5">

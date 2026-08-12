@@ -16,6 +16,7 @@ type Props = {
   canSeeCost: boolean;
   currentRole: TeamRole;
   searchQuery: string;
+  storeId: string;
 };
 
 function toStockRow(item: ProductsPageItem): StockPageRow {
@@ -43,6 +44,7 @@ export function ProductsPageLoader({
   canSeeCost,
   currentRole,
   searchQuery,
+  storeId: activeStoreId,
 }: Props) {
   const [items, setItems] = useState(initialItems);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -61,6 +63,7 @@ export function ProductsPageLoader({
       const result = await loadMoreProductsAction({
         q: searchQuery || undefined,
         offset: nextOffset,
+        shopId: activeStoreId,
       });
       const data = result?.data;
       if (data?.ok) {

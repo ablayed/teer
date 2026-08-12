@@ -39,10 +39,11 @@ import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
 import { formatMoney } from '@/lib/format/fcfa';
 import type { LossAnalyticsTrendPoint } from '@/lib/loss-analytics/metrics';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
-import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import { cn } from '@/lib/utils';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import * as Sentry from '@sentry/nextjs';
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 import { Suspense, cache } from 'react';
 
 type TableauPageProps = {
@@ -636,6 +637,8 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
     getCachedDashboardContext(),
   ]);
   const params = await searchParams;
+  const requestStoreId = await getRequestStoreId();
+  if (!requestStoreId) redirect('/s');
   // Bandeau d'accueil post-acceptation d'invitation (B5) : alimenté par
   // /invitation/accept via ?welcome=<org>&role=<rôle>. Affiché une fois, non
   // bloquant ; on n'affiche que pour un rôle connu.
@@ -648,8 +651,8 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
         })
       : null;
   const user = ctx.ok ? ctx.user : null;
-  const shops = ctx.ok ? await listShopFilterOptions(ctx.supabase, ctx.merchantAccountId) : [];
-  const selectedShopId = normalizeShopParam(params.shop, shops);
+  const shops = [{ id: requestStoreId, label: 'Boutique active' }];
+  const selectedShopId = requestStoreId;
   const period = resolvePeriodRange({
     allowedPresets: PERIOD_PRESETS,
     defaultPreset: '30j',
@@ -706,7 +709,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
               allLabel={t('shops.all')}
               ariaLabel={t('shops.ariaLabel')}
               label={t('shops.label')}
-              pathname="/tableau"
+              pathname={`/s/${requestStoreId}/tableau`}
               searchParams={{
                 from: params.from,
                 period: params.period,

@@ -53,6 +53,7 @@ async function getShop({
     .from('shop')
     .select('*')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('store_kind', 'shopify')
     .eq('status', 'active');
 
   if (shopId) {

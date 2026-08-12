@@ -6,6 +6,7 @@ import { env } from '@/lib/env';
 import { syncShopOrders } from '@/lib/shopify/shop-sync';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { createClient } from '@supabase/supabase-js';
 
 type ShopRow = Tables<'shop'>;
@@ -17,7 +18,7 @@ function createSupabaseAdminClient() {
   });
 }
 
-export async function getShopConnection(): Promise<ShopConnection | null> {
+export async function getShopConnection(shopId?: string): Promise<ShopConnection | null> {
   const merchantAccount = await getMerchantAccount();
 
   if (!merchantAccount) {
@@ -28,11 +29,14 @@ export async function getShopConnection(): Promise<ShopConnection | null> {
   // Phase 13 : un marchand multi-boutiques a plusieurs `shop` actifs. On retourne
   // la plus ancienne comme boutique représentative (sert au booléen « a une
   // boutique » et au contrôle de scope) ; `maybeSingle()` lèverait sur 2+ lignes.
-  const { data, error } = await supabase
+  let shopQuery = supabase
     .from('shop')
     .select('shop_domain, scopes, status, installed_at')
     .eq('merchant_account_id', merchantAccount.id)
-    .eq('status', 'active')
+    .eq('store_kind', 'shopify')
+    .eq('status', 'active');
+  if (shopId) shopQuery = shopQuery.eq('id', shopId);
+  const { data, error } = await shopQuery
     .order('installed_at', { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -97,9 +101,11 @@ export const syncOrdersAction = authActionClient
       return { ok: false as const, errorCode: 'no_shop' as const };
     }
 
+    const shopId = await getRequestStoreId();
     const result = await syncShopOrders({
       actorUserId: ctx.user.id,
       merchantAccountId: merchantAccount.id,
+      shopId: shopId ?? undefined,
     });
 
     if (!result.ok) {

@@ -6,6 +6,7 @@ import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-avail
 import { parseItemsummary, resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -190,10 +191,13 @@ export const setLowStockThresholdAction = requireRole('owner', 'manager')
     }
 
     const admin = createSupabaseAdminClient();
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
     const { error } = await admin.from('product_stock').upsert(
       {
         product_id: parsedInput.productId,
         merchant_account_id: merchantAccountId,
+        shop_id: shopId,
         low_stock_threshold: parsedInput.threshold,
       },
       { onConflict: 'product_id' },
@@ -238,6 +242,8 @@ export async function getStockPageData(): Promise<StockPageData> {
     .maybeSingle();
 
   if (!memberAuth) return { ok: false, message: 'Compte marchand introuvable.' };
+  const shopId = await getRequestStoreId();
+  if (!shopId) return { ok: false, message: 'Boutique active introuvable.' };
 
   const { merchant_account_id: merchantAccountId, role } = memberAuth;
   const canSeeCost = role === 'owner' || role === 'manager';
@@ -248,6 +254,7 @@ export async function getStockPageData(): Promise<StockPageData> {
     .from('product')
     .select('id, title, sku, is_bundle')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('title');
 
@@ -256,7 +263,8 @@ export async function getStockPageData(): Promise<StockPageData> {
   const { data: stocks } = await admin
     .from('product_stock')
     .select('product_id, qty_on_hand, qty_reserved, unit_cost, low_stock_threshold')
-    .eq('merchant_account_id', merchantAccountId);
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId);
 
   const stockMap = new Map((stocks ?? []).map((s) => [s.product_id, s]));
 
@@ -264,6 +272,7 @@ export async function getStockPageData(): Promise<StockPageData> {
   const bundleAvailabilityMap = await resolveBundleAvailabilities(
     admin,
     merchantAccountId,
+    shopId,
     bundleIds,
   );
 

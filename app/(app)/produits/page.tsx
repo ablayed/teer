@@ -2,8 +2,10 @@ import { ProductsPageLoader } from '@/components/products/products-page-loader';
 import { PurchaseLotsView } from '@/components/purchases/purchase-lots-view';
 import { getProductCatalogPageData, getProductsPageData } from '@/lib/actions/products';
 import { getPurchaseLotPageData } from '@/lib/actions/purchases';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 type Tab = 'catalogue' | 'stock' | 'achats';
@@ -11,14 +13,16 @@ type Tab = 'catalogue' | 'stock' | 'achats';
 export default async function ProduitsPage({ searchParams }: { searchParams: SearchParams }) {
   const nav = await getTranslations('nav');
   const params = await searchParams;
+  const storeId = await getRequestStoreId();
+  if (!storeId) redirect('/s');
   const q = typeof params.q === 'string' ? params.q : '';
   const rawTab = typeof params.tab === 'string' ? params.tab : '';
   const tab: Tab = rawTab === 'stock' ? 'stock' : rawTab === 'achats' ? 'achats' : 'catalogue';
 
   if (tab === 'achats') {
     const [catalogResult, purchaseResult] = await Promise.all([
-      getProductCatalogPageData(),
-      getPurchaseLotPageData(),
+      getProductCatalogPageData(storeId),
+      getPurchaseLotPageData(storeId),
     ]);
 
     const isOwner = catalogResult.ok && catalogResult.currentRole === 'owner';
@@ -45,7 +49,7 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
     );
   }
 
-  const productsResult = await getProductsPageData({ q: q.trim() || undefined });
+  const productsResult = await getProductsPageData({ q: q.trim() || undefined, shopId: storeId });
 
   const isOwner = productsResult.ok && productsResult.currentRole === 'owner';
 
@@ -69,6 +73,7 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
           initialItems={productsResult.items}
           initialNextOffset={productsResult.nextOffset}
           searchQuery={q}
+          storeId={storeId}
           view={tab === 'stock' ? 'stock' : 'catalogue'}
         />
       )}

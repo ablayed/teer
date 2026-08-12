@@ -13,7 +13,7 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 export type ShopTokenRow = {
   id: string;
   shop_domain: string;
-  access_token_encrypted: string;
+  access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   access_token_expires_at: string | null;
   refresh_token_expires_at: string | null;
@@ -60,6 +60,9 @@ async function getValidShopAccessTokenInternal(
   clientSecret: string,
 ): Promise<ShopAccessTokenResult> {
   let accessToken: string;
+  if (!shop.access_token_encrypted) {
+    return { ok: false, reason: 'needs_reauth' };
+  }
   try {
     accessToken = decryptToken(shop.access_token_encrypted);
   } catch {
