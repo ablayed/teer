@@ -253,7 +253,9 @@ test('unauthorized store URL redirects safely; authorized deep link preserves co
   }
 });
 
-test('Orders, Customers and Products stay scoped to the active store', async ({ page }, testInfo) => {
+test('Orders, Customers and Products stay scoped to the active store', async ({
+  page,
+}, testInfo) => {
   const fixture = await createOwnerFixture('scope');
   try {
     const storeA = await createShop(fixture.admin, fixture.merchantAccountId, 'Scope A');
@@ -274,9 +276,7 @@ test('Orders, Customers and Products stay scoped to the active store', async ({ 
       testInfo.project.name === 'chromium'
         ? '[data-testid^="product-catalog-card-"]'
         : '[data-testid^="product-catalog-row-"]';
-    await expect(
-      page.locator(productContainer, { hasText: 'Produit A' }),
-    ).toBeVisible();
+    await expect(page.locator(productContainer, { hasText: 'Produit A' })).toBeVisible();
     await expect(page.locator(productContainer, { hasText: 'Produit B' })).toHaveCount(0);
     await page.getByPlaceholder('Rechercher par titre ou SKU…').fill('a');
     await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/produits[?]q=a`));
