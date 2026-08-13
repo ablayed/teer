@@ -750,7 +750,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
 
         <section
           className={cn(
-            'grid gap-4',
+            'grid min-w-0 gap-4',
             showFinancialMetrics ? 'xl:grid-cols-2 min-[1800px]:grid-cols-4' : 'xl:grid-cols-2',
           )}
         >
