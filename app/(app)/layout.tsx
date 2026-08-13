@@ -84,8 +84,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const currentStore =
     stores.find((store) => store.id === requestStoreId) ?? defaultWorkspaceStore(stores);
 
-  if (!requestStoreId || !currentStore || currentStore.id !== requestStoreId) {
+  // Keep established single-store URLs usable during the additive rollout. The
+  // active store is still explicit in the shell and all multi-store requests
+  // must use the /s/{storeId} URL source of truth.
+  const legacySingleStore = !requestStoreId && stores.length === 1;
+  if ((!legacySingleStore && !requestStoreId) || !currentStore) {
     redirect(`/s/${currentStore?.id ?? stores[0].id}/tableau`);
+  }
+  if (requestStoreId && currentStore.id !== requestStoreId) {
+    redirect(`/s/${currentStore.id}/tableau`);
   }
 
   const idleTimeoutMs = Number(process.env.IDLE_TIMEOUT_MS) || 7_200_000;

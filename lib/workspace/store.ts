@@ -122,7 +122,13 @@ export async function getWorkspaceStores(): Promise<WorkspaceStore[]> {
 
 export async function getRequestStoreId(): Promise<string | null> {
   const requestHeaders = await headers();
-  return requestHeaders.get('x-teer-store-id');
+  const requestStoreId = requestHeaders.get('x-teer-store-id');
+  if (requestStoreId) return requestStoreId;
+
+  // Compatibility bridge for established single-store URLs. Multi-store
+  // workspaces remain URL-scoped and are redirected by AppLayout.
+  const stores = await getWorkspaceStores();
+  return stores.length === 1 ? stores[0].id : null;
 }
 
 export function defaultWorkspaceStore(stores: WorkspaceStore[]): WorkspaceStore | null {
