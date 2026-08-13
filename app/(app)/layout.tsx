@@ -83,13 +83,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const requestStoreId = requestHeaders.get('x-teer-store-id');
   const currentStore =
     stores.find((store) => store.id === requestStoreId) ?? defaultWorkspaceStore(stores);
+  const legacyPath = requestHeaders.get('x-teer-legacy-path') ?? '/tableau';
 
   // Keep established single-store URLs usable during the additive rollout. The
   // active store is still explicit in the shell and all multi-store requests
   // must use the /s/{storeId} URL source of truth.
   const legacySingleStore = !requestStoreId && stores.length === 1;
   if ((!legacySingleStore && !requestStoreId) || !currentStore) {
-    redirect(`/s/${currentStore?.id ?? stores[0].id}/tableau`);
+    redirect(`/s/${currentStore?.id ?? stores[0].id}${legacyPath || '/tableau'}`);
   }
   if (requestStoreId && currentStore.id !== requestStoreId) {
     redirect(`/s/${currentStore.id}/tableau`);

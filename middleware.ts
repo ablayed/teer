@@ -19,6 +19,7 @@ export function middleware(request: NextRequest) {
   const isDev = process.env.NODE_ENV === 'development';
   const regime = cspRegimeForPath(request.nextUrl.pathname);
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete('x-teer-legacy-path');
   const workspaceMatch = request.nextUrl.pathname.match(/^\/s\/([^/]+)(\/.*)?$/);
   if (workspaceMatch) {
     requestHeaders.set('x-teer-workspace-entry', '0');
@@ -29,6 +30,10 @@ export function middleware(request: NextRequest) {
   } else {
     requestHeaders.delete('x-teer-store-id');
     requestHeaders.delete('x-teer-workspace-entry');
+    requestHeaders.set(
+      'x-teer-legacy-path',
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
   }
 
   let rewriteUrl: URL | null = null;
