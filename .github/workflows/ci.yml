@@ -111,7 +111,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ env.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
 
-  test-e2e:
+  test-e2e-phase1:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [typecheck, test-unit]
@@ -213,10 +213,12 @@ jobs:
           df -h /
           rm -rf .next/cache
           df -h /
-      # Phase 1 authenticated acceptance: workspace isolation plus the existing
-      # Shopify webhook contract. The broader legacy E2E catalogue is exercised
-      # by its dedicated workflows; running all 175 serially here exceeded the
-      # 45-minute job budget without adding Phase 1 signal.
+      - name: List targeted Phase 1 E2E selection
+        run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts --project=${{ matrix.project }} --list
+      # Fast Phase 1 acceptance: explicitly pass the spec paths to Playwright.
+      # Calling `pnpm test:e2e` here would expand the package script's
+      # `tests/e2e` path before forwarding arguments on Windows and collect the
+      # entire catalogue instead of this targeted set.
       - run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts --project=${{ matrix.project }}
         env:
           E2E_PROD_BUILD: '1'
@@ -240,7 +242,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: blob-report-${{ matrix.project }}
+          name: blob-report-phase1-${{ matrix.project }}
           path: blob-report/
           retention-days: 7
           if-no-files-found: error
@@ -248,6 +250,121 @@ jobs:
         if: failure()
         with:
           name: playwright-traces-${{ matrix.project }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-e2e-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [typecheck, test-unit]
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, pixel-7, iphone-14]
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.102.0 }
+      - run: pnpm install --frozen-lockfile
+      - name: Start Supabase (sanitized diagnostics)
+        run: |
+          supabase_log="$(mktemp)"
+          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
+            rm -f "$supabase_log"
+          else
+            status=$?
+            echo "::error::supabase start failed (exit $status)"
+            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
+              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line\]' \
+              || true
+            rm -f "$supabase_log"
+            exit "$status"
+          fi
+      - run: supabase db reset --local
+      - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
+      - run: |
+          while IFS= read -r line; do
+            case "$line" in
+              *=*)
+                key="${line%%=*}"
+                value="${line#*=}"
+                value="${value#\"}"
+                value="${value%\"}"
+                printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+                ;;
+            esac
+          done < <(
+            supabase status -o env \
+              --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
+              --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY
+          )
+      - name: Read Playwright version
+        id: playwright-version-regression
+        run: echo "version=$(node -p 'require(\"@playwright/test/package.json\").version')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version-regression.outputs.version }}
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Cache Next build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('pnpm-lock.yaml', 'package.json', 'next.config.mjs', 'middleware.ts', 'app/**', 'components/**', 'i18n/**', 'lib/**', 'messages/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-next-
+      - name: Bake test env into production build
+        run: |
+          {
+            echo "SUPABASE_URL=${SUPABASE_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}"
+            echo "NEXT_PUBLIC_DISABLE_UIR=1"
+          } > .env.production
+      - name: Build production
+        run: pnpm build
+        env:
+          VERCEL_ENV: preview
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: test-resend-api-key
+          NEXT_PUBLIC_DISABLE_UIR: '1'
+      - name: Free disk before e2e (drop next build cache)
+        run: |
+          df -h /
+          rm -rf .next/cache
+          df -h /
+      - name: Run complete E2E regression shard
+        run: pnpm exec playwright test tests/e2e --project=${{ matrix.project }} --shard=${{ matrix.shard }}/4
+        env:
+          E2E_PROD_BUILD: '1'
+          VERCEL_ENV: preview
+          SHOPIFY_API_KEY: test-shopify-api-key
+          SHOPIFY_API_SECRET: test-shopify-api-secret
+          SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: test-resend-api-key
+      - name: Remove test environment files
+        if: always()
+        run: rm -f .env.production .env.test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blob-report-regression-${{ matrix.project }}-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces-regression-${{ matrix.project }}-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
@@ -369,7 +486,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [typecheck, test-unit]
-    continue-on-error: true
     env:
       TZ: Africa/Dakar
     steps:
@@ -481,7 +597,7 @@ jobs:
 
   merge-e2e-reports:
     runs-on: ubuntu-latest
-    needs: test-e2e
+    needs: [test-e2e-phase1, test-e2e-regression]
     if: always()
     steps:
       - uses: actions/checkout@v4
