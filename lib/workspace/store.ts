@@ -125,9 +125,15 @@ export async function getRequestStoreId(): Promise<string | null> {
   const requestStoreId = requestHeaders.get('x-teer-store-id');
   if (requestStoreId) return requestStoreId;
 
-  // Compatibility bridge for established single-store URLs. Multi-store
-  // workspaces remain URL-scoped and are redirected by AppLayout.
+  // During the additive transition, a legacy page is redirected by AppLayout
+  // to the same path under /s/{storeId}. Resolve its default store here too so
+  // the child page cannot race that redirect by sending itself to the chooser.
+  // The /s workspace entry has no legacy-path header and therefore still
+  // requires an explicit chooser for multi-store workspaces.
   const stores = await getWorkspaceStores();
+  if (requestHeaders.get('x-teer-legacy-path')) {
+    return defaultWorkspaceStore(stores)?.id ?? null;
+  }
   return stores.length === 1 ? stores[0].id : null;
 }
 
