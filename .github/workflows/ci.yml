@@ -213,7 +213,11 @@ jobs:
           df -h /
           rm -rf .next/cache
           df -h /
-      - run: pnpm test:e2e --project=${{ matrix.project }}
+      # Phase 1 authenticated acceptance: workspace isolation plus the existing
+      # Shopify webhook contract. The broader legacy E2E catalogue is exercised
+      # by its dedicated workflows; running all 175 serially here exceeded the
+      # 45-minute job budget without adding Phase 1 signal.
+      - run: pnpm test:e2e --project=${{ matrix.project }} tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts
         env:
           E2E_PROD_BUILD: '1'
           # webServer (playwright.config.ts) hérite de cet env pour spawn `next start` ;
