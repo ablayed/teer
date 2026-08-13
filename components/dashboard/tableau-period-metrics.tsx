@@ -166,7 +166,11 @@ export function TableauCashByProductChart({
   title,
 }: TableauCashByProductChartProps) {
   return (
-    <Card className="min-w-0 rounded-lg" data-testid="tableau-cash-by-product-card" padding="lg">
+    <Card
+      className="w-full min-w-0 overflow-hidden rounded-lg"
+      data-testid="tableau-cash-by-product-card"
+      padding="lg"
+    >
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold text-text">{title}</h2>
         <p className="mt-0.5 text-xs text-muted">{subtitle}</p>

@@ -1,6 +1,5 @@
 import type { WorkspaceStore } from '@/lib/workspace/store';
 import { ChevronDown, Store } from 'lucide-react';
-import Link from 'next/link';
 
 export function StoreContextBar({
   currentStore,
@@ -25,14 +24,14 @@ export function StoreContextBar({
           </summary>
           <div className="absolute right-0 top-full z-50 mt-1 min-w-56 rounded-lg border border-border bg-surface p-1 shadow-warm-2">
             {stores.map((store) => (
-              <Link
+              <a
                 className="flex min-h-11 items-center rounded-md px-3 text-sm hover:bg-canvas"
                 href={`/s/${store.id}/tableau`}
                 key={store.id}
               >
                 {store.displayName}
                 {store.id === currentStore.id ? ' (actif)' : ''}
-              </Link>
+              </a>
             ))}
           </div>
         </details>

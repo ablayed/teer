@@ -11,7 +11,6 @@ import { TableauPeriodPersistence } from '@/components/dashboard/tableau-period-
 import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
 import { ActivationChecklist } from '@/components/onboarding/activation-checklist';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
-import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { Card } from '@/components/ui/card';
 import { DefinitionToggle } from '@/components/ui/definition-card';
@@ -684,9 +683,6 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
           {welcomeBanner}
         </output>
       ) : null}
-      <Suspense fallback={null}>
-        <ShopFilterPersistence storageKey="teer.tableau.shop" />
-      </Suspense>
       <Suspense fallback={null}>
         <TableauPeriodPersistence storeId={requestStoreId} />
       </Suspense>

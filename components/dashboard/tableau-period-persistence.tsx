@@ -1,15 +1,22 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 
 const STORAGE_KEY = 'teer.tableau.period';
 
 export function TableauPeriodPersistence({ storeId }: { storeId: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
 
   useEffect(() => {
+    // A navigation to another store can briefly retain the previous RSC tree.
+    // Never let that stale tree restore its store's period into the new URL.
+    if (pathname !== `/s/${storeId}/tableau`) {
+      return;
+    }
+
     const period = params.get('period');
     const from = params.get('from');
     const to = params.get('to');
@@ -58,7 +65,7 @@ export function TableauPeriodPersistence({ storeId }: { storeId: string }) {
     } catch {
       // entrée corrompue → on ignore
     }
-  }, [params, router, storeId]);
+  }, [params, pathname, router, storeId]);
 
   return null;
 }
