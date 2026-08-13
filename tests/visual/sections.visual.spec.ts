@@ -16,8 +16,8 @@ import {
   visualFixedTime,
   visualPeriodFrom,
   visualPeriodTo,
-  waitForStableLayout,
   waitForFonts,
+  waitForStableLayout,
 } from '../e2e/helpers/visual-fixtures';
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les baselines visuelles');
