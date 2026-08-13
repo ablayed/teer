@@ -124,6 +124,11 @@ async function createOwnerFixture(label: string): Promise<Fixture> {
   const userId = await createConfirmedUser(admin, email);
   createdUserIds.push(userId);
   const tenantId = await waitForMerchant(admin, userId);
+  const { error: onboardingError } = await admin
+    .from('merchant_account')
+    .update({ onboarded_at: new Date().toISOString() })
+    .eq('id', tenantId);
+  if (onboardingError) failFixture('merchant onboarding setup failed');
   const shopId = await createShop(admin, tenantId, label);
   const artifact = await createArtifact(admin, tenantId, shopId, label);
   return { admin, email, userId, tenantId, shopId, ...artifact };
@@ -149,9 +154,10 @@ async function createManager(admin: AdminClient, tenantId: string, label: string
   return { email, userId };
 }
 
-async function signIn(page: Page, email: string): Promise<void> {
-  await loginViaForm(page, email, e2ePassword, '/tableau');
-  await page.waitForURL('**/tableau');
+async function signIn(page: Page, email: string, shopId: string): Promise<void> {
+  const route = `/s/${shopId}/tableau`;
+  await loginViaForm(page, email, e2ePassword, route);
+  await page.waitForURL(`**${route}`);
 }
 
 function routePath(artifactId: string, shopId: string): string {
@@ -286,7 +292,7 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
 
   test('parcours nominal, headers et consommation séquentielle one-shot', async ({ page }) => {
     const fixture = await createOwnerFixture('nominal');
-    await signIn(page, fixture.email);
+    await signIn(page, fixture.email, fixture.shopId);
 
     const authorization = await issueAuthorization(page, fixture);
     const first = await download(
@@ -318,7 +324,7 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
     );
     const shopB = await createShop(ownerB.admin, ownerB.tenantId, 'isolation-b-2');
     const manager = await createManager(ownerA.admin, ownerA.tenantId, 'isolation');
-    await signIn(page, ownerA.email);
+    await signIn(page, ownerA.email, ownerA.shopId);
     const authorization = await issueAuthorization(page, ownerA);
 
     const managerContext = await browser.newContext();
@@ -326,8 +332,8 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
     const managerPage = await managerContext.newPage();
     const tenantPage = await tenantContext.newPage();
     try {
-      await signIn(managerPage, manager.email);
-      await signIn(tenantPage, ownerB.email);
+      await signIn(managerPage, manager.email, ownerA.shopId);
+      await signIn(tenantPage, ownerB.email, ownerB.shopId);
 
       const otherActor = await download(
         managerPage,
@@ -376,7 +382,7 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
 
   test('refuse autorisation expirée sans contenu artefact', async ({ page }) => {
     const fixture = await createOwnerFixture('expired');
-    await signIn(page, fixture.email);
+    await signIn(page, fixture.email, fixture.shopId);
     const authorization = await issueAuthorization(page, fixture);
 
     const { data: rows, error: lookupError } = await fixture.admin
@@ -405,7 +411,7 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
     browser,
   }) => {
     const fixture = await createOwnerFixture('reauth');
-    await signIn(page, fixture.email);
+    await signIn(page, fixture.email, fixture.shopId);
     const authorization = await issueAuthorization(page, fixture);
     await ageAuthSession(fixture.userId);
 
@@ -420,7 +426,7 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
     const freshContext = await browser.newContext();
     const freshPage = await freshContext.newPage();
     try {
-      await signIn(freshPage, fixture.email);
+      await signIn(freshPage, fixture.email, fixture.shopId);
       const freshResponse = await download(
         freshPage,
         fixture.artifactId,
@@ -437,7 +443,7 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
     page,
   }) => {
     const fixture = await createOwnerFixture('audit-failure');
-    await signIn(page, fixture.email);
+    await signIn(page, fixture.email, fixture.shopId);
     const authorization = await issueAuthorization(page, fixture);
 
     const refused = await download(
@@ -471,7 +477,7 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
     browser,
   }) => {
     const fixture = await createOwnerFixture('concurrent');
-    await signIn(page, fixture.email);
+    await signIn(page, fixture.email, fixture.shopId);
     const authorization = await issueAuthorization(page, fixture);
 
     const contextA = await browser.newContext();
@@ -479,8 +485,8 @@ test.describe('S1C-4 — routes DSAR réelles et preuve fail-closed', () => {
     const pageA = await contextA.newPage();
     const pageB = await contextB.newPage();
     try {
-      await signIn(pageA, fixture.email);
-      await signIn(pageB, fixture.email);
+      await signIn(pageA, fixture.email, fixture.shopId);
+      await signIn(pageB, fixture.email, fixture.shopId);
       const responses = await Promise.all([
         download(pageA, fixture.artifactId, fixture.shopId, authorization.downloadToken),
         download(pageB, fixture.artifactId, fixture.shopId, authorization.downloadToken),

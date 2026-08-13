@@ -137,5 +137,4 @@ export async function loginViaForm(
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
   await fillPasswordField(page.locator('input[name="password"]'), password);
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
-  await page.waitForURL((url) => url.pathname.startsWith('/s/'), { timeout: 45_000 });
 }
