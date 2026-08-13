@@ -113,6 +113,30 @@ export async function waitForFonts(page: Page): Promise<void> {
   });
 }
 
+export async function waitForStableLayout(
+  locator: import('@playwright/test').Locator,
+  samples = 3,
+): Promise<void> {
+  let previous = '';
+  let stableSamples = 0;
+
+  for (let attempt = 0; attempt < 20 && stableSamples < samples; attempt += 1) {
+    const box = await locator.boundingBox();
+    const current = box
+      ? `${Math.round(box.x)}:${Math.round(box.y)}:${Math.round(box.width)}:${Math.round(box.height)}`
+      : '';
+    stableSamples = current && current === previous ? stableSamples + 1 : 0;
+    previous = current;
+    if (stableSamples < samples) {
+      await locator.page().waitForTimeout(100);
+    }
+  }
+
+  if (stableSamples < samples) {
+    throw new Error('Visual layout did not stabilize before screenshot capture');
+  }
+}
+
 export async function createDriver(
   fixture: VisualFixture,
   seed: { fullName: string; phone: string },

@@ -16,6 +16,7 @@ import {
   visualFixedTime,
   visualPeriodFrom,
   visualPeriodTo,
+  waitForStableLayout,
   waitForFonts,
 } from '../e2e/helpers/visual-fixtures';
 
@@ -167,6 +168,7 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         timeout: 15_000,
       });
       await waitForFonts(page);
+      await waitForStableLayout(page.getByTestId('tableau-cash-by-product-card'));
 
       await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
         'tableau-cash-by-product-compact.png',
@@ -191,6 +193,7 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         timeout: 15_000,
       });
       await waitForFonts(page);
+      await waitForStableLayout(page.getByTestId('tableau-cash-by-product-card'));
 
       await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
         'tableau-cash-by-product-many.png',
@@ -259,6 +262,7 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
       await expect(page.getByTestId('tableau-top-products-card')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('tableau-top-products-card')).toHaveCSS('opacity', '1');
       await waitForFonts(page);
+      await waitForStableLayout(page.getByTestId('tableau-top-products-card'));
 
       await expect(page.getByTestId('tableau-top-products-card')).toHaveScreenshot(
         'tableau-top-products-spacing.png',
