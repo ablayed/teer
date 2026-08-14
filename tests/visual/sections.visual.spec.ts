@@ -168,11 +168,11 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         timeout: 15_000,
       });
       await waitForFonts(page);
-      await waitForStableLayout(page.getByTestId('tableau-cash-by-product-card'));
+      const card = page.getByTestId('tableau-cash-by-product-card');
+      await card.scrollIntoViewIfNeeded();
+      await waitForStableLayout(card);
 
-      await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
-        'tableau-cash-by-product-compact.png',
-      );
+      await expect(card).toHaveScreenshot('tableau-cash-by-product-compact.png');
     } finally {
       await cleanupVisualFixture(fixture);
     }
@@ -193,11 +193,11 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         timeout: 15_000,
       });
       await waitForFonts(page);
-      await waitForStableLayout(page.getByTestId('tableau-cash-by-product-card'));
+      const card = page.getByTestId('tableau-cash-by-product-card');
+      await card.scrollIntoViewIfNeeded();
+      await waitForStableLayout(card);
 
-      await expect(page.getByTestId('tableau-cash-by-product-card')).toHaveScreenshot(
-        'tableau-cash-by-product-many.png',
-      );
+      await expect(card).toHaveScreenshot('tableau-cash-by-product-many.png');
     } finally {
       await cleanupVisualFixture(fixture);
     }
@@ -262,11 +262,11 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
       await expect(page.getByTestId('tableau-top-products-card')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('tableau-top-products-card')).toHaveCSS('opacity', '1');
       await waitForFonts(page);
-      await waitForStableLayout(page.getByTestId('tableau-top-products-card'));
+      const card = page.getByTestId('tableau-top-products-card');
+      await card.scrollIntoViewIfNeeded();
+      await waitForStableLayout(card);
 
-      await expect(page.getByTestId('tableau-top-products-card')).toHaveScreenshot(
-        'tableau-top-products-spacing.png',
-      );
+      await expect(card).toHaveScreenshot('tableau-top-products-spacing.png');
     } finally {
       await cleanupVisualFixture(fixture);
     }
