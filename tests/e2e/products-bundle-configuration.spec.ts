@@ -95,6 +95,7 @@ async function createOwnerFixture(label: string) {
     .from('merchant_account')
     .update({ name: `Tëër E2E Bundle Config ${label}`, onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
+  await createShop(admin, merchantAccountId, `bundle-${label}-${Date.now()}.myshopify.com`);
   return { admin, email, merchantAccountId, userId };
 }
 

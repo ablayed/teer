@@ -77,6 +77,17 @@ async function waitForMerchant(admin: AdminClient, userId: string) {
   return merchantAccountId;
 }
 
+async function createShop(admin: AdminClient, merchantAccountId: string, label: string) {
+  const { error } = await admin.from('shop').insert({
+    display_name: label,
+    merchant_account_id: merchantAccountId,
+    shop_domain: `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}.myshopify.com`,
+    access_token_encrypted: 'e2e-encrypted-token',
+    scopes: 'read_orders',
+  });
+  if (error) throw error;
+}
+
 async function createOwnerFixture(label: string) {
   const admin = adminClient();
   const email = e2eEmail(label);
@@ -86,6 +97,7 @@ async function createOwnerFixture(label: string) {
     .from('merchant_account')
     .update({ name: `Tëër E2E Phase5 ${label}`, onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
+  await createShop(admin, merchantAccountId, `achats-${label}`);
   return { admin, email, merchantAccountId, userId };
 }
 
