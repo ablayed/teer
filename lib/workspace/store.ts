@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
+import { cache } from 'react';
 
 export type WorkspaceStore = {
   id: string;
@@ -109,7 +110,11 @@ async function getLegacyWorkspaceStores(
   });
 }
 
-export async function getWorkspaceStores(): Promise<WorkspaceStore[]> {
+// Request-scoped memoization (même motif que getCachedDashboardContext) : le
+// layout ET getRequestStoreId ont besoin de la liste des boutiques sur le même
+// rendu. Sans cache, valider l'identifiant de boutique de l'URL coûterait un
+// second aller-retour RPC par page.
+export const getWorkspaceStores = cache(async (): Promise<WorkspaceStore[]> => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('list_my_stores');
 
@@ -118,19 +123,26 @@ export async function getWorkspaceStores(): Promise<WorkspaceStore[]> {
   }
 
   return (data as StoreRpcRow[]).map(mapStore);
-}
+});
 
 export async function getRequestStoreId(): Promise<string | null> {
   const requestHeaders = await headers();
   const requestStoreId = requestHeaders.get('x-teer-store-id');
-  if (requestStoreId) return requestStoreId;
-
-  // During the additive transition, a legacy page is redirected by AppLayout
-  // to the same path under /s/{storeId}. Resolve its default store here too so
-  // the child page cannot race that redirect by sending itself to the chooser.
-  // The /s workspace entry has no legacy-path header and therefore still
-  // requires an explicit chooser for multi-store workspaces.
   const stores = await getWorkspaceStores();
+
+  // Le segment /s/{storeId} est une donnée d'URL : il n'est retenu que s'il
+  // désigne réellement une boutique accessible à l'appelant. Un identifiant
+  // forgé, révoqué ou appartenant à un autre tenant renvoie null — il n'est
+  // jamais propagé aux requêtes de données, et jamais remplacé silencieusement
+  // par une autre boutique (AppLayout répond 404 sur ce même cas).
+  if (requestStoreId) {
+    return stores.find((store) => store.id === requestStoreId)?.id ?? null;
+  }
+
+  // URL legacy : rendue en place avec la boutique par défaut du workspace,
+  // sans redirection vers /s/{storeId} (cf. AppLayout). L'entrée /s n'a pas
+  // d'en-tête de chemin legacy et garde donc son sélecteur explicite dès que
+  // le workspace compte plusieurs boutiques.
   if (requestHeaders.get('x-teer-legacy-path')) {
     return defaultWorkspaceStore(stores)?.id ?? null;
   }

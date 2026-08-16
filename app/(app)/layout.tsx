@@ -11,7 +11,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import type { ReactNode } from 'react';
 
@@ -81,19 +81,27 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const requestStoreId = requestHeaders.get('x-teer-store-id');
-  const currentStore =
-    stores.find((store) => store.id === requestStoreId) ?? defaultWorkspaceStore(stores);
-  const legacyPath = requestHeaders.get('x-teer-legacy-path') ?? '/tableau';
 
-  // Keep established single-store URLs usable during the additive rollout. The
-  // active store is still explicit in the shell and all multi-store requests
-  // must use the /s/{storeId} URL source of truth.
-  const legacySingleStore = !requestStoreId && stores.length === 1;
-  if ((!legacySingleStore && !requestStoreId) || !currentStore) {
-    redirect(`/s/${currentStore?.id ?? stores[0].id}${legacyPath || '/tableau'}`);
-  }
-  if (requestStoreId && currentStore.id !== requestStoreId) {
-    redirect(`/s/${currentStore.id}/tableau`);
+  // Les URL legacy (/produits, /commandes, …) sont des chemins de compatibilité
+  // RENDUS EN PLACE avec la boutique par défaut du workspace. Elles ne
+  // redirigent plus vers /s/{storeId}, quel que soit le nombre de boutiques :
+  // le middleware réécrit /s/{storeId}/X vers /X, donc redirect(layout) +
+  // rewrite(middleware) formaient un cycle. Invisible sur une navigation
+  // document (307 puis réécriture interne), ce cycle était re-parcouru
+  // indéfiniment par le routeur client lors d'une navigation RSC : boucle de
+  // requêtes silencieuse et page blanche terminale (diagnostic
+  // PHASE1-DIAG-ROUTING). Les URL /s/{storeId}/… restent canoniques et sont
+  // produites par toute la navigation interne et le sélecteur de boutique.
+  const currentStore = requestStoreId
+    ? (stores.find((store) => store.id === requestStoreId) ?? null)
+    : defaultWorkspaceStore(stores);
+
+  // Identifiant de boutique explicite mais inaccessible (forgé, révoqué, ou
+  // appartenant à un autre tenant) : 404. Jamais de substitution silencieuse
+  // vers une autre boutique — elle masquerait l'erreur et laisserait croire à
+  // l'utilisateur qu'il consulte la boutique demandée.
+  if (!currentStore) {
+    notFound();
   }
 
   const idleTimeoutMs = Number(process.env.IDLE_TIMEOUT_MS) || 7_200_000;
