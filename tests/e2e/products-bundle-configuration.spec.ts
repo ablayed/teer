@@ -165,6 +165,24 @@ async function createShop(admin: AdminClient, merchantAccountId: string, domain:
   return data.id as string;
 }
 
+// Depuis Phase 1, le Tableau et le catalogue sont scopés à la boutique ACTIVE.
+// Une session qui se connecte sur une route legacy atterrit sur la boutique par
+// défaut du workspace — la même que celle où le trigger
+// product_default_store_context place les produits créés sans shop_id explicite.
+// Semer une commande dans une AUTRE boutique la rend donc invisible à l'écran
+// observé, sans erreur : les fixtures ci-dessous ciblent la boutique par défaut.
+async function defaultShopId(admin: AdminClient, merchantAccountId: string): Promise<string> {
+  const { data, error } = await admin
+    .from('shop')
+    .select('id, is_default')
+    .eq('merchant_account_id', merchantAccountId)
+    .order('is_default', { ascending: false })
+    .limit(1)
+    .single();
+  if (error || !data) throw error ?? new Error('boutique par defaut introuvable');
+  return data.id as string;
+}
+
 async function seedDeliveredCollectedOrder(
   admin: AdminClient,
   {
@@ -468,11 +486,7 @@ test('décocher un bundle déjà vendu : autorisé sans blocage, historique des 
   test.setTimeout(180_000);
   const fixture = await createOwnerFixture('uncheck-history');
   try {
-    const shopId = await createShop(
-      fixture.admin,
-      fixture.merchantAccountId,
-      `bundle-cfg-${Date.now()}.myshopify.com`,
-    );
+    const shopId = await defaultShopId(fixture.admin, fixture.merchantAccountId);
     const bundleProductTitle = 'Kit Vendu E2E';
     const bundle = await createProduct(
       fixture.admin,

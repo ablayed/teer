@@ -157,18 +157,21 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, fullN
   return data.id as string;
 }
 
-async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
+// Depuis Phase 1, le Tableau et le catalogue sont scopés à la boutique ACTIVE.
+// Une session qui se connecte sur une route legacy atterrit sur la boutique par
+// défaut du workspace — la même que celle où le trigger
+// product_default_store_context place les produits créés sans shop_id explicite.
+// Semer une commande dans une AUTRE boutique la rend donc invisible à l'écran
+// observé, sans erreur : les fixtures ci-dessous ciblent la boutique par défaut.
+async function defaultShopId(admin: AdminClient, merchantAccountId: string): Promise<string> {
   const { data, error } = await admin
     .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: domain,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
+    .select('id, is_default')
+    .eq('merchant_account_id', merchantAccountId)
+    .order('is_default', { ascending: false })
+    .limit(1)
     .single();
-  if (error || !data) throw error ?? new Error('shop insert failed');
+  if (error || !data) throw error ?? new Error('boutique par defaut introuvable');
   return data.id as string;
 }
 
@@ -390,11 +393,7 @@ test('tableau : CA par produit / Livraisons par produit fonctionnent sans change
 }) => {
   const fixture = await createOwnerFixture('tableau');
   try {
-    const shopId = await createShop(
-      fixture.admin,
-      fixture.merchantAccountId,
-      `bundle-tab-${Date.now()}.myshopify.com`,
-    );
+    const shopId = await defaultShopId(fixture.admin, fixture.merchantAccountId);
     const bundle = await createProduct(
       fixture.admin,
       fixture.merchantAccountId,
