@@ -1,6 +1,8 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: '14.5';
   };
@@ -105,7 +107,7 @@ export type Database = {
           note_fr?: string | null;
           order_id: string;
           outcome: string;
-          shop_id?: string | null;
+          shop_id?: string;
         };
         Update: {
           agent_user_id?: string;
@@ -233,7 +235,7 @@ export type Database = {
           phone?: string | null;
           phone_e164?: string | null;
           shipping_address?: Json | null;
-          shop_id?: string | null;
+          shop_id?: string;
           shopify_customer_gids?: Json;
           shopify_customer_id?: string | null;
           shopify_last_activity_at?: string | null;
@@ -311,7 +313,7 @@ export type Database = {
           order_id?: string | null;
           quartier_commune: string;
           repere?: string | null;
-          shop_id?: string | null;
+          shop_id?: string;
           telephone_alternatif?: string | null;
           telephone_principal: string;
           updated_at?: string;
@@ -976,7 +978,7 @@ export type Database = {
           raw_shopify_variant_id?: string | null;
           raw_sku?: string | null;
           raw_title: string;
-          shop_id?: string | null;
+          shop_id?: string;
         };
         Update: {
           created_at?: string;
@@ -1050,7 +1052,7 @@ export type Database = {
           merchant_account_id: string;
           note?: string | null;
           order_id: string;
-          shop_id?: string | null;
+          shop_id?: string;
           to_status: string;
         };
         Update: {
@@ -1175,7 +1177,7 @@ export type Database = {
           returned_at?: string | null;
           scheduled_for?: string | null;
           shipping_address?: Json | null;
-          shop_id?: string | null;
+          shop_id?: string;
           shopify_cancelled_at?: string | null;
           shopify_financial_status?: string | null;
           shopify_fulfillment_status?: string | null;
@@ -1373,7 +1375,7 @@ export type Database = {
         Insert: {
           action: string;
           actor_scope_key: string;
-          count?: number;
+          count: number;
           created_at?: string;
           id?: string;
           shop_id?: string | null;
@@ -1465,7 +1467,7 @@ export type Database = {
           is_active?: boolean;
           is_bundle?: boolean;
           merchant_account_id: string;
-          shop_id?: string | null;
+          shop_id?: string;
           shopify_product_id?: string | null;
           shopify_variant_id?: string | null;
           sku?: string | null;
@@ -1529,7 +1531,7 @@ export type Database = {
           id?: string;
           merchant_account_id: string;
           quantity: number;
-          shop_id?: string | null;
+          shop_id?: string;
           updated_at?: string;
         };
         Update: {
@@ -1597,7 +1599,7 @@ export type Database = {
           product_id: string;
           qty_on_hand?: number;
           qty_reserved?: number;
-          shop_id?: string | null;
+          shop_id?: string;
           unit_cost?: number;
           updated_at?: string;
         };
@@ -1681,7 +1683,7 @@ export type Database = {
           received_at?: string | null;
           reference?: string | null;
           shipping_mode?: string;
-          shop_id?: string | null;
+          shop_id?: string;
           status?: string;
           supplier_name: string;
           supplier_prep_days?: number;
@@ -1764,7 +1766,7 @@ export type Database = {
           purchase_lot_id: string;
           purchase_price_total?: number | null;
           qty: number;
-          shop_id?: string | null;
+          shop_id?: string;
           unit_purchase_price?: number | null;
         };
         Update: {
@@ -2018,7 +2020,7 @@ export type Database = {
           id?: string;
           merchant_account_id: string;
           role: string;
-          shop_id?: string | null;
+          shop_id: string;
           user_id: string;
         };
         Update: {
@@ -2083,7 +2085,7 @@ export type Database = {
           id?: string;
           merchant_account_id: string;
           redacted_at?: string;
-          shop_id?: string | null;
+          shop_id: string;
           shopify_customer_id: string;
         };
         Update: {
@@ -2154,7 +2156,7 @@ export type Database = {
           purge_lease_until?: string | null;
           purge_next_attempt_at?: string | null;
           purged_at?: string | null;
-          shop_id?: string | null;
+          shop_id: string;
           status?: string;
           storage_bucket?: string;
           storage_path: string;
@@ -2232,7 +2234,7 @@ export type Database = {
           expires_at: string;
           id?: string;
           purpose: string;
-          shop_id?: string | null;
+          shop_id: string;
           tenant_id: string;
           token_hash: string;
         };
@@ -2347,7 +2349,7 @@ export type Database = {
           product_id: string;
           qty: number;
           reason?: string | null;
-          shop_id?: string | null;
+          shop_id?: string;
           transition_id?: string | null;
           unit_cost?: number | null;
         };
@@ -2680,8 +2682,8 @@ export type Database = {
         Args: {
           p_action: string;
           p_actor_kind: string;
-          p_service_kind?: string | null;
-          p_shop_id?: string | null;
+          p_service_kind: string;
+          p_shop_id: string;
           p_tenant_id: string;
         };
         Returns: {
@@ -3288,14 +3290,14 @@ export type Database = {
           p_action: string;
           p_actor_kind: string;
           p_data_category: string;
-          p_idempotency_key?: string | null;
+          p_idempotency_key?: string;
           p_metadata?: Json;
           p_outcome: string;
           p_purpose: string;
-          p_resource_id?: string | null;
+          p_resource_id: string;
           p_resource_type: string;
-          p_service_kind?: string | null;
-          p_shop_id?: string | null;
+          p_service_kind: string;
+          p_shop_id: string;
           p_surface: string;
           p_tenant_id: string;
         };

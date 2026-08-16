@@ -50,17 +50,23 @@ export async function resolveOrderLines(
   {
     merchantAccountId,
     lineItems,
+    shopId,
   }: {
     merchantAccountId: string;
     lineItems: ItemsummaryLine[];
+    shopId: string;
   },
 ): Promise<ResolvedOrderLine[]> {
   if (lineItems.length === 0) return [];
 
+  // Le rapprochement ne doit JAMAIS traverser une frontière de boutique : un SKU
+  // homonyme dans une autre boutique du même marchand ferait pointer la ligne
+  // vers un produit dont le stock vit ailleurs.
   const { data: products } = await client
     .from('product')
     .select('id, shopify_variant_id, shopify_product_id, sku')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .eq('is_active', true);
 
   const variantMap = new Map<string, string>();
@@ -119,17 +125,22 @@ export async function resolveAndInsertOrderLines(
     merchantAccountId,
     orderId,
     lineItems,
+    shopId,
   }: {
     merchantAccountId: string;
     orderId: string;
     lineItems: ItemsummaryLine[];
+    shopId: string;
   },
 ): Promise<void> {
-  const resolvedLines = await resolveOrderLines(client, { merchantAccountId, lineItems });
+  const resolvedLines = await resolveOrderLines(client, { merchantAccountId, lineItems, shopId });
   if (resolvedLines.length === 0) return;
 
+  // Boutique héritée de la COMMANDE porteuse : une ligne ne peut pas vivre dans
+  // une autre boutique que sa commande.
   const inserts = resolvedLines.map((line) => ({
     merchant_account_id: merchantAccountId,
+    shop_id: shopId,
     order_id: orderId,
     ...line,
   }));

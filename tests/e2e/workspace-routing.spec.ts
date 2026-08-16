@@ -338,4 +338,99 @@ test.describe('routage workspace legacy et canonique', () => {
 
     await expectNoRscLoop(page, rscCount);
   });
+
+  // Attribution des ÉCRITURES à la boutique active.
+  //
+  // Les tables scopées portent un trigger BEFORE INSERT
+  // (`assign_default_store_context`) qui renseigne `shop_id` quand l'insertion
+  // l'omet — mais toujours avec la boutique PAR DÉFAUT. Un site d'écriture qui
+  // se repose dessus produit donc, pour un marchand multi-boutiques, une ligne
+  // écrite dans la mauvaise boutique : aucune erreur, aucune alerte, et la
+  // donnée devient simplement invisible depuis la boutique où l'utilisateur
+  // travaillait.
+  //
+  // Ce test crée une commande manuelle depuis la boutique SECONDAIRE et vérifie
+  // en service-role que la commande, le client créé au passage et les lignes de
+  // commande portent tous cette boutique — jamais la boutique par défaut.
+  // Il échouerait sur le comportement d'avant l'audit des sites d'écriture.
+  test('création manuelle depuis la boutique secondaire : commande, client et lignes suivent la boutique ACTIVE', async ({
+    page,
+  }) => {
+    const fixture = await createWorkspaceFixture('ecriture-active', { extraStore: true });
+    if (!fixture.secondStoreId) throw new Error('seconde boutique manquante');
+    const activeStoreId = fixture.secondStoreId;
+    await seedProduct(fixture, activeStoreId, 'Sac Boutique Active');
+
+    await loginViaForm(page, fixture.email, e2ePassword, `/s/${activeStoreId}/produits`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Produits' })).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT,
+    });
+
+    await page.goto(`/s/${activeStoreId}/commandes`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Commandes' })).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT,
+    });
+
+    await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
+    await page.getByLabel('Nom client').fill('Awa Boutique Active');
+    await page.getByLabel('Téléphone').fill('+221 77 444 55 66');
+    await page.getByPlaceholder('Rechercher titre ou SKU').fill('Sac Boutique Active');
+    // Ciblage par CONTENU, pas par index de <select> : un workspace
+    // multi-boutiques peut ajouter un <select> au shell et décaler un `.nth(n)`.
+    // La sélection se fait par INDEX D'OPTION car le libellé rendu concatène le
+    // titre et le SKU — un `selectOption({ label })` exact ne matcherait pas.
+    // Que ce <select> ne contienne QUE ce produit prouve déjà que le catalogue
+    // est scopé à la boutique active.
+    const productSelect = page
+      .locator('select')
+      .filter({ has: page.locator('option', { hasText: 'Sac Boutique Active' }) })
+      .first();
+    await expect(productSelect.locator('option')).toHaveCount(2);
+    await productSelect.selectOption({ index: 1 });
+    const quantityInput = page.getByLabel('Quantité');
+    await quantityInput.press('ControlOrMeta+A');
+    await quantityInput.pressSequentially('1');
+    await expect(quantityInput).toHaveValue('1');
+    const priceInput = page.getByLabel('Prix unitaire (FCFA)');
+    await priceInput.press('ControlOrMeta+A');
+    await priceInput.pressSequentially('9000');
+    await expect(priceInput).toHaveValue('9000');
+    await page.getByRole('button', { name: 'Créer la commande' }).click();
+    await expect(page.getByText('Commande créée.')).toBeVisible({ timeout: 15_000 });
+
+    const { data: orders, error: orderError } = await fixture.admin
+      .from('orders')
+      .select('id, shop_id, customer_id')
+      .eq('merchant_account_id', fixture.merchantAccountId);
+    if (orderError) throw orderError;
+    expect(orders).toHaveLength(1);
+    const order = orders?.[0];
+    if (!order) throw new Error('commande introuvable');
+
+    expect(order.shop_id).toBe(activeStoreId);
+    expect(order.shop_id).not.toBe(fixture.defaultStoreId);
+
+    const { data: customers, error: customerError } = await fixture.admin
+      .from('customer')
+      .select('id, shop_id')
+      .eq('merchant_account_id', fixture.merchantAccountId);
+    if (customerError) throw customerError;
+    expect(customers).toHaveLength(1);
+    expect(customers?.[0]?.shop_id).toBe(activeStoreId);
+
+    // Les lignes sont écrites en best-effort après la commande : on laisse la
+    // résolution converger avant d'affirmer leur rattachement.
+    await expect
+      .poll(
+        async () => {
+          const { data } = await fixture.admin
+            .from('order_line')
+            .select('shop_id')
+            .eq('order_id', order.id);
+          return (data ?? []).map((line) => line.shop_id);
+        },
+        { timeout: 15_000, intervals: [200, 500, 1_000] },
+      )
+      .toEqual([activeStoreId]);
+  });
 });

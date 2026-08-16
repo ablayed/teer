@@ -54,7 +54,7 @@ export const backfillOrderLinesAction = requireRole('owner', 'manager')
 
     const { data: orders, error } = await admin
       .from('orders')
-      .select('id, items_summary, merchant_account_id')
+      .select('id, items_summary, merchant_account_id, shop_id')
       .eq('merchant_account_id', merchantAccountId)
       .not('items_summary', 'is', null);
 
@@ -79,6 +79,9 @@ export const backfillOrderLinesAction = requireRole('owner', 'manager')
           merchantAccountId: order.merchant_account_id,
           orderId: order.id,
           lineItems: lines,
+          // Backfill : chaque commande impose SA boutique, jamais la boutique
+          // active de l'utilisateur qui déclenche le rattrapage.
+          shopId: order.shop_id,
         });
         processed++;
       } catch {

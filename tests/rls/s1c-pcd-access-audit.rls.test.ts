@@ -1,4 +1,5 @@
 import type { Database } from '@/lib/supabase/database.types';
+import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -156,15 +157,15 @@ describe('S1C-1 PCD access audit RLS', () => {
 
     const { data: eventId, error: rpcError } = await owner.client.rpc('log_pcd_access_event', {
       p_tenant_id: owner.accountId,
-      p_shop_id: null,
+      p_shop_id: nullableRpcArg<string>(null),
       p_actor_kind: 'human',
-      p_service_kind: null,
+      p_service_kind: nullableRpcArg<string>(null),
       p_action: 'search',
       p_data_category: 'customer_contact',
       p_purpose: 'customer_support',
       p_outcome: 'succeeded',
       p_resource_type: 'customer',
-      p_resource_id: null,
+      p_resource_id: nullableRpcArg<string>(null),
       p_surface: 'server_action',
       p_metadata: { source: 'rls_test' },
     });
@@ -186,7 +187,7 @@ describe('S1C-1 PCD access audit RLS', () => {
       'log_pcd_access_event',
       {
         p_tenant_id: owner.accountId,
-        p_shop_id: null,
+        p_shop_id: nullableRpcArg<string>(null),
         p_actor_kind: 'service',
         p_service_kind: 'worker',
         p_action: 'privileged_read',
@@ -194,7 +195,7 @@ describe('S1C-1 PCD access audit RLS', () => {
         p_purpose: 'system_processing',
         p_outcome: 'succeeded',
         p_resource_type: 'shopify_payload',
-        p_resource_id: null,
+        p_resource_id: nullableRpcArg<string>(null),
         p_surface: 'worker',
         p_metadata: { source: 'rls_test' },
       },
@@ -247,13 +248,13 @@ describe('S1C-1 PCD access audit RLS', () => {
       p_tenant_id: owner.accountId,
       p_shop_id: '00000000-0000-4000-8000-000000000099',
       p_actor_kind: 'human',
-      p_service_kind: undefined,
+      p_service_kind: nullableRpcArg<string>(undefined),
       p_action: 'generate_signed_url',
       p_data_category: 'dsar_artifact',
       p_purpose: 'legal_request',
       p_outcome: 'denied',
       p_resource_type: 'dsar_artifact',
-      p_resource_id: undefined,
+      p_resource_id: nullableRpcArg<string>(undefined),
       p_surface: 'dsar',
       p_metadata: { reason_code: 'artifact_unavailable' },
     });

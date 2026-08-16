@@ -319,10 +319,14 @@ function joinName(
   return name || null;
 }
 
+// `shopId` est requis : un client Shopify appartient à LA boutique qui l'a
+// synchronisé. Il était optionnel avec un spread conditionnel, ce qui laissait
+// silencieusement `assign_default_store_context` rattacher le client à la
+// boutique par défaut du marchand si l'argument venait à manquer.
 export function mapShopifyCustomer(
   node: ShopifyOrderNode,
   merchantAccountId: string,
-  shopId?: string,
+  shopId: string,
 ): CustomerUpsert | null {
   const customer = node.customer;
   if (!customer) {
@@ -335,7 +339,7 @@ export function mapShopifyCustomer(
 
   return {
     merchant_account_id: merchantAccountId,
-    ...(shopId ? { shop_id: shopId } : {}),
+    shop_id: shopId,
     source: 'shopify',
     shopify_customer_id: gid,
     shopify_customer_gids: [gid],
@@ -660,6 +664,7 @@ export async function persistShopifyOrder({
                 await resolveOrderLines(supabaseServiceClient, {
                   merchantAccountId,
                   lineItems: parseItemsummary(orderData.items_summary as Json),
+                  shopId,
                 })
               ).map(({ qty, ...line }) => ({ ...line, quantity: qty })) as unknown as Json,
               p_order_update: orderUpdate as unknown as Json,
@@ -691,6 +696,7 @@ export async function persistShopifyOrder({
         merchantAccountId,
         orderId: insertedOrder.id,
         lineItems: parseItemsummary(orderData.items_summary as Json),
+        shopId,
       }).catch(() => undefined);
     }
 
