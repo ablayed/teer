@@ -86,7 +86,9 @@ async function seedAppelerOrder(
 ) {
   const { error } = await admin.from('orders').insert({
     merchant_account_id: merchantAccountId,
-    shop_id: shopId,
+    // shopId null => on laisse `assign_default_store_context` retomber sur la
+    // boutique par défaut, ce que ce test exerce volontairement.
+    ...(shopId ? { shop_id: shopId } : {}),
     order_number: `SF-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     total_amount: 10000,
     currency: 'XOF',

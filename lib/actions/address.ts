@@ -75,7 +75,7 @@ export const upsertOrderDeliveryAddressAction = requireRole('owner', 'manager', 
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, customer_id, merchant_account_id')
+      .select('id, customer_id, merchant_account_id, shop_id')
       .eq('id', parsedInput.orderId)
       .eq('merchant_account_id', ctx.member.merchantAccountId)
       .maybeSingle();
@@ -115,6 +115,9 @@ export const upsertOrderDeliveryAddressAction = requireRole('owner', 'manager', 
     const orderAddressPayload = {
       ...baseAddress,
       merchant_account_id: ctx.member.merchantAccountId,
+      // Boutique héritée de la COMMANDE : une adresse de livraison ne peut pas
+      // vivre dans une autre boutique que la commande qu'elle sert.
+      shop_id: order.shop_id,
       customer_id: order.customer_id,
       order_id: order.id,
     } satisfies DeliveryAddressInsert;
@@ -147,6 +150,7 @@ export const upsertOrderDeliveryAddressAction = requireRole('owner', 'manager', 
       const customerAddressPayload = {
         ...baseAddress,
         merchant_account_id: ctx.member.merchantAccountId,
+        shop_id: order.shop_id,
         customer_id: order.customer_id,
         order_id: null,
       } satisfies DeliveryAddressInsert;

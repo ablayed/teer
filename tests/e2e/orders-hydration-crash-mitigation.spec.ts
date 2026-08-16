@@ -4,6 +4,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 // Mitigation NON PROUVÉE à 100 % (cf. CLAUDE.md, PR fix/orders-hydration-crash-mitigation) :
 // une reproduction directe du crash React #418 n'a jamais été obtenue (ni par l'agent
@@ -97,19 +98,20 @@ async function createOwnerFixture(label: string) {
   return { admin, email, merchantAccountId, userId };
 }
 
-async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
-  const { data, error } = await admin
-    .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: domain,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error('shop insert failed');
-  return data.id as string;
+// Phase 1 : les fixtures sèment dans la boutique ACTIVE.
+//
+// Auparavant ce helper INSÉRAIT une boutique et les commandes y étaient
+// rattachées. Depuis 0126 l'organisation possède déjà une boutique par défaut,
+// et c'est elle que la session atteint sur une route legacy : semer dans une
+// boutique fraîchement créée laissait l'écran vide (compteurs à zéro, lignes
+// absentes) sans la moindre erreur. Le paramètre de domaine est conservé pour
+// ne pas toucher les appels, mais n'a plus d'effet.
+async function seedShopId(
+  admin: AdminClient,
+  merchantAccountId: string,
+  _domain: string,
+): Promise<string> {
+  return defaultShopId(admin, merchantAccountId);
 }
 
 async function seedOrder(
@@ -179,7 +181,7 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
     test.skip(testInfo.project.name !== 'chromium', 'interception réseau : desktop only');
 
     const { admin, email, merchantAccountId } = await createOwnerFixture('mitig');
-    const shopId = await createShop(admin, merchantAccountId, `hc-${Date.now()}.myshopify.com`);
+    const shopId = await seedShopId(admin, merchantAccountId, `hc-${Date.now()}.myshopify.com`);
 
     const sharedToken = `Freezetest${Date.now()}`;
     for (let i = 0; i < 20; i += 1) {

@@ -141,7 +141,7 @@ async function insertOrder(
       merchant_account_id: merchantAccountId,
       order_number: `RPT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       order_state: opts.dimensions.orderState,
-      shop_id: opts.shopId ?? null,
+      ...(opts.shopId ? { shop_id: opts.shopId } : {}),
       total_amount: opts.totalAmount,
       updated_at: opts.updatedAt ?? createdAt,
     })

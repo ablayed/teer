@@ -90,11 +90,13 @@ function displayTitle(productTitle: string, variantTitle: string | null): string
 
 function mapShopifyVariantToProductInsert(
   merchantAccountId: string,
+  shopId: string,
   productNode: ShopifyProductNode,
   variantNode: ShopifyProductVariantNode,
 ): ProductInsert {
   return {
     merchant_account_id: merchantAccountId,
+    shop_id: shopId,
     shopify_product_id: extractShopifyId(productNode.id),
     shopify_variant_id: extractShopifyId(variantNode.id),
     sku: variantNode.sku?.trim() || null,
@@ -106,6 +108,7 @@ function mapShopifyVariantToProductInsert(
 
 function toProductRecords(
   merchantAccountId: string,
+  shopId: string,
   productNodes: ShopifyProductNode[],
 ): ProductInsert[] {
   return productNodes.flatMap((productNode) =>
@@ -113,21 +116,23 @@ function toProductRecords(
       .map((edge) => edge.node)
       .filter((variantNode) => Boolean(variantNode.id))
       .map((variantNode) =>
-        mapShopifyVariantToProductInsert(merchantAccountId, productNode, variantNode),
+        mapShopifyVariantToProductInsert(merchantAccountId, shopId, productNode, variantNode),
       ),
   );
 }
 
 async function persistShopifyProducts({
   merchantAccountId,
+  shopId,
   productNodes,
   supabaseServiceClient,
 }: {
   merchantAccountId: string;
+  shopId: string;
   productNodes: ShopifyProductNode[];
   supabaseServiceClient: AdminClient;
 }): Promise<{ ok: true; syncedCount: number } | { ok: false; error: string }> {
-  const records = toProductRecords(merchantAccountId, productNodes);
+  const records = toProductRecords(merchantAccountId, shopId, productNodes);
 
   if (records.length === 0) {
     return { ok: true, syncedCount: 0 };
@@ -141,6 +146,7 @@ async function persistShopifyProducts({
     .from('product')
     .select('id, shopify_variant_id')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .in('shopify_variant_id', variantIds);
 
   if (existingProductsError) {
@@ -233,6 +239,7 @@ export async function syncProductsForShop({
       );
       const result = await persistShopifyProducts({
         merchantAccountId,
+        shopId: shop.id,
         productNodes,
         supabaseServiceClient: admin,
       });
@@ -281,15 +288,18 @@ export async function syncProductsForShop({
 
 export async function persistShopifyProductWebhook({
   merchantAccountId,
+  shopId,
   productNode,
   supabaseServiceClient,
 }: {
   merchantAccountId: string;
+  shopId: string;
   productNode: ShopifyProductNode;
   supabaseServiceClient: AdminClient;
 }): Promise<{ ok: true; syncedCount: number } | { ok: false; error: string }> {
   return persistShopifyProducts({
     merchantAccountId,
+    shopId,
     productNodes: [productNode],
     supabaseServiceClient,
   });

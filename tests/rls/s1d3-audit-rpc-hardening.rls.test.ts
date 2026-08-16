@@ -1,4 +1,5 @@
 import type { Database } from '@/lib/supabase/database.types';
+import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -48,15 +49,15 @@ async function createOwner(label: string) {
 function validArgs(tenantId: string, idempotencyKey: string) {
   return {
     p_tenant_id: tenantId,
-    p_shop_id: null,
+    p_shop_id: nullableRpcArg<string>(null),
     p_actor_kind: 'human',
-    p_service_kind: null,
+    p_service_kind: nullableRpcArg<string>(null),
     p_action: 'view_detail',
     p_data_category: 'customer_identity',
     p_purpose: 'order_fulfillment',
     p_outcome: 'succeeded',
     p_resource_type: 'customer',
-    p_resource_id: null,
+    p_resource_id: nullableRpcArg<string>(null),
     p_surface: 'server_action',
     p_metadata: { source: 's1d3_rpc' },
     p_idempotency_key: idempotencyKey,

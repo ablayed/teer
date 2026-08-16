@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export async function resolveBundleAvailabilities(
   admin: SupabaseClient<Database>,
   merchantAccountId: string,
+  shopId: string,
   bundleProductIds: string[],
 ): Promise<Map<string, number | null>> {
   if (bundleProductIds.length === 0) return new Map();
@@ -18,6 +19,7 @@ export async function resolveBundleAvailabilities(
     .from('product_bundle_component')
     .select('bundle_product_id, component_product_id, quantity')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .in('bundle_product_id', bundleProductIds);
 
   const rows = compositionRows ?? [];
@@ -29,6 +31,7 @@ export async function resolveBundleAvailabilities(
           .from('product_stock')
           .select('product_id, qty_on_hand, qty_reserved')
           .eq('merchant_account_id', merchantAccountId)
+          .eq('shop_id', shopId)
           .in('product_id', componentIds)
       : { data: [] };
 

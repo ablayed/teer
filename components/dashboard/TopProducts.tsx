@@ -20,7 +20,11 @@ export function TopProducts({
   unitsLabel,
 }: TopProductsProps) {
   return (
-    <Card className="rounded-lg" data-testid="tableau-top-products-card" padding="lg">
+    <Card
+      className="w-full min-w-0 overflow-hidden rounded-lg"
+      data-testid="tableau-top-products-card"
+      padding="lg"
+    >
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold text-text">{title}</h2>
         {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}

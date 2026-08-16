@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 
 const STORAGE_KEY = 'teer.finances.period';
@@ -9,11 +9,22 @@ const STORAGE_KEY = 'teer.finances.period';
 // /finances SANS paramètre de période (ex. lien « Finances » de la nav), on
 // restaure le dernier choix ; sinon on enregistre le choix courant. Le restore
 // ne se déclenche qu'en l'absence totale de période dans l'URL → pas de boucle.
-export function FinancePeriodPersistence({ activeTab }: { activeTab: string }) {
+export function FinancePeriodPersistence({
+  activeTab,
+  storeId,
+}: {
+  activeTab: string;
+  storeId: string;
+}) {
   const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
 
   useEffect(() => {
+    if (pathname !== `/s/${storeId}/finances`) {
+      return;
+    }
+
     const period = params.get('period');
     const from = params.get('from');
     const to = params.get('to');
@@ -55,12 +66,12 @@ export function FinancePeriodPersistence({ activeTab }: { activeTab: string }) {
         next.set('to', parsed.to);
       }
       if (next.toString() !== `tab=${activeTab}`) {
-        router.replace(`/finances?${next.toString()}`);
+        router.replace(`/s/${storeId}/finances?${next.toString()}`);
       }
     } catch {
       // entrée corrompue → on ignore
     }
-  }, [activeTab, params, router]);
+  }, [activeTab, params, pathname, router, storeId]);
 
   return null;
 }

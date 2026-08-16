@@ -4,6 +4,7 @@ import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 // Bundles PR 2 : disponibilité dérivée sur /produits (tab Stock), aucune
 // régression sur /livreurs (un bundle n'y apparaît jamais), et CA par
@@ -154,21 +155,6 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, fullN
     .select('id')
     .single();
   if (error || !data) throw error ?? new Error('driver insert failed');
-  return data.id as string;
-}
-
-async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
-  const { data, error } = await admin
-    .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: domain,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error('shop insert failed');
   return data.id as string;
 }
 
@@ -390,11 +376,7 @@ test('tableau : CA par produit / Livraisons par produit fonctionnent sans change
 }) => {
   const fixture = await createOwnerFixture('tableau');
   try {
-    const shopId = await createShop(
-      fixture.admin,
-      fixture.merchantAccountId,
-      `bundle-tab-${Date.now()}.myshopify.com`,
-    );
+    const shopId = await defaultShopId(fixture.admin, fixture.merchantAccountId);
     const bundle = await createProduct(
       fixture.admin,
       fixture.merchantAccountId,

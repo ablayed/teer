@@ -113,7 +113,7 @@ async function insertOrder(admin: AdminClient, merchantAccountId: string, order:
       call_state: 'validated',
       delivery_state: 'delivered',
       cash_state: 'collected',
-      shop_id: order.shopId ?? null,
+      ...(order.shopId ? { shop_id: order.shopId } : {}),
       cash_collected_at: order.cashCollectedAt ?? null,
       returned_at: order.returnedAt ?? null,
       created_at_shopify: now,

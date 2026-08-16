@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
 import { ArrowLeft, CalendarClock, Clock, MapPin, Pencil, ShoppingBag, X } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
 type OrderDetailPanelProps = {
@@ -192,6 +193,7 @@ export function OrderDetailPanel({
   onClose,
   order,
 }: OrderDetailPanelProps) {
+  const pathname = usePathname();
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const emptyValue = 'Non renseigne';
   const currentStatus = toOrderStatus(order.cod_status);
@@ -292,7 +294,7 @@ export function OrderDetailPanel({
         ) : (
           <Link
             className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 font-medium text-muted hover:bg-canvas hover:text-text"
-            href="/commandes"
+            href={pathname.replace(/\/[^/]+$/, '') || '/commandes'}
           >
             <ArrowLeft aria-hidden="true" className="size-4" />
             Retour

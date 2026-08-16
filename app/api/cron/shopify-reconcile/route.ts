@@ -33,7 +33,11 @@ export async function GET(request: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data: shops, error } = await supabase.from('shop').select('*').eq('status', 'active');
+  const { data: shops, error } = await supabase
+    .from('shop')
+    .select('*')
+    .eq('store_kind', 'shopify')
+    .eq('status', 'active');
 
   if (error) {
     Sentry.captureException(error, { tags: { route: 'cron.shopify-reconcile' } });

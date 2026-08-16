@@ -1,4 +1,5 @@
 import type { Database } from '@/lib/supabase/database.types';
+import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 
 export const PCD_RECENT_AUTH_MAX_AGE_SECONDS = 15 * 60;
@@ -47,8 +48,8 @@ export async function consumePcdQuota(
   const { data, error } = await client.rpc('consume_pcd_access_quota', {
     p_action: input.action,
     p_actor_kind: input.actorKind,
-    p_service_kind: input.serviceKind ?? null,
-    p_shop_id: input.shopId ?? null,
+    p_service_kind: nullableRpcArg(input.serviceKind),
+    p_shop_id: nullableRpcArg(input.shopId),
     p_tenant_id: input.tenantId,
   });
 

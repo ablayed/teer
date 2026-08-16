@@ -15,7 +15,7 @@ import { z } from 'zod';
 
 type SupabaseServerClient = SupabaseClient<Database>;
 type CustomerReliabilityRow =
-  Database['public']['Functions']['list_customer_reliability']['Returns'][number];
+  Database['public']['Functions']['list_store_customer_reliability']['Returns'][number];
 
 export type CustomerListItem = {
   cancelledCount: number;
@@ -61,12 +61,14 @@ export type CustomerDetail = CustomerListItem & {
 const listCustomersSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
+  shopId: z.string().uuid(),
   search: z.string().trim().max(120).optional(),
   sortByRisk: z.boolean().optional(),
 });
 
 const getCustomerSchema = z.object({
   customerId: z.string().uuid(),
+  shopId: z.string().uuid(),
 });
 
 function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
@@ -142,8 +144,9 @@ export const listCustomersAction = requireRole('owner', 'manager', 'agent')
         };
       }
     }
-    const customersResult = await supabase.rpc('list_customer_reliability', {
+    const customersResult = await supabase.rpc('list_store_customer_reliability', {
       p_merchant_id: ctx.member.merchantAccountId,
+      p_shop_id: parsedInput.shopId,
       p_search: parsedInput.search || undefined,
       p_limit: parsedInput.limit ?? 50,
       p_offset: parsedInput.offset ?? 0,
@@ -190,9 +193,10 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
     const [customerResult, historyResult, enrichmentResult] = await Promise.all([
-      supabase.rpc('get_customer_reliability', {
+      supabase.rpc('get_store_customer_reliability', {
         p_merchant_id: ctx.member.merchantAccountId,
         p_customer_id: parsedInput.customerId,
+        p_shop_id: parsedInput.shopId,
       }),
       supabase
         .from('orders')
@@ -200,6 +204,7 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
           'id, order_number, total_amount, currency, cod_status, created_at_shopify, created_at',
         )
         .eq('merchant_account_id', ctx.member.merchantAccountId)
+        .eq('shop_id', parsedInput.shopId)
         .eq('customer_id', parsedInput.customerId)
         .order('created_at_shopify', { ascending: false, nullsFirst: false })
         .limit(30),
@@ -208,6 +213,7 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
         .from('customer')
         .select('address, shipping_address')
         .eq('merchant_account_id', ctx.member.merchantAccountId)
+        .eq('shop_id', parsedInput.shopId)
         .eq('id', parsedInput.customerId)
         .maybeSingle(),
     ]);

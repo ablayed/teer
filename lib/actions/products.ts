@@ -6,6 +6,7 @@ import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-avail
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -149,6 +150,7 @@ type ProductsPageResult =
 export async function getProductsPageData(params: {
   q?: string;
   offset?: number;
+  shopId: string;
 }): Promise<ProductsPageResult> {
   const currentMember = await getCurrentMember();
   if (!currentMember.ok) return currentMember;
@@ -166,6 +168,7 @@ export async function getProductsPageData(params: {
       'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at, is_bundle',
     )
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', params.shopId)
     .order('title', { ascending: true })
     .order('id', { ascending: true })
     .range(offset, offset + limit - 1);
@@ -188,6 +191,7 @@ export async function getProductsPageData(params: {
           .from('product_stock')
           .select('product_id, qty_on_hand, qty_reserved, unit_cost, low_stock_threshold')
           .eq('merchant_account_id', merchantAccountId)
+          .eq('shop_id', params.shopId)
           .in('product_id', productIds)
       : { data: [] };
 
@@ -197,6 +201,7 @@ export async function getProductsPageData(params: {
   const bundleAvailabilityMap = await resolveBundleAvailabilities(
     admin,
     merchantAccountId,
+    params.shopId,
     bundleIds,
   );
 
@@ -238,7 +243,7 @@ export async function getProductsPageData(params: {
   };
 }
 
-export async function getProductCatalogPageData(): Promise<ProductCatalogPageData> {
+export async function getProductCatalogPageData(shopId: string): Promise<ProductCatalogPageData> {
   const currentMember = await getCurrentMember();
 
   if (!currentMember.ok) {
@@ -256,6 +261,7 @@ export async function getProductCatalogPageData(): Promise<ProductCatalogPageDat
         'id, title, sku, shopify_product_id, shopify_variant_id, unit_cost, is_active, created_at, updated_at',
       )
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -279,6 +285,7 @@ export async function getProductCatalogPageData(): Promise<ProductCatalogPageDat
       'id, title, sku, shopify_product_id, shopify_variant_id, is_active, created_at, updated_at',
     )
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .order('updated_at', { ascending: false });
 
   if (error) {
@@ -300,11 +307,14 @@ export const createProductAction = requireRole('owner', 'manager', 'agent')
   .inputSchema(productInputSchema)
   .action(async ({ ctx, parsedInput }) => {
     const admin = createSupabaseAdminClient();
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, errorCode: 'store_required' as const };
     const unitCost = ctx.member.role === 'agent' ? 0 : parsedInput.unitCost;
     const { data, error } = await admin
       .from('product')
       .insert({
         merchant_account_id: ctx.member.merchantAccountId,
+        shop_id: shopId,
         sku: parsedInput.sku?.trim() || null,
         title: parsedInput.title,
         unit_cost: unitCost,
@@ -333,6 +343,8 @@ export const updateProductUnitCostAction = requireRole('owner', 'manager')
   .inputSchema(productUnitCostSchema)
   .action(async ({ ctx, parsedInput }) => {
     const admin = createSupabaseAdminClient();
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, errorCode: 'store_required' as const };
     const { error } = await admin
       .from('product')
       .update({
@@ -340,7 +352,8 @@ export const updateProductUnitCostAction = requireRole('owner', 'manager')
         updated_at: new Date().toISOString(),
       })
       .eq('id', parsedInput.productId)
-      .eq('merchant_account_id', ctx.member.merchantAccountId);
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (error) {
       return { ok: false as const, errorCode: 'update_failed' as const };
@@ -357,6 +370,7 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
     z.object({
       q: z.string().optional(),
       offset: z.number().int().min(0),
+      shopId: z.string().uuid(),
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
@@ -365,6 +379,11 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
     const limit = PRODUCTS_PER_PAGE + 1;
 
     const admin = createSupabaseAdminClient();
+    const requestShopId = await getRequestStoreId();
+    if (!requestShopId || requestShopId !== parsedInput.shopId) {
+      return { ok: false as const, errorCode: 'store_required' as const };
+    }
+    const shopId = parsedInput.shopId;
 
     let productQuery = admin
       .from('product')
@@ -372,6 +391,7 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
         'id, title, sku, unit_cost, is_active, shopify_product_id, shopify_variant_id, created_at, updated_at, is_bundle',
       )
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       .order('title', { ascending: true })
       .order('id', { ascending: true })
       .range(parsedInput.offset, parsedInput.offset + limit - 1);
@@ -394,6 +414,7 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
             .from('product_stock')
             .select('product_id, qty_on_hand, qty_reserved, unit_cost, low_stock_threshold')
             .eq('merchant_account_id', merchantAccountId)
+            .eq('shop_id', shopId)
             .in('product_id', productIds)
         : { data: [] };
 
@@ -403,6 +424,7 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
     const bundleAvailabilityMap = await resolveBundleAvailabilities(
       admin,
       merchantAccountId,
+      shopId,
       bundleIds,
     );
 
@@ -451,11 +473,14 @@ export const getBundleCompositionAction = requireRole('owner', 'manager')
   .inputSchema(bundleCompositionInputSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = ctx.supabase as unknown as SupabaseServerClient;
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, errorCode: 'store_required' as const };
     const { data, error } = await supabase
       .from('product_bundle_component')
       .select('component_product_id, quantity')
       .eq('bundle_product_id', parsedInput.bundleProductId)
-      .eq('merchant_account_id', ctx.member.merchantAccountId);
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (error) return { ok: false as const, errorCode: 'load_failed' as const };
 
@@ -489,6 +514,8 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
   .inputSchema(saveBundleConfigurationSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = ctx.supabase as unknown as SupabaseServerClient;
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, errorCode: 'store_required' as const };
     const { productId, isBundle, components } = parsedInput;
 
     // Auto-référence (bundle_product_id === component_product_id) volontairement NON
@@ -509,7 +536,8 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
       .from('product')
       .update({ is_bundle: isBundle, updated_at: new Date().toISOString() })
       .eq('id', productId)
-      .eq('merchant_account_id', ctx.member.merchantAccountId);
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (flagError) {
       const errorCode: BundleConfigErrorCode = flagError.message.includes(
@@ -525,7 +553,8 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
         .from('product_bundle_component')
         .delete()
         .eq('bundle_product_id', productId)
-        .eq('merchant_account_id', ctx.member.merchantAccountId);
+        .eq('merchant_account_id', ctx.member.merchantAccountId)
+        .eq('shop_id', shopId);
 
       if (deleteError) {
         return { ok: false as const, errorCode: 'update_failed' as const };
@@ -535,6 +564,7 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
         const { error: insertError } = await supabase.from('product_bundle_component').insert(
           components.map((c) => ({
             merchant_account_id: ctx.member.merchantAccountId,
+            shop_id: shopId,
             bundle_product_id: productId,
             component_product_id: c.componentProductId,
             quantity: c.quantity,

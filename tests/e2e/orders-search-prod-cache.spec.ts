@@ -21,6 +21,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) return {};
@@ -145,17 +146,9 @@ test('recherche → détail → retour → mutation : compteurs frais (build pro
     .from('merchant_account')
     .update({ name: 'Tëër E2E search-cache', onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
-  const { data: shop, error: shopError } = await admin
-    .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: `searchcache-${Date.now()}.myshopify.com`,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
-    .single();
-  if (shopError || !shop) throw shopError ?? new Error('Boutique seed non créée');
+  // Phase 1 : semer dans la boutique ACTIVE (celle que la session atteint
+  // sur une route legacy). Une boutique créée à part laisserait l'écran vide.
+  const shop = { id: await defaultShopId(admin, merchantAccountId) };
 
   await seedToCallOrder(admin, merchantAccountId, shop.id, 'Recherche Cible Unique');
   await seedToCallOrder(admin, merchantAccountId, shop.id, 'Client Autre Un');

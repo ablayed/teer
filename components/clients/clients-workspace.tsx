@@ -177,9 +177,11 @@ function ClientMeta({ customer }: { customer: CustomerListItem }) {
 function ClientRow({
   customer,
   onSelect,
+  storeId,
 }: {
   customer: CustomerListItem;
   onSelect: (customerId: string) => void;
+  storeId: string;
 }) {
   const t = useTranslations('clients');
   const router = useRouter();
@@ -213,7 +215,7 @@ function ClientRow({
       key: 'orders',
       label: t('actions.orders'),
       icon: <Package className="size-4" />,
-      onSelect: () => router.push('/commandes'),
+      onSelect: () => router.push(`/s/${storeId}/commandes`),
     },
   ];
 
@@ -264,8 +266,10 @@ function ClientRow({
 
 function DetailActionBar({
   customer,
+  storeId,
 }: {
   customer: CustomerDetail;
+  storeId: string;
 }) {
   const t = useTranslations('clients');
   const phone = customer.phone;
@@ -326,7 +330,7 @@ function DetailActionBar({
       ) : null}
       <Link
         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-accent-ink hover:bg-accent-hover"
-        href="/commandes"
+        href={`/s/${storeId}/commandes`}
       >
         {t('actions.orders')}
         <ArrowRight aria-hidden="true" className="size-4" />
@@ -339,10 +343,12 @@ function CustomerSheet({
   customer,
   loading,
   onClose,
+  storeId,
 }: {
   customer: CustomerDetail | null;
   loading: boolean;
   onClose: () => void;
+  storeId: string;
 }) {
   const t = useTranslations('clients');
   const reduceMotion = useReducedMotion();
@@ -458,7 +464,7 @@ function CustomerSheet({
 
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">{t('actions.title')}</h3>
-                  <DetailActionBar customer={customer} />
+                  <DetailActionBar customer={customer} storeId={storeId} />
                 </section>
 
                 <section className="space-y-3">
@@ -468,7 +474,7 @@ function CustomerSheet({
                       {customer.history.map((order) => (
                         <Link
                           className="block p-3 hover:bg-canvas"
-                          href={`/commandes/${order.id}`}
+                          href={`/s/${storeId}/commandes/${order.id}`}
                           key={order.id}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -539,7 +545,7 @@ function CustomerSheet({
 
 // ── Workspace principal ─────────────────────────────────────────────────────
 
-export function ClientsWorkspace() {
+export function ClientsWorkspace({ storeId }: { storeId: string }) {
   const t = useTranslations('clients');
   const reduceMotion = useReducedMotion();
   const listCustomers = useAction(listCustomersAction);
@@ -556,11 +562,11 @@ export function ClientsWorkspace() {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      listCustomers.execute({ search, sortByRisk });
+      listCustomers.execute({ search, shopId: storeId, sortByRisk });
     }, 280);
 
     return () => window.clearTimeout(timeoutId);
-  }, [listCustomers.execute, search, sortByRisk]);
+  }, [listCustomers.execute, search, sortByRisk, storeId]);
 
   async function selectCustomer(customerId: string) {
     setSelectedCustomerId(customerId);
@@ -568,7 +574,7 @@ export function ClientsWorkspace() {
     setDetailLoading(true);
     setFeedback(null);
 
-    const result = await getCustomer.executeAsync({ customerId });
+    const result = await getCustomer.executeAsync({ customerId, shopId: storeId });
     setDetailLoading(false);
 
     if (result?.data?.ok) {
@@ -647,7 +653,12 @@ export function ClientsWorkspace() {
           {...motionProps}
         >
           {customers.map((customer) => (
-            <ClientRow customer={customer} key={customer.customerId} onSelect={selectCustomer} />
+            <ClientRow
+              customer={customer}
+              key={customer.customerId}
+              onSelect={selectCustomer}
+              storeId={storeId}
+            />
           ))}
         </motion.div>
       ) : null}
@@ -660,6 +671,7 @@ export function ClientsWorkspace() {
             setSelectedCustomerId(null);
             setSelectedCustomer(null);
           }}
+          storeId={storeId}
         />
       ) : null}
     </main>

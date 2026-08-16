@@ -1,3 +1,5 @@
+import { StoreContextBar } from '@/components/workspace/store-context-bar';
+import type { WorkspaceStore } from '@/lib/workspace/store';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { BottomTabNav } from './bottom-tab-nav';
@@ -5,10 +7,14 @@ import { Sidebar } from './sidebar';
 
 export async function AppShell({
   children,
+  currentStore,
   currentRole,
+  stores = [],
 }: {
   children: ReactNode;
+  currentStore?: WorkspaceStore;
   currentRole?: string | null;
+  stores?: WorkspaceStore[];
 }) {
   const t = await getTranslations('common');
 
@@ -20,7 +26,7 @@ export async function AppShell({
       >
         {t('skipToContent')}
       </a>
-      <Sidebar currentRole={currentRole} />
+      <Sidebar currentRole={currentRole} currentStore={currentStore} />
       {/*
         Mobile : zone de défilement bornée AU-DESSUS de la bottom-tab-nav fixe
         (h = 64px + safe-area). Sans hauteur bornée, un élément amené en bas du viewport
@@ -29,9 +35,10 @@ export async function AppShell({
         Desktop (md+) : pas de bottom-nav (md:hidden) → défilement document classique.
       */}
       <div className="h-[calc(100dvh_-_var(--mobile-nav-reserved-height))] overflow-y-auto overscroll-contain px-4 pt-6 pb-6 md:ml-[280px] md:h-auto md:min-h-dvh md:overflow-visible md:px-8 md:pt-10 md:pb-8">
+        {currentStore ? <StoreContextBar currentStore={currentStore} stores={stores} /> : null}
         {children}
       </div>
-      <BottomTabNav currentRole={currentRole} />
+      <BottomTabNav currentRole={currentRole} currentStore={currentStore} />
     </div>
   );
 }

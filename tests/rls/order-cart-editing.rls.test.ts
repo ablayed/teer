@@ -403,7 +403,7 @@ async function createPersistScenario(admin: AdminClient, suffix: string) {
       shopify_variant_id: `new-variant-${suffix}`,
       shopify_product_id: `new-product-${suffix}`,
     })
-    .select('id')
+    .select('id, shop_id')
     .single();
   if (newProductError || !newProduct) throw newProductError ?? new Error('new product not created');
 
@@ -452,6 +452,13 @@ async function createPersistScenario(admin: AdminClient, suffix: string) {
   return {
     merchantAccountId,
     driverId: driver.id,
+    // Boutique REELLE des produits du scenario (posee par le trigger
+    // `assign_default_store_context`). Le scenario passait auparavant une
+    // chaine factice a `persistShopifyOrder` : elle n'etait pas lue sur le
+    // chemin « commande existante ». Le rapprochement des lignes etant
+    // desormais scope par boutique, elle doit designer la vraie boutique,
+    // sinon aucun produit ne matche.
+    shopId: newProduct.shop_id,
     newItemsSummary: [
       {
         title: 'Produit Shopify apres mise a jour',
@@ -486,7 +493,7 @@ describe('persistShopifyOrder — synchronisation du panier Shopify existant', (
       persistShopifyOrder({
         merchantAccountId: scenario.merchantAccountId,
         orderNode: scenario.orderNode,
-        shopId: 'shop-for-persist-test',
+        shopId: scenario.shopId,
         supabaseServiceClient: admin,
       }),
     ).resolves.toEqual({ ok: true });
@@ -524,7 +531,7 @@ describe('persistShopifyOrder — synchronisation du panier Shopify existant', (
       persistShopifyOrder({
         merchantAccountId: scenario.merchantAccountId,
         orderNode: scenario.orderNode,
-        shopId: 'shop-for-persist-test',
+        shopId: scenario.shopId,
         supabaseServiceClient: admin,
       }),
     ).resolves.toEqual({ ok: true });
@@ -564,7 +571,7 @@ describe('persistShopifyOrder — synchronisation du panier Shopify existant', (
         persistShopifyOrder({
           merchantAccountId: scenario.merchantAccountId,
           orderNode: scenario.orderNode,
-          shopId: 'shop-for-persist-test',
+          shopId: scenario.shopId,
           supabaseServiceClient: admin,
         }),
       ).resolves.toEqual({ ok: true });

@@ -121,7 +121,7 @@ async function seedDeliveredCollectedOrder(
       delivery_state: 'delivered',
       cash_state: 'collected',
       assigned_driver_id: driverId,
-      shop_id: order.shopId ?? null,
+      ...(order.shopId ? { shop_id: order.shopId } : {}),
       payment_channel_at_delivery: 'ESPECES',
       cash_collectable_minor: order.collectableMinor,
       delivery_fee_minor: order.feeMinor,

@@ -75,8 +75,9 @@ describe('extractShopifyId', () => {
 
 describe('mapShopifyCustomer', () => {
   it('maps a Shopify customer from an order node (enrichi Phase 7b)', () => {
-    expect(mapShopifyCustomer(makeOrder(), 'merchant_123')).toEqual({
+    expect(mapShopifyCustomer(makeOrder(), 'merchant_123', 'shop_123')).toEqual({
       merchant_account_id: 'merchant_123',
+      shop_id: 'shop_123',
       source: 'shopify',
       shopify_customer_id: '987654321',
       shopify_customer_gids: ['987654321'],
@@ -127,6 +128,7 @@ describe('mapShopifyCustomer', () => {
         },
       }),
       'merchant_123',
+      'shop_123',
     );
 
     expect(enriched).toMatchObject({
@@ -159,7 +161,11 @@ describe('mapShopifyCustomer', () => {
       createdAt: '2024-01-01T00:00:00Z',
     } as unknown as ShopifyOrderNode['customer'];
 
-    const mapped = mapShopifyCustomer(makeOrder({ customer: legacyCustomer }), 'merchant_123');
+    const mapped = mapShopifyCustomer(
+      makeOrder({ customer: legacyCustomer }),
+      'merchant_123',
+      'shop_123',
+    );
     expect(mapped).not.toHaveProperty('tags');
     expect(mapped).not.toHaveProperty('accepts_marketing');
     expect(mapped).not.toHaveProperty('shopify_orders_count');
@@ -179,7 +185,9 @@ describe('mapShopifyCustomer', () => {
   });
 
   it('returns null when the Shopify customer is missing', () => {
-    expect(mapShopifyCustomer(makeOrder({ customer: null }), 'merchant_123')).toBeNull();
+    expect(
+      mapShopifyCustomer(makeOrder({ customer: null }), 'merchant_123', 'shop_123'),
+    ).toBeNull();
   });
 });
 

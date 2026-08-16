@@ -6,6 +6,7 @@ import { computeEta, formatEtaDate } from '@/lib/purchases/eta';
 import { allocateFees } from '@/lib/purchases/fee-allocation';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -61,10 +62,19 @@ export const createPurchaseLotAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
+    // Boutique ACTIVE explicite. `getPurchaseLotPageData` lit déjà les lots avec
+    // `.eq('shop_id', shopId)` : sans cette résolution, le trigger
+    // `assign_default_store_context` rattacherait le lot à la boutique PAR DÉFAUT
+    // et un marchand multi-boutiques ne reverrait jamais le lot qu'il vient de
+    // créer depuis une autre boutique.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
     const { data: lot, error: lotErr } = await admin
       .from('purchase_lot')
       .insert({
         merchant_account_id: merchantAccountId,
+        shop_id: shopId,
         supplier_name: parsedInput.supplierName,
         reference: parsedInput.reference ?? null,
         ordered_at: parsedInput.orderedAt,
@@ -80,6 +90,8 @@ export const createPurchaseLotAction = requireRole('owner')
     const { error: lineErr } = await admin.from('purchase_lot_line').insert(
       parsedInput.lines.map((l) => ({
         merchant_account_id: merchantAccountId,
+        // Une ligne appartient à SON lot : même boutique, par construction.
+        shop_id: shopId,
         purchase_lot_id: lot.id,
         product_id: l.productId,
         qty: l.qty,
@@ -131,7 +143,7 @@ export const addPurchaseLotLineAction = requireRole('owner')
 
     const { data: lot } = await admin
       .from('purchase_lot')
-      .select('status')
+      .select('status, shop_id')
       .eq('id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId)
       .single();
@@ -141,6 +153,9 @@ export const addPurchaseLotLineAction = requireRole('owner')
 
     const { error } = await admin.from('purchase_lot_line').insert({
       merchant_account_id: merchantAccountId,
+      // Boutique héritée du LOT porteur, pas de la boutique active : une ligne ne
+      // peut pas vivre dans une autre boutique que son lot.
+      shop_id: lot.shop_id,
       purchase_lot_id: parsedInput.lotId,
       product_id: parsedInput.productId,
       qty: parsedInput.qty,
@@ -303,7 +318,7 @@ export type PurchaseLotPageData =
   | { ok: true; lots: PurchaseLotData[] }
   | { ok: false; message: string };
 
-export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
+export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLotPageData> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -329,6 +344,7 @@ export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
     .from('purchase_lot')
     .select('*')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .order('ordered_at', { ascending: false });
 
   if (lotErr) return { ok: false, message: lotErr.message };
@@ -340,7 +356,8 @@ export async function getPurchaseLotPageData(): Promise<PurchaseLotPageData> {
     .from('purchase_lot_line')
     .select('*, product(id, title, sku)')
     .in('purchase_lot_id', lotIds)
-    .eq('merchant_account_id', merchantAccountId);
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId);
 
   if (lineErr) return { ok: false, message: lineErr.message };
 

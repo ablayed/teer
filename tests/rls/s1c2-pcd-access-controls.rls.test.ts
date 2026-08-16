@@ -1,4 +1,5 @@
 import type { Database } from '@/lib/supabase/database.types';
+import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -67,6 +68,8 @@ describe('S1C-2 bounded quota and authorization RLS', () => {
           actor_scope_key: 'user:synthetic',
           action: 'generate_export',
           window_start: new Date().toISOString(),
+          // `count` est NOT NULL SANS default en base : il doit être fourni.
+          count: 0,
         });
       expect(directInsertError).not.toBeNull();
 
@@ -75,8 +78,8 @@ describe('S1C-2 bounded quota and authorization RLS', () => {
           owner.client.rpc('consume_pcd_access_quota', {
             p_action: 'generate_export',
             p_actor_kind: 'human',
-            p_service_kind: null,
-            p_shop_id: null,
+            p_service_kind: nullableRpcArg<string>(null),
+            p_shop_id: nullableRpcArg<string>(null),
             p_tenant_id: owner.accountId,
           }),
         ),
@@ -104,7 +107,7 @@ describe('S1C-2 bounded quota and authorization RLS', () => {
       p_action: 'search',
       p_actor_kind: 'service',
       p_service_kind: 'worker',
-      p_shop_id: null,
+      p_shop_id: nullableRpcArg<string>(null),
       p_tenant_id: owner.accountId,
     });
     expect(data).toBeNull();
@@ -115,8 +118,8 @@ describe('S1C-2 bounded quota and authorization RLS', () => {
       {
         p_action: 'search',
         p_actor_kind: 'human',
-        p_service_kind: null,
-        p_shop_id: null,
+        p_service_kind: nullableRpcArg<string>(null),
+        p_shop_id: nullableRpcArg<string>(null),
         p_tenant_id: '00000000-0000-4000-8000-000000000099',
       },
     );

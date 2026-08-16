@@ -41,6 +41,7 @@ import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -884,17 +885,24 @@ async function getMerchantAccountIdForActor(
   return data.merchant_account_id;
 }
 
+// `shopId` est OBLIGATOIRE : depuis Phase 1 un client appartient à une boutique
+// (0128 scope les surfaces client par `shop_id`). Sans lui, la recherche
+// retrouverait le client d'une AUTRE boutique du même marchand et la création
+// retomberait sur la boutique par défaut via `assign_default_store_context` —
+// une commande se retrouverait rattachée à un client d'une autre boutique.
 async function findOrCreateCustomerByPhone({
   fullName,
   merchantAccountId,
   phone,
   shippingAddress,
+  shopId,
   supabase,
 }: {
   fullName?: string;
   merchantAccountId: string;
   phone: string;
   shippingAddress: Json | null;
+  shopId: string;
   supabase: SupabaseServerClient;
 }): Promise<
   { ok: true; customerId: string; normalizedPhone: string } | { message: string; ok: false }
@@ -912,6 +920,7 @@ async function findOrCreateCustomerByPhone({
     .from('customer')
     .select('id, full_name, shipping_address, created_at')
     .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
     .eq('phone', normalizedPhone)
     .order('created_at', { ascending: true })
     .limit(2);
@@ -954,6 +963,7 @@ async function findOrCreateCustomerByPhone({
     .from('customer')
     .insert({
       merchant_account_id: merchantAccountId,
+      shop_id: shopId,
       full_name: fullName ?? null,
       phone: normalizedPhone,
       shipping_address: shippingAddress,
@@ -1365,6 +1375,17 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       .eq('merchant_account_id', merchantAccountId);
     const shopIds = (tenantShops ?? []).map((shop) => shop.id);
 
+    // Phase 1 : la BOUTIQUE ACTIVE de la requête fait foi. L'heuristique
+    // d'origine ne regardait que le nombre de boutiques du tenant (1 → auto,
+    // >1 → choix obligatoire) ; elle date d'avant le scoping par boutique.
+    // Depuis 0126, toute organisation reçoit une boutique manuelle par défaut,
+    // donc dès qu'une boutique Shopify est connectée le tenant en compte 2 et
+    // cette heuristique exigeait un choix explicite — alors que /commandes ne
+    // propose plus qu'une seule option (la boutique active) et n'envoie donc
+    // aucun shopId. Résultat : la création manuelle de commande était
+    // totalement bloquée pour tout marchand multi-boutiques.
+    const requestStoreId = await getRequestStoreId();
+
     let resolvedShopId: string | null = null;
     if (parsedInput.shopId) {
       if (!shopIds.includes(parsedInput.shopId)) {
@@ -1374,10 +1395,36 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
           message: 'Boutique introuvable.',
         };
       }
+      // Une boutique explicite ne peut jamais désigner autre chose que la
+      // boutique active du contexte (même garde que
+      // saveBundleConfigurationAction) : sans cela, un payload construit hors
+      // UI créerait une commande dans une autre boutique du tenant.
+      if (requestStoreId && parsedInput.shopId !== requestStoreId) {
+        return {
+          ok: false as const,
+          errorCode: 'shop_required' as const,
+          message: 'Veuillez sélectionner une boutique.',
+        };
+      }
       resolvedShopId = parsedInput.shopId;
+    } else if (requestStoreId && shopIds.includes(requestStoreId)) {
+      resolvedShopId = requestStoreId;
     } else if (shopIds.length === 1) {
+      // Chemin historique mono-boutique, conservé pour tout appel hors
+      // contexte de boutique (aucun en-tête de store résolu).
       resolvedShopId = shopIds[0];
     } else if (shopIds.length > 1) {
+      return {
+        ok: false as const,
+        errorCode: 'shop_required' as const,
+        message: 'Veuillez sélectionner une boutique.',
+      };
+    }
+
+    // Depuis 0126 toute organisation possède au moins une boutique, donc ce cas
+    // est structurellement inatteignable ; on refuse explicitement plutôt que de
+    // laisser un `null` retomber sur le trigger de boutique par défaut.
+    if (!resolvedShopId) {
       return {
         ok: false as const,
         errorCode: 'shop_required' as const,
@@ -1396,6 +1443,11 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       .from('product')
       .select('id, title, sku')
       .eq('merchant_account_id', merchantAccountId)
+      // Un produit d'une AUTRE boutique du même marchand ne doit jamais pouvoir
+      // entrer dans une commande de celle-ci : le stock serait décrémenté au
+      // mauvais endroit. Le contrôle `products.length !== productIds.length`
+      // ci-dessous transforme ce filtre en refus explicite.
+      .eq('shop_id', resolvedShopId)
       .in('id', productIds);
 
     if (productError || !products || products.length !== productIds.length) {
@@ -1413,6 +1465,7 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       phone: parsedInput.phone,
       fullName: parsedInput.customerName,
       shippingAddress,
+      shopId: resolvedShopId,
       supabase,
     });
 
@@ -1484,6 +1537,7 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       merchantAccountId,
       orderId: order.id,
       lineItems: itemsSummary,
+      shopId: resolvedShopId,
     }).catch(() => undefined);
 
     revalidatePath('/commandes');
@@ -1556,7 +1610,7 @@ export const logCallAction = requireRole('owner', 'manager', 'agent')
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(
-        'id, merchant_account_id, cod_status, order_state, call_state, delivery_state, cash_state',
+        'id, merchant_account_id, shop_id, cod_status, order_state, call_state, delivery_state, cash_state',
       )
       .eq('id', parsedInput.orderId)
       .maybeSingle();
@@ -1574,6 +1628,10 @@ export const logCallAction = requireRole('owner', 'manager', 'agent')
 
     const { error: callError } = await supabase.from('call_log').insert({
       merchant_account_id: order.merchant_account_id,
+      // Boutique héritée de la COMMANDE appelée, pas de la boutique active :
+      // un appel journalisé depuis une autre boutique resterait rattaché à la
+      // commande mais deviendrait invisible dans la boutique qui la porte.
+      shop_id: order.shop_id,
       order_id: order.id,
       agent_user_id: ctx.user.id,
       outcome: parsedInput.outcome,

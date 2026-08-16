@@ -2,6 +2,7 @@
 
 import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
 import { cn } from '@/lib/utils';
+import type { WorkspaceStore } from '@/lib/workspace/store';
 import {
   ChartColumnIncreasing,
   HelpCircle,
@@ -77,7 +78,13 @@ function isAllowed(item: BottomTabItem, currentRole?: string | null): boolean {
   );
 }
 
-export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
+export function BottomTabNav({
+  currentRole,
+  currentStore,
+}: {
+  currentRole?: string | null;
+  currentStore?: WorkspaceStore;
+}) {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -91,6 +98,7 @@ export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
   const overflowActive = overflow.some((item) => isActivePath(pathname, item.href));
   const overflowMain = overflow.filter((item) => !settingsHrefs.has(item.href));
   const overflowSettings = overflow.filter((item) => settingsHrefs.has(item.href));
+  const storePath = (href: string) => (currentStore ? `/s/${currentStore.id}${href}` : href);
 
   // Fermeture du menu « Plus » : Échap (focus rendu au bouton) + clic extérieur.
   // On exclut explicitement le bouton déclencheur : sinon `pointerdown` ferme,
@@ -129,7 +137,8 @@ export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
 
   function renderOverflowLink(item: BottomTabItem) {
     const Icon = item.icon;
-    const active = isActivePath(pathname, item.href);
+    const href = storePath(item.href);
+    const active = isActivePath(pathname, href);
 
     return (
       <Link
@@ -138,7 +147,7 @@ export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
           'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           active ? 'bg-accent-subtle text-accent-deep' : 'text-text hover:bg-canvas',
         )}
-        href={item.href}
+        href={href}
         key={item.href}
         onClick={() => setOpen(false)}
         prefetch
@@ -173,7 +182,8 @@ export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
       >
         {visibleItems.map((item) => {
           const Icon = item.icon;
-          const active = isActivePath(pathname, item.href);
+          const href = storePath(item.href);
+          const active = isActivePath(pathname, href);
 
           return (
             <Link
@@ -183,7 +193,7 @@ export function BottomTabNav({ currentRole }: { currentRole?: string | null }) {
                 'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[11px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 active ? 'bg-accent-subtle text-accent-deep' : 'text-muted hover:text-text',
               )}
-              href={item.href}
+              href={href}
               key={item.href}
               onClick={() => setOpen(false)}
               prefetch

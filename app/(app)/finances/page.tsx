@@ -28,10 +28,12 @@ import { PERIOD_PRESETS, resolvePeriodRange, toDateInput } from '@/lib/periods/d
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AlertCircle, LockKeyhole, ReceiptText } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
 type FinanceKpiRow = Database['public']['Functions']['finance_kpis']['Returns'][number];
@@ -86,6 +88,7 @@ function buildFinanceHref(params: {
   from?: string;
   period?: string;
   shop?: string | null;
+  storeId: string;
   tab: FinanceTab;
   to?: string;
 }): string {
@@ -105,7 +108,7 @@ function buildFinanceHref(params: {
   }
 
   const query = search.toString();
-  return query ? `/finances?${query}` : '/finances';
+  return query ? `/s/${params.storeId}/finances?${query}` : `/s/${params.storeId}/finances`;
 }
 
 // Paramètres de période à transporter d'un lien à l'autre (changement d'onglet) :
@@ -181,12 +184,14 @@ async function FinanceTabBar({
   from,
   period,
   shop,
+  storeId,
   to,
 }: {
   activeTab: FinanceTab;
   from: Date;
   period: string;
   shop: string;
+  storeId: string;
   to: Date;
 }) {
   const t = await getTranslations('finance');
@@ -204,21 +209,21 @@ async function FinanceTabBar({
       <Link
         aria-current={activeTab === 'global' ? 'page' : undefined}
         className={tabClass(activeTab === 'global')}
-        href={buildFinanceHref({ ...periodParams, shop, tab: 'global' })}
+        href={buildFinanceHref({ ...periodParams, shop, storeId, tab: 'global' })}
       >
         {t('tabs.global')}
       </Link>
       <Link
         aria-current={activeTab === 'produits' ? 'page' : undefined}
         className={tabClass(activeTab === 'produits')}
-        href={buildFinanceHref({ ...periodParams, shop, tab: 'produits' })}
+        href={buildFinanceHref({ ...periodParams, shop, storeId, tab: 'produits' })}
       >
         {t('tabs.products')}
       </Link>
       <Link
         aria-current={activeTab === 'livreurs' ? 'page' : undefined}
         className={tabClass(activeTab === 'livreurs')}
-        href={buildFinanceHref({ ...periodParams, shop, tab: 'livreurs' })}
+        href={buildFinanceHref({ ...periodParams, shop, storeId, tab: 'livreurs' })}
       >
         {t('tabs.drivers')}
       </Link>
@@ -448,12 +453,14 @@ async function ProductTabContent({
   isShopFiltered,
   merchantAccountId,
   selectedShopId,
+  storeId,
   to,
 }: {
   from: Date;
   isShopFiltered: boolean;
   merchantAccountId: string;
   selectedShopId: string | null;
+  storeId: string;
   to: Date;
 }) {
   const t = await getTranslations('finance');
@@ -470,6 +477,7 @@ async function ProductTabContent({
     <FinanceProductCostView
       from={toDateInput(from)}
       report={report}
+      storeId={storeId}
       scopeNote={isShopFiltered ? t('products.scopeNoteFiltered') : undefined}
       to={toDateInput(to)}
     />
@@ -529,6 +537,10 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
   const nav = await getTranslations('nav');
   const t = await getTranslations('finance');
   const params = await searchParams;
+  const storeId = await getRequestStoreId();
+  if (!storeId) {
+    redirect('/s');
+  }
   const { activePeriod, from, to } = periodRange(params);
   const activeTab = normalizeFinanceTab(params.tab);
   const { merchantAccountId, role, supabase } = await getCurrentMember();
@@ -553,7 +565,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
   return (
     <main className="space-y-6" id="main">
       <Suspense fallback={null}>
-        <FinancePeriodPersistence activeTab={activeTab} />
+        <FinancePeriodPersistence activeTab={activeTab} storeId={storeId} />
       </Suspense>
       <Suspense fallback={null}>
         <ShopFilterPersistence storageKey="teer.finances.shop" />
@@ -578,7 +590,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
             allLabel={t('shops.all')}
             ariaLabel={t('shops.ariaLabel')}
             label={t('shops.label')}
-            pathname="/finances"
+            pathname={`/s/${storeId}/finances`}
             searchParams={{
               from: params.from,
               period: params.period,
@@ -599,6 +611,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
           from,
           period: activePeriod,
           shop: activeShopParam,
+          storeId,
           to,
         })
       }
@@ -619,6 +632,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
             isShopFiltered={selectedShopId !== null}
             merchantAccountId={merchantAccountId}
             selectedShopId={selectedShopId}
+            storeId={storeId}
             to={to}
           />
         ) : (

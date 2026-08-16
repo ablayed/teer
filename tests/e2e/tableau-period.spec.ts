@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
-import { type Locator, type Page, expect, test } from '@playwright/test';
+import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
@@ -261,14 +261,7 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
   await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
-  await page.waitForURL(`**${redirectTo.split('?')[0]}**`);
-}
-
-async function clickFilterUntilUrl(page: Page, getLink: () => Locator, url: RegExp) {
-  await expect(async () => {
-    await getLink().click();
-    await expect(page).toHaveURL(url, { timeout: 1_500 });
-  }).toPass({ intervals: [250, 500, 1_000], timeout: 10_000 });
+  await page.waitForURL((url) => url.pathname.startsWith('/s/'), { timeout: 45_000 });
 }
 
 test.describe('Tableau période + CA/livraisons', () => {
@@ -301,23 +294,14 @@ test.describe('Tableau période + CA/livraisons', () => {
       totalAmount: 8_000,
     });
 
-    await signIn(page, email, '/tableau');
-
-    const selector = page.getByRole('navigation', { name: messages.tableau.shops.ariaLabel });
-    await clickFilterUntilUrl(
-      page,
-      () => selector.getByRole('link', { name: /ta-.*\.myshopify\.com/ }),
-      new RegExp(`/tableau\\?.*shop=${shopA}`),
-    );
+    await signIn(page, email, `/s/${shopA}/tableau`);
 
     await page.getByRole('button', { name: /Choisir la période/ }).click();
     await page
       .getByRole('button', { name: messages.periodPicker.presets['30j'], exact: true })
       .click();
 
-    await expect(page).toHaveURL(
-      new RegExp(`/tableau\\?(?=[^#]*shop=${shopA})(?=[^#]*period=30j)`),
-    );
+    await expect(page).toHaveURL(new RegExp(`/s/${shopA}/tableau\\?(?=[^#]*period=30j)`));
     const cashPeriodCard = page.locator('section.rounded-lg').filter({
       has: page.getByText(messages.tableau.blocks.operationsEssentials.cashCollected.label, {
         exact: true,
@@ -358,7 +342,7 @@ test.describe('Tableau période + CA/livraisons', () => {
       totalAmount: 7_000,
     });
 
-    await signIn(page, email, '/tableau?period=90j');
+    await signIn(page, email, `/s/${shopId}/tableau?period=90j`);
 
     const topProducts = page.locator('section.rounded-lg').filter({
       has: page.getByRole('heading', { name: 'Produits les plus vendus', exact: true }),
@@ -407,7 +391,7 @@ test.describe('Tableau période + CA/livraisons', () => {
       totalAmount: 12_000,
     });
 
-    await signIn(page, managerEmail, '/tableau?period=30j');
+    await signIn(page, managerEmail, `/s/${shopId}/tableau?period=30j`);
 
     await expect(
       page.getByText(messages.tableau.blocks.operationsEssentials.cashCollected.label, {
@@ -442,7 +426,7 @@ test.describe('Tableau période + CA/livraisons', () => {
       totalAmount: 9_000,
     });
 
-    await signIn(page, agentEmail, '/tableau?period=30j');
+    await signIn(page, agentEmail, `/s/${shopId}/tableau?period=30j`);
 
     await expect(
       page.getByText(messages.tableau.blocks.operationsEssentials.cashCollected.label, {
@@ -488,23 +472,19 @@ test.describe('Tableau période + CA/livraisons', () => {
       totalAmount: 7_000,
     });
 
-    await signIn(page, email, '/tableau');
+    await signIn(page, email, `/s/${shopA}/tableau`);
 
     const cashCard = page.locator('section.rounded-lg').filter({
       has: page.getByText(messages.tableau.blocks.operationsEssentials.cashDrivers.label, {
         exact: true,
       }),
     });
-    await expect(cashCard).toContainText(/17.?000/);
-
-    const selector = page.getByRole('navigation', { name: messages.tableau.shops.ariaLabel });
-    await clickFilterUntilUrl(
-      page,
-      () => selector.getByRole('link', { name: /casha-.*\.myshopify\.com/ }),
-      new RegExp(`/tableau\\?.*shop=${shopA}`),
-    );
-
     await expect(cashCard).toContainText(/10.?000/);
+
+    await page.getByText('Changer', { exact: true }).click();
+    await page.locator(`a[href="/s/${shopB}/tableau"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/s/${shopB}/tableau`));
+    await expect(cashCard).toContainText(/7.?000/);
   });
 
   test('owner : les 3 taux Essentiels opérations suivent le preset de période', async ({
@@ -554,7 +534,7 @@ test.describe('Tableau période + CA/livraisons', () => {
       totalAmount: 5_000,
     });
 
-    await signIn(page, email, '/tableau?period=90j');
+    await signIn(page, email, `/s/${shopId}/tableau?period=90j`);
 
     const cancellationCard = page.locator('section.rounded-lg').filter({
       has: page.getByText(messages.tableau.blocks.operationsEssentials.cancellationRate, {
@@ -591,8 +571,9 @@ test.describe('Tableau période + CA/livraisons', () => {
   });
 
   test('la carte KPI "CA collecté (7 j)" n\'apparaît plus sur le Tableau', async ({ page }) => {
-    const { email } = await createOwnerFixture('kpi-ca-collecte-removed');
-    await signIn(page, email, '/tableau');
+    const { admin, email, merchantAccountId } = await createOwnerFixture('kpi-ca-collecte-removed');
+    const shopId = await createShop(admin, merchantAccountId, `kpi-${Date.now()}.myshopify.com`);
+    await signIn(page, email, `/s/${shopId}/tableau`);
 
     await expect(page.getByText('CA collecté (7 j)', { exact: true })).toHaveCount(0);
   });
@@ -618,7 +599,7 @@ test.describe('Tableau période + CA/livraisons', () => {
       totalAmount: 15_000,
     });
 
-    await signIn(page, email, '/tableau?period=30j');
+    await signIn(page, email, `/s/${shopId}/tableau?period=30j`);
 
     const cashCard = page.locator('section.rounded-lg').filter({
       has: page.getByText(messages.tableau.blocks.operationsEssentials.cashDrivers.label, {

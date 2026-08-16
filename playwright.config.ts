@@ -5,7 +5,7 @@ import {
   SHOPIFY_E2E_HMAC_SECRET,
 } from './tests/e2e/helpers/shopify-webhook-harness';
 
-function loadEnvFile(path: string) {
+function loadEnvFile(path: string, override = false) {
   if (!existsSync(path)) {
     return;
   }
@@ -32,14 +32,17 @@ function loadEnvFile(path: string) {
           ? rawValue.slice(1, -1)
           : rawValue;
 
-    if (!(key in process.env)) {
+    if (override || !(key in process.env)) {
       process.env[key] = value;
     }
   }
 }
 
-loadEnvFile('.env.test.local');
-loadEnvFile('.env.test');
+// E2E fixtures use a service-role key and must never inherit cloud values from
+// the developer shell or `.env.local`. The optional local override is applied
+// last for developer-specific test ports/keys.
+loadEnvFile('.env.test', true);
+loadEnvFile('.env.test.local', true);
 
 if (process.env.E2E_SHOPIFY_WEBHOOKS === '1') {
   // Le serveur Next charge parfois une configuration locale différente du processus Playwright.

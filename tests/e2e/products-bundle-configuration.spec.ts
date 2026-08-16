@@ -4,6 +4,7 @@ import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 // Bundles PR 3 : UI de configuration (onglet Détails, /produits vue Catalogue) — case
 // "Pack/bundle", sélection des composants + quantités, sauvegarde. Réutilise les
@@ -95,6 +96,7 @@ async function createOwnerFixture(label: string) {
     .from('merchant_account')
     .update({ name: `Tëër E2E Bundle Config ${label}`, onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
+  await createShop(admin, merchantAccountId, `bundle-${label}-${Date.now()}.myshopify.com`);
   return { admin, email, merchantAccountId, userId };
 }
 
@@ -467,11 +469,7 @@ test('décocher un bundle déjà vendu : autorisé sans blocage, historique des 
   test.setTimeout(180_000);
   const fixture = await createOwnerFixture('uncheck-history');
   try {
-    const shopId = await createShop(
-      fixture.admin,
-      fixture.merchantAccountId,
-      `bundle-cfg-${Date.now()}.myshopify.com`,
-    );
+    const shopId = await defaultShopId(fixture.admin, fixture.merchantAccountId);
     const bundleProductTitle = 'Kit Vendu E2E';
     const bundle = await createProduct(
       fixture.admin,

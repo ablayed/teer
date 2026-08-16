@@ -323,6 +323,7 @@ async function getActiveShopByDomain({
     .from('shop')
     .select('id, merchant_account_id, shop_domain')
     .eq('shop_domain', shopDomain)
+    .eq('store_kind', 'shopify')
     .eq('status', 'active')
     .maybeSingle();
 
@@ -476,6 +477,7 @@ async function handleProductWebhook({
   const result = await persistShopifyProductWebhook({
     merchantAccountId: shop.merchant_account_id,
     productNode,
+    shopId: shop.id,
     supabaseServiceClient: supabase,
   });
 

@@ -4,7 +4,15 @@ import { Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
-export function ProductSearchBar({ initialQuery, tab }: { initialQuery: string; tab?: string }) {
+export function ProductSearchBar({
+  initialQuery,
+  storeId,
+  tab,
+}: {
+  initialQuery: string;
+  storeId: string;
+  tab?: string;
+}) {
   const router = useRouter();
   const [value, setValue] = useState(initialQuery);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -21,7 +29,7 @@ export function ProductSearchBar({ initialQuery, tab }: { initialQuery: string; 
       const params = new URLSearchParams();
       if (tab) params.set('tab', tab);
       if (v.trim()) params.set('q', v.trim());
-      router.push(`/produits${params.size > 0 ? `?${params.toString()}` : ''}`);
+      router.push(`/s/${storeId}/produits${params.size > 0 ? `?${params.toString()}` : ''}`);
     }, 300);
   }
 

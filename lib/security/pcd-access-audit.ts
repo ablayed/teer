@@ -1,4 +1,5 @@
 import type { Database, Json } from '@/lib/supabase/database.types';
+import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 // Server-only module by import boundary: this file is imported only by server
@@ -225,13 +226,13 @@ export async function writePcdAccessAudit(
     p_metadata: metadata,
     p_outcome: entry.outcome,
     p_purpose: entry.purpose,
-    p_resource_id: entry.resourceId ?? null,
+    p_resource_id: nullableRpcArg(entry.resourceId),
     p_resource_type: entry.resourceType,
-    p_service_kind: entry.serviceKind ?? null,
-    p_shop_id: entry.shopId ?? null,
+    p_service_kind: nullableRpcArg(entry.serviceKind),
+    p_shop_id: nullableRpcArg(entry.shopId),
     p_surface: entry.surface,
     p_tenant_id: entry.tenantId,
-    p_idempotency_key: entry.idempotencyKey ?? null,
+    p_idempotency_key: nullableRpcArg(entry.idempotencyKey),
   });
 
   if (error || typeof data !== 'string') {

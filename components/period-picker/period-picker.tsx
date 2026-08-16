@@ -74,9 +74,28 @@ export function PeriodPicker({ align = 'end', presets = PERIOD_PRESETS }: Period
     return (
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverAnchor asChild>{trigger}</PopoverAnchor>
+        {/*
+          Hauteur bornée par l'espace RÉELLEMENT disponible sous (ou au-dessus du)
+          trigger, pas par une fraction du viewport.
+
+          `max-h-[85vh]` était inatteignable en pratique : sur un viewport 1280x720,
+          85vh = 612 px alors que le contenu ouvert sur « Personnalisé » ne fait que
+          547 px. Le `max-height` ne se déclenchait donc jamais, `scrollHeight ===
+          clientHeight` (545 = 545) et l'`overflow-y-auto` n'avait rien à faire
+          défiler — pendant que la popover, ancrée à y=279, débordait jusqu'à y=826,
+          soit 106 px SOUS le bas de la fenêtre. Le bouton « Appliquer » (top=769)
+          tombait hors champ dans un wrapper `position: fixed` : ni le scroll de page
+          ni `scrollIntoViewIfNeeded` ne pouvaient l'atteindre. Une plage
+          personnalisée était donc invalidable sur un écran court.
+
+          Radix calculait déjà la bonne valeur (441 px ici) et l'exposait via
+          `--radix-popover-content-available-height` ; il ne l'applique jamais
+          lui-même. En la consommant, le `max-height` mord réellement et
+          l'`overflow-y-auto` redevient fonctionnel.
+        */}
         <PopoverContent
           align={align}
-          className="max-h-[85vh] w-auto min-w-[16rem] overflow-y-auto p-0"
+          className="max-h-[var(--radix-popover-content-available-height)] w-auto min-w-[16rem] overflow-y-auto p-0"
         >
           {body}
         </PopoverContent>

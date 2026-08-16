@@ -319,9 +319,14 @@ function joinName(
   return name || null;
 }
 
+// `shopId` est requis : un client Shopify appartient à LA boutique qui l'a
+// synchronisé. Il était optionnel avec un spread conditionnel, ce qui laissait
+// silencieusement `assign_default_store_context` rattacher le client à la
+// boutique par défaut du marchand si l'argument venait à manquer.
 export function mapShopifyCustomer(
   node: ShopifyOrderNode,
   merchantAccountId: string,
+  shopId: string,
 ): CustomerUpsert | null {
   const customer = node.customer;
   if (!customer) {
@@ -334,6 +339,7 @@ export function mapShopifyCustomer(
 
   return {
     merchant_account_id: merchantAccountId,
+    shop_id: shopId,
     source: 'shopify',
     shopify_customer_id: gid,
     shopify_customer_gids: [gid],
@@ -515,6 +521,7 @@ async function resolveShopifyCustomer(
       .from('customer')
       .select(MERGE_SELECT)
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       .eq('phone_e164', phoneE164)
       .maybeSingle();
     if (error) {
@@ -529,6 +536,7 @@ async function resolveShopifyCustomer(
       .from('customer')
       .select(MERGE_SELECT)
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       // jsonb containment : postgrest-js sérialise un tableau JS en littéral tableau Postgres
       // `{...}` (invalide en json → "invalid input syntax for type json") ; on passe une chaîne
       // JSON pour obtenir le filtre attendu `@> '["gid"]'::jsonb`.
@@ -544,6 +552,7 @@ async function resolveShopifyCustomer(
         .from('customer')
         .select(MERGE_SELECT)
         .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
         .eq('shopify_customer_id', gid)
         .maybeSingle();
       if (legacyError) {
@@ -591,7 +600,7 @@ export async function persistShopifyOrder({
   supabaseServiceClient,
 }: PersistShopifyOrderInput): Promise<{ ok: boolean; error?: string; skipped?: 'stale' }> {
   try {
-    const customerData = mapShopifyCustomer(orderNode, merchantAccountId);
+    const customerData = mapShopifyCustomer(orderNode, merchantAccountId, shopId);
     let customerId: string | null = null;
     let customerTombstoned = false;
 
@@ -655,6 +664,7 @@ export async function persistShopifyOrder({
                 await resolveOrderLines(supabaseServiceClient, {
                   merchantAccountId,
                   lineItems: parseItemsummary(orderData.items_summary as Json),
+                  shopId,
                 })
               ).map(({ qty, ...line }) => ({ ...line, quantity: qty })) as unknown as Json,
               p_order_update: orderUpdate as unknown as Json,
@@ -686,6 +696,7 @@ export async function persistShopifyOrder({
         merchantAccountId,
         orderId: insertedOrder.id,
         lineItems: parseItemsummary(orderData.items_summary as Json),
+        shopId,
       }).catch(() => undefined);
     }
 

@@ -106,8 +106,13 @@ async function signIn(page: Page, email: string, redirectTo: string) {
 
 // Lien de nav visible (sidebar sur desktop, bottom-tab sur mobile — les deux sont dans
 // le DOM, un seul est visible selon le viewport). On cible par href, locale-agnostique.
+//
+// Correspondance par SUFFIXE depuis Phase 1 : la navigation émet des URL
+// canoniques `/s/{storeId}/produits`, alors que ce helper recevait le chemin
+// legacy `/produits`. Une égalité stricte ne matchait donc plus aucun lien. Le
+// suffixe couvre les deux formes sans que le test ait à connaître le storeId.
 function visibleNavLink(page: Page, href: string) {
-  return page.locator(`a[href="${href}"]:visible`).first();
+  return page.locator(`a[href$="${href}"]:visible`).first();
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E nav-perf');
