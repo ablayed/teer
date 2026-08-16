@@ -231,7 +231,7 @@ test('multi-store owner: chooser, authorized deep link and valid switch', async 
   }
 });
 
-test('unauthorized store URL redirects safely; authorized deep link preserves context', async ({
+test('unauthorized store URL is refused outright; authorized deep link preserves context', async ({
   page,
 }) => {
   const tenantA = await createOwnerFixture('route-a');
@@ -241,9 +241,17 @@ test('unauthorized store URL redirects safely; authorized deep link preserves co
     const [storeB] = await getStores(tenantB.admin, tenantB.merchantAccountId);
     await signIn(page, tenantA.email, `/s/${storeA.id}/tableau`);
     await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/tableau$`));
-    await page.goto(`/s/${storeB.id}/tableau`);
-    await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/tableau$`));
+    // Une boutique inaccessible est REFUSÉE (404), plus repliée silencieusement
+    // sur la boutique de l'utilisateur. L'ancien repli renvoyait vers
+    // /s/{storeA}/tableau : sans erreur visible, l'utilisateur pouvait croire
+    // consulter la boutique demandée alors qu'il en voyait une autre. La
+    // protection cross-tenant est identique (aucune donnée de storeB), mais
+    // l'échec est désormais explicite.
+    const unauthorized = await page.goto(`/s/${storeB.id}/tableau`);
+    expect(unauthorized?.status()).toBe(404);
+    await expect(page).toHaveURL(new RegExp(`/s/${storeB.id}/tableau$`));
     await expect(page.getByText(storeB.shop_domain, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(storeA.display_name, { exact: true })).toHaveCount(0);
     await page.goto(`/s/${storeA.id}/clients`);
     await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/clients$`));
     await expect(page.getByText(storeA.display_name, { exact: true }).first()).toBeVisible();

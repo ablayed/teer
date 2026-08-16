@@ -162,6 +162,17 @@ test.describe('routage workspace legacy et canonique', () => {
   // mesurées) : allonger le budget ne peut donc pas le masquer.
   test.describe.configure({ timeout: 150_000 });
 
+  // OBLIGATOIRE ici, pas une précaution de confort : en build de production
+  // (E2E_PROD_BUILD=1, le mode de la CI) le service worker prend le contrôle de
+  // la page quelques centaines de ms après la connexion, et TOUTES les requêtes
+  // de la page cessent alors d'être visibles de `page.on('request')`
+  // (cf. CLAUDE.md). Le compteur de requêtes RSC tomberait à 0 et
+  // `expectNoRscLoop` passerait au vert POUR LA MAUVAISE RAISON — y compris si
+  // la boucle était réintroduite. Bloquer le SW est ce qui rend l'assertion
+  // réellement probante en CI. Aucun comportement applicatif testé ici n'en
+  // dépend : sw.js ne touche jamais ces routes.
+  test.use({ serviceWorkers: 'block' });
+
   test('multi-boutiques : /produits legacy rend en place, sans boucle RSC', async ({ page }) => {
     const fixture = await createWorkspaceFixture('legacy-produits', { extraStore: true });
     expect(fixture.stores.length).toBe(2);

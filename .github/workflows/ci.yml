@@ -214,12 +214,12 @@ jobs:
           rm -rf .next/cache
           df -h /
       - name: List targeted Phase 1 E2E selection
-        run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts --project=${{ matrix.project }} --list
+        run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts tests/e2e/workspace-routing.spec.ts --project=${{ matrix.project }} --list
       # Fast Phase 1 acceptance: explicitly pass the spec paths to Playwright.
       # Calling `pnpm test:e2e` here would expand the package script's
       # `tests/e2e` path before forwarding arguments on Windows and collect the
       # entire catalogue instead of this targeted set.
-      - run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts --project=${{ matrix.project }}
+      - run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts tests/e2e/workspace-routing.spec.ts --project=${{ matrix.project }}
         env:
           E2E_PROD_BUILD: '1'
           # webServer (playwright.config.ts) hérite de cet env pour spawn `next start` ;
