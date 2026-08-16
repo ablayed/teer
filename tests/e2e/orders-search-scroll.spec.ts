@@ -4,6 +4,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 // Phase 0c / C1 — la recherche met l'URL à jour en shallow (history.replaceState) : pas de
 // navigation, donc pas de scroll-jump, et le refetch serveur (paradigme A) couvre toute la
@@ -93,19 +94,20 @@ async function createOwnerFixture(label: string) {
   return { admin, email, merchantAccountId, userId };
 }
 
-async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
-  const { data, error } = await admin
-    .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: domain,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error('shop insert failed');
-  return data.id as string;
+// Phase 1 : les fixtures sèment dans la boutique ACTIVE.
+//
+// Auparavant ce helper INSÉRAIT une boutique et les commandes y étaient
+// rattachées. Depuis 0126 l'organisation possède déjà une boutique par défaut,
+// et c'est elle que la session atteint sur une route legacy : semer dans une
+// boutique fraîchement créée laissait l'écran vide (compteurs à zéro, lignes
+// absentes) sans la moindre erreur. Le paramètre de domaine est conservé pour
+// ne pas toucher les appels, mais n'a plus d'effet.
+async function seedShopId(
+  admin: AdminClient,
+  merchantAccountId: string,
+  _domain: string,
+): Promise<string> {
+  return defaultShopId(admin, merchantAccountId);
 }
 
 async function seedOrder(
@@ -166,7 +168,7 @@ test.describe('Phase 0c — recherche commandes : scroll & couverture serveur', 
     test.skip(testInfo.project.name !== 'chromium', 'mesure de window.scrollY : desktop only');
 
     const { admin, email, merchantAccountId } = await createOwnerFixture('scroll');
-    const shopId = await createShop(admin, merchantAccountId, `sr-${Date.now()}.myshopify.com`);
+    const shopId = await seedShopId(admin, merchantAccountId, `sr-${Date.now()}.myshopify.com`);
 
     // 26 commandes partageant le token « Commun » → une recherche dessus garde la liste
     // pleine (≥ 25 résultats) : seul le scroll-jump pourrait alors déplacer la page.
@@ -209,7 +211,7 @@ test.describe('Phase 0c — recherche commandes : scroll & couverture serveur', 
     test.skip(testInfo.project.name !== 'chromium', 'fixture lourde : une seule cible suffit');
 
     const { admin, email, merchantAccountId } = await createOwnerFixture('beyond');
-    const shopId = await createShop(admin, merchantAccountId, `sb-${Date.now()}.myshopify.com`);
+    const shopId = await seedShopId(admin, merchantAccountId, `sb-${Date.now()}.myshopify.com`);
 
     // Cible la plus ANCIENNE → triée en dernier (sort_at desc) → page 2 (au-delà des 25).
     await seedOrder(admin, {
@@ -246,7 +248,7 @@ test.describe('Phase 0c — recherche commandes : scroll & couverture serveur', 
     );
 
     const { admin, email, merchantAccountId } = await createOwnerFixture('touch');
-    const shopId = await createShop(admin, merchantAccountId, `st-${Date.now()}.myshopify.com`);
+    const shopId = await seedShopId(admin, merchantAccountId, `st-${Date.now()}.myshopify.com`);
     await seedOrder(admin, {
       createdAt: new Date().toISOString(),
       customerName: 'Client Tactile',

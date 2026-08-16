@@ -4,6 +4,7 @@ import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 // Bundles PR 3 : UI de configuration (onglet Détails, /produits vue Catalogue) — case
 // "Pack/bundle", sélection des composants + quantités, sauvegarde. Réutilise les
@@ -162,24 +163,6 @@ async function createShop(admin: AdminClient, merchantAccountId: string, domain:
     .select('id')
     .single();
   if (error || !data) throw error ?? new Error('shop insert failed');
-  return data.id as string;
-}
-
-// Depuis Phase 1, le Tableau et le catalogue sont scopés à la boutique ACTIVE.
-// Une session qui se connecte sur une route legacy atterrit sur la boutique par
-// défaut du workspace — la même que celle où le trigger
-// product_default_store_context place les produits créés sans shop_id explicite.
-// Semer une commande dans une AUTRE boutique la rend donc invisible à l'écran
-// observé, sans erreur : les fixtures ci-dessous ciblent la boutique par défaut.
-async function defaultShopId(admin: AdminClient, merchantAccountId: string): Promise<string> {
-  const { data, error } = await admin
-    .from('shop')
-    .select('id, is_default')
-    .eq('merchant_account_id', merchantAccountId)
-    .order('is_default', { ascending: false })
-    .limit(1)
-    .single();
-  if (error || !data) throw error ?? new Error('boutique par defaut introuvable');
   return data.id as string;
 }
 

@@ -4,6 +4,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 // Fix de triage (freeze /commandes à la recherche, cf. CLAUDE.md) : 2 comportements couverts.
 // 1) Le chemin de recherche legacy est désormais borné à 12 mois glissants (sort_at) —
@@ -96,19 +97,20 @@ async function createOwnerFixture(label: string) {
   return { admin, email, merchantAccountId, userId };
 }
 
-async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
-  const { data, error } = await admin
-    .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: domain,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error('shop insert failed');
-  return data.id as string;
+// Phase 1 : les fixtures sèment dans la boutique ACTIVE.
+//
+// Auparavant ce helper INSÉRAIT une boutique et les commandes y étaient
+// rattachées. Depuis 0126 l'organisation possède déjà une boutique par défaut,
+// et c'est elle que la session atteint sur une route legacy : semer dans une
+// boutique fraîchement créée laissait l'écran vide (compteurs à zéro, lignes
+// absentes) sans la moindre erreur. Le paramètre de domaine est conservé pour
+// ne pas toucher les appels, mais n'a plus d'effet.
+async function seedShopId(
+  admin: AdminClient,
+  merchantAccountId: string,
+  _domain: string,
+): Promise<string> {
+  return defaultShopId(admin, merchantAccountId);
 }
 
 async function seedOrder(
@@ -171,7 +173,7 @@ test.describe('Fix triage — bornage recherche 12 mois', () => {
     test.skip(testInfo.project.name !== 'chromium', 'fixture lourde : une seule cible suffit');
 
     const { admin, email, merchantAccountId } = await createOwnerFixture('bound');
-    const shopId = await createShop(admin, merchantAccountId, `sw-${Date.now()}.myshopify.com`);
+    const shopId = await seedShopId(admin, merchantAccountId, `sw-${Date.now()}.myshopify.com`);
 
     const thirteenMonthsAgo = new Date();
     thirteenMonthsAgo.setUTCMonth(thirteenMonthsAgo.getUTCMonth() - 13);
@@ -222,7 +224,7 @@ test.describe('Fix triage — invalidation des réponses de recherche obsolètes
     test.skip(testInfo.project.name !== 'chromium', 'interception réseau : desktop only');
 
     const { admin, email, merchantAccountId } = await createOwnerFixture('race');
-    const shopId = await createShop(admin, merchantAccountId, `sr-${Date.now()}.myshopify.com`);
+    const shopId = await seedShopId(admin, merchantAccountId, `sr-${Date.now()}.myshopify.com`);
 
     await seedOrder(admin, {
       createdAt: new Date().toISOString(),
@@ -285,7 +287,7 @@ test.describe('Fix triage — invalidation des réponses de recherche obsolètes
     test.skip(testInfo.project.name !== 'chromium', 'interception réseau : desktop only');
 
     const { admin, email, merchantAccountId } = await createOwnerFixture('network-failure');
-    const shopId = await createShop(admin, merchantAccountId, `nf-${Date.now()}.myshopify.com`);
+    const shopId = await seedShopId(admin, merchantAccountId, `nf-${Date.now()}.myshopify.com`);
     const customerName = `Reseau Interrompu ${Date.now()}`;
 
     await seedOrder(admin, {
@@ -329,12 +331,12 @@ test.describe('RLS — endpoint GET /api/orders/search', () => {
 
     const tenantA = await createOwnerFixture('endpoint-rls-a');
     const tenantB = await createOwnerFixture('endpoint-rls-b');
-    const shopA = await createShop(
+    const shopA = await seedShopId(
       tenantA.admin,
       tenantA.merchantAccountId,
       `rls-a-${Date.now()}.myshopify.com`,
     );
-    const shopB = await createShop(
+    const shopB = await seedShopId(
       tenantB.admin,
       tenantB.merchantAccountId,
       `rls-b-${Date.now()}.myshopify.com`,

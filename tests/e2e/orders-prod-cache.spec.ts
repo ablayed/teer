@@ -31,6 +31,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) {
@@ -152,20 +153,9 @@ test('issue #3 — commande créée depuis une vue filtrée visible dans Toutes 
     unit_cost: 0,
     is_active: true,
   });
-  const { data: shop, error: shopError } = await admin
-    .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: `prodcache-${Date.now()}.myshopify.com`,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
-    .single();
-
-  if (shopError || !shop) {
-    throw shopError ?? new Error('Boutique seed non creee');
-  }
+  // Phase 1 : semer dans la boutique ACTIVE (celle que la session atteint
+  // sur une route legacy). Une boutique créée à part laisserait l'écran vide.
+  const shop = { id: await defaultShopId(admin, merchantAccountId) };
 
   // Une commande pré-existante : la vue « Toutes » initiale (donc l'entrée mise en cache)
   // n'est PAS vide — on prouve que c'est bien la fraîcheur du cache, pas un rendu vide.

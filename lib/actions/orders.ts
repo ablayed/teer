@@ -41,6 +41,7 @@ import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -1365,6 +1366,17 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       .eq('merchant_account_id', merchantAccountId);
     const shopIds = (tenantShops ?? []).map((shop) => shop.id);
 
+    // Phase 1 : la BOUTIQUE ACTIVE de la requête fait foi. L'heuristique
+    // d'origine ne regardait que le nombre de boutiques du tenant (1 → auto,
+    // >1 → choix obligatoire) ; elle date d'avant le scoping par boutique.
+    // Depuis 0126, toute organisation reçoit une boutique manuelle par défaut,
+    // donc dès qu'une boutique Shopify est connectée le tenant en compte 2 et
+    // cette heuristique exigeait un choix explicite — alors que /commandes ne
+    // propose plus qu'une seule option (la boutique active) et n'envoie donc
+    // aucun shopId. Résultat : la création manuelle de commande était
+    // totalement bloquée pour tout marchand multi-boutiques.
+    const requestStoreId = await getRequestStoreId();
+
     let resolvedShopId: string | null = null;
     if (parsedInput.shopId) {
       if (!shopIds.includes(parsedInput.shopId)) {
@@ -1374,8 +1386,23 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
           message: 'Boutique introuvable.',
         };
       }
+      // Une boutique explicite ne peut jamais désigner autre chose que la
+      // boutique active du contexte (même garde que
+      // saveBundleConfigurationAction) : sans cela, un payload construit hors
+      // UI créerait une commande dans une autre boutique du tenant.
+      if (requestStoreId && parsedInput.shopId !== requestStoreId) {
+        return {
+          ok: false as const,
+          errorCode: 'shop_required' as const,
+          message: 'Veuillez sélectionner une boutique.',
+        };
+      }
       resolvedShopId = parsedInput.shopId;
+    } else if (requestStoreId && shopIds.includes(requestStoreId)) {
+      resolvedShopId = requestStoreId;
     } else if (shopIds.length === 1) {
+      // Chemin historique mono-boutique, conservé pour tout appel hors
+      // contexte de boutique (aucun en-tête de store résolu).
       resolvedShopId = shopIds[0];
     } else if (shopIds.length > 1) {
       return {
