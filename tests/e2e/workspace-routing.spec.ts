@@ -125,17 +125,28 @@ function countRscRequests(page: Page): () => number {
 }
 
 /**
- * Preuve d'absence de boucle : une page stabilisée ne doit plus générer de
- * requêtes RSC. En état cassé, la boucle en produisait ~5 par seconde.
+ * Preuve d'absence de boucle de navigation.
+ *
+ * Ce qui distingue une boucle d'un trafic RSC normal n'est PAS un volume brut :
+ * en build de production, les liens de navigation déclenchent une rafale de
+ * prefetch RSC ponctuelle (4-5 requêtes observées sur iphone-14) parfaitement
+ * saine. Le vrai discriminant est la PERSISTANCE — un prefetch retombe, une
+ * boucle ne retombe jamais (mesuré en état cassé : 96 requêtes en 18 s, soit
+ * ~27 par fenêtre de 5 s, sans fin).
+ *
+ * On laisse donc d'abord la rafale retomber, puis on mesure une seconde
+ * fenêtre qui doit être quasi silencieuse. Le seuil résiduel garde une marge
+ * ~5x sous le débit d'une boucle réelle.
  */
 async function expectNoRscLoop(page: Page, rscCount: () => number): Promise<void> {
+  await page.waitForTimeout(3_000);
   const before = rscCount();
   await page.waitForTimeout(5_000);
   const emitted = rscCount() - before;
   expect(
     emitted,
-    `la page a émis ${emitted} requêtes RSC après stabilisation (boucle de navigation ?)`,
-  ).toBeLessThanOrEqual(3);
+    `la page a émis ${emitted} requêtes RSC APRÈS retombée du prefetch (boucle de navigation ?)`,
+  ).toBeLessThanOrEqual(5);
 }
 
 // Premier rendu d'une page applicative après connexion. Marge volontairement
