@@ -26,7 +26,7 @@ import { type Locator, type Page, expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
-import { defaultShopId } from './helpers/workspace';
+import { attachDriverToStore, defaultShopId } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.test')) {
@@ -196,6 +196,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     throw seedDriverError ?? new Error('Livreur seed non créé');
   }
   const seedDriverId = seedDriver.id as string;
+  await attachDriverToStore(admin, merchantAccountId, seedDriverId);
 
   const seeds: OrderSeed[] = [];
   const push = (s: Omit<OrderSeed, 'index' | 'customer_id' | 'items_summary'>) => {

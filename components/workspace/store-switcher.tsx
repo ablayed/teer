@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import type { WorkspaceStore } from '@/lib/workspace/store';
 import { buildStoreSwitchHref } from '@/lib/workspace/store-switch';
 import { Check, ChevronDown, Store } from 'lucide-react';
-import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 
@@ -125,7 +124,16 @@ export function StoreSwitcher({
           {stores.map((store) => {
             const active = store.id === currentStore.id;
             return (
-              <Link
+              // Ancre BRUTE, jamais `<Link>` : le middleware réécrit
+              // `/s/{id}/produits` vers `/produits`, donc les deux boutiques
+              // partagent les mêmes segments de route et le Router Cache client
+              // peut resservir le rendu de la boutique PRÉCÉDENTE lors d'une
+              // navigation RSC. Mesuré en build de production : après bascule, la
+              // page restait sur les produits de l'ancienne boutique (échec
+              // reproduit à l'identique au retry, donc pas un flake). Une
+              // navigation document complète force le serveur à re-résoudre le
+              // contexte de boutique. C'est aussi ce que faisait l'ancienne barre.
+              <a
                 aria-current={active ? 'true' : undefined}
                 className={cn(
                   'flex min-h-11 items-center gap-2 rounded-md px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -143,7 +151,7 @@ export function StoreSwitcher({
                 <span className="min-w-0 truncate" title={store.displayName}>
                   {store.displayName}
                 </span>
-              </Link>
+              </a>
             );
           })}
         </div>

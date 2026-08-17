@@ -9,6 +9,7 @@ import {
   loginViaForm,
   waitForMerchant,
 } from './auth';
+import { attachDriverToStore } from './workspace';
 
 const FIXED_VISUAL_DATE = '2026-01-15T10:00:00.000Z';
 
@@ -154,6 +155,10 @@ export async function createDriver(
   if (error) {
     throw error;
   }
+
+  // 0133 : sans rattachement, le livreur n'apparaît plus sur /livreurs — la
+  // capture visuelle rendrait un écran vide au lieu d'échouer explicitement.
+  await attachDriverToStore(fixture.admin, fixture.merchantAccountId, data.id as string);
 
   return data.id as string;
 }

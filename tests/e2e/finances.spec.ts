@@ -4,6 +4,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { attachDriverToStore } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) return {};
@@ -195,6 +196,7 @@ async function seedFractionalCollectedOrder(
     .select('id')
     .single();
   if (!driver) throw new Error('driver insert returned no row');
+  await attachDriverToStore(admin, merchantAccountId, driver.id as string);
   const title = 'Sac Frac';
   const { data: order } = await admin
     .from('orders')

@@ -32,3 +32,32 @@ export async function defaultShopId(
 
   return data.id as string;
 }
+
+/**
+ * Rattache un livreur à une boutique (migration 0133).
+ *
+ * Depuis 0133, `/livreurs` et le sélecteur d'affectation lisent `driver_shop`,
+ * pas `driver` seule : un livreur inséré directement par une fixture, SANS
+ * rattachement, n'apparaît donc plus nulle part — écran vide, aucune erreur.
+ * Même classe de piège que les seeds qui écrivent l'état d'une commande sans
+ * passer par `transition_order` et ne peuplent jamais `order_state_transition`.
+ *
+ * Sans `shopId`, on rattache à la boutique par défaut, ce qui correspond au cas
+ * mono-boutique de la quasi-totalité des fixtures.
+ */
+export async function attachDriverToStore(
+  admin: SupabaseClient,
+  merchantAccountId: string,
+  driverId: string,
+  shopId?: string,
+): Promise<void> {
+  const targetShopId = shopId ?? (await defaultShopId(admin, merchantAccountId));
+  const { error } = await admin.from('driver_shop').insert({
+    driver_id: driverId,
+    merchant_account_id: merchantAccountId,
+    shop_id: targetShopId,
+  });
+  if (error && !error.message.includes('duplicate')) {
+    throw error;
+  }
+}
