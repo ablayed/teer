@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -60,4 +61,42 @@ export async function attachDriverToStore(
   if (error && !error.message.includes('duplicate')) {
     throw error;
   }
+}
+
+/**
+ * Rend le contexte de boutique visible, sur desktop comme sur mobile.
+ *
+ * Deux pièges combinés :
+ *
+ *  1. Le composant est monté DEUX fois (barre latérale + menu mobile), l'une des
+ *     copies étant masquée selon le viewport. Un `getByText(...).first()` résout
+ *     la copie de la barre latérale — masquée sur mobile — et échoue en
+ *     « hidden » pour une raison sans rapport avec le comportement testé. D'où
+ *     le ciblage `:visible`.
+ *  2. Sur mobile, le contrôle vit dans le menu « Plus ». Après une NAVIGATION
+ *     DOCUMENT complète (ce que fait le changement de boutique), le bouton est
+ *     présent dans le HTML avant que React ne soit hydraté : un premier clic peut
+ *     donc ne rien déclencher. On retente au lieu d'attendre un délai fixe.
+ */
+export async function revealStoreContext(page: Page): Promise<Locator> {
+  const visibleName = page.locator('[data-testid="store-switcher-name"]:visible').first();
+
+  if ((page.viewportSize()?.width ?? 1280) >= 768) {
+    return visibleName;
+  }
+
+  const plus = page.getByRole('button', { name: 'Plus' });
+  await plus.waitFor({ state: 'visible', timeout: 30_000 });
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await plus.click();
+    try {
+      await visibleName.waitFor({ state: 'visible', timeout: 3_000 });
+      return visibleName;
+    } catch {
+      // Clic absorbé avant hydratation : on réessaie.
+    }
+  }
+
+  return visibleName;
 }

@@ -10,6 +10,7 @@ import {
   loginViaForm,
   waitForMerchant,
 } from './helpers/auth';
+import { revealStoreContext } from './helpers/workspace';
 
 /**
  * Trois défauts trouvés au smoke authentifié Phase 1, corrigés ensemble :
@@ -137,21 +138,6 @@ async function openStoreSwitcher(page: import('@playwright/test').Page) {
   await switcher.waitFor({ state: 'visible', timeout: 20_000 });
   await switcher.getByRole('button', { name: /Changer/ }).click();
   return switcher;
-}
-
-/**
- * Rend le contexte de boutique VISIBLE avant de l'affirmer. Sur mobile il vit
- * dans le menu « Plus » : sans l'ouvrir, aucun nom n'est visible et l'assertion
- * échouerait pour une raison qui n'a rien à voir avec le comportement testé.
- */
-async function revealStoreContext(page: import('@playwright/test').Page) {
-  const width = page.viewportSize()?.width ?? 1280;
-
-  if (width < 768) {
-    await page.getByRole('button', { name: 'Plus' }).click();
-  }
-
-  return page.locator('[data-testid="store-switcher-name"]:visible').first();
 }
 
 test.afterAll(async () => {
