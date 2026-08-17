@@ -21,7 +21,7 @@
     "test:e2e:shopify": "node scripts/test-shopify-webhooks.mjs",
     "test:visual:desktop": "playwright test tests/visual --project=chromium",
     "test:visual:mobile": "playwright test tests/visual --project=pixel-7 --project=iphone-14",
-    "db:types": "supabase gen types typescript --linked > lib/supabase/database.types.ts && node scripts/apply-database-types-overrides.mjs"
+    "db:types": "supabase gen types typescript --linked > lib/supabase/database.types.ts && biome format --write lib/supabase/database.types.ts && node scripts/apply-database-types-overrides.mjs"
   },
   "dependencies": {
     "@ai-sdk/groq": "3.0.39",

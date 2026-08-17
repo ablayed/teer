@@ -29,6 +29,13 @@
  *
  * Lancé automatiquement par `pnpm db:types`, donc jamais perdu à la
  * régénération suivante. Idempotent.
+ *
+ * ── Ordre imposé dans `db:types` : gen → `biome format` → CE script ──────────
+ * Le générateur émet du TypeScript SANS point-virgule ; les motifs ci-dessous en
+ * exigent un. Lancer ce script sur la sortie BRUTE ne patcherait donc rien et
+ * échouerait sur la garde des 12 tables — c'est exactement ce qui est arrivé une
+ * fois. Le `biome format --write` intercalé n'est pas cosmétique : il normalise le
+ * fichier dans la forme que ce script sait reconnaître. Ne pas le retirer.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
