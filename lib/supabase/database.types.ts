@@ -284,6 +284,86 @@ export type Database = {
           },
         ];
       };
+      customer_reliability_projection: {
+        Row: {
+          attempts_anchor: number;
+          cancelled_count: number;
+          computed_at: string;
+          confirmed_anchor: number;
+          customer_id: string;
+          delivered_anchor: number;
+          delivered_count: number;
+          delivered_lifetime: number;
+          merchant_account_id: string;
+          no_response_anchor: number;
+          order_count: number;
+          refused_anchor: number;
+          refused_count: number;
+          shop_id: string;
+        };
+        Insert: {
+          attempts_anchor?: number;
+          cancelled_count?: number;
+          computed_at?: string;
+          confirmed_anchor?: number;
+          customer_id: string;
+          delivered_anchor?: number;
+          delivered_count?: number;
+          delivered_lifetime?: number;
+          merchant_account_id: string;
+          no_response_anchor?: number;
+          order_count?: number;
+          refused_anchor?: number;
+          refused_count?: number;
+          shop_id: string;
+        };
+        Update: {
+          attempts_anchor?: number;
+          cancelled_count?: number;
+          computed_at?: string;
+          confirmed_anchor?: number;
+          customer_id?: string;
+          delivered_anchor?: number;
+          delivered_count?: number;
+          delivered_lifetime?: number;
+          merchant_account_id?: string;
+          no_response_anchor?: number;
+          order_count?: number;
+          refused_anchor?: number;
+          refused_count?: number;
+          shop_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'customer_reliability_projection_customer_fk';
+            columns: ['merchant_account_id', 'shop_id', 'customer_id'];
+            isOneToOne: true;
+            referencedRelation: 'customer';
+            referencedColumns: ['merchant_account_id', 'shop_id', 'id'];
+          },
+          {
+            foreignKeyName: 'customer_reliability_projection_customer_fk';
+            columns: ['merchant_account_id', 'shop_id', 'customer_id'];
+            isOneToOne: true;
+            referencedRelation: 'customer_reliability_scored';
+            referencedColumns: ['merchant_account_id', 'shop_id', 'customer_id'];
+          },
+          {
+            foreignKeyName: 'customer_reliability_projection_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'customer_reliability_projection_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
       delivery_address: {
         Row: {
           created_at: string;
@@ -343,6 +423,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'customer';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'delivery_address_customer_id_fkey';
+            columns: ['customer_id'];
+            isOneToOne: false;
+            referencedRelation: 'customer_reliability_scored';
+            referencedColumns: ['customer_id'];
           },
           {
             foreignKeyName: 'delivery_address_merchant_account_id_fkey';
@@ -1243,6 +1330,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'customer';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'orders_customer_id_fkey';
+            columns: ['customer_id'];
+            isOneToOne: false;
+            referencedRelation: 'customer_reliability_scored';
+            referencedColumns: ['customer_id'];
           },
           {
             foreignKeyName: 'orders_merchant_account_id_fkey';
@@ -2601,6 +2695,58 @@ export type Database = {
       };
     };
     Views: {
+      customer_reliability_scored: {
+        Row: {
+          attempts_weighted: number | null;
+          cancelled_count: number | null;
+          computed_at: string | null;
+          confirm_score: number | null;
+          confirmed_weighted: number | null;
+          customer_id: string | null;
+          decided: number | null;
+          delivered_count: number | null;
+          delivered_lifetime: number | null;
+          delivered_weighted: number | null;
+          delivery_score: number | null;
+          flag_cancels_often: boolean | null;
+          flag_confirms_then_refuses: boolean | null;
+          flag_hard_to_reach: boolean | null;
+          full_name: string | null;
+          is_provisional: boolean | null;
+          merchant_account_id: string | null;
+          no_response_weighted: number | null;
+          order_count: number | null;
+          phone: string | null;
+          refused_count: number | null;
+          refused_weighted: number | null;
+          score: number | null;
+          shop_id: string | null;
+          tier: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'customer_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'customer_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'customer_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
       organization_consolidated_operations: {
         Row: {
           customer_count: number | null;
@@ -2709,6 +2855,15 @@ export type Database = {
       };
       current_member_role: { Args: { p_account: string }; Returns: string };
       current_shop_role: { Args: { p_shop_id: string }; Returns: string };
+      customer_reliability_decay_anchor: {
+        Args: { p_ts: string };
+        Returns: number;
+      };
+      customer_reliability_decay_epoch: { Args: never; Returns: string };
+      customer_reliability_decay_factor: {
+        Args: { p_at: string };
+        Returns: number;
+      };
       derive_legacy_cod_status: {
         Args: {
           p_call_state: string;
@@ -3364,6 +3519,13 @@ export type Database = {
         };
         Returns: undefined;
       };
+      rebuild_customer_reliability_projection: {
+        Args: { p_batch_size?: number };
+        Returns: {
+          batches: number;
+          customers: number;
+        }[];
+      };
       rebuild_product_stock: { Args: never; Returns: number };
       receive_purchase_lot: {
         Args: {
@@ -3419,6 +3581,10 @@ export type Database = {
       reduce_order_cart_post_assignment: {
         Args: { p_lines: Json; p_order_id: string };
         Returns: undefined;
+      };
+      refresh_customer_reliability_projection: {
+        Args: { p_customer_ids: string[] };
+        Returns: number;
       };
       replace_order_cart: {
         Args: { p_lines: Json; p_order_id: string };
