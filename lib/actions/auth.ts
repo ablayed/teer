@@ -53,6 +53,25 @@ function safeRedirectPath(path: string | undefined): string {
   return path;
 }
 
+/**
+ * Destination après une connexion réussie : TOUJOURS le point d'entrée workspace.
+ *
+ * Rediriger directement vers `/tableau` (ou vers la section demandée) faisait
+ * entrer un utilisateur multi-boutiques dans sa boutique par DÉFAUT sans qu'il
+ * ait choisi. `/s` tranche : entrée automatique s'il n'a qu'une boutique, choix
+ * explicite au-delà. L'intention de navigation est transportée en `next` et
+ * réduite à une section par `/s`, jamais à un identifiant de ressource.
+ */
+function postSignInPath(redirectTo: string | undefined): string {
+  const target = safeRedirectPath(redirectTo);
+
+  if (target === '/s' || target.startsWith('/s/') || target.startsWith('/s?')) {
+    return target;
+  }
+
+  return `/s?next=${encodeURIComponent(target)}`;
+}
+
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -258,7 +277,7 @@ export const signInAction = actionClient
       return { ok: false as const, errorCode: code };
     }
 
-    redirect(safeRedirectPath(parsedInput.redirectTo));
+    redirect(postSignInPath(parsedInput.redirectTo));
   });
 
 export const signOutAction = authActionClient

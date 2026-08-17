@@ -13,6 +13,7 @@ import {
   getDriverSettlementHistory,
   getDriverStockOnHand,
 } from '@/lib/actions/drivers';
+import { driverIdFilter, getStoreDriverIds } from '@/lib/drivers/store-scope';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database } from '@/lib/supabase/database.types';
@@ -73,10 +74,20 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     );
   }
 
+  // 0133 — la page résolvait déjà `storeId` puis lisait `driver` sur le seul
+  // `merchant_account_id` : les deux boutiques affichaient donc le MÊME parc.
+  // Le filtre porte sur la requête serveur, jamais sur le rendu React.
+  const storeDriverIds = await getStoreDriverIds(
+    supabase as unknown as SupabaseClient<Database>,
+    merchantAccountId,
+    storeId,
+  );
+
   const { data: driversData } = await supabase
     .from('driver')
     .select('id, full_name, phone, is_active')
     .eq('merchant_account_id', merchantAccountId)
+    .in('id', driverIdFilter(storeDriverIds))
     .order('is_active', { ascending: false })
     .order('full_name');
 
