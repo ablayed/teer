@@ -191,12 +191,27 @@ async function getStores(admin: AdminClient, merchantAccountId: string) {
   return data as { id: string; display_name: string; shop_domain: string }[];
 }
 
+/**
+ * Rend le contexte de boutique visible avant de l'affirmer.
+ *
+ * Depuis son déplacement dans la navigation, il vit dans la barre latérale sur
+ * desktop et dans le menu « Plus » sur mobile — donc masqué tant que ce menu
+ * n'est pas ouvert, ce qui est le comportement voulu (aucune hauteur de contenu
+ * consommée en permanence).
+ */
+async function revealStoreContext(page: Page) {
+  if ((page.viewportSize()?.width ?? 1280) < 768) {
+    await page.getByRole('button', { name: 'Plus' }).click();
+  }
+}
+
 test('single-store owner: login selects the only store automatically', async ({ page }) => {
   const fixture = await createOwnerFixture('single');
   try {
     const [store] = await getStores(fixture.admin, fixture.merchantAccountId);
     await signIn(page, fixture.email, '/s');
     await expect(page).toHaveURL(new RegExp(`/s/${store.id}/tableau$`));
+    await revealStoreContext(page);
     await expect(page.getByText(store.display_name, { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Changer' })).toHaveCount(0);
   } finally {
@@ -221,10 +236,12 @@ test('multi-store owner: chooser, authorized deep link and valid switch', async 
 
     await page.locator(`a[href="/s/${storeA.id}/tableau"]`).click();
     await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/tableau$`));
+    await revealStoreContext(page);
     await expect(page.getByText(storeA.display_name, { exact: true }).first()).toBeVisible();
-    await page.getByText('Changer', { exact: true }).click();
+    await page.getByRole('button', { name: /Changer/ }).click();
     await page.locator(`a[href="/s/${storeB.id}/tableau"]`).click();
     await expect(page).toHaveURL(new RegExp(`/s/${storeB.id}/tableau$`));
+    await revealStoreContext(page);
     await expect(page.getByText(storeB.display_name, { exact: true }).first()).toBeVisible();
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
