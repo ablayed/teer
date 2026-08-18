@@ -6,6 +6,7 @@ import {
   e2eEmail,
   e2ePassword,
   hasSupabaseAdmin,
+  landOnTarget,
   loginViaForm,
   waitForMerchant,
 } from './helpers/auth';
@@ -93,7 +94,7 @@ test('commande avec attributs personnalises Shopify → section "Détails suppl�
     });
 
     await loginViaForm(page, email, e2ePassword, `/commandes/${orderId}`);
-    await page.waitForURL(`**/commandes/${orderId}`);
+    await landOnTarget(page, `/commandes/${orderId}`);
 
     const section = page.getByTestId('order-additional-details');
     await expect(section).toBeVisible({ timeout: 15_000 });
@@ -145,7 +146,7 @@ test('commande Shopify avec champs utiles et bruités → n’affiche que les ch
     });
 
     await loginViaForm(page, email, e2ePassword, `/commandes/${orderId}`);
-    await page.waitForURL(`**/commandes/${orderId}`);
+    await landOnTarget(page, `/commandes/${orderId}`);
 
     const section = page.getByTestId('order-additional-details');
     await expect(section).toBeVisible({ timeout: 15_000 });
@@ -183,7 +184,7 @@ test('commande sans attributs personnalises Shopify → section "Détails suppl�
     });
 
     await loginViaForm(page, email, e2ePassword, `/commandes/${orderId}`);
-    await page.waitForURL(`**/commandes/${orderId}`);
+    await landOnTarget(page, `/commandes/${orderId}`);
 
     await expect(page.getByRole('heading', { name: 'Client Sans Attributs' })).toBeVisible({
       timeout: 15_000,

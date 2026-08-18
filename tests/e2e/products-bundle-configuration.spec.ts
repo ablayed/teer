@@ -3,6 +3,7 @@ import messages from '@/messages/fr.json';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
 import { defaultShopId } from './helpers/workspace';
 
@@ -226,7 +227,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
   // Timeout généreux : premier compile dev-mode d'une route jamais visitée dans ce run
   // peut dépasser 30s (observé sur /produits, cf. PR 2 bundles).
-  await page.waitForURL(`**${redirectTo}`, { timeout: 60_000 });
+  await landOnTarget(page, redirectTo, 60_000);
   await expect(page.locator('main#main')).toBeVisible({ timeout: 45_000 });
 }
 

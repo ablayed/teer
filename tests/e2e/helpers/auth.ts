@@ -127,6 +127,37 @@ export async function fillPasswordField(field: ReturnType<Page['locator']>, valu
   await expect(field).toHaveValue(value);
 }
 
+/**
+ * Atterrissage sur la cible EXACTE une fois la session posée.
+ *
+ * Depuis Phase 1, `signInAction` renvoie vers `/s?next=…`. Ce point d'entrée
+ * réduit `next` à une SECTION (`resolveWorkspaceSection`) : une query
+ * (`?from=…`), un identifiant de ressource (`/commandes/{id}`) ou une route hors
+ * sections (`/dev/primitives`) ne survivent pas au passage. Et dès DEUX
+ * boutiques, `/s` attend un choix explicite qui ne viendra jamais dans un test
+ * dont ce n'est pas le sujet : la connexion s'y gare, et le `waitForURL` de la
+ * spec expire sur une cible qu'aucune redirection n'atteindra.
+ *
+ * On rejoue donc la cible telle quelle. Une URL legacy est rendue EN PLACE avec
+ * la boutique par défaut (`getRequestStoreId`), soit exactement le comportement
+ * d'avant Phase 1 — la spec mesure de nouveau ce qu'elle mesurait.
+ *
+ * À NE PAS utiliser dans les specs qui vérifient le parcours d'entrée lui-même
+ * (`workspace-store-control`, `workspace-routing`, `shop-filter`) : elles
+ * doivent observer `/s` et son sélecteur.
+ */
+export async function landOnTarget(page: Page, target: string, timeout = 60_000) {
+  // On attend seulement d'avoir QUITTÉ /connexion : la destination réelle
+  // dépend du nombre de boutiques et n'est pas connue de l'appelant.
+  await page.waitForURL((url) => !url.pathname.startsWith('/connexion'), { timeout });
+
+  const current = new URL(page.url());
+  const expected = new URL(target, current.origin);
+  if (current.pathname !== expected.pathname || current.search !== expected.search) {
+    await page.goto(target);
+  }
+}
+
 export async function loginViaForm(
   page: Page,
   email: string,
