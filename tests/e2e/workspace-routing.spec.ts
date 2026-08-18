@@ -10,6 +10,7 @@ import {
   loginViaForm,
   waitForMerchant,
 } from './helpers/auth';
+import { revealStoreContext } from './helpers/workspace';
 
 // Non-régression du cycle legacy → canonique → rewrite (PHASE1-DIAG-ROUTING).
 //
@@ -266,8 +267,10 @@ test.describe('routage workspace legacy et canonique', () => {
     });
     expect(new URL(page.url()).pathname).toBe(`/s/${fixture.secondStoreId}/produits`);
 
-    // Shell Workspace : la boutique demandée est bien la boutique active.
-    await expect(page.getByText(secondStore.displayName).first()).toBeVisible();
+    // Shell Workspace : la boutique demandée est bien la boutique active. Le
+    // contexte vit dans la navigation (barre latérale desktop, menu « Plus »
+    // mobile) et le composant est monté deux fois : on cible la copie VISIBLE.
+    await expect(await revealStoreContext(page)).toHaveText(secondStore.displayName);
     await expect(page.getByRole('heading', { name: 'Canonique Secondaire' })).toBeVisible();
     await expect(page.getByText('Canonique Defaut')).toHaveCount(0);
 
@@ -344,9 +347,7 @@ test.describe('routage workspace legacy et canonique', () => {
     // Le contrôle de boutique vit désormais DANS la navigation : barre latérale
     // sur desktop, menu « Plus » sur mobile (l'ancienne barre `<details>` en tête
     // de contenu a été retirée).
-    if ((page.viewportSize()?.width ?? 1280) < 768) {
-      await page.getByRole('button', { name: 'Plus' }).click();
-    }
+    await revealStoreContext(page);
     const switcher = page.locator('[data-testid="store-switcher"]:visible').first();
     await switcher.getByRole('button', { name: /Changer/ }).click();
     await switcher.getByRole('menuitem', { name: secondStore.displayName }).click();
