@@ -168,7 +168,22 @@ jobs:
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
       # La cible iphone-14 du playwright.config tourne sous webkit ; chromium seul faisait
       # échouer tous les scénarios iphone-14 (Executable doesn't exist). On installe les deux.
-      - run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Install Playwright browsers and deps
+        timeout-minutes: 26
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "::group::playwright install (tentative $attempt/3)"
+            if timeout 8m pnpm exec playwright install --with-deps chromium webkit; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
+            sleep 15
+          done
+          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
+          exit 1
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
@@ -320,7 +335,22 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version-regression.outputs.version }}
-      - run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Install Playwright browsers and deps
+        timeout-minutes: 26
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "::group::playwright install (tentative $attempt/3)"
+            if timeout 8m pnpm exec playwright install --with-deps chromium webkit; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
+            sleep 15
+          done
+          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
+          exit 1
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
@@ -442,7 +472,22 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-desktop.outputs.version }}
-      - run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Install Playwright browsers and deps
+        timeout-minutes: 26
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "::group::playwright install (tentative $attempt/3)"
+            if timeout 8m pnpm exec playwright install --with-deps chromium webkit; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
+            sleep 15
+          done
+          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
+          exit 1
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
@@ -555,7 +600,22 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-mobile.outputs.version }}
-      - run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Install Playwright browsers and deps
+        timeout-minutes: 26
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "::group::playwright install (tentative $attempt/3)"
+            if timeout 8m pnpm exec playwright install --with-deps chromium webkit; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
+            sleep 15
+          done
+          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
+          exit 1
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
