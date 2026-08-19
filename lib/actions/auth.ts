@@ -11,6 +11,7 @@ import {
   persistSignupConsents,
 } from '@/lib/legal/consent';
 import { checkAuthRateLimit, getClientIp } from '@/lib/security/auth-rate-limit';
+import { safeRedirectPath } from '@/lib/security/safe-redirect';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs';
@@ -43,14 +44,6 @@ async function signUpInputSchema() {
     }),
     redirectTo: z.string().trim().max(500).optional(),
   });
-}
-
-function safeRedirectPath(path: string | undefined): string {
-  if (!path || !path.startsWith('/') || path.startsWith('//')) {
-    return '/tableau';
-  }
-
-  return path;
 }
 
 /**

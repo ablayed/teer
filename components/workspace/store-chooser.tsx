@@ -11,17 +11,21 @@ import Link from 'next/link';
  * est seulement SIGNALÉE, ce qui aide à s'orienter sans décider à la place de
  * l'utilisateur.
  *
- * `section` transporte l'intention de navigation : si la connexion a été
- * déclenchée depuis `/commandes`, le choix mène à `/s/{id}/commandes`. Seule la
- * section est conservée — jamais un identifiant de ressource, qui appartiendrait
- * à une autre boutique.
+ * `entryPath` transporte l'intention de navigation COMPLÈTE (chemin + query),
+ * produite par `resolveWorkspaceEntryPath` : si la connexion a été déclenchée
+ * depuis `/commandes/{id}?vue=a-appeler`, le choix mène à
+ * `/s/{id}/commandes/{id}?vue=a-appeler`. Contrairement à
+ * `buildStoreSwitchHref` (changement de boutique en cours de session), rien
+ * n'est abandonné ici : la ressource ciblée appartient à la boutique que
+ * l'utilisateur vient lui-même de choisir, pas à une autre — un identifiant
+ * qui ne lui appartiendrait pas produit un refus RLS propre, pas une fuite.
  */
 export function StoreChooser({
   stores,
-  section = 'tableau',
+  entryPath = '/tableau',
 }: {
   stores: WorkspaceStore[];
-  section?: string;
+  entryPath?: string;
 }) {
   if (stores.length === 0) {
     return (
@@ -50,7 +54,7 @@ export function StoreChooser({
             <Link
               className="flex min-h-16 w-full items-center gap-3 rounded-lg border border-border bg-surface p-4 font-medium shadow-1 transition hover:border-accent hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="store-chooser-option"
-              href={`/s/${store.id}/${section}`}
+              href={`/s/${store.id}${entryPath}`}
             >
               <Store aria-hidden="true" className="size-5 shrink-0 text-accent" />
               <span className="flex min-w-0 flex-col">

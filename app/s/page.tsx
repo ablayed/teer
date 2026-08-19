@@ -1,7 +1,7 @@
 import { StoreChooser } from '@/components/workspace/store-chooser';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getWorkspaceStores } from '@/lib/workspace/store';
-import { resolveWorkspaceSection } from '@/lib/workspace/store-switch';
+import { resolveWorkspaceEntryPath } from '@/lib/workspace/store-switch';
 import { redirect } from 'next/navigation';
 
 type WorkspaceEntryProps = {
@@ -31,15 +31,18 @@ export default async function WorkspaceEntryPage({ searchParams }: WorkspaceEntr
   }
 
   const params = await searchParams;
-  // L'intention de navigation est réduite à une SECTION : un identifiant de
-  // ressource issu d'une autre boutique ne doit jamais survivre au choix.
-  const section = resolveWorkspaceSection(params.next ?? '/tableau');
+  // L'intention de navigation est préservée intégralement (chemin + query) :
+  // contrairement à `buildStoreSwitchHref` (changement de boutique), cette
+  // entrée ne perd jamais la ressource visée. `next` est un paramètre d'URL
+  // non fiable — accès direct possible à `/s?next=`, indépendant de
+  // `signInAction` — voir les gardes de `resolveWorkspaceEntryPath`.
+  const entryPath = resolveWorkspaceEntryPath(params.next);
 
   const stores = await getWorkspaceStores();
 
   if (stores.length === 1) {
-    redirect(`/s/${stores[0].id}/${section}`);
+    redirect(`/s/${stores[0].id}${entryPath}`);
   }
 
-  return <StoreChooser section={section} stores={stores} />;
+  return <StoreChooser entryPath={entryPath} stores={stores} />;
 }
