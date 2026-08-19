@@ -97,7 +97,6 @@ async function createOwnerFixture(label: string) {
     .from('merchant_account')
     .update({ name: `Tëër E2E Bundle Config ${label}`, onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
-  await createShop(admin, merchantAccountId, `bundle-${label}-${Date.now()}.myshopify.com`);
   return { admin, email, merchantAccountId, userId };
 }
 
@@ -150,21 +149,6 @@ async function seedProductStock(
     qty_reserved: qtyReserved,
   });
   if (error) throw error;
-}
-
-async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
-  const { data, error } = await admin
-    .from('shop')
-    .insert({
-      merchant_account_id: merchantAccountId,
-      shop_domain: domain,
-      access_token_encrypted: 'enc',
-      scopes: 'read_orders',
-    })
-    .select('id')
-    .single();
-  if (error || !data) throw error ?? new Error('shop insert failed');
-  return data.id as string;
 }
 
 async function seedDeliveredCollectedOrder(

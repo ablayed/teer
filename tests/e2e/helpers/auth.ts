@@ -147,13 +147,31 @@ export async function fillPasswordField(field: ReturnType<Page['locator']>, valu
  * doivent observer `/s` et son sélecteur.
  */
 export async function landOnTarget(page: Page, target: string, timeout = 60_000) {
-  // On attend seulement d'avoir QUITTÉ /connexion : la destination réelle
-  // dépend du nombre de boutiques et n'est pas connue de l'appelant.
-  await page.waitForURL((url) => !url.pathname.startsWith('/connexion'), { timeout });
+  // Motif canonique `/s/{id}/…` : le hop intermédiaire `/s?next=…` a pour
+  // pathname exactement `/s` (rien après le slash), il ne matche donc jamais
+  // ce motif — contrairement à `!pathname.startsWith('/connexion')`, satisfait
+  // dès CE hop, avant que la redirection finale n'ait committé (résolution
+  // prématurée = source des « navigation interrupted »/doubles `main#main`
+  // observés en CI). Motif volontairement SANS forme d'identifiant (pas de
+  // regex UUID) : une évolution du format d'id ne casse pas silencieusement ce
+  // prédicat, l'échec resterait un timeout lisible.
+  await page.waitForURL((url) => /^\/s\/[^/]+/.test(url.pathname), { timeout });
 
   const current = new URL(page.url());
   const expected = new URL(target, current.origin);
-  if (current.pathname !== expected.pathname || current.search !== expected.search) {
+
+  // Comparaison normalisée, préfixe `/s/{id}` retiré des DEUX côtés : `current`
+  // le porte toujours (on vient de l'attendre ci-dessus), `target` ne le porte
+  // quasiment jamais (routes bare/legacy passées par les appelants). Sans cette
+  // normalisation, les pathnames divergent à CHAQUE appel et le repli
+  // ci-dessous se déclenche systématiquement — atterrissant sur l'URL legacy
+  // plutôt que l'URL canonique réellement obtenue en production, ET créant une
+  // navigation concurrente à la redirection qui vient tout juste de committer.
+  const stripStorePrefix = (pathname: string) => pathname.replace(/^\/s\/[^/]+/, '') || '/';
+  const currentSection = stripStorePrefix(current.pathname);
+  const expectedSection = stripStorePrefix(expected.pathname);
+
+  if (currentSection !== expectedSection || current.search !== expected.search) {
     await page.goto(target);
   }
 }
