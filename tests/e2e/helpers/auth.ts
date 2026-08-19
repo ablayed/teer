@@ -133,18 +133,29 @@ export async function fillPasswordField(field: ReturnType<Page['locator']>, valu
  * Depuis Phase 1, `signInAction` renvoie vers `/s?next=…`. Ce point d'entrée
  * réduit `next` à une SECTION (`resolveWorkspaceSection`) : une query
  * (`?from=…`), un identifiant de ressource (`/commandes/{id}`) ou une route hors
- * sections (`/dev/primitives`) ne survivent pas au passage. Et dès DEUX
- * boutiques, `/s` attend un choix explicite qui ne viendra jamais dans un test
- * dont ce n'est pas le sujet : la connexion s'y gare, et le `waitForURL` de la
- * spec expire sur une cible qu'aucune redirection n'atteindra.
+ * sections (`/dev/primitives`) ne survivent pas au passage.
  *
  * On rejoue donc la cible telle quelle. Une URL legacy est rendue EN PLACE avec
  * la boutique par défaut (`getRequestStoreId`), soit exactement le comportement
  * d'avant Phase 1 — la spec mesure de nouveau ce qu'elle mesurait.
  *
- * À NE PAS utiliser dans les specs qui vérifient le parcours d'entrée lui-même
- * (`workspace-store-control`, `workspace-routing`, `shop-filter`) : elles
- * doivent observer `/s` et son sélecteur.
+ * Critère de vulnérabilité (pas une liste de fichiers, un fait à vérifier pour
+ * CHAQUE spec) : atterrir sur `/s?next=…` ne bloque QUE si les DEUX conditions
+ * sont réunies à la fois — (a) l'utilisateur qui se connecte a deux boutiques
+ * actives ou plus, ET (b) la cible passée est une route bare/legacy (pas déjà
+ * `/s/{id}/…`). `/s` n'attend un choix explicite que sous (a) ; sans (a), une
+ * seule boutique déclenche une redirection SERVEUR immédiate quelle que soit la
+ * cible. Créer une 2ᵉ boutique n'est donc jamais fautif en soi — seule la
+ * combinaison avec un `signIn`/`landOnTarget` appelé sur une cible bare AVANT
+ * que cette 2ᵉ boutique n'existe encore protège une spec ; l'appeler APRÈS,
+ * avec 2 boutiques déjà posées, expose le même blocage que celui corrigé ici.
+ *
+ * Critère de non-usage (même logique : un fait sur le SUJET du test, pas une
+ * liste de fichiers) : à ne pas utiliser quand l'assertion de la spec porte sur
+ * le mécanisme d'entrée lui-même — `/s`, son sélecteur, ou la chaîne de
+ * redirection — puisqu'atterrir au-delà invaliderait précisément ce qui est
+ * observé. Dans tout autre spec, `/s?next=…` n'est qu'une amorce de connexion
+ * hors sujet, et cette fonction sert à la traverser.
  */
 export async function landOnTarget(page: Page, target: string, timeout = 60_000) {
   // Motif canonique `/s/{id}/…` : le hop intermédiaire `/s?next=…` a pour
