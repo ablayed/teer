@@ -1,4 +1,8 @@
-import { buildStoreSwitchHref, resolveWorkspaceSection } from '@/lib/workspace/store-switch';
+import {
+  buildStoreSwitchHref,
+  resolveWorkspaceEntryPath,
+  resolveWorkspaceSection,
+} from '@/lib/workspace/store-switch';
 import { describe, expect, it } from 'vitest';
 
 const OLD = '11111111-1111-4111-8111-111111111111';
@@ -15,6 +19,19 @@ describe('resolveWorkspaceSection', () => {
     expect(resolveWorkspaceSection('/')).toBe('tableau');
     expect(resolveWorkspaceSection(`/s/${OLD}`)).toBe('tableau');
     expect(resolveWorkspaceSection(`/s/${OLD}/`)).toBe('tableau');
+  });
+
+  it('réduit une sous-route à ressource à sa section', () => {
+    expect(resolveWorkspaceSection(`/commandes/${RESOURCE}`)).toBe('commandes');
+  });
+
+  it('retombe sur tableau pour une section inconnue', () => {
+    expect(resolveWorkspaceSection('/section-inexistante')).toBe('tableau');
+  });
+
+  it('retombe sur tableau pour dev — seul dev/primitives est routable, pas dev seul', () => {
+    expect(resolveWorkspaceSection('/dev/primitives')).toBe('tableau');
+    expect(resolveWorkspaceSection('/dev')).toBe('tableau');
   });
 });
 
@@ -69,5 +86,53 @@ describe('buildStoreSwitchHref', () => {
     expect(buildStoreSwitchHref(`/s/${OLD}/produits`, OLD, '?tab=stock')).toBe(
       `/s/${OLD}/produits?tab=stock`,
     );
+  });
+
+  it('ne produit jamais /s/{id}/dev — dev seul 404erait, contrairement à dev/primitives', () => {
+    // `/dev/primitives` réduit à la section `dev`, qui n'a pas de page.tsx propre :
+    // avant l'allowlist, ceci émettait `/s/{id}/dev`, une URL dérivée non
+    // routable. Le repli sur `tableau` est le comportement corrigé.
+    expect(buildStoreSwitchHref('/dev/primitives', NEW)).toBe(`/s/${NEW}/tableau`);
+  });
+});
+
+describe('resolveWorkspaceEntryPath', () => {
+  it('préserve intégralement une sous-route à ressource', () => {
+    expect(resolveWorkspaceEntryPath(`/commandes/${RESOURCE}`)).toBe(`/commandes/${RESOURCE}`);
+  });
+
+  it('préserve la query string', () => {
+    expect(resolveWorkspaceEntryPath('/commandes?vue=a-appeler')).toBe('/commandes?vue=a-appeler');
+  });
+
+  it('préserve /dev/primitives — routable en tant que chemin complet, contrairement à dev seul', () => {
+    expect(resolveWorkspaceEntryPath('/dev/primitives')).toBe('/dev/primitives');
+  });
+
+  it('dé-doublonne un préfixe /s/{id} déjà présent, sans jamais produire /s/{id}/s/{id}/…', () => {
+    expect(resolveWorkspaceEntryPath(`/s/${OLD}/commandes`)).toBe('/commandes');
+  });
+
+  it('retombe sur /tableau pour un namespace de premier niveau inconnu', () => {
+    expect(resolveWorkspaceEntryPath('/section-inexistante/x')).toBe('/tableau');
+  });
+
+  it('retombe sur /tableau pour undefined et chaîne vide', () => {
+    expect(resolveWorkspaceEntryPath(undefined)).toBe('/tableau');
+    expect(resolveWorkspaceEntryPath('')).toBe('/tableau');
+  });
+
+  it('rejette toute cible externe et retombe sur /tableau — /s?next= est atteignable en accès direct, indépendamment de signInAction', () => {
+    // Ce test prouve la fermeture de la redirection ouverte identifiée en
+    // Stage 0 : `/s?next=` est une route GET ordinaire, jamais garantie de
+    // passer par `signInAction`/`safeRedirectPath` en amont. La garde doit
+    // donc être effective ICI, sur un accès direct.
+    expect(resolveWorkspaceEntryPath('//evil.example')).toBe('/tableau');
+    expect(resolveWorkspaceEntryPath('https://evil.example')).toBe('/tableau');
+    expect(resolveWorkspaceEntryPath('javascript:alert(1)')).toBe('/tableau');
+  });
+
+  it('rejette un contournement par backslash (normalisé en // par certains navigateurs)', () => {
+    expect(resolveWorkspaceEntryPath('/\\evil.example')).toBe('/tableau');
   });
 });
