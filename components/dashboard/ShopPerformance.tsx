@@ -25,7 +25,7 @@ export function ShopPerformance({
   warningLabel,
 }: ShopPerformanceProps) {
   return (
-    <Card className="rounded-lg" padding="lg">
+    <Card className="min-w-0 rounded-lg" padding="lg">
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold text-text">{title}</h2>
         {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
