@@ -12,6 +12,7 @@ import {
   canRemoveMember,
   isTeamRole,
 } from '@/lib/team/permissions';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -735,6 +736,36 @@ export const createDriverAction = requireRole('owner', 'manager')
       .single();
 
     if (insertError) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    // 0133 — rattacher le livreur à la boutique ACTIVE. Sans cette ligne il
+    // n'apparaîtrait dans AUCUNE boutique : `/livreurs` et le sélecteur
+    // d'affectation lisent désormais `driver_shop`, pas `driver` seule.
+    // Repli sur la boutique par défaut hors contexte de boutique, pour qu'un
+    // livreur créé depuis un chemin sans boutique reste atteignable.
+    const activeShopId =
+      (await getRequestStoreId()) ??
+      (
+        await admin
+          .from('shop')
+          .select('id')
+          .eq('merchant_account_id', ctx.member.merchantAccountId)
+          .eq('is_default', true)
+          .maybeSingle()
+      ).data?.id;
+
+    if (!activeShopId) {
+      return { ok: false as const, errorCode: 'update_failed' as const };
+    }
+
+    const { error: membershipError } = await admin.from('driver_shop').insert({
+      merchant_account_id: ctx.member.merchantAccountId,
+      shop_id: activeShopId,
+      driver_id: driver.id,
+    });
+
+    if (membershipError) {
       return { ok: false as const, errorCode: 'update_failed' as const };
     }
 

@@ -6,7 +6,9 @@ import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
+import { attachDriverToStore } from './helpers/workspace';
 
 // ============================================================================
 // QA pré-launch (v2) — couverture e2e UI manquante.
@@ -141,6 +143,13 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, fullN
     .select('id')
     .single();
   if (error) throw error;
+
+  // 0133 — un livreur n'est visible que dans les boutiques qu'il SERT
+  // (`driver_shop`). Le chemin produit pose ce rattachement à la création
+  // (`lib/actions/team.ts`) ; un seed qui insère `driver` en direct doit le
+  // reproduire, sinon le livreur reste introuvable sur /livreurs sans aucune
+  // erreur — écran vide, pas message d'échec.
+  await attachDriverToStore(admin, merchantAccountId, data.id as string);
   return data.id as string;
 }
 
@@ -393,7 +402,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
   await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
-  await page.waitForURL(`**${redirectTo}`);
+  await landOnTarget(page, redirectTo);
 }
 
 function menuItem(page: Page, name: string) {
@@ -401,7 +410,18 @@ function menuItem(page: Page, name: string) {
 }
 
 async function openActionsMenu(page: Page) {
-  await page.getByRole('button', { name: 'Actions' }).first().click();
+  const trigger = page.getByRole('button', { name: 'Actions' }).first();
+
+  // Le premier clic peut atterrir AVANT l'hydratation React : le bouton existe
+  // déjà dans le HTML SSR mais son `onClick` n'est pas encore attaché, donc le
+  // clic ne fait rien et l'attente expire sur un élément de menu qui
+  // n'apparaîtra jamais (piège documenté du projet). On retente le clic tant
+  // qu'aucun élément de menu n'est monté, plutôt que d'allonger un timeout qui
+  // ne rattraperait pas un clic déjà perdu.
+  await expect(async () => {
+    await trigger.click();
+    await expect(page.getByRole('menuitem').first()).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 async function runDetailMenuAction(page: Page, name: string) {

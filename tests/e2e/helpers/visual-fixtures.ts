@@ -6,9 +6,11 @@ import {
   cleanupUsers,
   createConfirmedUser,
   e2ePassword,
+  landOnTarget,
   loginViaForm,
   waitForMerchant,
 } from './auth';
+import { attachDriverToStore } from './workspace';
 
 const FIXED_VISUAL_DATE = '2026-01-15T10:00:00.000Z';
 
@@ -92,7 +94,13 @@ export async function signInToRoute(page: Page, email: string, redirectTo: strin
   // /connexion en réussite silencieuse pour une page métier.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await loginViaForm(page, email, e2ePassword, redirectTo);
-    await page.waitForURL(`**${redirectTo}`, { timeout: 45_000 }).catch(() => undefined);
+    // `landOnTarget` rejoue la cible EXACTE : `/s` réduit `next` à une section,
+    // donc ni `/dev/primitives` ni `/commandes/{id}` ni `?from=…&to=…` ne
+    // survivraient au passage — la capture porterait sur une autre page, ou
+    // n'aurait jamais lieu (attente d'une URL inatteignable).
+    // Budget borné sous le timeout de test : au-delà, c'est la boucle de
+    // tentatives qui tranche, pas une attente qui tue le test de l'intérieur.
+    await landOnTarget(page, redirectTo, 20_000).catch(() => undefined);
     await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => undefined);
 
     const currentUrl = new URL(page.url());
@@ -154,6 +162,10 @@ export async function createDriver(
   if (error) {
     throw error;
   }
+
+  // 0133 : sans rattachement, le livreur n'apparaît plus sur /livreurs — la
+  // capture visuelle rendrait un écran vide au lieu d'échouer explicitement.
+  await attachDriverToStore(fixture.admin, fixture.merchantAccountId, data.id as string);
 
   return data.id as string;
 }

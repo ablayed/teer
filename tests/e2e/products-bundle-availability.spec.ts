@@ -3,8 +3,9 @@ import messages from '@/messages/fr.json';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
-import { defaultShopId } from './helpers/workspace';
+import { attachDriverToStore, defaultShopId } from './helpers/workspace';
 
 // Bundles PR 2 : disponibilité dérivée sur /produits (tab Stock), aucune
 // régression sur /livreurs (un bundle n'y apparaît jamais), et CA par
@@ -155,6 +156,8 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, fullN
     .select('id')
     .single();
   if (error || !data) throw error ?? new Error('driver insert failed');
+  // 0133 : sans rattachement, le livreur n'est plus proposé à l'affectation.
+  await attachDriverToStore(admin, merchantAccountId, data.id as string);
   return data.id as string;
 }
 
@@ -218,7 +221,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
   // Timeout généreux : premier compile dev-mode d'une route jamais visitée
   // dans ce run peut dépasser 30s (observé ~20-30s sur /produits/livreurs/tableau).
-  await page.waitForURL(`**${redirectTo}`, { timeout: 60_000 });
+  await landOnTarget(page, redirectTo, 60_000);
   await expect(page.locator('main#main')).toBeVisible({ timeout: 45_000 });
 }
 

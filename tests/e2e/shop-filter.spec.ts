@@ -4,6 +4,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { grantCurrentConsents } from './helpers/consent';
+import { revealStoreContext } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) return {};
@@ -197,7 +198,7 @@ test('single-store owner: login selects the only store automatically', async ({ 
     const [store] = await getStores(fixture.admin, fixture.merchantAccountId);
     await signIn(page, fixture.email, '/s');
     await expect(page).toHaveURL(new RegExp(`/s/${store.id}/tableau$`));
-    await expect(page.getByText(store.display_name, { exact: true }).first()).toBeVisible();
+    await expect(await revealStoreContext(page)).toHaveText(store.display_name);
     await expect(page.getByRole('button', { name: 'Changer' })).toHaveCount(0);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
@@ -221,11 +222,17 @@ test('multi-store owner: chooser, authorized deep link and valid switch', async 
 
     await page.locator(`a[href="/s/${storeA.id}/tableau"]`).click();
     await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/tableau$`));
-    await expect(page.getByText(storeA.display_name, { exact: true }).first()).toBeVisible();
-    await page.getByText('Changer', { exact: true }).click();
-    await page.locator(`a[href="/s/${storeB.id}/tableau"]`).click();
+    await expect(await revealStoreContext(page)).toHaveText(storeA.display_name);
+    // Le sélecteur est monté deux fois (barre latérale + menu mobile) : on cible
+    // explicitement la copie VISIBLE, sinon le clic vise la copie masquée.
+    await page
+      .locator('[data-testid="store-switcher"]:visible')
+      .first()
+      .getByRole('button', { name: /Changer/ })
+      .click();
+    await page.locator(`a[href="/s/${storeB.id}/tableau"]:visible`).first().click();
     await expect(page).toHaveURL(new RegExp(`/s/${storeB.id}/tableau$`));
-    await expect(page.getByText(storeB.display_name, { exact: true }).first()).toBeVisible();
+    await expect(await revealStoreContext(page)).toHaveText(storeB.display_name);
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -254,7 +261,7 @@ test('unauthorized store URL is refused outright; authorized deep link preserves
     await expect(page.getByText(storeA.display_name, { exact: true })).toHaveCount(0);
     await page.goto(`/s/${storeA.id}/clients`);
     await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/clients$`));
-    await expect(page.getByText(storeA.display_name, { exact: true }).first()).toBeVisible();
+    await expect(await revealStoreContext(page)).toHaveText(storeA.display_name);
   } finally {
     await cleanupUsers(tenantA.admin, tenantA.userIds);
     await cleanupUsers(tenantB.admin, tenantB.userIds);
@@ -325,8 +332,10 @@ test('mobile keeps the active store and primary navigation reachable', async ({
   try {
     const [store] = await getStores(fixture.admin, fixture.merchantAccountId);
     await signIn(page, fixture.email, `/s/${store.id}/tableau`);
-    const activeStore = page.getByText(store.display_name, { exact: true }).first();
-    await expect(activeStore).toBeVisible();
+    // La boutique active reste ATTEIGNABLE sur mobile — désormais depuis le menu
+    // de navigation plutôt qu'en bande pleine largeur, donc sans consommer de
+    // hauteur de contenu permanente.
+    await expect(await revealStoreContext(page)).toHaveText(store.display_name);
     const nav = page.locator('nav').last();
     await expect(nav).toBeVisible();
     const box = await nav.boundingBox();

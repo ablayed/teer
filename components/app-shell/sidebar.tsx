@@ -3,6 +3,7 @@
 import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Wordmark } from '@/components/wordmark';
+import { StoreSwitcher } from '@/components/workspace/store-switcher';
 import { cn } from '@/lib/utils';
 import type { WorkspaceStore } from '@/lib/workspace/store';
 import {
@@ -67,9 +68,11 @@ function isActivePath(pathname: string, href: string): boolean {
 export function Sidebar({
   currentRole,
   currentStore,
+  stores = [],
 }: {
   currentRole?: string | null;
   currentStore?: WorkspaceStore;
+  stores?: WorkspaceStore[];
 }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
@@ -85,6 +88,11 @@ export function Sidebar({
       <div className="px-6 py-6">
         <Wordmark size="md" />
       </div>
+
+      {/* Contexte de boutique : sous le logo, au-dessus de la navigation. Il vit
+          désormais DANS la navigation et reste donc visible en permanence, au lieu
+          d'occuper une bande pleine largeur en tête de chaque page. */}
+      {currentStore ? <StoreSwitcher currentStore={currentStore} stores={stores} /> : null}
 
       <nav aria-label={t('ariaLabel')} className="px-3">
         <ul className="space-y-1">

@@ -6,6 +6,7 @@ import {
   e2eEmail,
   e2ePassword,
   hasSupabaseAdmin,
+  landOnTarget,
   loginViaForm,
   waitForMerchant,
 } from './helpers/auth';
@@ -116,7 +117,7 @@ for (const scenario of scenarios) {
       expect(order.cod_status).toBe(scenario.expectedStatus);
 
       await loginViaForm(page, email, e2ePassword, `/commandes/${order.id}`);
-      await page.waitForURL(`**/commandes/${order.id}`);
+      await landOnTarget(page, `/commandes/${order.id}`);
 
       const section = page.getByTestId('order-note');
       await expect(section).toBeVisible({ timeout: 15_000 });

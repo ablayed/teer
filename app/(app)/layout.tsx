@@ -6,6 +6,7 @@ import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/actions/
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { resolveMemberlessDestination } from '@/lib/workspace/memberless-destination';
 import { defaultWorkspaceStore, getWorkspaceStores } from '@/lib/workspace/store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextIntlClientProvider } from 'next-intl';
@@ -40,21 +41,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   // Utilisateur authentifié SANS organisation : on route selon ses invitations
-  // en attente plutôt que de l'envoyer systématiquement vers l'onboarding. S'il
-  // a au moins une invitation pending → /invitation/accept (mode liste, sans
-  // token, qui ne re-route pas vers (app) → pas de boucle). Sinon → /onboarding
-  // (non-régression du fondateur sans invitation). list_my_pending_invitations
-  // est SECURITY DEFINER sur auth.uid() : appelée via le client cookie (RLS).
+  // en attente plutôt que de l'envoyer systématiquement vers l'onboarding
+  // (non-régression du fondateur sans invitation). Logique partagée avec
+  // `app/s/page.tsx` (0 boutique) — lib/workspace/memberless-destination.ts,
+  // une seule définition pour éviter deux copies divergentes.
   if (!member) {
-    const { data: pending, error: pendingError } = await (
-      supabase as unknown as SupabaseClient<Database>
-    ).rpc('list_my_pending_invitations');
-
-    if (!pendingError && pending && pending.length > 0) {
-      redirect('/invitation/accept');
-    }
-
-    redirect('/onboarding');
+    redirect(await resolveMemberlessDestination(supabase as unknown as SupabaseClient<Database>));
   }
 
   // Membre existant : fondateur en cours d'onboarding (compte non onboardé) reste

@@ -11,6 +11,7 @@ import {
   persistSignupConsents,
 } from '@/lib/legal/consent';
 import { checkAuthRateLimit, getClientIp } from '@/lib/security/auth-rate-limit';
+import { safeRedirectPath } from '@/lib/security/safe-redirect';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs';
@@ -45,12 +46,23 @@ async function signUpInputSchema() {
   });
 }
 
-function safeRedirectPath(path: string | undefined): string {
-  if (!path || !path.startsWith('/') || path.startsWith('//')) {
-    return '/tableau';
+/**
+ * Destination après une connexion réussie : TOUJOURS le point d'entrée workspace.
+ *
+ * Rediriger directement vers `/tableau` (ou vers la section demandée) faisait
+ * entrer un utilisateur multi-boutiques dans sa boutique par DÉFAUT sans qu'il
+ * ait choisi. `/s` tranche : entrée automatique s'il n'a qu'une boutique, choix
+ * explicite au-delà. L'intention de navigation est transportée en `next` et
+ * réduite à une section par `/s`, jamais à un identifiant de ressource.
+ */
+function postSignInPath(redirectTo: string | undefined): string {
+  const target = safeRedirectPath(redirectTo);
+
+  if (target === '/s' || target.startsWith('/s/') || target.startsWith('/s?')) {
+    return target;
   }
 
-  return path;
+  return `/s?next=${encodeURIComponent(target)}`;
 }
 
 function createSupabaseAdminClient() {
@@ -258,7 +270,7 @@ export const signInAction = actionClient
       return { ok: false as const, errorCode: code };
     }
 
-    redirect(safeRedirectPath(parsedInput.redirectTo));
+    redirect(postSignInPath(parsedInput.redirectTo));
   });
 
 export const signOutAction = authActionClient

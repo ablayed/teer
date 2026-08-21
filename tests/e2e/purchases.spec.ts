@@ -3,6 +3,7 @@ import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
 
 function readLocalEnv(): Record<string, string> {
@@ -77,17 +78,6 @@ async function waitForMerchant(admin: AdminClient, userId: string) {
   return merchantAccountId;
 }
 
-async function createShop(admin: AdminClient, merchantAccountId: string, label: string) {
-  const { error } = await admin.from('shop').insert({
-    display_name: label,
-    merchant_account_id: merchantAccountId,
-    shop_domain: `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}.myshopify.com`,
-    access_token_encrypted: 'e2e-encrypted-token',
-    scopes: 'read_orders',
-  });
-  if (error) throw error;
-}
-
 async function createOwnerFixture(label: string) {
   const admin = adminClient();
   const email = e2eEmail(label);
@@ -97,7 +87,6 @@ async function createOwnerFixture(label: string) {
     .from('merchant_account')
     .update({ name: `Tëër E2E Phase5 ${label}`, onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
-  await createShop(admin, merchantAccountId, `achats-${label}`);
   return { admin, email, merchantAccountId, userId };
 }
 
@@ -122,7 +111,7 @@ async function signIn(page: Page, email: string, redirectTo = '/produits') {
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
   await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
-  await page.waitForURL(`**${redirectTo}`);
+  await landOnTarget(page, redirectTo);
   await expect(page.getByRole('heading', { name: 'Produits' })).toBeVisible();
 }
 

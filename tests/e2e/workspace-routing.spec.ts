@@ -10,6 +10,7 @@ import {
   loginViaForm,
   waitForMerchant,
 } from './helpers/auth';
+import { revealStoreContext } from './helpers/workspace';
 
 // Non-régression du cycle legacy → canonique → rewrite (PHASE1-DIAG-ROUTING).
 //
@@ -165,6 +166,26 @@ test.afterAll(async () => {
   createdUserIds.length = 0;
 });
 
+/**
+ * Entre dans une boutique puis exerce l'URL LEGACY.
+ *
+ * Depuis le sélecteur post-connexion, la connexion d'un utilisateur
+ * multi-boutiques passe par `/s` : elle ne rend donc plus directement une route
+ * legacy. Ce que ces tests protègent — l'URL legacy est rendue EN PLACE, sans
+ * canonicalisation ni boucle RSC — reste inchangé et se vérifie en naviguant vers
+ * elle une fois la boutique choisie.
+ */
+async function enterStoreThenLegacy(
+  page: Page,
+  email: string,
+  storeId: string,
+  legacyPath: string,
+) {
+  await loginViaForm(page, email, e2ePassword, `/s/${storeId}/tableau`);
+  await page.waitForURL(`**/s/${storeId}/tableau`, { timeout: FIRST_RENDER_TIMEOUT });
+  await page.goto(legacyPath);
+}
+
 test.describe('routage workspace legacy et canonique', () => {
   // Budget assumé, PAS un contournement : chaque test enchaîne une connexion
   // réelle, un premier rendu de page applicative, puis une fenêtre
@@ -192,7 +213,7 @@ test.describe('routage workspace legacy et canonique', () => {
     await seedProduct(fixture, fixture.secondStoreId, 'Produit Boutique Secondaire');
 
     const rscCount = countRscRequests(page);
-    await loginViaForm(page, fixture.email, e2ePassword, '/produits');
+    await enterStoreThenLegacy(page, fixture.email, fixture.defaultStoreId, '/produits');
 
     // Le contenu, pas l'URL, est le signal de réussite : le diagnostic a montré
     // qu'une URL correcte pouvait coexister avec un DOM vide.
@@ -217,7 +238,7 @@ test.describe('routage workspace legacy et canonique', () => {
     expect(fixture.stores.length).toBe(2);
 
     const rscCount = countRscRequests(page);
-    await loginViaForm(page, fixture.email, e2ePassword, '/commandes');
+    await enterStoreThenLegacy(page, fixture.email, fixture.defaultStoreId, '/commandes');
 
     await expect(page.getByRole('heading', { level: 1, name: 'Commandes' })).toBeVisible({
       timeout: FIRST_RENDER_TIMEOUT,
@@ -246,8 +267,10 @@ test.describe('routage workspace legacy et canonique', () => {
     });
     expect(new URL(page.url()).pathname).toBe(`/s/${fixture.secondStoreId}/produits`);
 
-    // Shell Workspace : la boutique demandée est bien la boutique active.
-    await expect(page.getByText(secondStore.displayName).first()).toBeVisible();
+    // Shell Workspace : la boutique demandée est bien la boutique active. Le
+    // contexte vit dans la navigation (barre latérale desktop, menu « Plus »
+    // mobile) et le composant est monté deux fois : on cible la copie VISIBLE.
+    await expect(await revealStoreContext(page)).toHaveText(secondStore.displayName);
     await expect(page.getByRole('heading', { name: 'Canonique Secondaire' })).toBeVisible();
     await expect(page.getByText('Canonique Defaut')).toHaveCount(0);
 
@@ -261,7 +284,7 @@ test.describe('routage workspace legacy et canonique', () => {
     // On se connecte d'abord normalement : la session est valide, seul
     // l'identifiant de boutique demandé ensuite est illégitime. Sans cela, le
     // test pourrait passer pour la mauvaise raison (simple non-authentifié).
-    await loginViaForm(page, fixture.email, e2ePassword, '/produits');
+    await loginViaForm(page, fixture.email, e2ePassword, `/s/${fixture.defaultStoreId}/produits`);
     await expect(page.getByRole('heading', { level: 1, name: 'Produits' })).toBeVisible({
       timeout: FIRST_RENDER_TIMEOUT,
     });
@@ -290,7 +313,10 @@ test.describe('routage workspace legacy et canonique', () => {
     await seedProduct(fixture, fixture.defaultStoreId, 'Produit Mono Boutique');
 
     const rscCount = countRscRequests(page);
-    await loginViaForm(page, fixture.email, e2ePassword, '/produits');
+    // Un utilisateur mono-boutique entre automatiquement dans sa boutique, sur la
+    // route CANONIQUE. L'URL legacy reste servie en place, ce que vérifie la
+    // navigation explicite qui suit.
+    await enterStoreThenLegacy(page, fixture.email, fixture.defaultStoreId, '/produits');
 
     await expect(page.getByRole('heading', { level: 1, name: 'Produits' })).toBeVisible({
       timeout: FIRST_RENDER_TIMEOUT,
@@ -312,23 +338,26 @@ test.describe('routage workspace legacy et canonique', () => {
     if (!secondStore) throw new Error('boutique secondaire introuvable');
 
     const rscCount = countRscRequests(page);
-    await loginViaForm(page, fixture.email, e2ePassword, '/produits');
+    await loginViaForm(page, fixture.email, e2ePassword, `/s/${fixture.defaultStoreId}/produits`);
     await expect(page.getByRole('heading', { level: 1, name: 'Produits' })).toBeVisible({
       timeout: FIRST_RENDER_TIMEOUT,
     });
     await expect(page.getByRole('heading', { name: 'Selecteur Defaut' })).toBeVisible();
 
-    await page.getByRole('group').filter({ hasText: 'Changer' }).first().click();
-    await page.getByRole('link', { name: secondStore.displayName }).first().click();
+    // Le contrôle de boutique vit désormais DANS la navigation : barre latérale
+    // sur desktop, menu « Plus » sur mobile (l'ancienne barre `<details>` en tête
+    // de contenu a été retirée).
+    await revealStoreContext(page);
+    const switcher = page.locator('[data-testid="store-switcher"]:visible').first();
+    await switcher.getByRole('button', { name: /Changer/ }).click();
+    await switcher.getByRole('menuitem', { name: secondStore.displayName }).click();
 
-    await page.waitForURL(`**/s/${fixture.secondStoreId}/tableau`, {
+    // Changement de comportement VOULU : le changement de boutique préserve la
+    // section courante. Avant, il renvoyait systématiquement vers /tableau et
+    // faisait perdre la page consultée.
+    await page.waitForURL(`**/s/${fixture.secondStoreId}/produits`, {
       timeout: FIRST_RENDER_TIMEOUT,
     });
-    await expect(page.getByText(secondStore.displayName).first()).toBeVisible({
-      timeout: FIRST_RENDER_TIMEOUT,
-    });
-
-    await page.goto(`/s/${fixture.secondStoreId}/produits`);
     await expect(page.getByRole('heading', { level: 1, name: 'Produits' })).toBeVisible({
       timeout: FIRST_RENDER_TIMEOUT,
     });

@@ -40,6 +40,8 @@ export type TransitionErrorCode =
   | 'illegal_transition'
   // 0116 — invalidation refusée parce que le cash a déjà été remis par le livreur.
   | 'invalid_invalidate_cash_settled'
+  // 0133 — livreur non rattaché à la boutique de la commande.
+  | 'driver_not_in_store'
   | 'missing_driver_for_dispatch'
   | 'order_not_found'
   | 'update_failed';
@@ -186,6 +188,19 @@ function transitionRpc(supabase: SupabaseServerClient) {
       p_invalidate_delivered?: boolean;
     },
   ) => Promise<PostgrestSingleResponse<string>>;
+}
+
+// 0133 — éligibilité d'un livreur à une boutique. La fonction est `security
+// definer` avec garde de rôle NULL-safe : elle ne renseigne jamais un non-membre.
+function driverEligibilityRpc(supabase: SupabaseServerClient) {
+  return supabase.rpc.bind(supabase) as unknown as (
+    fn: 'is_driver_in_shop',
+    args: {
+      p_merchant_account_id: string;
+      p_driver_id: string;
+      p_shop_id: string;
+    },
+  ) => Promise<PostgrestSingleResponse<boolean>>;
 }
 
 async function writeTransitionAudit({
@@ -348,6 +363,30 @@ export async function performTransitionForContext({
       'missing_driver_for_dispatch',
       'Assignez un livreur avant de passer la commande en livraison.',
     );
+  }
+
+  // 0133 — un livreur ne peut être affecté qu'à une commande d'une boutique qu'il
+  // sert. La garde porte sur la boutique de la COMMANDE (parent autoritaire), pas
+  // sur la boutique active de la requête : une commande ne change jamais de
+  // boutique, alors que la boutique active peut avoir changé entre l'ouverture de
+  // l'écran et le clic. Elle s'applique à tout chemin d'affectation, y compris un
+  // appel d'action forgé hors interface, puisqu'elle vit avant l'appel RPC.
+  if (transitionPatch.assignedDriverId) {
+    const { data: eligible, error: eligibilityError } = await driverEligibilityRpc(supabase)(
+      'is_driver_in_shop',
+      {
+        p_merchant_account_id: order.merchant_account_id,
+        p_driver_id: transitionPatch.assignedDriverId,
+        p_shop_id: order.shop_id,
+      },
+    );
+
+    if (eligibilityError || eligible !== true) {
+      return transitionError(
+        'driver_not_in_store',
+        "Ce livreur n'est pas rattaché à la boutique de cette commande.",
+      );
+    }
   }
 
   // 0116 — garde cash de l'invalidation, en défense en profondeur. transition_order la

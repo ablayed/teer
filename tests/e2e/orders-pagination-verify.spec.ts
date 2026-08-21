@@ -25,8 +25,9 @@ import messages from '@/messages/fr.json';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
-import { defaultShopId } from './helpers/workspace';
+import { attachDriverToStore, defaultShopId } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.test')) {
@@ -72,7 +73,7 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
   await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
-  await page.waitForURL(`**${redirectTo}`);
+  await landOnTarget(page, redirectTo);
   await expect(page.locator('main#main')).toBeVisible({ timeout: 15_000 });
 }
 
@@ -196,6 +197,7 @@ test('Phase 9 — /commandes : compteurs, ordre, recherche, « Voir plus » (bui
     throw seedDriverError ?? new Error('Livreur seed non créé');
   }
   const seedDriverId = seedDriver.id as string;
+  await attachDriverToStore(admin, merchantAccountId, seedDriverId);
 
   const seeds: OrderSeed[] = [];
   const push = (s: Omit<OrderSeed, 'index' | 'customer_id' | 'items_summary'>) => {

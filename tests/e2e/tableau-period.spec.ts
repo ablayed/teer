@@ -264,6 +264,28 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.waitForURL((url) => url.pathname.startsWith('/s/'), { timeout: 45_000 });
 }
 
+/**
+ * Ouvre le contrôle de boutique là où il est RÉELLEMENT atteignable.
+ *
+ * Le composant est monté DEUX fois : barre latérale desktop (`hidden` sous
+ * `md`, donc présente au DOM mais jamais cliquable) et menu « Plus » de la
+ * navigation basse sur mobile. Un locator non qualifié résout la copie cachée
+ * et attend indéfiniment un élément qui ne deviendra jamais visible — c'est
+ * exactement ce qui expirait ici sur pixel-7 et iphone-14. On choisit d'après
+ * le viewport Playwright réel plutôt que de mettre les deux copies en course.
+ */
+async function openStoreSwitcher(page: Page) {
+  const width = page.viewportSize()?.width ?? 1280;
+
+  if (width < 768) {
+    await page.getByRole('button', { name: 'Plus' }).click();
+  }
+
+  const switcher = page.locator('[data-testid="store-switcher"]:visible').first();
+  await switcher.waitFor({ state: 'visible', timeout: 20_000 });
+  await switcher.getByRole('button', { name: /Changer/ }).click();
+}
+
 test.describe('Tableau période + CA/livraisons', () => {
   test.skip(!hasSupabaseAdmin, 'SUPABASE service role requis pour seeder les fixtures');
 
@@ -481,7 +503,7 @@ test.describe('Tableau période + CA/livraisons', () => {
     });
     await expect(cashCard).toContainText(/10.?000/);
 
-    await page.getByText('Changer', { exact: true }).click();
+    await openStoreSwitcher(page);
     await page.locator(`a[href="/s/${shopB}/tableau"]`).click();
     await expect(page).toHaveURL(new RegExp(`/s/${shopB}/tableau`));
     await expect(cashCard).toContainText(/7.?000/);

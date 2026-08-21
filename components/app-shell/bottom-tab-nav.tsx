@@ -1,6 +1,7 @@
 'use client';
 
 import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
+import { StoreSwitcher } from '@/components/workspace/store-switcher';
 import { cn } from '@/lib/utils';
 import type { WorkspaceStore } from '@/lib/workspace/store';
 import {
@@ -81,9 +82,11 @@ function isAllowed(item: BottomTabItem, currentRole?: string | null): boolean {
 export function BottomTabNav({
   currentRole,
   currentStore,
+  stores = [],
 }: {
   currentRole?: string | null;
   currentStore?: WorkspaceStore;
+  stores?: WorkspaceStore[];
 }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
@@ -167,6 +170,15 @@ export function BottomTabNav({
           ref={panelRef}
         >
           <div className="flex flex-col gap-1">
+            {/* Contexte de boutique mobile : dans le menu de navigation, donc
+                atteignable partout sans consommer de hauteur de contenu permanente
+                (l'ancienne barre pleine largeur en occupait sur chaque page). */}
+            {currentStore ? (
+              <>
+                <StoreSwitcher currentStore={currentStore} stores={stores} variant="menu" />
+                <div aria-hidden="true" className="my-1 h-px bg-border" />
+              </>
+            ) : null}
             {overflowMain.map(renderOverflowLink)}
             {overflowMain.length > 0 && overflowSettings.length > 0 ? (
               <div aria-hidden="true" className="my-1 h-px bg-border" />

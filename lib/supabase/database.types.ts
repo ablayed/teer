@@ -499,6 +499,49 @@ export type Database = {
           },
         ];
       };
+      driver_shop: {
+        Row: {
+          created_at: string;
+          driver_id: string;
+          merchant_account_id: string;
+          shop_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          driver_id: string;
+          merchant_account_id: string;
+          shop_id: string;
+        };
+        Update: {
+          created_at?: string;
+          driver_id?: string;
+          merchant_account_id?: string;
+          shop_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'driver_shop_driver_tenant_fk';
+            columns: ['merchant_account_id', 'driver_id'];
+            isOneToOne: false;
+            referencedRelation: 'driver';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+          {
+            foreignKeyName: 'driver_shop_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'driver_shop_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
       expense: {
         Row: {
           amount_minor: number;
@@ -3187,6 +3230,14 @@ export type Database = {
           product_id: string;
           unit_cost: number;
         }[];
+      };
+      is_driver_in_shop: {
+        Args: {
+          p_driver_id: string;
+          p_merchant_account_id: string;
+          p_shop_id: string;
+        };
+        Returns: boolean;
       };
       is_member_of: {
         Args: { p_merchant_account_id: string };

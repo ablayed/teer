@@ -4,7 +4,9 @@ import messages from '@/messages/fr.json';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
+import { attachDriverToStore } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) {
@@ -303,6 +305,8 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, fullN
     .select('id')
     .single();
   if (error) throw error;
+  // 0133 : sans rattachement, le livreur n'est plus proposé à l'affectation.
+  await attachDriverToStore(admin, merchantAccountId, data.id as string);
   return data.id as string;
 }
 
@@ -517,7 +521,7 @@ async function signIn(page: Page, email: string, redirectTo = '/tableau') {
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
   await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
-  await page.waitForURL(`**${redirectTo}`);
+  await landOnTarget(page, redirectTo);
 }
 
 async function typeControlledNumber(input: Locator, value: string) {
@@ -1661,7 +1665,6 @@ test('Commandes : creer une commande manuelle la fait apparaitre dans Toutes et 
   const fixture = await createOwnerFixture('manual-list');
   // Products must exist before page load (server-rendered props).
   await createProductInCatalog(fixture.admin, fixture.merchantAccountId, 'Sac Dakar E2E');
-  await createShop(fixture.admin, fixture.merchantAccountId, `manual-${Date.now()}.myshopify.com`);
   await createOrderWithCustomer(fixture.admin, {
     merchantAccountId: fixture.merchantAccountId,
     status: 'A_APPELER',
@@ -1671,6 +1674,19 @@ test('Commandes : creer une commande manuelle la fait apparaitre dans Toutes et 
 
   try {
     await signIn(page, fixture.email, '/commandes');
+
+    // La 2e boutique est créée APRÈS signIn, jamais avant : à la connexion, `/s`
+    // impose un choix explicite dès 2 boutiques (aucune présélection, décision
+    // produit), et aucun helper de connexion partagé ne doit cliquer dans ce
+    // sélecteur à la place du test. Ce qui est testé ici est l'ambiguïté au
+    // moment de la CRÉATION de la commande, pas à la connexion — `getWorkspaceStores`
+    // étant relu à chaque requête, la boutique posée ici est bien visible pour
+    // le formulaire de création qui suit.
+    await createShop(
+      fixture.admin,
+      fixture.merchantAccountId,
+      `manual-${Date.now()}.myshopify.com`,
+    );
 
     await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
     await page.getByLabel('Nom client').fill('Awa Manuelle');
@@ -1742,14 +1758,21 @@ test('commande manuelle a 2 produits cree 2 order_line matchees', async ({ page 
     'Ceinture E2E',
     'CEIN-01',
   );
-  await createShop(
-    fixture.admin,
-    fixture.merchantAccountId,
-    `manual-2-${Date.now()}.myshopify.com`,
-  );
-
   try {
     await signIn(page, fixture.email, '/commandes');
+
+    // La 2e boutique est créée APRÈS signIn, jamais avant : à la connexion, `/s`
+    // impose un choix explicite dès 2 boutiques (aucune présélection, décision
+    // produit), et aucun helper de connexion partagé ne doit cliquer dans ce
+    // sélecteur à la place du test. Ce qui est testé ici est l'ambiguïté au
+    // moment de la CRÉATION de la commande, pas à la connexion — `getWorkspaceStores`
+    // étant relu à chaque requête, la boutique posée ici est bien visible pour
+    // le formulaire de création qui suit.
+    await createShop(
+      fixture.admin,
+      fixture.merchantAccountId,
+      `manual-2-${Date.now()}.myshopify.com`,
+    );
 
     await page.getByRole('button', { name: 'Nouvelle commande', exact: true }).click();
     await page.getByLabel('Nom client').fill('Multi Produit');

@@ -3,6 +3,7 @@ import messages from '@/messages/fr.json';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
+import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
 
 function readLocalEnv(): Record<string, string> {
@@ -113,7 +114,7 @@ async function signIn(page: Page, email: string, redirectTo = '/assistant') {
   await page.getByLabel(messages.auth.email_label, { exact: true }).fill(email);
   await page.getByLabel(messages.auth.password_label, { exact: true }).fill(password);
   await page.getByRole('button', { name: messages.auth.signin.submit }).click();
-  await page.waitForURL(`**${redirectTo}`);
+  await landOnTarget(page, redirectTo);
 }
 
 // Repères textuels (extraits de lib/ia/faq.ts) — role-aware.

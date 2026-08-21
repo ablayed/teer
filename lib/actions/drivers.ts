@@ -9,10 +9,12 @@ import {
   driverAvailableStockRows,
   driverStockRows,
 } from '@/lib/drivers/stock-on-hand';
+import { driverIdFilter, getStoreDriverIds } from '@/lib/drivers/store-scope';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
 import { fetchAllPostgrestRows } from '@/lib/supabase/pagination';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -132,15 +134,51 @@ export const setDriverStockAction = requireRole('owner', 'manager')
 
 export type ActiveDriverOption = { id: string; fullName: string };
 
-// Lists the tenant's active drivers for the assignment selector (RLS-scoped via
-// the server client — driver_select allows owner/manager/agent). Read-only, used
-// from RSC; returns [] on error so the UI degrades to "aucun livreur actif".
+// Livreurs actifs proposés par le sélecteur d'affectation, bornés à la BOUTIQUE
+// ACTIVE (0133). Avant, cette fonction s'en remettait à la seule RLS de `driver`,
+// purement locataire : le sélecteur d'une commande de la boutique B proposait donc
+// les livreurs de la boutique A. Read-only, appelée depuis un RSC ; renvoie [] en
+// cas d'erreur pour que l'UI dégrade en « aucun livreur actif ».
+//
+// Sans boutique résolue (appel hors contexte de boutique), on renvoie [] plutôt
+// que le parc entier : proposer trop est précisément le défaut corrigé ici.
 export async function getActiveDrivers(): Promise<ActiveDriverOption[]> {
   const supabase = await createSupabaseServerClient();
+  const shopId = await getRequestStoreId();
+
+  if (!shopId) {
+    return [];
+  }
+
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) {
+    return [];
+  }
+
+  const { data: member } = await supabase
+    .from('merchant_member')
+    .select('merchant_account_id')
+    .eq('user_id', user.id)
+    .limit(1)
+    .maybeSingle();
+
+  const merchantAccountId = (member as { merchant_account_id: string } | null)?.merchant_account_id;
+  if (!merchantAccountId) {
+    return [];
+  }
+
+  const storeDriverIds = await getStoreDriverIds(
+    supabase as unknown as SupabaseClient<Database>,
+    merchantAccountId,
+    shopId,
+  );
+
   const { data, error } = await supabase
     .from('driver')
     .select('id, full_name')
     .eq('is_active', true)
+    .in('id', driverIdFilter(storeDriverIds))
     .order('full_name', { ascending: true });
 
   if (error || !data) {
