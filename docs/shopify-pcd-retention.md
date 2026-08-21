@@ -30,7 +30,7 @@ La route interne `/api/cron/shopify-pcd-retention` accepte `mode=dry-run` ou `mo
 
 ## Limites restantes
 
-- migration 0122 et route validées localement uniquement ; purge distante non prouvée ;
+- migration `0122` appliquée en production ; route validée localement et purge distante non prouvée ;
 - activation quotidienne à faire séparément après validation juridique et preuve de production ;
 - chiffrement de production, DLP, journalisation générale des lectures PCD et réponse aux incidents restent S1C/S1D ;
 - la suppression planifiée des artefacts et tombstones n’est effective qu’après activation du runner.
