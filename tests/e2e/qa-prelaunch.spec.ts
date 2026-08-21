@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
 import { formatMoney } from '@/lib/format/fcfa';
 import messages from '@/messages/fr.json';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
@@ -295,22 +296,21 @@ async function createSimpleOrder({
 }
 
 async function seedWarehouseStock({
-  email,
   merchantAccountId,
   productId,
   qty,
   actorUserId,
   unitCost = 5000,
 }: {
-  email: string;
   merchantAccountId: string;
   productId: string;
   qty: number;
   actorUserId: string;
   unitCost?: number;
 }) {
-  const ownerClient = await signInClient(email);
-  const { error } = await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private`, non exposé — connexion Postgres
+  // directe (callStockMovementEngine simule l'identité via le JWT sub, sans session).
+  const { error } = await callStockMovementEngine({
     p_merchant_account_id: merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -447,7 +447,6 @@ test('Lot D - marquer retournée via UI (sans remise) restaure le stock, aucune 
     productTitle,
   );
   await seedWarehouseStock({
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 50,
@@ -546,7 +545,6 @@ test('Lot D - marquer retournée via UI après remise trace une reprise cash né
     productTitle,
   );
   await seedWarehouseStock({
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 50,
@@ -672,7 +670,6 @@ test('reprogrammer depuis EN_LIVRAISON: retour à Programmée avec la nouvelle d
     productTitle,
   );
   await seedWarehouseStock({
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 50,
@@ -779,7 +776,6 @@ test('En cours de livraison : le menu affiche Reprogrammer (pas Refuser), Annule
     productTitle,
   );
   await seedWarehouseStock({
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 50,
@@ -918,7 +914,6 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     productTitle,
   );
   await seedWarehouseStock({
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 50,

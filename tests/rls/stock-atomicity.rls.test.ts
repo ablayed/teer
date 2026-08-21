@@ -8,6 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -875,13 +876,13 @@ describe('idempotence post_stock_movement', () => {
       const { admin, merchantAccountId, userId } = await createOwnerFixture('idem');
       const productId = await createProduct(admin, merchantAccountId);
       await seedProductStock(admin, productId, merchantAccountId, 100);
-      // Seed service-role : on vérifie l'idempotence du cœur, pas la capacité publique.
-      const seedClient = admin;
-
       const key = `idem-test:${productId}:purchase_in`;
 
+      // 0136 : le cœur vit dans `private`, non exposé par PostgREST — plus atteignable
+      // en HTTP, même en service-role. On vérifie l'idempotence du cœur, pas la
+      // capacité publique, donc l'appel passe par une connexion Postgres directe.
       // Premier appel
-      const { data: id1, error: err1 } = await seedClient.rpc('post_stock_movement', {
+      const { data: id1, error: err1 } = await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -901,7 +902,7 @@ describe('idempotence post_stock_movement', () => {
       expect(stockAfterFirst?.qty_on_hand).toBe(110);
 
       // Second appel avec la même clé → retourne null, position inchangée
-      const { data: id2, error: err2 } = await seedClient.rpc('post_stock_movement', {
+      const { data: id2, error: err2 } = await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -1381,8 +1382,9 @@ async function purchaseIn(
   qty: number,
   unitCost = 5000,
 ) {
-  // Seed service-role : cet appel exerce le cœur interne, jamais atteignable depuis authenticated.
-  const { error } = await adminClient().rpc('post_stock_movement', {
+  // 0136 : cœur déplacé dans `private`, non exposé — plus atteignable en HTTP, jamais
+  // depuis authenticated ni depuis service-role. Connexion Postgres directe.
+  const { error } = await callStockMovementEngine({
     p_merchant_account_id: merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -1403,8 +1405,8 @@ async function allocateToCourier(
   qty: number,
 ) {
   // allocate_to_courier : sortie entrepôt → livreur (qty négative dans le ledger).
-  // Seed service-role : cet appel exerce le cœur interne, jamais atteignable depuis authenticated.
-  const { error } = await adminClient().rpc('post_stock_movement', {
+  // 0136 : cœur déplacé dans `private`, non exposé — connexion Postgres directe.
+  const { error } = await callStockMovementEngine({
     p_merchant_account_id: merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'allocate_to_courier',
@@ -2053,8 +2055,9 @@ describe('réconciliation zéro écart après valider→dispatch→livrer', () =
       // État initial posté via le ledger (purchase_in 40) — et NON un upsert
       // direct : ledger et projection doivent concorder pour que la
       // réconciliation ne trouve aucun écart.
-      // Helper de seed service-role : le cœur interne est volontairement exercé directement.
-      await admin.rpc('post_stock_movement', {
+      // 0136 : le cœur interne, volontairement exercé directement, vit désormais dans
+      // `private` — connexion Postgres directe, plus atteignable en HTTP.
+      await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',

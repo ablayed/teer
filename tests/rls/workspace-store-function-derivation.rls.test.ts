@@ -14,6 +14,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -153,23 +154,6 @@ async function createOrder(admin: Client, merchantAccountId: string, shopId: str
   return data;
 }
 
-type PostStockMovementArgs = {
-  p_merchant_account_id: string;
-  p_product_id: string;
-  p_movement_type: string;
-  p_qty: number;
-  p_idempotency_key: string;
-  p_created_by: string;
-  p_reason?: string;
-};
-
-function postStockMovement(client: Client) {
-  return client.rpc.bind(client) as unknown as (
-    fn: 'post_stock_movement',
-    args: PostStockMovementArgs,
-  ) => Promise<{ data: string | null; error: { message: string } | null }>;
-}
-
 type TransitionArgs = {
   p_order_id: string;
   p_actor: string;
@@ -217,9 +201,10 @@ describe('0131 — post_stock_movement dérive la boutique du produit', () => {
       const product = await createProduct(t.admin, t.merchantAccountId, secondaryShop);
       expect(product.shop_id).toBe(secondaryShop);
 
-      const client = await signIn(t.email);
       const key = `derivation-${randomUUID()}`;
-      const { data: movementId, error } = await postStockMovement(client)('post_stock_movement', {
+      // 0136 : le cœur post_stock_movement vit dans `private`, non exposé par
+      // PostgREST — connexion Postgres directe (identité simulée via JWT sub).
+      const { data: movementId, error } = await callStockMovementEngine({
         p_merchant_account_id: t.merchantAccountId,
         p_product_id: product.id,
         p_movement_type: 'purchase_in',
@@ -258,8 +243,8 @@ describe('0131 — post_stock_movement dérive la boutique du produit', () => {
       const product = await createProduct(t.admin, t.merchantAccountId, undefined);
       expect(product.shop_id).toBe(t.defaultShop);
 
-      const client = await signIn(t.email);
-      const { data: movementId, error } = await postStockMovement(client)('post_stock_movement', {
+      // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+      const { data: movementId, error } = await callStockMovementEngine({
         p_merchant_account_id: t.merchantAccountId,
         p_product_id: product.id,
         p_movement_type: 'purchase_in',
@@ -314,8 +299,9 @@ describe('0131 — post_stock_movement dérive la boutique du produit', () => {
     const outsider = await createTenant('psm-rbac-outsider');
     const product = await createProduct(t.admin, t.merchantAccountId, undefined);
 
-    const client = await signIn(outsider.email);
-    const { error } = await postStockMovement(client)('post_stock_movement', {
+    // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe,
+    // identité "outsider" simulée via JWT sub, guard testé côté cœur (current_member_role).
+    const { error } = await callStockMovementEngine({
       p_merchant_account_id: t.merchantAccountId,
       p_product_id: product.id,
       p_movement_type: 'purchase_in',

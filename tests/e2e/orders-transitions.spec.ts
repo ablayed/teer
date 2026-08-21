@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { legacyStatusToDimensions } from '@/lib/domain/order-transition-actions';
 import messages from '@/messages/fr.json';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
@@ -416,21 +417,20 @@ async function createOrderWithMatchedLine({
 
 async function seedWarehouseStock({
   actorUserId,
-  email,
   merchantAccountId,
   productId,
   qty,
   unitCost = 5000,
 }: {
   actorUserId: string;
-  email: string;
   merchantAccountId: string;
   productId: string;
   qty: number;
   unitCost?: number;
 }) {
-  const ownerClient = await signInClient(email);
-  const { error } = await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private`, non exposé — connexion Postgres
+  // directe (callStockMovementEngine simule l'identité via le JWT sub, sans session).
+  const { error } = await callStockMovementEngine({
     p_merchant_account_id: merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -444,21 +444,19 @@ async function seedWarehouseStock({
 
 async function reserveStockForOrder({
   actorUserId,
-  email,
   merchantAccountId,
   orderId,
   productId,
   qty,
 }: {
   actorUserId: string;
-  email: string;
   merchantAccountId: string;
   orderId: string;
   productId: string;
   qty: number;
 }) {
-  const ownerClient = await signInClient(email);
-  const { error } = await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  const { error } = await callStockMovementEngine({
     p_merchant_account_id: merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'reserve',
@@ -705,9 +703,8 @@ test('assigner a un livreur precis renseigne assigned_driver_id et monte le stoc
     productTitle,
   );
   // Stock entrepôt via purchase_in (crée la position product_stock).
-  // post_stock_movement exige un membre (garde NULL-safe 0043) → client owner authentifié.
-  const ownerClient = await signInClient(fixture.email);
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -786,10 +783,10 @@ test('stock insuffisant : le bandeau informatif detaille le manque par produit s
     fixture.merchantAccountId,
     productTitle,
   );
-  const ownerClient = await signInClient(fixture.email);
   // Le livreur détient déjà 1 unité (dispatch antérieur simulé) ; la commande ci-dessous
   // en requiert 3 → disponible=1, requis=3, manque attendu = 2 (Lot 2 / PR 3).
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'dispatch',
@@ -869,9 +866,9 @@ test('stock insuffisant (agent) : le bandeau apparait dans TransitionDialog sans
     fixture.merchantAccountId,
     productTitle,
   );
-  const ownerClient = await signInClient(fixture.email);
   // Même scénario que le test owner/manager ci-dessus : disponible=1, requis=3, manque=2.
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'dispatch',
@@ -937,8 +934,8 @@ test('phase13.1 - annuler le popup d assignation laisse la commande programmee s
     fixture.merchantAccountId,
     productTitle,
   );
-  const ownerClient = await signInClient(fixture.email);
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -1431,7 +1428,6 @@ test('Lot B - deconfirmer libere la reserve et disparait apres dispatch', async 
   );
   await seedWarehouseStock({
     actorUserId: fixture.userIds[0],
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 20,
@@ -1447,7 +1443,6 @@ test('Lot B - deconfirmer libere la reserve et disparait apres dispatch', async 
   });
   await reserveStockForOrder({
     actorUserId: fixture.userIds[0],
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     orderId,
     productId,
@@ -1538,7 +1533,6 @@ test('Lot B - annuler avec raisons puis desannuler efface sans mouvement stock',
   );
   await seedWarehouseStock({
     actorUserId: fixture.userIds[0],
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 20,
@@ -2475,7 +2469,6 @@ test('0116 - invalider une commande livrée la ramène dans « À appeler » et 
   );
   await seedWarehouseStock({
     actorUserId: fixture.userIds[0],
-    email: fixture.email,
     merchantAccountId: fixture.merchantAccountId,
     productId,
     qty: 10,

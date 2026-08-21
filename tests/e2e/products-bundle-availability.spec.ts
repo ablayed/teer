@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
@@ -317,24 +318,10 @@ test('livreurs : aucun bundle n’apparaît, aucune régression sur le stock liv
     );
     await addBundleComponent(fixture.admin, fixture.merchantAccountId, bundle, support, 1);
 
-    // Stock livreur normal (composant) via le ledger réel — post_stock_movement
-    // exige un membre authentifié (garde NULL-safe 0043), pas le service-role.
-    const anonKey =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-      process.env.SUPABASE_ANON_KEY ??
-      localEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-      localEnv.SUPABASE_ANON_KEY ??
-      '';
-    const ownerClient = createClient(supabaseUrl, anonKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-    const { error: signInError } = await ownerClient.auth.signInWithPassword({
-      email: fixture.email,
-      password,
-    });
-    if (signInError) throw signInError;
-
-    await ownerClient.rpc('post_stock_movement', {
+    // Stock livreur normal (composant) via le ledger réel.
+    // 0136 : cœur post_stock_movement dans `private`, non exposé — connexion Postgres
+    // directe (callStockMovementEngine simule l'identité via le JWT sub, sans session).
+    await callStockMovementEngine({
       p_merchant_account_id: fixture.merchantAccountId,
       p_product_id: support,
       p_movement_type: 'purchase_in',
@@ -343,7 +330,7 @@ test('livreurs : aucun bundle n’apparaît, aucune régression sur le stock liv
       p_created_by: fixture.userId,
       p_unit_cost: 1_000,
     });
-    await ownerClient.rpc('post_stock_movement', {
+    await callStockMovementEngine({
       p_merchant_account_id: fixture.merchantAccountId,
       p_product_id: support,
       p_movement_type: 'dispatch',

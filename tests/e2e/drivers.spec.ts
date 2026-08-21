@@ -1,5 +1,6 @@
 ﻿import { existsSync, readFileSync } from 'node:fs';
 import messages from '@/messages/fr.json';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type Page, expect, test } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
@@ -277,9 +278,9 @@ test('désactiver un livreur avec données: inactif, historique + réconciliatio
 
   // Stock en main via le chemin dispatch (compté par reconcile_product_stock) :
   // purchase_in 10 puis dispatch -3 attribué au livreur → en main 3, entrepôt 7.
-  // post_stock_movement exige un membre (garde NULL-safe 0043) → client owner authentifié.
-  const ownerClient = await signInClient(fixture.email);
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private`, non exposé — connexion Postgres
+  // directe (callStockMovementEngine simule l'identité owner via le JWT sub).
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -288,7 +289,7 @@ test('désactiver un livreur avec données: inactif, historique + réconciliatio
     p_created_by: fixture.userIds[0],
     p_unit_cost: 5000,
   });
-  await ownerClient.rpc('post_stock_movement', {
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'dispatch',
@@ -370,11 +371,10 @@ test('modifier le stock (nouveau produit) poste un driver_stock_set et affiche p
   const fixture = await createOwnerFixture('dss-new');
   const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Moussa Lot');
   const productId = await createProduct(fixture.admin, fixture.merchantAccountId, 'Sac lot E2E');
-  const ownerClient = await signInClient(fixture.email);
-
   // Stock central suffisant (20) pour couvrir la demande de 15 ci-dessous —
   // ce test vérifie le CAS DE SUCCÈS, pas le blocage cas 1.
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -454,10 +454,9 @@ test('modifier le stock: augmentation au-delà du stock central est bloquée ave
     fixture.merchantAccountId,
     'Carton central E2E',
   );
-  const ownerClient = await signInClient(fixture.email);
-
   // Stock central : 5 unités seulement.
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -517,10 +516,9 @@ test('modifier le stock: retrait excédentaire (valeur négative) est bloqué av
     fixture.merchantAccountId,
     'Carton physique E2E',
   );
-  const ownerClient = await signInClient(fixture.email);
-
   // Le livreur a 3 en main via driver_stock_set (ledger-only).
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'driver_stock_set',
@@ -988,10 +986,9 @@ test('stock disponible: un engagement (order_assignment_commit) au-delà de la m
     30_000,
     0,
   );
-  const ownerClient = await signInClient(fixture.email);
-
   // Main physique du livreur : dispatch 5 → hand = 5.
-  await ownerClient.rpc('post_stock_movement', {
+  // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'dispatch',
@@ -1002,7 +999,7 @@ test('stock disponible: un engagement (order_assignment_commit) au-delà de la m
     p_order_id: orderId,
   });
   // Engagement sur la commande ouverte : 8 unités (au-delà des 5 en main).
-  await ownerClient.rpc('post_stock_movement', {
+  await callStockMovementEngine({
     p_merchant_account_id: fixture.merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'order_assignment_commit',
