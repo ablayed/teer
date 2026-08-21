@@ -125,6 +125,24 @@ async function createDriver(admin: AdminClient, merchantAccountId: string) {
   return data.id;
 }
 
+/** Les seeds de livreur doivent reproduire le rattachement créé par l'action produit. */
+async function seedDriverShop(admin: AdminClient, merchantAccountId: string, driverId: string) {
+  const { data: shop, error: shopError } = await admin
+    .from('shop')
+    .select('id')
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('is_default', true)
+    .single();
+  if (shopError || !shop) throw shopError ?? new Error('default shop missing');
+  const { error } = await admin.from('driver_shop').insert({
+    merchant_account_id: merchantAccountId,
+    shop_id: shop.id,
+    driver_id: driverId,
+  });
+  if (error) throw error;
+  return shop.id;
+}
+
 async function seedProductStock(
   admin: AdminClient,
   productId: string,
@@ -202,6 +220,7 @@ type PostStockMovementArgs = {
   p_qty: number;
   p_idempotency_key: string;
   p_created_by: string;
+  p_expected_shop_id?: string;
   p_driver_id?: string;
 };
 
@@ -241,6 +260,7 @@ describe('cascade bundle : quantités multiples et absence de mouvement sur le b
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('multi-qty');
       const driverId = await createDriver(admin, merchantAccountId);
+      await seedDriverShop(admin, merchantAccountId, driverId);
 
       const supportId = await createProduct(admin, merchantAccountId, { title: 'Support' });
       const cableId = await createProduct(admin, merchantAccountId, { title: 'Câble' });
@@ -310,6 +330,7 @@ describe('cascade bundle : composant partagé entre 2 bundles', () => {
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('shared-comp');
       const driverId = await createDriver(admin, merchantAccountId);
+      await seedDriverShop(admin, merchantAccountId, driverId);
       const supportId = await createProduct(admin, merchantAccountId, { title: 'Support' });
       await seedProductStock(admin, supportId, merchantAccountId, 100);
 
@@ -324,32 +345,36 @@ describe('cascade bundle : composant partagé entre 2 bundles', () => {
       await addBundleComponent(admin, merchantAccountId, bundleA, supportId, 2);
       await addBundleComponent(admin, merchantAccountId, bundleB, supportId, 1);
 
-      const client = await signIn(email);
-      const post = postStockMovementRpc(client);
+      // Seed service-role : on exerce le cœur interne, jamais atteignable depuis authenticated.
+      // No direct engine seed here: sold is exercised by transition_order below.
 
       // Bundle A : 2 vendus (2x Support chacun) → 4 Support
-      const soldA = await post('post_stock_movement', {
-        p_merchant_account_id: merchantAccountId,
-        p_product_id: bundleA,
-        p_movement_type: 'sold',
-        p_qty: 2,
-        p_idempotency_key: `shared:soldA:${bundleA}`,
-        p_created_by: userId,
-        p_driver_id: driverId,
-      });
-      expect(soldA.error).toBeNull();
+      // soldA is exercised through transition_order below.
 
       // Bundle B : 5 vendus (1x Support chacun) → 5 Support
-      const soldB = await post('post_stock_movement', {
-        p_merchant_account_id: merchantAccountId,
-        p_product_id: bundleB,
-        p_movement_type: 'sold',
-        p_qty: 5,
-        p_idempotency_key: `shared:soldB:${bundleB}`,
-        p_created_by: userId,
-        p_driver_id: driverId,
-      });
-      expect(soldB.error).toBeNull();
+      // soldB is exercised through transition_order below.
+
+      async function deliverBundle(bundleId: string, qty: number) {
+        const orderId = await createOrderForDriver(admin, merchantAccountId, driverId, [
+          { productId: bundleId, qty },
+        ]);
+        const client = await signIn(email);
+        for (const args of [
+          { p_call_state: 'validated', p_attempt_count: 1 },
+          { p_delivery_state: 'scheduled' },
+          { p_delivery_state: 'out_for_delivery' },
+          { p_delivery_state: 'delivered', p_cash_state: 'not_due' },
+        ]) {
+          const result = await transitionRpc(client)('transition_order', {
+            p_actor: userId,
+            p_order_id: orderId,
+            ...args,
+          });
+          expect(result.error).toBeNull();
+        }
+      }
+      await deliverBundle(bundleA, 2);
+      await deliverBundle(bundleB, 5);
 
       const supportSold = await readMovements(admin, supportId, 'sold');
       expect(supportSold).toHaveLength(2); // 2 lignes distinctes, pas d'écrasement
@@ -371,8 +396,9 @@ describe('garde bundle : allocate_to_courier / courier_return_lot / driver_stock
       isBundle: true,
     });
 
-    const client = await signIn(email);
-    const post = postStockMovementRpc(client);
+    // Ces trois appels sont des seeds service-role : ils testent la garde du cœur,
+    // chemin interne jamais atteignable depuis une session authentifiée.
+    const post = postStockMovementRpc(admin);
 
     const allocate = await post('post_stock_movement', {
       p_merchant_account_id: merchantAccountId,
@@ -398,13 +424,21 @@ describe('garde bundle : allocate_to_courier / courier_return_lot / driver_stock
     expect(returnLot.error).not.toBeNull();
     expect(returnLot.error?.message).toMatch(/cannot be the target of movement_type/);
 
-    const setStock = await post('post_stock_movement', {
+    const publicPost = postStockMovementRpc(await signIn(email));
+    const { data: bundle } = await admin
+      .from('product')
+      .select('shop_id')
+      .eq('id', bundleId)
+      .single();
+    if (!bundle?.shop_id) throw new Error('bundle shop_id missing');
+    const setStock = await publicPost('post_stock_movement', {
       p_merchant_account_id: merchantAccountId,
       p_product_id: bundleId,
       p_movement_type: 'driver_stock_set',
       p_qty: 4,
       p_idempotency_key: `guard:driver_set:${bundleId}`,
       p_created_by: userId,
+      p_expected_shop_id: bundle.shop_id,
       p_driver_id: driverId,
     });
     expect(setStock.error).not.toBeNull();
@@ -543,6 +577,7 @@ describe('fix 0109 : annulation post-dispatch libère la disponibilité des comp
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('release-fix');
       const driverId = await createDriver(admin, merchantAccountId);
+      await seedDriverShop(admin, merchantAccountId, driverId);
       const supportId = await createProduct(admin, merchantAccountId, { title: 'Support' });
       const cableId = await createProduct(admin, merchantAccountId, { title: 'Câble' });
       await seedProductStock(admin, supportId, merchantAccountId, 100);
@@ -624,6 +659,7 @@ describe('atomicité : une erreur dans le même appel transition_order annule la
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('atomic');
       const driverId = await createDriver(admin, merchantAccountId);
+      await seedDriverShop(admin, merchantAccountId, driverId);
       const supportId = await createProduct(admin, merchantAccountId, { title: 'Support' });
       const cableId = await createProduct(admin, merchantAccountId, { title: 'Câble' });
       await seedProductStock(admin, supportId, merchantAccountId, 100);

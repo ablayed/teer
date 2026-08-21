@@ -3522,23 +3522,42 @@ export type Database = {
           valide: number;
         }[];
       };
-      post_stock_movement: {
-        Args: {
-          p_created_by: string;
-          p_driver_id?: string;
-          p_idempotency_key: string;
-          p_merchant_account_id: string;
-          p_movement_type: string;
-          p_order_id?: string;
-          p_product_id: string;
-          p_qty: number;
-          p_reason?: string;
-          p_received_value?: number;
-          p_transition_id?: string;
-          p_unit_cost?: number;
-        };
-        Returns: string;
-      };
+      post_stock_movement:
+        | {
+            Args: {
+              p_created_by: string;
+              p_driver_id?: string;
+              p_idempotency_key: string;
+              p_merchant_account_id: string;
+              p_movement_type: string;
+              p_order_id?: string;
+              p_product_id: string;
+              p_qty: number;
+              p_reason?: string;
+              p_received_value?: number;
+              p_transition_id?: string;
+              p_unit_cost?: number;
+            };
+            Returns: string;
+          }
+        | {
+            Args: {
+              p_created_by: string;
+              p_driver_id?: string;
+              p_expected_shop_id: string;
+              p_idempotency_key: string;
+              p_merchant_account_id: string;
+              p_movement_type: string;
+              p_order_id?: string;
+              p_product_id: string;
+              p_qty: number;
+              p_reason?: string;
+              p_received_value?: number;
+              p_transition_id?: string;
+              p_unit_cost?: number;
+            };
+            Returns: string;
+          };
       preview_shopify_pcd_retention: {
         Args: { p_now?: string };
         Returns: {

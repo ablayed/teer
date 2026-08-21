@@ -68,6 +68,22 @@ async function fixture(tag: string) {
     .select('id')
     .single();
   if (!driver.data) throw driver.error;
+  // Reproduit team.create_driver : les fixtures doivent rattacher le livreur
+  // à la boutique active pour que les gardes boutique de post_stock_movement
+  // exercent le même invariant que le parcours produit.
+  const { data: defaultShop, error: shopError } = await db
+    .from('shop')
+    .select('id')
+    .eq('merchant_account_id', merchantId)
+    .eq('is_default', true)
+    .single();
+  if (shopError || !defaultShop) throw shopError ?? new Error('default shop');
+  const { error: driverShopError } = await db.from('driver_shop').insert({
+    merchant_account_id: merchantId,
+    shop_id: defaultShop.id,
+    driver_id: driver.data.id,
+  });
+  if (driverShopError) throw driverShopError;
   async function product(title: string, isBundle = false) {
     const result = await db
       .from('product')

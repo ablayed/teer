@@ -72,6 +72,36 @@ export const setDriverStockAction = requireRole('owner', 'manager')
     // (@supabase/ssr vs @supabase/supabase-js) : cast nécessaire pour que .from()
     // résolve les types de colonnes, la valeur runtime est le même client typé.
     const supabase = ctx.supabase as unknown as SupabaseClient<Database>;
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    const [{ data: product, error: productError }, { data: driverShop, error: driverShopError }] =
+      await Promise.all([
+        supabase
+          .from('product')
+          .select('id')
+          .eq('id', productId)
+          .eq('merchant_account_id', ctx.member.merchantAccountId)
+          .eq('shop_id', shopId)
+          .maybeSingle(),
+        supabase
+          .from('driver_shop')
+          .select('driver_id')
+          .eq('merchant_account_id', ctx.member.merchantAccountId)
+          .eq('shop_id', shopId)
+          .eq('driver_id', driverId)
+          .maybeSingle(),
+      ]);
+    if (productError || driverShopError) {
+      return {
+        ok: false as const,
+        message: productError?.message ?? driverShopError?.message ?? 'Lecture impossible.',
+      };
+    }
+    if (!product)
+      return { ok: false as const, message: 'Produit introuvable dans la boutique active.' };
+    if (!driverShop)
+      return { ok: false as const, message: 'Livreur introuvable dans la boutique active.' };
 
     const { data: movements, error: movementsError } =
       await fetchAllPostgrestRows<DriverStockMovement>(
@@ -80,6 +110,7 @@ export const setDriverStockAction = requireRole('owner', 'manager')
             .from('stock_movement')
             .select('driver_id, product_id, movement_type, qty')
             .eq('merchant_account_id', ctx.member.merchantAccountId)
+            .eq('shop_id', shopId)
             .eq('driver_id', driverId)
             .eq('product_id', productId)
             .order('created_at', { ascending: true })
@@ -100,6 +131,7 @@ export const setDriverStockAction = requireRole('owner', 'manager')
         .from('product_stock')
         .select('qty_on_hand')
         .eq('merchant_account_id', ctx.member.merchantAccountId)
+        .eq('shop_id', shopId)
         .eq('product_id', productId)
         .maybeSingle();
 
@@ -124,6 +156,7 @@ export const setDriverStockAction = requireRole('owner', 'manager')
       p_qty: plan.delta,
       p_idempotency_key: `driver_stock_set:${driverId}:${productId}:${parsedInput.clientRequestId}`,
       p_created_by: ctx.user.id,
+      p_expected_shop_id: shopId,
       p_driver_id: driverId,
     });
 
