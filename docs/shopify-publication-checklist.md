@@ -20,14 +20,14 @@ KOBA reste le connecteur custom du pilote. Une custom app peut rester un parcour
 | Tokens **chiffrés au repos** (AES-256-GCM) | ✅ | `lib/shopify/crypto.ts`, clé `SHOPIFY_TOKEN_ENCRYPTION_KEY` |
 | Jamais de token en clair en logs | ✅ | vérifié dans token/oauth/sync |
 | Multi-boutiques par marchand | ✅ | migration `0037` (retrait `unique(merchant_account_id)`), callback `onConflict: shop_domain` |
-| Idempotence et rejeu des webhooks | ⚠️ code local | `webhook_event` (unique) + états `processing/retryable/terminal/done`, lease, `claim_shopify_webhook_events` (`0121`) ; la migration n'est pas appliquée en production |
+| Idempotence et rejeu des webhooks | ⚠️ code local + schéma prod | `webhook_event` (unique) + états `processing/retryable/terminal/done`, lease, `claim_shopify_webhook_events` (`0121`) ; migration appliquée en production, preuve opérationnelle à établir |
 | Réponse webhook 200 rapide (< 5 s) | ✅ | HMAC → dédup → 200, traitement métier en `after()` (post-réponse) |
 | Garde hors-ordre | ✅ | `isStaleShopifyUpdate` (compare `shopify_updated_at`) |
 | Shopify n'écrase jamais l'état opérationnel (4 dimensions) | ✅ | colonnes miroir `shopify_*` distinctes ; update ne touche pas order/call/delivery/cash_state |
-| 3 webhooks GDPR avec redaction transactionnelle | ⚠️ code local | `0121.redact_shopify_customer_copies` couvre `customer`, `orders.shipping_address`, notes/attributs libres et `delivery_address` ; stratégie conservatrice globale si la provenance boutique est indissociable ; preuve de production à établir après migration |
-| Anti-réimport après redaction | ⚠️ code local | Tombstones uniques `(merchant_account_id, shop_id, shopify_customer_id)`, expiration 12 mois, consultation avant sync normale/Bulk ; purge des tombstones expirés par 0122 non activée à distance |
+| 3 webhooks GDPR avec redaction transactionnelle | ⚠️ code local + schéma prod | `0121.redact_shopify_customer_copies` couvre `customer`, `orders.shipping_address`, notes/attributs libres et `delivery_address` ; stratégie conservatrice globale si la provenance boutique est indissociable ; migration appliquée, preuve de production à établir |
+| Anti-réimport après redaction | ⚠️ code local + schéma prod | Tombstones uniques `(merchant_account_id, shop_id, shopify_customer_id)`, expiration 12 mois, consultation avant sync normale/Bulk ; migration `0122` appliquée, activation quotidienne et preuve de purge de production à établir |
 | Rétention temporelle PCD | ⚠️ code local | 90 jours adresses après transition finale certaine, 12 mois identité après activité Shopify certaine, 7 jours payloads retryable ; preview SQL commun et purge bornée dans 0122 |
-| DSAR privé et borné | ⚠️ code local | Bucket Storage privé `shopify-dsar`, métadonnées sans PCD, contrôle serveur owner/manager et URL signée limitée à l'expiration avec maximum 24 h ; claim/suppression Storage/finalisation 0122 non activés à distance |
+| DSAR privé et borné | ⚠️ code local + schéma prod | Bucket Storage privé `shopify-dsar`, métadonnées sans PCD, contrôle serveur owner/manager et URL signée limitée à l'expiration avec maximum 24 h ; mécanismes `0122` appliqués, activation quotidienne et preuve de production à établir |
 | Désinstallation par boutique (révocation tokens, sync stoppée) | ✅ | `app/uninstalled` → status uninstalled + tokens révoqués (cette boutique seule) |
 | Sync deux vitesses (bulk + temps réel) | ✅ | `bulk.ts` + webhooks ; réconciliation nocturne `cron/shopify-reconcile` (02:00) |
 | Fallback polling bulk (webhook non garanti) | ✅ | `waitForBulkCompletion` |
@@ -50,6 +50,6 @@ KOBA reste le connecteur custom du pilote. Une custom app peut rester un parcour
 ## Restes connus (non bloquants pour la bêta gratuite S2, à traiter ultérieurement)
 
 - Backoff THROTTLED sur les mutations/queries bulk (durcissement).
-- S1B-2B : la migration 0122 et la route de purge sont préparées localement ; aucune activation quotidienne distante, aucun cron Vercel/Supabase et aucune preuve de purge de production ne sont établis.
+- S1B-2B : la migration `0122` est appliquée en production ; l'activation quotidienne, un cron Vercel/Supabase et une preuve de purge de production restent à établir.
 - `refunds/create` : enregistré (audit) sans dériver plein/partiel — le statut financier vient du `orders/updated` jumeau.
 - ✅ Enrichissement client (7b) fait : import PII enrichie + dédup téléphone E.164 + GDPR réel. Reste : analytics annulations/retours (7c).

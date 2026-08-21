@@ -42,26 +42,24 @@ export default async function WorkspaceEntryPage({ searchParams }: WorkspaceEntr
   }
 
   const params = await searchParams;
+  // `next` reste une donnée non fiable, y compris à l'accès direct à `/s?next=`.
+  // Cette barrière précède toutes les décisions mono/multi-boutiques.
+  const safeNext = safeRedirectPath(params.next);
   const stores = await getWorkspaceStores();
 
   if (stores.length === 0) {
-    const safeNext = safeRedirectPath(params.next);
     const destination = await resolveMemberlessDestination(
       supabase as unknown as SupabaseClient<Database>,
     );
     redirect(safeNext.startsWith(destination) ? safeNext : destination);
   }
 
-  // L'intention de navigation est préservée intégralement (chemin + query) :
-  // contrairement à `buildStoreSwitchHref` (changement de boutique), cette
-  // entrée ne perd jamais la ressource visée. `next` est un paramètre d'URL
-  // non fiable — accès direct possible à `/s?next=`, indépendant de
-  // `signInAction` — voir les gardes de `resolveWorkspaceEntryPath`.
-  const entryPath = resolveWorkspaceEntryPath(params.next);
-
   if (stores.length === 1) {
-    redirect(`/s/${stores[0].id}${entryPath}`);
+    // Il n'existe aucune ambiguïté de choix inter-boutiques, donc le chemin peut
+    // être préservé ; l'autorisation et la RLS décident ensuite entre accès et 404.
+    redirect(`/s/${stores[0].id}${resolveWorkspaceEntryPath(safeNext)}`);
   }
 
-  return <StoreChooser entryPath={entryPath} stores={stores} />;
+  const [pathname, ...queryParts] = safeNext.split('?');
+  return <StoreChooser pathname={pathname} search={queryParts.join('?')} stores={stores} />;
 }

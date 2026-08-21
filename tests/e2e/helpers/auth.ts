@@ -130,10 +130,10 @@ export async function fillPasswordField(field: ReturnType<Page['locator']>, valu
 /**
  * Atterrissage sur la cible EXACTE une fois la session posée.
  *
- * Depuis Phase 1, `signInAction` renvoie vers `/s?next=…`. Ce point d'entrée
- * réduit `next` à une SECTION (`resolveWorkspaceSection`) : une query
- * (`?from=…`), un identifiant de ressource (`/commandes/{id}`) ou une route hors
- * sections (`/dev/primitives`) ne survivent pas au passage.
+ * Depuis Phase 1, `signInAction` renvoie vers `/s?next=…`. Avec une seule
+ * boutique, ce point d'entrée préserve le chemin complet ; avec plusieurs, il
+ * attend un choix explicite puis réduit `next` à sa section routable. Cette
+ * fonction ne convient donc toujours pas aux specs qui observent ce mécanisme.
  *
  * On rejoue donc la cible telle quelle. Une URL legacy est rendue EN PLACE avec
  * la boutique par défaut (`getRequestStoreId`), soit exactement le comportement
