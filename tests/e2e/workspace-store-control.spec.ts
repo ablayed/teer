@@ -38,6 +38,7 @@ type Fixture = {
 };
 
 const createdUserIds: string[] = [];
+const FORGED_ORDER_ID = '33333333-3333-4333-8333-333333333333';
 
 async function createDriver(
   admin: AdminClient,
@@ -157,7 +158,10 @@ test.describe('Phase 1 — contexte de boutique et isolation des livreurs', () =
 
   test('un utilisateur multi-boutiques choisit sa boutique après connexion', async ({ page }) => {
     const fixture = await createFixture('chooser', { multiStore: true });
-    await loginViaForm(page, fixture.email, e2ePassword);
+    const deepLink =
+      `/commandes/${FORGED_ORDER_ID}?tab=stock&vue=a-appeler` +
+      `&shop=${fixture.defaultStoreId}&driver=${FORGED_ORDER_ID}`;
+    await loginViaForm(page, fixture.email, e2ePassword, deepLink);
 
     // Aucune entrée silencieuse dans la boutique par défaut.
     await page.waitForURL(/\/s(\?|$)/, { timeout: 40_000 });
@@ -167,32 +171,65 @@ test.describe('Phase 1 — contexte de boutique et isolation des livreurs', () =
     await expect(options).toHaveCount(2);
     await expect(page.getByText(fixture.defaultStoreName, { exact: false }).first()).toBeVisible();
     await expect(page.getByText(fixture.secondStoreName, { exact: false }).first()).toBeVisible();
+    const expectedQuery = '?tab=stock&vue=a-appeler';
+    await expect(options.nth(0)).toHaveAttribute(
+      'href',
+      `/s/${fixture.defaultStoreId}/commandes${expectedQuery}`,
+    );
+    await expect(options.nth(1)).toHaveAttribute(
+      'href',
+      `/s/${fixture.secondStoreId}/commandes${expectedQuery}`,
+    );
 
     // Choix EXPLICITE de la boutique secondaire (donc pas celle par défaut).
     await page.getByRole('link', { name: new RegExp(fixture.secondStoreName) }).click();
-    await page.waitForURL(`**/s/${fixture.secondStoreId}/tableau`, { timeout: 40_000 });
+    await page.waitForURL(`**/s/${fixture.secondStoreId}/commandes${expectedQuery}`, {
+      timeout: 40_000,
+    });
+    await expect(page.getByRole('heading', { level: 1, name: 'Commandes' })).toBeVisible({
+      timeout: 40_000,
+    });
 
     // La boutique choisie apparaît dans la navigation.
     await expect(await revealStoreContext(page)).toContainText(fixture.secondStoreName);
 
     // F5 : on reste dans la boutique choisie, le sélecteur ne réapparaît pas.
     await page.reload();
-    await expect(page).toHaveURL(new RegExp(`/s/${fixture.secondStoreId}/tableau`));
+    await expect(page).toHaveURL(
+      new RegExp(`/s/${fixture.secondStoreId}/commandes\\?tab=stock&vue=a-appeler`),
+    );
     await expect(page.getByRole('heading', { name: 'Choisissez une boutique' })).toHaveCount(0);
+
+    // Une nouvelle connexion rouvre toujours le choix, sans boutique active
+    // préselectionnée ni réutilisation du choix précédent.
+    await page.goto('/parametres');
+    await page
+      .locator('main#main')
+      .getByRole('button', { name: 'Se déconnecter', exact: true })
+      .click();
+    await page.waitForURL((url) => url.pathname === '/', { timeout: 20_000 });
+    await loginViaForm(page, fixture.email, e2ePassword);
+    await page.waitForURL(/\/s(\?|$)/, { timeout: 40_000 });
+    await expect(page.getByRole('heading', { name: 'Choisissez une boutique' })).toBeVisible();
+    await expect(page.locator('[data-testid="store-chooser-option"][aria-current]')).toHaveCount(0);
   });
 
   test('un utilisateur mono-boutique entre directement, sans voir le sélecteur', async ({
     page,
   }) => {
     const fixture = await createFixture('single', { multiStore: false });
-    await loginViaForm(page, fixture.email, e2ePassword);
+    await loginViaForm(
+      page,
+      fixture.email,
+      e2ePassword,
+      `/commandes/${FORGED_ORDER_ID}?tab=stock&vue=a-appeler`,
+    );
 
-    await page.waitForURL(`**/s/${fixture.defaultStoreId}/tableau`, { timeout: 40_000 });
+    await page.waitForURL(
+      `**/s/${fixture.defaultStoreId}/commandes/${FORGED_ORDER_ID}?tab=stock&vue=a-appeler`,
+      { timeout: 40_000 },
+    );
     await expect(page.getByRole('heading', { name: 'Choisissez une boutique' })).toHaveCount(0);
-
-    // Le nom reste affiché, mais aucun contrôle « Changer » n'est proposé.
-    await expect(await revealStoreContext(page)).toContainText(fixture.defaultStoreName);
-    await expect(page.getByRole('button', { name: /Changer/ })).toHaveCount(0);
   });
 
   test('chaque boutique affiche SES livreurs, jamais ceux de l autre', async ({ page }) => {

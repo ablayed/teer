@@ -93,6 +93,10 @@ export function buildStoreSwitchHref(
 
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
   for (const [key, value] of [...params.entries()]) {
+    // Le contrat retire `shop` et les valeurs UUID ; un identifiant sous une
+    // autre forme (slug, par exemple) reste volontairement hors de ce filtre.
+    // `delete(key)` retire toutes les occurrences de la clé, comportement voulu
+    // et sans dépendance actuelle à des paramètres multi-valués.
     if (STORE_SCOPED_PARAMS.has(key) || UUID_VALUE.test(value)) {
       params.delete(key);
     }
