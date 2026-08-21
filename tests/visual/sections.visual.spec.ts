@@ -20,6 +20,39 @@ import {
   waitForStableLayout,
 } from '../e2e/helpers/visual-fixtures';
 
+const expectedDashboardCardWidths = {
+  chromium: 460,
+  'iphone-14': 358,
+  'pixel-7': 380,
+} as const;
+
+function expectedDashboardCardWidth(projectName: string): number {
+  if (!(projectName in expectedDashboardCardWidths)) {
+    throw new Error(`Unsupported dashboard visual project: ${projectName}`);
+  }
+
+  return expectedDashboardCardWidths[projectName as keyof typeof expectedDashboardCardWidths];
+}
+
+async function expectDashboardCardWidthToBeStable({
+  card,
+  expectedWidth,
+  page,
+}: {
+  card: import('@playwright/test').Locator;
+  expectedWidth: number;
+  page: import('@playwright/test').Page;
+}): Promise<void> {
+  const widths: number[] = [];
+
+  for (let sample = 0; sample < 6; sample += 1) {
+    widths.push(await card.evaluate((element) => element.getBoundingClientRect().width));
+    await page.waitForTimeout(100);
+  }
+
+  expect(widths).toEqual(Array(6).fill(expectedWidth));
+}
+
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les baselines visuelles');
 
 test.describe('Baselines visuelles — sections Phase 1', () => {
@@ -203,6 +236,58 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
     }
   });
 
+  test('tableau-card-width-compact', async ({ page }, testInfo) => {
+    const fixture = await createVisualFixture('tableau-card-width-compact');
+
+    try {
+      await seedDashboardCashByProductVisualData(fixture, 3);
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      const card = page.getByTestId('tableau-cash-by-product-card');
+      await expect(card).toBeVisible({ timeout: 15_000 });
+      await waitForFonts(page);
+      await card.scrollIntoViewIfNeeded();
+      await waitForStableLayout(card);
+
+      await expectDashboardCardWidthToBeStable({
+        card,
+        expectedWidth: expectedDashboardCardWidth(testInfo.project.name),
+        page,
+      });
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
+  test('tableau-card-width-many', async ({ page }, testInfo) => {
+    const fixture = await createVisualFixture('tableau-card-width-many');
+
+    try {
+      await seedDashboardCashByProductVisualData(fixture, 7);
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      const card = page.getByTestId('tableau-cash-by-product-card');
+      await expect(card).toBeVisible({ timeout: 15_000 });
+      await waitForFonts(page);
+      await card.scrollIntoViewIfNeeded();
+      await waitForStableLayout(card);
+
+      await expectDashboardCardWidthToBeStable({
+        card,
+        expectedWidth: expectedDashboardCardWidth(testInfo.project.name),
+        page,
+      });
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
   test('tableau-cash-by-product stays contained at desktop grid transitions', async ({
     browserName,
     page,
@@ -267,6 +352,33 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
       await waitForStableLayout(card);
 
       await expect(card).toHaveScreenshot('tableau-top-products-spacing.png');
+    } finally {
+      await cleanupVisualFixture(fixture);
+    }
+  });
+
+  test('tableau-card-width-top-products', async ({ page }, testInfo) => {
+    const fixture = await createVisualFixture('tableau-card-width-top-products');
+
+    try {
+      await seedDashboardCashByProductVisualData(fixture, 3);
+      await signInToRoute(
+        page,
+        fixture.email,
+        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
+      );
+      const card = page.getByTestId('tableau-top-products-card');
+      await expect(card).toBeVisible({ timeout: 15_000 });
+      await expect(card).toHaveCSS('opacity', '1');
+      await waitForFonts(page);
+      await card.scrollIntoViewIfNeeded();
+      await waitForStableLayout(card);
+
+      await expectDashboardCardWidthToBeStable({
+        card,
+        expectedWidth: expectedDashboardCardWidth(testInfo.project.name),
+        page,
+      });
     } finally {
       await cleanupVisualFixture(fixture);
     }
