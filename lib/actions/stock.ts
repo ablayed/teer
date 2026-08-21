@@ -20,6 +20,27 @@ function postStockMovementRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) 
   ) => Promise<{ data: string | null; error: { message: string } | null }>;
 }
 
+async function resolveActiveStoreProduct(
+  supabase: SupabaseClient<Database>,
+  merchantAccountId: string,
+  productId: string,
+) {
+  const shopId = await getRequestStoreId();
+  if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+  const { data, error } = await supabase
+    .from('product')
+    .select('id')
+    .eq('id', productId)
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('shop_id', shopId)
+    .maybeSingle();
+
+  if (error) return { ok: false as const, message: error.message };
+  if (!data) return { ok: false as const, message: 'Produit introuvable dans la boutique active.' };
+  return { ok: true as const, shopId };
+}
+
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -104,7 +125,13 @@ export const purchaseInAction = requireRole('owner', 'manager')
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
-    const post = postStockMovementRpc(ctx.supabase);
+    const scopedProduct = await resolveActiveStoreProduct(
+      ctx.supabase as unknown as SupabaseClient<Database>,
+      ctx.member.merchantAccountId,
+      parsedInput.productId,
+    );
+    if (!scopedProduct.ok) return scopedProduct;
+    const post = postStockMovementRpc(ctx.supabase as unknown as SupabaseClient<Database>);
     const { error } = await post('post_stock_movement', {
       p_merchant_account_id: ctx.member.merchantAccountId,
       p_product_id: parsedInput.productId,
@@ -112,6 +139,7 @@ export const purchaseInAction = requireRole('owner', 'manager')
       p_qty: parsedInput.qty,
       p_idempotency_key: `purchase:${parsedInput.productId}:${ctx.user.id}:${Date.now()}`,
       p_created_by: ctx.user.id,
+      p_expected_shop_id: scopedProduct.shopId,
       p_unit_cost: parsedInput.unitCost,
     });
 
@@ -134,8 +162,14 @@ export const manualAdjustmentAction = requireRole('owner', 'manager')
     if (parsedInput.qty === 0) {
       return { ok: false as const, message: 'La quantité ne peut pas être 0.' };
     }
+    const scopedProduct = await resolveActiveStoreProduct(
+      ctx.supabase as unknown as SupabaseClient<Database>,
+      ctx.member.merchantAccountId,
+      parsedInput.productId,
+    );
+    if (!scopedProduct.ok) return scopedProduct;
 
-    const post = postStockMovementRpc(ctx.supabase);
+    const post = postStockMovementRpc(ctx.supabase as unknown as SupabaseClient<Database>);
     const { error } = await post('post_stock_movement', {
       p_merchant_account_id: ctx.member.merchantAccountId,
       p_product_id: parsedInput.productId,
@@ -143,6 +177,7 @@ export const manualAdjustmentAction = requireRole('owner', 'manager')
       p_qty: parsedInput.qty,
       p_idempotency_key: `adj:${parsedInput.productId}:${ctx.user.id}:${Date.now()}`,
       p_created_by: ctx.user.id,
+      p_expected_shop_id: scopedProduct.shopId,
       p_reason: 'Ajustement manuel',
     });
 
@@ -162,7 +197,13 @@ export const courierReturnAction = requireRole('owner', 'manager')
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
-    const post = postStockMovementRpc(ctx.supabase);
+    const scopedProduct = await resolveActiveStoreProduct(
+      ctx.supabase as unknown as SupabaseClient<Database>,
+      ctx.member.merchantAccountId,
+      parsedInput.productId,
+    );
+    if (!scopedProduct.ok) return scopedProduct;
+    const post = postStockMovementRpc(ctx.supabase as unknown as SupabaseClient<Database>);
     const { error } = await post('post_stock_movement', {
       p_merchant_account_id: ctx.member.merchantAccountId,
       p_product_id: parsedInput.productId,
@@ -170,6 +211,7 @@ export const courierReturnAction = requireRole('owner', 'manager')
       p_qty: parsedInput.qty,
       p_idempotency_key: `return:${parsedInput.productId}:${parsedInput.orderId ?? 'none'}:${ctx.user.id}:${Date.now()}`,
       p_created_by: ctx.user.id,
+      p_expected_shop_id: scopedProduct.shopId,
       p_order_id: parsedInput.orderId,
     });
 

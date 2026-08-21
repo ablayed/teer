@@ -12,6 +12,7 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { type DriverStockMovement, driverAvailableStockRows } from '@/lib/drivers/stock-on-hand';
 import type { Database } from '@/lib/supabase/database.types';
+import { getRequestStoreId } from '@/lib/workspace/store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
@@ -37,10 +38,25 @@ export const getDriverAvailableStockForAssignmentAction = requireRole('owner', '
   .inputSchema(z.object({ driverId: z.string().uuid() }))
   .action(async ({ ctx, parsedInput }) => {
     const supabase = asTypedSupabaseClient(ctx.supabase);
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, errorCode: 'read_failed' as const };
+
+    const { data: driverShop, error: driverShopError } = await supabase
+      .from('driver_shop')
+      .select('driver_id')
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('shop_id', shopId)
+      .eq('driver_id', parsedInput.driverId)
+      .maybeSingle();
+    if (driverShopError || !driverShop) {
+      return { ok: true as const, rows: [] };
+    }
+
     const { data: movements, error } = await supabase
       .from('stock_movement')
       .select('driver_id, product_id, movement_type, qty')
       .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('shop_id', shopId)
       .eq('driver_id', parsedInput.driverId);
 
     if (error) {

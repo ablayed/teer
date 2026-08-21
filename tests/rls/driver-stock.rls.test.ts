@@ -13,6 +13,7 @@
  * dérivé du ledger seul, découplé de product_stock.
  */
 
+import { randomUUID } from 'node:crypto';
 import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -75,6 +76,28 @@ async function createOwnerFixture(label: string) {
   return { admin, email, merchantAccountId, userId };
 }
 
+async function createSecondaryShop(admin: AdminClient, merchantAccountId: string, userId: string) {
+  const { data, error } = await admin
+    .from('shop')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_domain: `driver-stock-${Date.now()}-${randomUUID()}.internal`,
+      access_token_encrypted: 'enc',
+      scopes: 'read_orders',
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('secondary shop insert failed');
+  const { error: memberError } = await admin.from('shop_member').insert({
+    merchant_account_id: merchantAccountId,
+    shop_id: data.id,
+    user_id: userId,
+    role: 'owner',
+  });
+  if (memberError && !memberError.message.includes('duplicate')) throw memberError;
+  return data.id;
+}
+
 async function addAgent(admin: AdminClient, merchantAccountId: string, label: string) {
   const email = `driver-stock-agent-${label}-${Date.now()}@example.com`;
   const userId = await createConfirmedUser(admin, email);
@@ -86,13 +109,14 @@ async function addAgent(admin: AdminClient, merchantAccountId: string, label: st
   return { email, userId };
 }
 
-async function createProduct(admin: AdminClient, merchantAccountId: string) {
+async function createProduct(admin: AdminClient, merchantAccountId: string, shopId?: string) {
   const { data } = await admin
     .from('product')
     .insert({
       merchant_account_id: merchantAccountId,
       title: `Prod-${Date.now()}`,
       unit_cost: 5000,
+      ...(shopId ? { shop_id: shopId } : {}),
     })
     .select('id')
     .single();
@@ -114,6 +138,25 @@ async function createDriver(admin: AdminClient, merchantAccountId: string) {
   return data.id;
 }
 
+async function seedDriverShop(
+  admin: AdminClient,
+  merchantAccountId: string,
+  driverId: string,
+  shopId?: string,
+) {
+  let shopQuery = admin.from('shop').select('id').eq('merchant_account_id', merchantAccountId);
+  shopQuery = shopId ? shopQuery.eq('id', shopId) : shopQuery.eq('is_default', true);
+  const { data: shop } = await shopQuery.single();
+  if (!shop) throw new Error('default shop missing');
+  const { error } = await admin.from('driver_shop').insert({
+    merchant_account_id: merchantAccountId,
+    shop_id: shop.id,
+    driver_id: driverId,
+  });
+  if (error) throw error;
+  return shop.id;
+}
+
 function postMovementRpc(client: SupabaseClient<Database>) {
   return client.rpc.bind(client) as unknown as (
     fn: 'post_stock_movement',
@@ -124,8 +167,10 @@ function postMovementRpc(client: SupabaseClient<Database>) {
       p_qty: number;
       p_idempotency_key: string;
       p_created_by: string;
+      p_expected_shop_id?: string;
       p_driver_id?: string | null;
       p_unit_cost?: number | null;
+      p_reason?: string | null;
     },
   ) => Promise<{ data: string | null; error: { message: string } | null }>;
 }
@@ -139,6 +184,138 @@ afterEach(async () => {
   createdUserIds.length = 0;
 });
 
+describe('post_stock_movement — cœur temporairement ouvert / capacité publique scopée (0134/0135)', () => {
+  skipIfNoServiceRole(
+    'un owner authentifié atteint le cœur temporairement rouvert et la surcharge publique scopée',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('public-capability');
+      const productId = await createProduct(admin, merchantAccountId);
+      const { data: product } = await admin
+        .from('product')
+        .select('shop_id')
+        .eq('id', productId)
+        .single();
+      if (!product?.shop_id) throw new Error('product shop_id missing');
+
+      const ownerClient = await signIn(email);
+      const post = postMovementRpc(ownerClient);
+      const payload = {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'manual_adjustment',
+        p_qty: 1,
+        p_created_by: userId,
+        p_reason: 'preuve grant 0134',
+      };
+
+      // 0135 a rouvert temporairement le cœur à authenticated pour les
+      // transitions SECURITY INVOKER; la protection du cœur relève d'un lot dédié.
+      const core = await post('post_stock_movement', {
+        ...payload,
+        p_idempotency_key: `0134:core:${productId}`,
+      });
+      expect(core.error).toBeNull();
+      expect(core.data).not.toBeNull();
+
+      // Même charge utile, enrichie du contexte de boutique obligatoire : la
+      // surcharge 13-arguments est résolue et exécute le mouvement.
+      const scoped = await post('post_stock_movement', {
+        ...payload,
+        p_idempotency_key: `0134:public:${productId}`,
+        p_expected_shop_id: product.shop_id,
+      });
+      expect(scoped.error).toBeNull();
+      expect(scoped.data).not.toBeNull();
+    },
+  );
+});
+
+describe('0134/0135 — incident cross-boutique et read model', () => {
+  skipIfNoServiceRole(
+    'les gardes boutique refusent toute combinaison croisée sans écrire de mouvement',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('cross-shop');
+      const shopA = await seedDriverShop(
+        admin,
+        merchantAccountId,
+        await createDriver(admin, merchantAccountId),
+      );
+      const shopB = await createSecondaryShop(admin, merchantAccountId, userId);
+      const productA = await createProduct(admin, merchantAccountId, shopA);
+      const productB = await createProduct(admin, merchantAccountId, shopB);
+      const driverA = await createDriver(admin, merchantAccountId);
+      const driverB = await createDriver(admin, merchantAccountId);
+      await seedDriverShop(admin, merchantAccountId, driverA, shopA);
+      await seedDriverShop(admin, merchantAccountId, driverB, shopB);
+      await admin.from('product_stock').upsert(
+        {
+          product_id: productA,
+          merchant_account_id: merchantAccountId,
+          qty_on_hand: 10,
+          unit_cost: 5000,
+        },
+        { onConflict: 'product_id' },
+      );
+
+      const owner = postMovementRpc(await signIn(email));
+      const call = (productId: string, driverId: string, expectedShopId: string, key: string) =>
+        owner('post_stock_movement', {
+          p_merchant_account_id: merchantAccountId,
+          p_product_id: productId,
+          p_movement_type: 'driver_stock_set',
+          p_qty: 4,
+          p_idempotency_key: `cross:${merchantAccountId}:${key}`,
+          p_created_by: userId,
+          p_expected_shop_id: expectedShopId,
+          p_driver_id: driverId,
+        });
+
+      const crossProduct = await call(productB, driverA, shopA, 'cross:product');
+      const crossDriver = await call(productA, driverB, shopA, 'cross:driver');
+      const wrongExpectedShop = await call(productB, driverB, shopA, 'cross:expected');
+      expect(crossProduct.error).not.toBeNull();
+      expect(crossDriver.error).not.toBeNull();
+      expect(wrongExpectedShop.error).not.toBeNull();
+
+      const valid = await call(productA, driverA, shopA, 'cross:valid');
+      expect(valid.error).toBeNull();
+
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('id, shop_id, product_id, driver_id, movement_type, qty')
+        .eq('merchant_account_id', merchantAccountId)
+        .in('product_id', [productA, productB]);
+      expect(movements).toHaveLength(1);
+      expect(movements?.[0]).toMatchObject({
+        shop_id: shopA,
+        product_id: productA,
+        driver_id: driverA,
+      });
+
+      const { data: driverBInA } = await admin
+        .from('driver_shop')
+        .select('driver_id')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopA)
+        .eq('driver_id', driverB);
+      expect(driverBInA).toHaveLength(0);
+
+      const { data: central } = await admin
+        .from('product_stock')
+        .select('qty_on_hand')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopA)
+        .eq('product_id', productA)
+        .single();
+      expect(central?.qty_on_hand).toBe(10);
+      expect(driverStockRows((movements ?? []) as DriverStockMovement[], driverA)).toEqual([
+        { driverId: driverA, productId: productA, qtyOnHand: 4 },
+      ]);
+    },
+  );
+});
+
 // ──────────────────────────────────────────────────────────────────────────
 // ALLOCATION / RETOUR DE LOT + INVARIANT STOCK
 // ──────────────────────────────────────────────────────────────────────────
@@ -147,11 +324,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   skipIfNoServiceRole(
     'allocation et retour de lot sont ledger-only (0093) : entrepôt inchangé, stock en main dérivé du ledger',
     async () => {
-      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot');
+      const { admin, merchantAccountId, userId } = await createOwnerFixture('lot');
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
-      const ownerClient = await signIn(email);
-      const post = postMovementRpc(ownerClient);
+      await seedDriverShop(admin, merchantAccountId, driverId);
+      const post = postMovementRpc(admin);
 
       // purchase_in 100 → entrepôt 100
       await post('post_stock_movement', {
@@ -215,11 +392,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   skipIfNoServiceRole(
     'réconciliation après allocation de lot : 0 écart + rebuild reconstruit la bonne valeur',
     async () => {
-      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot-recon');
+      const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-recon');
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
-      const ownerClient = await signIn(email);
-      const post = postMovementRpc(ownerClient);
+      await seedDriverShop(admin, merchantAccountId, driverId);
+      const post = postMovementRpc(admin);
 
       // purchase_in 100 puis allocate_to_courier -30 → ledger-only depuis 0093,
       // entrepôt reste 100.
@@ -272,11 +449,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   );
 
   skipIfNoServiceRole('idempotence : même clé d’allocation de lot → no-op', async () => {
-    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot-idem');
+    const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-idem');
     const productId = await createProduct(admin, merchantAccountId);
     const driverId = await createDriver(admin, merchantAccountId);
-    const ownerClient = await signIn(email);
-    const post = postMovementRpc(ownerClient);
+    await seedDriverShop(admin, merchantAccountId, driverId);
+    const post = postMovementRpc(admin);
 
     await post('post_stock_movement', {
       p_merchant_account_id: merchantAccountId,
@@ -323,10 +500,9 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   });
 
   skipIfNoServiceRole('un lot sans livreur est rejeté (contrainte)', async () => {
-    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('lot-nodriver');
+    const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-nodriver');
     const productId = await createProduct(admin, merchantAccountId);
-    const ownerClient = await signIn(email);
-    const post = postMovementRpc(ownerClient);
+    const post = postMovementRpc(admin);
 
     const { error } = await post('post_stock_movement', {
       p_merchant_account_id: merchantAccountId,
@@ -350,11 +526,19 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
     const { admin, email, merchantAccountId, userId } = await createOwnerFixture('dss');
     const productId = await createProduct(admin, merchantAccountId);
     const driverId = await createDriver(admin, merchantAccountId);
+    await seedDriverShop(admin, merchantAccountId, driverId);
     const ownerClient = await signIn(email);
     const post = postMovementRpc(ownerClient);
+    const seedPost = postMovementRpc(admin);
+    const { data: product } = await admin
+      .from('product')
+      .select('shop_id')
+      .eq('id', productId)
+      .single();
+    if (!product?.shop_id) throw new Error('product shop_id missing');
 
     // Stock central : purchase_in 100 → entrepôt 100.
-    await post('post_stock_movement', {
+    await seedPost('post_stock_movement', {
       p_merchant_account_id: merchantAccountId,
       p_product_id: productId,
       p_movement_type: 'purchase_in',
@@ -371,6 +555,7 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
       p_qty: 12,
       p_idempotency_key: `dss:${productId}:set`,
       p_created_by: userId,
+      p_expected_shop_id: product.shop_id,
       p_driver_id: driverId,
     });
     expect(error).toBeNull();
@@ -417,6 +602,7 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('dss-recon');
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
+      await seedDriverShop(admin, merchantAccountId, driverId);
       const ownerClient = await signIn(email);
       const post = postMovementRpc(ownerClient);
 
@@ -462,6 +648,7 @@ describe('cash livreur : invisible à l’agent (RLS owner/manager)', () => {
   skipIfNoServiceRole('un agent ne lit aucun cash_settlement ni allocation', async () => {
     const { admin, merchantAccountId, userId } = await createOwnerFixture('cash-agent');
     const driverId = await createDriver(admin, merchantAccountId);
+    await seedDriverShop(admin, merchantAccountId, driverId);
     const { email: agentEmail } = await addAgent(admin, merchantAccountId, 'cash');
 
     // Seed un versement

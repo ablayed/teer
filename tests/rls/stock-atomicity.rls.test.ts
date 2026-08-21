@@ -143,7 +143,27 @@ async function createDriver(admin: AdminClient, merchantAccountId: string) {
     .select('id')
     .single();
   if (!data) throw new Error('driver insert failed');
+  // Reproduit team.create_driver : un livreur de fixture appartient à la boutique par défaut.
+  await seedDriverShop(admin, merchantAccountId, data.id);
   return data.id;
+}
+
+/** Les fixtures doivent expliciter le rattachement boutique créé par team.create_driver. */
+async function seedDriverShop(admin: AdminClient, merchantAccountId: string, driverId: string) {
+  const { data: shop, error: shopError } = await admin
+    .from('shop')
+    .select('id')
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('is_default', true)
+    .single();
+  if (shopError || !shop) throw shopError ?? new Error('default shop missing');
+  const { error } = await admin.from('driver_shop').insert({
+    merchant_account_id: merchantAccountId,
+    shop_id: shop.id,
+    driver_id: driverId,
+  });
+  if (error) throw error;
+  return shop.id;
 }
 
 async function seedProductStock(
@@ -852,15 +872,16 @@ describe('idempotence post_stock_movement', () => {
   skipIfNoServiceRole(
     'même idempotency_key → second appel retourne null, position inchangée',
     async () => {
-      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('idem');
+      const { admin, merchantAccountId, userId } = await createOwnerFixture('idem');
       const productId = await createProduct(admin, merchantAccountId);
       await seedProductStock(admin, productId, merchantAccountId, 100);
-      const ownerClient = await signIn(email);
+      // Seed service-role : on vérifie l'idempotence du cœur, pas la capacité publique.
+      const seedClient = admin;
 
       const key = `idem-test:${productId}:purchase_in`;
 
       // Premier appel
-      const { data: id1, error: err1 } = await ownerClient.rpc('post_stock_movement', {
+      const { data: id1, error: err1 } = await seedClient.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -880,7 +901,7 @@ describe('idempotence post_stock_movement', () => {
       expect(stockAfterFirst?.qty_on_hand).toBe(110);
 
       // Second appel avec la même clé → retourne null, position inchangée
-      const { data: id2, error: err2 } = await ownerClient.rpc('post_stock_movement', {
+      const { data: id2, error: err2 } = await seedClient.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -1353,14 +1374,15 @@ const HAND_TYPES = [
 ];
 
 async function purchaseIn(
-  client: SupabaseClient<Database>,
+  _client: SupabaseClient<Database>,
   merchantAccountId: string,
   productId: string,
   userId: string,
   qty: number,
   unitCost = 5000,
 ) {
-  const { error } = await client.rpc('post_stock_movement', {
+  // Seed service-role : cet appel exerce le cœur interne, jamais atteignable depuis authenticated.
+  const { error } = await adminClient().rpc('post_stock_movement', {
     p_merchant_account_id: merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'purchase_in',
@@ -1373,7 +1395,7 @@ async function purchaseIn(
 }
 
 async function allocateToCourier(
-  client: SupabaseClient<Database>,
+  _client: SupabaseClient<Database>,
   merchantAccountId: string,
   productId: string,
   driverId: string,
@@ -1381,7 +1403,8 @@ async function allocateToCourier(
   qty: number,
 ) {
   // allocate_to_courier : sortie entrepôt → livreur (qty négative dans le ledger).
-  const { error } = await client.rpc('post_stock_movement', {
+  // Seed service-role : cet appel exerce le cœur interne, jamais atteignable depuis authenticated.
+  const { error } = await adminClient().rpc('post_stock_movement', {
     p_merchant_account_id: merchantAccountId,
     p_product_id: productId,
     p_movement_type: 'allocate_to_courier',
@@ -2027,11 +2050,11 @@ describe('réconciliation zéro écart après valider→dispatch→livrer', () =
     async () => {
       const { admin, email, merchantAccountId, userId } = await createOwnerFixture('recon');
       const productId = await createProduct(admin, merchantAccountId);
-      const ownerClient = await signIn(email);
       // État initial posté via le ledger (purchase_in 40) — et NON un upsert
       // direct : ledger et projection doivent concorder pour que la
       // réconciliation ne trouve aucun écart.
-      await ownerClient.rpc('post_stock_movement', {
+      // Helper de seed service-role : le cœur interne est volontairement exercé directement.
+      await admin.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',

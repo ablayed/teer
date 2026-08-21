@@ -87,6 +87,16 @@ async function createProduct(admin: AdminClient, merchantAccountId: string, unit
   return data.id;
 }
 
+async function productShopId(admin: AdminClient, productId: string) {
+  const { data, error } = await admin
+    .from('product')
+    .select('shop_id')
+    .eq('id', productId)
+    .single();
+  if (error || !data?.shop_id) throw error ?? new Error('product shop_id missing');
+  return data.shop_id;
+}
+
 async function seedProductStock(
   admin: AdminClient,
   productId: string,
@@ -211,6 +221,7 @@ describe('stock_movement — manual_adjustment sans saisie utilisateur (Lot 4a)'
       const productId = await createProduct(admin, merchantAccountId);
       await seedProductStock(admin, productId, merchantAccountId, { qtyOnHand: 20 });
       const ownerClient = await signIn(email);
+      const shopId = await productShopId(admin, productId);
 
       const { data, error } = await ownerClient.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
@@ -219,6 +230,7 @@ describe('stock_movement — manual_adjustment sans saisie utilisateur (Lot 4a)'
         p_qty: 3,
         p_idempotency_key: `adj-auto-${Date.now()}`,
         p_created_by: (await ownerClient.auth.getUser()).data.user?.id ?? '',
+        p_expected_shop_id: shopId,
         p_reason: 'Ajustement manuel',
       });
 
@@ -242,6 +254,7 @@ describe('stock_movement — manual_adjustment sans saisie utilisateur (Lot 4a)'
       const productId = await createProduct(admin, merchantAccountId);
       await seedProductStock(admin, productId, merchantAccountId, { qtyOnHand: 20 });
       const ownerClient = await signIn(email);
+      const shopId = await productShopId(admin, productId);
 
       const { error } = await ownerClient.rpc('post_stock_movement', {
         p_merchant_account_id: merchantAccountId,
@@ -250,6 +263,7 @@ describe('stock_movement — manual_adjustment sans saisie utilisateur (Lot 4a)'
         p_qty: 3,
         p_idempotency_key: `adj-empty-${Date.now()}`,
         p_created_by: (await ownerClient.auth.getUser()).data.user?.id ?? '',
+        p_expected_shop_id: shopId,
       });
 
       expect(error).not.toBeNull();
