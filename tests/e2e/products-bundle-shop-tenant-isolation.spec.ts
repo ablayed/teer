@@ -151,9 +151,25 @@ test.describe('saveBundleConfigurationAction — isolation boutique/tenant (fuit
         true,
       );
 
-      const productRow = page.getByTestId(`product-catalog-card-${bundleValidId}`);
+      // Responsive : desktop rend product-catalog-card (bouton "Détails" inline),
+      // mobile rend product-catalog-row (carte desktop présente mais hidden — menu
+      // "Actions — <titre>" à la place). Même motif que openDetails() dans
+      // tests/e2e/products-bundle-configuration.spec.ts.
+      const viewport = page.viewportSize();
+      if (!viewport) throw new Error('Viewport Playwright requis');
+      const isDesktop = viewport.width >= 768;
+      const productRow = page.getByTestId(
+        `${isDesktop ? 'product-catalog-card' : 'product-catalog-row'}-${bundleValidId}`,
+      );
       await productRow.waitFor({ state: 'visible' });
-      await productRow.getByRole('button', { name: 'Détails', exact: true }).click();
+      if (isDesktop) {
+        await productRow.getByRole('button', { name: 'Détails', exact: true }).click();
+      } else {
+        await productRow
+          .getByRole('button', { name: `Actions — ${titleBundle}`, exact: true })
+          .click();
+        await page.getByRole('menuitem', { name: 'Détails', exact: true }).click();
+      }
 
       const panel = page.getByTestId('product-detail-panel');
       await panel.getByRole('checkbox', { name: 'Pack/bundle' }).check();
