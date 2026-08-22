@@ -20,14 +20,18 @@ function postStockMovementRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) 
   ) => Promise<{ data: string | null; error: { message: string } | null }>;
 }
 
-export async function resolveActiveStoreProduct(
+// Confronte productId à UNE boutique donnée, explicitement fournie par l'appelant —
+// pas nécessairement la boutique active de la requête courante. C'est le parent
+// autoritatif qui varie : la boutique active pour une création (createPurchaseLotAction),
+// la boutique d'un lot déjà existant pour un ajout de ligne (addPurchaseLotLineAction,
+// où l'utilisateur a pu changer de boutique depuis la création du lot). resolveActiveStoreProduct
+// ci-dessous en est le cas particulier où shopId = boutique active.
+export async function resolveProductInShop(
   supabase: SupabaseClient<Database>,
   merchantAccountId: string,
+  shopId: string,
   productId: string,
 ) {
-  const shopId = await getRequestStoreId();
-  if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
-
   const { data, error } = await supabase
     .from('product')
     .select('id')
@@ -37,8 +41,18 @@ export async function resolveActiveStoreProduct(
     .maybeSingle();
 
   if (error) return { ok: false as const, message: error.message };
-  if (!data) return { ok: false as const, message: 'Produit introuvable dans la boutique active.' };
+  if (!data) return { ok: false as const, message: 'Produit introuvable dans cette boutique.' };
   return { ok: true as const, shopId };
+}
+
+export async function resolveActiveStoreProduct(
+  supabase: SupabaseClient<Database>,
+  merchantAccountId: string,
+  productId: string,
+) {
+  const shopId = await getRequestStoreId();
+  if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+  return resolveProductInShop(supabase, merchantAccountId, shopId, productId);
 }
 
 function createSupabaseAdminClient() {

@@ -70,6 +70,66 @@ async function addMember(admin: AdminClient, merchantAccountId: string, role: 'a
   return { email, userId };
 }
 
+async function waitForDefaultShop(admin: AdminClient, merchantAccountId: string) {
+  for (let i = 0; i < 30; i++) {
+    const { data } = await admin
+      .from('shop')
+      .select('id')
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('is_default', true)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return data.id as string;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw new Error('default shop not found after 30 retries');
+}
+
+async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
+  const { data, error } = await admin
+    .from('shop')
+    .insert({
+      access_token_encrypted: 'enc',
+      merchant_account_id: merchantAccountId,
+      scopes: 'read_orders',
+      shop_domain: domain,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('shop insert failed');
+  return data.id as string;
+}
+
+async function createProduct(
+  admin: AdminClient,
+  merchantAccountId: string,
+  shopId: string,
+  title: string,
+) {
+  const { data, error } = await admin
+    .from('product')
+    .insert({ merchant_account_id: merchantAccountId, shop_id: shopId, title, unit_cost: 0 })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('product insert failed');
+  return data.id as string;
+}
+
+async function seedLotInShop(admin: AdminClient, merchantAccountId: string, shopId: string) {
+  const { data, error } = await admin
+    .from('purchase_lot')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_id: shopId,
+      supplier_name: 'Fournisseur shop-scope',
+      ordered_at: '2026-06-01',
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('purchase_lot insert returned no row');
+  return data.id as string;
+}
+
 async function seedLot(admin: AdminClient, merchantAccountId: string) {
   const { data, error } = await admin
     .from('purchase_lot')
@@ -277,4 +337,211 @@ describe('receive_purchase_lot RPC — garde tenant', () => {
     // ou "not found" car le lot n'appartient pas à fixtureA.
     expect(error).not.toBeNull();
   });
+});
+
+// ── Fuite 3 (migration 0138) — purchase_lot_line.product_id vs boutique ───────
+//
+// Preuve de la couche SQL : appel PostgREST DIRECT (client authenticated signé, même
+// appel que ferait createPurchaseLotAction/addPurchaseLotLineAction sans leur garde TS),
+// canal distinct de tests/e2e/purchases-shop-tenant-isolation.spec.ts. Aucun des deux
+// tests ne remplace l'autre.
+
+describe('purchase_lot_line — isolation boutique (fuite 3, 0138)', () => {
+  skipIfNoServiceRole(
+    'contrôle positif : ligne référençant un produit de la même boutique',
+    async () => {
+      const { merchantAccountId, email } = await createOwnerFixture('scope-positive');
+      const admin = adminClient();
+      const shopA = await waitForDefaultShop(admin, merchantAccountId);
+      const productA = await createProduct(admin, merchantAccountId, shopA, 'Produit A');
+      const lotId = await seedLotInShop(admin, merchantAccountId, shopA);
+
+      const client = await signIn(email);
+      const { error } = await client.from('purchase_lot_line').insert({
+        merchant_account_id: merchantAccountId,
+        shop_id: shopA,
+        purchase_lot_id: lotId,
+        product_id: productA,
+        qty: 10,
+        unit_purchase_price: 1000,
+      });
+
+      expect(error).toBeNull();
+    },
+  );
+
+  skipIfNoServiceRole(
+    'refus : produit d’une autre boutique du même tenant — aucune ligne créée',
+    async () => {
+      const { merchantAccountId, email } = await createOwnerFixture('scope-cross-shop');
+      const admin = adminClient();
+      const shopA = await waitForDefaultShop(admin, merchantAccountId);
+      const shopB = await createShop(admin, merchantAccountId, `cross-shop-${Date.now()}.internal`);
+      const productB = await createProduct(admin, merchantAccountId, shopB, 'Produit B');
+      const lotId = await seedLotInShop(admin, merchantAccountId, shopA);
+
+      const { data: linesBefore } = await admin
+        .from('purchase_lot_line')
+        .select('id')
+        .eq('purchase_lot_id', lotId);
+      const { data: lotBefore } = await admin
+        .from('purchase_lot')
+        .select('status')
+        .eq('id', lotId)
+        .single();
+
+      const client = await signIn(email);
+      const { error } = await client.from('purchase_lot_line').insert({
+        merchant_account_id: merchantAccountId,
+        shop_id: shopA, // ligne correctement rattachée au lot...
+        purchase_lot_id: lotId,
+        product_id: productB, // ...mais produit d'une AUTRE boutique du même tenant
+        qty: 5,
+        unit_purchase_price: 500,
+      });
+
+      expect(error).not.toBeNull();
+      expect(error?.message).toMatch(/same shop_id/);
+
+      const { data: linesAfter } = await admin
+        .from('purchase_lot_line')
+        .select('id')
+        .eq('purchase_lot_id', lotId);
+      const { data: lotAfter } = await admin
+        .from('purchase_lot')
+        .select('status')
+        .eq('id', lotId)
+        .single();
+      expect(linesAfter).toHaveLength(linesBefore?.length ?? 0);
+      expect(lotAfter?.status).toBe(lotBefore?.status);
+    },
+  );
+
+  skipIfNoServiceRole('refus : produit d’un autre tenant — aucune ligne créée', async () => {
+    const { merchantAccountId, email } = await createOwnerFixture('scope-cross-tenant');
+    const other = await createOwnerFixture('scope-cross-tenant-other');
+    const admin = adminClient();
+    const shopA = await waitForDefaultShop(admin, merchantAccountId);
+    const shopOther = await waitForDefaultShop(admin, other.merchantAccountId);
+    const productOther = await createProduct(
+      admin,
+      other.merchantAccountId,
+      shopOther,
+      'Produit autre tenant',
+    );
+    const lotId = await seedLotInShop(admin, merchantAccountId, shopA);
+
+    const { data: linesBefore } = await admin
+      .from('purchase_lot_line')
+      .select('id')
+      .eq('purchase_lot_id', lotId);
+
+    const client = await signIn(email);
+    const { error } = await client.from('purchase_lot_line').insert({
+      merchant_account_id: merchantAccountId,
+      shop_id: shopA,
+      purchase_lot_id: lotId,
+      product_id: productOther, // produit d'un AUTRE tenant
+      qty: 5,
+      unit_purchase_price: 500,
+    });
+
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/same merchant_account_id/);
+
+    const { data: linesAfter } = await admin
+      .from('purchase_lot_line')
+      .select('id')
+      .eq('purchase_lot_id', lotId);
+    expect(linesAfter).toHaveLength(linesBefore?.length ?? 0);
+  });
+
+  skipIfNoServiceRole('refus : produit inexistant — aucune ligne créée', async () => {
+    const { merchantAccountId, email } = await createOwnerFixture('scope-missing-product');
+    const admin = adminClient();
+    const shopA = await waitForDefaultShop(admin, merchantAccountId);
+    const lotId = await seedLotInShop(admin, merchantAccountId, shopA);
+
+    const client = await signIn(email);
+    const { error } = await client.from('purchase_lot_line').insert({
+      merchant_account_id: merchantAccountId,
+      shop_id: shopA,
+      purchase_lot_id: lotId,
+      product_id: '00000000-0000-0000-0000-000000000000',
+      qty: 5,
+      unit_purchase_price: 500,
+    });
+
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/not found/);
+
+    const { data: linesAfter } = await admin
+      .from('purchase_lot_line')
+      .select('id')
+      .eq('purchase_lot_id', lotId);
+    expect(linesAfter).toHaveLength(0);
+  });
+
+  skipIfNoServiceRole(
+    'réception d’un lot valide : mouvement de stock posté dans le bon ledger',
+    async () => {
+      const { merchantAccountId, email, userId } = await createOwnerFixture('scope-receive');
+      const admin = adminClient();
+      const shopA = await waitForDefaultShop(admin, merchantAccountId);
+      const productA = await createProduct(admin, merchantAccountId, shopA, 'Produit reçu');
+      const lotId = await seedLotInShop(admin, merchantAccountId, shopA);
+
+      const { data: line, error: lineErr } = await admin
+        .from('purchase_lot_line')
+        .insert({
+          merchant_account_id: merchantAccountId,
+          shop_id: shopA,
+          purchase_lot_id: lotId,
+          product_id: productA,
+          qty: 10,
+          unit_purchase_price: 1000,
+        })
+        .select('id')
+        .single();
+      if (lineErr || !line) throw lineErr ?? new Error('line insert failed');
+
+      const client = await signIn(email);
+      type GenericRpc = (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+      const { error } = await (client.rpc as unknown as GenericRpc)('receive_purchase_lot', {
+        p_lot_id: lotId,
+        p_merchant_account_id: merchantAccountId,
+        p_actor_id: userId,
+        p_lines: [
+          {
+            line_id: line.id,
+            line_value: 10000,
+            allocated_fees: 0,
+            landed_total_value: 10000,
+            landed_unit_cost: 1000,
+          },
+        ],
+      });
+
+      expect(error).toBeNull();
+
+      const { data: lotAfter } = await admin
+        .from('purchase_lot')
+        .select('status')
+        .eq('id', lotId)
+        .single();
+      expect(lotAfter?.status).toBe('received');
+
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('shop_id, product_id, movement_type, qty')
+        .eq('idempotency_key', `recv:${lotId}:${line.id}`);
+      expect(movements).toHaveLength(1);
+      expect(movements?.[0]?.movement_type).toBe('purchase_in');
+      expect(movements?.[0]?.shop_id).toBe(shopA);
+      expect(movements?.[0]?.product_id).toBe(productA);
+    },
+  );
 });
