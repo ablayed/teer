@@ -156,6 +156,17 @@ async function signIn(email: string) {
   return client;
 }
 
+async function defaultShopId(admin: AdminClient, merchantAccountId: string) {
+  const { data, error } = await admin
+    .from('shop')
+    .select('id')
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('is_default', true)
+    .single();
+  if (error || !data) throw error ?? new Error('default shop not found');
+  return data.id;
+}
+
 async function createOrder(
   admin: AdminClient,
   merchantAccountId: string,
@@ -164,10 +175,12 @@ async function createOrder(
   const dimensions = legacyStatusToDimensions(status);
   // Contrainte 0057 : un statut dispatché (assigned/out_for_delivery) exige un livreur.
   // legacyStatusToDimensions renvoie un driver null pour EN_LIVRAISON → on en crée un.
+  // Cette commande ne passe pas de shop_id explicite : elle atterrit dans la boutique
+  // par défaut (trigger assign_default_store_context) — le livreur y est donc rattaché.
   const needsDriver =
     dimensions.deliveryState === 'assigned' || dimensions.deliveryState === 'out_for_delivery';
   const assignedDriverId = needsDriver
-    ? await createDriver(admin, merchantAccountId)
+    ? await createDriver(admin, merchantAccountId, await defaultShopId(admin, merchantAccountId))
     : dimensions.assignedDriverId;
   const { data, error } = await admin
     .from('orders')
@@ -198,7 +211,10 @@ async function createOrder(
   return data.id;
 }
 
-async function createDriver(admin: AdminClient, merchantAccountId: string) {
+// Gap 4 (migration 0139) — `shopId` explicite : `transition_order`/`reassign_order_driver`
+// interrogent `driver_shop` avant d'écrire `assigned_driver_id`. `null` crée un livreur
+// volontairement SANS aucun rattachement.
+async function createDriver(admin: AdminClient, merchantAccountId: string, shopId: string | null) {
   const { data, error } = await admin
     .from('driver')
     .insert({
@@ -211,6 +227,15 @@ async function createDriver(admin: AdminClient, merchantAccountId: string) {
 
   if (error || !data) {
     throw error ?? new Error('Livreur de test non cree');
+  }
+
+  if (shopId) {
+    const { error: membershipError } = await admin
+      .from('driver_shop')
+      .insert({ merchant_account_id: merchantAccountId, shop_id: shopId, driver_id: data.id });
+    if (membershipError) {
+      throw membershipError;
+    }
   }
 
   return data.id;
@@ -272,7 +297,14 @@ describe('orders dimensions RLS', () => {
       const fixture = await createOwnerFixture('agent-check');
       const agent = await addMember(fixture.admin, fixture.merchantAccountId, 'agent');
       const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'CONFIRMEE');
-      const driverId = await createDriver(fixture.admin, fixture.merchantAccountId);
+      // Gap 4 (migration 0139) : la commande ci-dessus n'a pas de shop_id explicite,
+      // elle atterrit dans la boutique par défaut — le livreur doit y être rattaché
+      // pour que l'assignation ci-dessous reste légale.
+      const driverId = await createDriver(
+        fixture.admin,
+        fixture.merchantAccountId,
+        await defaultShopId(fixture.admin, fixture.merchantAccountId),
+      );
       const agentClient = await signIn(agent.email);
 
       const programmed = await transitionOrderRpc(agentClient)('transition_order', {
@@ -354,8 +386,10 @@ describe('orders dimensions RLS', () => {
         .single();
       expect(untouched).toMatchObject({ delivery_state: 'unassigned', assigned_driver_id: null });
 
-      // Avec un livreur effectif → dispatch autorise.
-      const driverId = await createDriver(fixture.admin, fixture.merchantAccountId);
+      // Avec un livreur effectif → dispatch autorise. Ecriture directe (service-role),
+      // pas via reassign_order_driver/transition_order : la garde Gap 4 (0139) ne
+      // s'applique pas ici, driver_shop est donc sans objet pour ce cas precis.
+      const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, null);
       const dispatched = await fixture.admin
         .from('orders')
         .update({ delivery_state: 'assigned', assigned_driver_id: driverId })

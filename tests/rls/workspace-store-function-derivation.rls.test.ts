@@ -120,17 +120,27 @@ async function createProduct(admin: Client, merchantAccountId: string, shopId: s
   return data;
 }
 
-async function createDriver(admin: Client, merchantAccountId: string) {
+// Gap 4 — `shopId` explicite : `driver_shop` (migration 0133) n'est plus une
+// commodité, c'est l'ensemble que `reassign_order_driver`/`transition_order`
+// interrogent (migration 0139) avant d'écrire `assigned_driver_id`. `null`
+// crée volontairement un livreur SANS aucun rattachement.
+async function createDriver(admin: Client, merchantAccountId: string, shopId: string | null) {
   const { data, error } = await admin
     .from('driver')
     .insert({
       merchant_account_id: merchantAccountId,
-      full_name: `Livreur-${Date.now()}`,
-      phone: '+221770000000',
+      full_name: `Livreur-${Date.now()}-${randomUUID().slice(0, 6)}`,
+      phone: `+2217${Math.floor(Math.random() * 90000000 + 10000000)}`,
     })
     .select('id')
     .single();
   if (error || !data) throw error ?? new Error('driver insert failed');
+  if (shopId) {
+    const { error: membershipError } = await admin
+      .from('driver_shop')
+      .insert({ merchant_account_id: merchantAccountId, shop_id: shopId, driver_id: data.id });
+    if (membershipError) throw membershipError;
+  }
   return data.id;
 }
 
@@ -398,13 +408,17 @@ describe('0131 — transition_order dérive la boutique de la commande', () => {
 
 describe('0131 — reassign_order_driver dérive la boutique de la commande', () => {
   skipIfNoServiceRole(
-    'la réassignation d’une commande de la boutique SECONDAIRE est historisée dans cette boutique',
+    'la réassignation d’une commande de la boutique SECONDAIRE, par un livreur qui la sert, est historisée dans cette boutique',
     async () => {
       const t = await createTenant('rod-secondary');
       const secondaryShop = await createSecondaryShop(t.admin, t.merchantAccountId);
       const order = await createOrder(t.admin, t.merchantAccountId, secondaryShop);
-      const firstDriver = await createDriver(t.admin, t.merchantAccountId);
-      const secondDriver = await createDriver(t.admin, t.merchantAccountId);
+      // Gap 4 (migration 0139) : les deux livreurs doivent être rattachés à LA
+      // boutique de la commande pour que la réassignation soit légale — sans quoi
+      // ce test prouverait l'inverse de l'invariant qu'il vise à démontrer (cf.
+      // le test-sœur ci-dessous, qui couvre le refus).
+      const firstDriver = await createDriver(t.admin, t.merchantAccountId, secondaryShop);
+      const secondDriver = await createDriver(t.admin, t.merchantAccountId, secondaryShop);
 
       // `scheduled` suffit à rendre la réassignation légale sans exiger de mouvement de
       // stock sortant (aucune ligne dispatched), ce qui garde le test focalisé sur
@@ -431,6 +445,57 @@ describe('0131 — reassign_order_driver dérive la boutique de la commande', ()
         expect(transition.shop_id).toBe(secondaryShop);
         expect(transition.shop_id).not.toBe(t.defaultShop);
       }
+    },
+  );
+
+  // Gap 4 (migration 0139) — le cas que ce fichier prouvait par erreur avant ce lot :
+  // un livreur SANS AUCUN rattachement `driver_shop` ne peut plus être réassigné à
+  // AUCUNE commande, y compris une commande `scheduled` (hors assigned/out_for_delivery),
+  // où AUCUN mouvement de stock n'est posté et où la seule protection incidente
+  // (post_stock_movement) ne s'exécute donc jamais.
+  skipIfNoServiceRole(
+    'un livreur sans aucun rattachement driver_shop est refusé, même sur une commande scheduled',
+    async () => {
+      const t = await createTenant('rod-orphan');
+      const secondaryShop = await createSecondaryShop(t.admin, t.merchantAccountId);
+      const order = await createOrder(t.admin, t.merchantAccountId, secondaryShop);
+      const firstDriver = await createDriver(t.admin, t.merchantAccountId, secondaryShop);
+      const orphanDriver = await createDriver(t.admin, t.merchantAccountId, null);
+
+      await t.admin
+        .from('orders')
+        .update({ delivery_state: 'scheduled', assigned_driver_id: firstDriver })
+        .eq('id', order.id);
+
+      const { data: movementsBefore } = await t.admin
+        .from('stock_movement')
+        .select('id')
+        .eq('order_id', order.id);
+
+      const client = await signIn(t.email);
+      const { error } = await reassignOrderDriver(client)('reassign_order_driver', {
+        p_order_id: order.id,
+        p_actor: t.userId,
+        p_new_driver: orphanDriver,
+      });
+      expect(error).not.toBeNull();
+      expect(error?.message ?? '').toContain('driver_not_in_store');
+
+      const { data: unchanged } = await t.admin
+        .from('orders')
+        .select('assigned_driver_id, delivery_state')
+        .eq('id', order.id)
+        .single();
+      expect(unchanged?.assigned_driver_id).toBe(firstDriver);
+      expect(unchanged?.delivery_state).toBe('scheduled');
+
+      const { data: movementsAfter } = await t.admin
+        .from('stock_movement')
+        .select('id')
+        .eq('order_id', order.id);
+      expect((movementsAfter ?? []).map((m) => m.id).sort()).toEqual(
+        (movementsBefore ?? []).map((m) => m.id).sort(),
+      );
     },
   );
 });

@@ -2164,6 +2164,19 @@ function reassignOrderDriverRpc(client: SupabaseServerClient) {
   ) => Promise<{ data: unknown; error: { message: string } | null }>;
 }
 
+// Gap 4 — même RPC d'éligibilité que lib/actions/transitions.ts (migration 0133) :
+// `security definer` avec garde de rôle NULL-safe, ne renseigne jamais un non-membre.
+function driverEligibilityRpc(client: SupabaseServerClient) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'is_driver_in_shop',
+    args: {
+      p_merchant_account_id: string;
+      p_driver_id: string;
+      p_shop_id: string;
+    },
+  ) => Promise<{ data: boolean | null; error: { message: string } | null }>;
+}
+
 function reassignErrorMessage(raw: string): string {
   if (raw.includes('reassign_not_allowed_in_state')) {
     return 'Réassignation impossible : la commande est livrée ou clôturée.';
@@ -2186,6 +2199,122 @@ function reassignErrorMessage(raw: string): string {
   return 'La réassignation a échoué.';
 }
 
+export type ReassignOrderDriverErrorCode =
+  | 'audit_failed'
+  // Gap 4 — livreur non rattaché à la boutique de la commande (garde TS, miroir de
+  // celle de performTransitionForContext ; la garde SQL de reassign_order_driver,
+  // migration 0139, reste le filet incontournable en cas de contournement).
+  | 'driver_not_in_store'
+  | 'order_not_found'
+  | 'reassign_failed'
+  | 'update_failed';
+
+export type ReassignOrderDriverResult =
+  | { ok: true }
+  | { ok: false; errorCode: ReassignOrderDriverErrorCode; message: string };
+
+// Extrait de reassignOrderDriverAction pour rester testable sans passer par la pile
+// next-safe-action complète — même séparation que performTransitionForContext
+// (lib/actions/transitions.ts).
+export async function performReassignDriverForContext({
+  actorUserId,
+  newDriverId,
+  orderId,
+  supabase,
+}: {
+  actorUserId: string;
+  newDriverId: string;
+  orderId: string;
+  supabase: SupabaseServerClient;
+}): Promise<ReassignOrderDriverResult> {
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('id, merchant_account_id, assigned_driver_id, shop_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (orderError) {
+    return {
+      ok: false as const,
+      errorCode: 'update_failed' as const,
+      message: "La commande n'a pas pu être chargée.",
+    };
+  }
+
+  if (!order) {
+    return {
+      ok: false as const,
+      errorCode: 'order_not_found' as const,
+      message: 'Commande introuvable.',
+    };
+  }
+
+  // Gap 4 — un livreur ne peut être réassigné qu'à une commande d'une boutique
+  // qu'il sert. `getActiveDrivers()` scope sa liste sur la boutique ACTIVE de la
+  // requête, pas sur celle de la commande (qui peut avoir changé entre l'ouverture
+  // de l'écran et le clic — même raisonnement que `performTransitionForContext`,
+  // migration 0133) : sans ce contrôle applicatif, l'UI peut légitimement proposer
+  // un livreur inéligible. La garde SQL de `reassign_order_driver` (migration 0139)
+  // reste le filet incontournable, y compris pour un appel RPC direct forgé hors
+  // interface ; celle-ci donne le bon message avant l'aller-retour RPC.
+  const { data: eligible, error: eligibilityError } = await driverEligibilityRpc(supabase)(
+    'is_driver_in_shop',
+    {
+      p_merchant_account_id: order.merchant_account_id,
+      p_driver_id: newDriverId,
+      p_shop_id: order.shop_id,
+    },
+  );
+
+  if (eligibilityError || eligible !== true) {
+    return {
+      ok: false as const,
+      errorCode: 'driver_not_in_store' as const,
+      message: "Ce livreur n'est pas rattaché à la boutique de cette commande.",
+    };
+  }
+
+  const reassign = reassignOrderDriverRpc(supabase);
+  const { error } = await reassign('reassign_order_driver', {
+    p_order_id: orderId,
+    p_actor: actorUserId,
+    p_new_driver: newDriverId,
+  });
+
+  if (error) {
+    return {
+      ok: false as const,
+      errorCode: 'reassign_failed' as const,
+      message: reassignErrorMessage(error.message),
+    };
+  }
+
+  const auditError = await writeOrderAuditLog({
+    action: 'order.driver_reassigned',
+    actorUserId,
+    merchantAccountId: order.merchant_account_id,
+    orderId: order.id,
+    payload: {
+      fromDriverId: order.assigned_driver_id,
+      toDriverId: newDriverId,
+    },
+  });
+
+  if (auditError) {
+    return {
+      ok: false as const,
+      errorCode: 'audit_failed' as const,
+      message: 'Réassignation effectuée mais journalisation en échec.',
+    };
+  }
+
+  revalidateOrderPaths(order.id);
+  revalidatePath('/livreurs');
+  revalidatePath('/tableau');
+
+  return { ok: true as const };
+}
+
 export const reassignOrderDriverAction = requireRole('owner', 'manager')
   .metadata({ actionName: 'orders.reassign_driver', section: 'orders' })
   .inputSchema(
@@ -2194,71 +2323,14 @@ export const reassignOrderDriverAction = requireRole('owner', 'manager')
       newDriverId: z.string().uuid(),
     }),
   )
-  .action(async ({ ctx, parsedInput }) => {
-    const supabase = asTypedSupabaseClient(ctx.supabase);
-
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select('id, merchant_account_id, assigned_driver_id')
-      .eq('id', parsedInput.orderId)
-      .maybeSingle();
-
-    if (orderError) {
-      return {
-        ok: false as const,
-        errorCode: 'update_failed' as const,
-        message: "La commande n'a pas pu être chargée.",
-      };
-    }
-
-    if (!order) {
-      return {
-        ok: false as const,
-        errorCode: 'order_not_found' as const,
-        message: 'Commande introuvable.',
-      };
-    }
-
-    const reassign = reassignOrderDriverRpc(supabase);
-    const { error } = await reassign('reassign_order_driver', {
-      p_order_id: parsedInput.orderId,
-      p_actor: ctx.user.id,
-      p_new_driver: parsedInput.newDriverId,
-    });
-
-    if (error) {
-      return {
-        ok: false as const,
-        errorCode: 'reassign_failed' as const,
-        message: reassignErrorMessage(error.message),
-      };
-    }
-
-    const auditError = await writeOrderAuditLog({
-      action: 'order.driver_reassigned',
+  .action(async ({ ctx, parsedInput }) =>
+    performReassignDriverForContext({
       actorUserId: ctx.user.id,
-      merchantAccountId: order.merchant_account_id,
-      orderId: order.id,
-      payload: {
-        fromDriverId: order.assigned_driver_id,
-        toDriverId: parsedInput.newDriverId,
-      },
-    });
-
-    if (auditError) {
-      return {
-        ok: false as const,
-        errorCode: 'audit_failed' as const,
-        message: 'Réassignation effectuée mais journalisation en échec.',
-      };
-    }
-
-    revalidateOrderPaths(order.id);
-    revalidatePath('/livreurs');
-    revalidatePath('/tableau');
-
-    return { ok: true as const };
-  });
+      newDriverId: parsedInput.newDriverId,
+      orderId: parsedInput.orderId,
+      supabase: asTypedSupabaseClient(ctx.supabase),
+    }),
+  );
 
 // ────────────────────────────────────────────────────────────
 // Note libre sur la commande (0118)
