@@ -692,3 +692,138 @@ describe('cash livreur : invisible à l’agent (RLS owner/manager)', () => {
     expect(allocations ?? []).toHaveLength(0);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// SURCHARGE PUBLIQUE post_stock_movement (13 args) — DEUX INVARIANTS
+//
+// Invariant 1 (contrôle de rôle) : purchase_in/manual_adjustment/courier_return/
+// driver_stock_set réservés à owner/manager, jamais agent.
+// Invariant 2 (allowlist fermée) : seuls ces quatre types passent, y compris pour
+// owner/manager — reserve/release/dispatch/sold/order_assignment_*/type inconnu
+// restent internes, atteignables uniquement via transition_order/reassign_order_driver.
+//
+// Contrôles négatifs par vrai appel PostgREST sous JWT (jamais SQL direct) : c'est
+// la surface HTTP qu'on ferme, pas le cœur SQL (déjà couvert par callStockMovementEngine
+// ailleurs dans ce fichier).
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('post_stock_movement — surcharge publique : rôle + allowlist fermée', () => {
+  const PUBLIC_MOVEMENT_TYPES = [
+    'manual_adjustment',
+    'purchase_in',
+    'courier_return',
+    'driver_stock_set',
+  ] as const;
+  const INTERNAL_MOVEMENT_TYPES = [
+    'reserve',
+    'release',
+    'dispatch',
+    'sold',
+    'order_assignment_commit',
+    'order_assignment_release',
+  ] as const;
+
+  async function movementCount(admin: AdminClient, productId: string) {
+    const { data } = await admin.from('stock_movement').select('id').eq('product_id', productId);
+    return data?.length ?? 0;
+  }
+
+  skipIfNoServiceRole(
+    "agent : chacune des quatre capacités publiques est refusée, aucune écriture n'atteint le ledger",
+    async () => {
+      const { admin, merchantAccountId } = await createOwnerFixture('public-agent-refuse');
+      const productId = await createProduct(admin, merchantAccountId);
+      const { data: product } = await admin
+        .from('product')
+        .select('shop_id')
+        .eq('id', productId)
+        .single();
+      if (!product?.shop_id) throw new Error('product shop_id missing');
+      const driverId = await createDriver(admin, merchantAccountId);
+      await seedDriverShop(admin, merchantAccountId, driverId);
+      const { email: agentEmail, userId: agentUserId } = await addAgent(
+        admin,
+        merchantAccountId,
+        'public-refuse',
+      );
+      const post = postMovementRpc(await signIn(agentEmail));
+
+      for (const movementType of PUBLIC_MOVEMENT_TYPES) {
+        const { error } = await post('post_stock_movement', {
+          p_merchant_account_id: merchantAccountId,
+          p_product_id: productId,
+          p_movement_type: movementType,
+          p_qty: 1,
+          p_idempotency_key: `agent-refuse:${movementType}:${productId}`,
+          p_created_by: agentUserId,
+          p_expected_shop_id: product.shop_id,
+          p_driver_id: movementType === 'driver_stock_set' ? driverId : undefined,
+          p_reason: movementType === 'manual_adjustment' ? 'tentative agent' : undefined,
+        });
+        expect(error).not.toBeNull();
+      }
+
+      expect(await movementCount(admin, productId)).toBe(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'owner : les types internes (reserve/release/dispatch/sold/order_assignment_*) et un type inconnu restent refusés',
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('public-internal-refuse');
+      const productId = await createProduct(admin, merchantAccountId);
+      const { data: product } = await admin
+        .from('product')
+        .select('shop_id')
+        .eq('id', productId)
+        .single();
+      if (!product?.shop_id) throw new Error('product shop_id missing');
+      const post = postMovementRpc(await signIn(email));
+
+      for (const movementType of [...INTERNAL_MOVEMENT_TYPES, 'this_type_does_not_exist']) {
+        const { error } = await post('post_stock_movement', {
+          p_merchant_account_id: merchantAccountId,
+          p_product_id: productId,
+          p_movement_type: movementType,
+          p_qty: 1,
+          p_idempotency_key: `owner-internal-refuse:${movementType}:${productId}`,
+          p_created_by: userId,
+          p_expected_shop_id: product.shop_id,
+        });
+        expect(error).not.toBeNull();
+      }
+
+      expect(await movementCount(admin, productId)).toBe(0);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'owner : un p_created_by forgé (autre utilisateur réel) est refusé',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('public-forged-actor');
+      const productId = await createProduct(admin, merchantAccountId);
+      const { data: product } = await admin
+        .from('product')
+        .select('shop_id')
+        .eq('id', productId)
+        .single();
+      if (!product?.shop_id) throw new Error('product shop_id missing');
+      const { userId: otherUserId } = await addAgent(admin, merchantAccountId, 'forged-actor');
+      const post = postMovementRpc(await signIn(email));
+
+      const { error } = await post('post_stock_movement', {
+        p_merchant_account_id: merchantAccountId,
+        p_product_id: productId,
+        p_movement_type: 'manual_adjustment',
+        p_qty: 1,
+        p_idempotency_key: `forged-actor:${productId}`,
+        p_created_by: otherUserId,
+        p_expected_shop_id: product.shop_id,
+        p_reason: 'created_by forgé',
+      });
+      expect(error).not.toBeNull();
+      expect(await movementCount(admin, productId)).toBe(0);
+    },
+  );
+});
