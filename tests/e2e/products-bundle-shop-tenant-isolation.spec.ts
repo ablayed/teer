@@ -218,7 +218,10 @@ test.describe('saveBundleConfigurationAction — isolation boutique/tenant (fuit
         expect(flag?.is_bundle).toBe(true);
       }
 
-      async function replay(substitution: { from: string; to: string }) {
+      // expectedErrorCode : affirme le code métier EXACT remonté par l'action, pas
+      // seulement l'absence de 500 — un refus qui remonterait le mauvais code (ou un
+      // ok:true silencieux) doit faire échouer le test au même titre qu'une mutation.
+      async function replay(substitution: { from: string; to: string }, expectedErrorCode: string) {
         const forgedBody = legit.postData.replaceAll(substitution.from, substitution.to);
         expect(forgedBody).not.toBe(legit.postData);
         const response = await page.request.post(legit.url, {
@@ -226,23 +229,26 @@ test.describe('saveBundleConfigurationAction — isolation boutique/tenant (fuit
           data: forgedBody,
         });
         expect(response.status(), 'pas de 500 sur un identifiant forgé').toBeLessThan(500);
+        const body = await response.text();
+        expect(body, `doit remonter ${expectedErrorCode}`).toContain(expectedErrorCode);
+        expect(body, 'ne doit jamais remonter ok:true').not.toMatch(/"ok"\s*:\s*true/);
         return response;
       }
 
       // ── 1. composant : autre boutique du même tenant ────────────────────
-      await replay({ from: componentValid1Id, to: componentA2Id });
+      await replay({ from: componentValid1Id, to: componentA2Id }, 'component_not_found');
       await assertBundleValidUnchanged();
 
       // ── 2. composant : autre tenant ──────────────────────────────────────
-      await replay({ from: componentValid1Id, to: componentBId });
+      await replay({ from: componentValid1Id, to: componentBId }, 'component_not_found');
       await assertBundleValidUnchanged();
 
       // ── 3. composant : inexistant ─────────────────────────────────────────
-      await replay({ from: componentValid1Id, to: crypto.randomUUID() });
+      await replay({ from: componentValid1Id, to: crypto.randomUUID() }, 'component_not_found');
       await assertBundleValidUnchanged();
 
       // ── 4. bundleProductId : autre boutique du même tenant ──────────────
-      await replay({ from: bundleValidId, to: bundleA2Id });
+      await replay({ from: bundleValidId, to: bundleA2Id }, 'bundle_not_found');
       await assertBundleValidUnchanged();
       const compositionBundleA2 = await readComposition(bundleA2Id);
       expect(compositionBundleA2).toHaveLength(0);
@@ -254,13 +260,13 @@ test.describe('saveBundleConfigurationAction — isolation boutique/tenant (fuit
       expect(bundleA2Flag?.is_bundle).toBe(true);
 
       // ── 5. bundleProductId : autre tenant ────────────────────────────────
-      await replay({ from: bundleValidId, to: bundleBId });
+      await replay({ from: bundleValidId, to: bundleBId }, 'bundle_not_found');
       await assertBundleValidUnchanged();
       const compositionBundleB = await readComposition(bundleBId);
       expect(compositionBundleB).toHaveLength(0);
 
       // ── 6. bundleProductId : inexistant ──────────────────────────────────
-      await replay({ from: bundleValidId, to: crypto.randomUUID() });
+      await replay({ from: bundleValidId, to: crypto.randomUUID() }, 'bundle_not_found');
       await assertBundleValidUnchanged();
     } finally {
       await cleanupUsers(admin, userIds);
