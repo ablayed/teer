@@ -230,19 +230,19 @@ export const setLowStockThresholdAction = requireRole('owner', 'manager')
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
-    const merchantAccountId = await getMerchantAccountId(ctx.user.id);
-    if (!merchantAccountId) {
-      return { ok: false as const, message: 'Compte marchand introuvable.' };
-    }
+    const scopedProduct = await resolveActiveStoreProduct(
+      ctx.supabase as unknown as SupabaseClient<Database>,
+      ctx.member.merchantAccountId,
+      parsedInput.productId,
+    );
+    if (!scopedProduct.ok) return scopedProduct;
 
     const admin = createSupabaseAdminClient();
-    const shopId = await getRequestStoreId();
-    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
     const { error } = await admin.from('product_stock').upsert(
       {
         product_id: parsedInput.productId,
-        merchant_account_id: merchantAccountId,
-        shop_id: shopId,
+        merchant_account_id: ctx.member.merchantAccountId,
+        shop_id: scopedProduct.shopId,
         low_stock_threshold: parsedInput.threshold,
       },
       { onConflict: 'product_id' },
