@@ -234,7 +234,10 @@
 pnpm test:rls     # vitest run tests/rls — needs a running Supabase stack (SUPABASE_URL/ANON_KEY/SERVICE_ROLE_KEY via .env.test)
 pnpm test:e2e     # playwright test — Playwright manages pnpm dev itself; do NOT pre-start dev
 pnpm db:types     # regenerate lib/supabase/database.types.ts from the linked project
+$env:VERCEL_ENV='preview'; pnpm build   # LOCAL BUILD — see box below, do not run pnpm build bare
 ```
+
+> ⚠️ **`pnpm build` bare, locally, WILL fail — this is not a real failure, run it as shown above.** `next build` hardcodes `NODE_ENV=production`. `isProductionEnvironment` (`lib/security/environment-validation.ts`) falls back to `NODE_ENV` only when `VERCEL_ENV` is unset — on a real Vercel build `VERCEL_ENV` is always set (`production`/`preview`/`development`), but a local shell never sets it, so the guard fires and throws `Unsafe production environment configuration: …` (missing `CRON_SECRET`/`UPSTASH_REDIS_REST_TOKEN`/etc.). **This is not a secrets problem — do not go hunting for `.env.local` values to fill in.** Set `$env:VERCEL_ENV='preview'` (PowerShell) / `VERCEL_ENV=preview` (bash) before `pnpm build` and it passes. Hit 3 times in one session before this box existed — if you're about to interpret a local `pnpm build` failure as a real regression or start adding secrets, stop and set this var first. Unrelated to dette (h) below (which is about `.env.local` vs `.env.test` for `E2E_PROD_BUILD=1`, a different env-baking problem).
 
 Single unit test: `pnpm vitest run tests/unit/orders/<file>.test.ts` or `pnpm vitest -t "<test name>"`.
 Single e2e spec: `pnpm exec playwright test tests/e2e/<spec>.ts --project=chromium`.
