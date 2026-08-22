@@ -20,7 +20,7 @@ function postStockMovementRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) 
   ) => Promise<{ data: string | null; error: { message: string } | null }>;
 }
 
-async function resolveActiveStoreProduct(
+export async function resolveActiveStoreProduct(
   supabase: SupabaseClient<Database>,
   merchantAccountId: string,
   productId: string,
