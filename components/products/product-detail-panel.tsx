@@ -19,11 +19,14 @@ type ComponentLine = {
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
+  bundle_not_found: 'Ce produit est introuvable dans la boutique active. Rechargez la page.',
   component_is_bundle: 'Ce produit est déjà un bundle, il ne peut pas être ajouté comme composant.',
+  component_not_found: 'Un composant sélectionné est introuvable dans la boutique active.',
   duplicate_component: 'Chaque composant ne peut apparaître qu’une seule fois dans la liste.',
   product_used_as_component:
     "Ce produit est déjà utilisé comme composant d'un autre bundle, il ne peut pas devenir lui-même un bundle. Retirez-le d'abord de l'autre composition.",
   self_reference: 'Un produit ne peut pas être son propre composant.',
+  store_required: 'Aucune boutique active. Rechargez la page.',
   update_failed: 'Impossible d’enregistrer la configuration. Réessayez.',
 };
 

@@ -1,6 +1,7 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
+import { resolveActiveStoreProduct } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
 import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-availability';
 import type { Database, Tables } from '@/lib/supabase/database.types';
@@ -69,10 +70,13 @@ const saveBundleConfigurationSchema = z.object({
 });
 
 type BundleConfigErrorCode =
+  | 'bundle_not_found'
   | 'component_is_bundle'
+  | 'component_not_found'
   | 'duplicate_component'
   | 'product_used_as_component'
   | 'self_reference'
+  | 'store_required'
   | 'update_failed';
 
 function createSupabaseAdminClient() {
@@ -514,8 +518,9 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
   .inputSchema(saveBundleConfigurationSchema)
   .action(async ({ ctx, parsedInput }) => {
     const supabase = ctx.supabase as unknown as SupabaseServerClient;
-    const shopId = await getRequestStoreId();
-    if (!shopId) return { ok: false as const, errorCode: 'store_required' as const };
+    const shopIdBeforeAnyMutation = await getRequestStoreId();
+    if (!shopIdBeforeAnyMutation)
+      return { ok: false as const, errorCode: 'store_required' as const };
     const { productId, isBundle, components } = parsedInput;
 
     // Auto-référence (bundle_product_id === component_product_id) volontairement NON
@@ -530,6 +535,40 @@ export const saveBundleConfigurationAction = requireRole('owner', 'manager')
         ok: false as const,
         errorCode: 'duplicate_component' satisfies BundleConfigErrorCode,
       };
+    }
+
+    // Fuite 2 (post-mortem 0137) : component_product_id/bundle_product_id n'étaient
+    // jamais confrontés à la boutique active avant d'être écrits — un identifiant
+    // forgé (autre boutique du même tenant, ou autre tenant) passait tel quel jusqu'au
+    // trigger SQL, qui les rattrapait mais APRÈS que le `delete` ait déjà vidé une
+    // composition existante valide. Toute résolution se fait donc ici, avant la
+    // première mutation (`product.update`), sur id + merchant_account_id + shop_id —
+    // même motif que resolveActiveStoreProduct (lib/actions/stock.ts), réutilisé tel
+    // quel plutôt que dupliqué.
+    const bundleResolution = await resolveActiveStoreProduct(
+      supabase,
+      ctx.member.merchantAccountId,
+      productId,
+    );
+    if (!bundleResolution.ok) {
+      return { ok: false as const, errorCode: 'bundle_not_found' satisfies BundleConfigErrorCode };
+    }
+    const shopId = bundleResolution.shopId;
+
+    if (isBundle) {
+      for (const component of components) {
+        const componentResolution = await resolveActiveStoreProduct(
+          supabase,
+          ctx.member.merchantAccountId,
+          component.componentProductId,
+        );
+        if (!componentResolution.ok) {
+          return {
+            ok: false as const,
+            errorCode: 'component_not_found' satisfies BundleConfigErrorCode,
+          };
+        }
+      }
     }
 
     const { error: flagError } = await supabase
