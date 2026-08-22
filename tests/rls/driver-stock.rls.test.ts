@@ -16,6 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import { type DriverStockMovement, driverStockRows } from '@/lib/drivers/stock-on-hand';
 import type { Database } from '@/lib/supabase/database.types';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -184,9 +185,9 @@ afterEach(async () => {
   createdUserIds.length = 0;
 });
 
-describe('post_stock_movement — cœur temporairement ouvert / capacité publique scopée (0134/0135)', () => {
+describe('post_stock_movement — cœur privé (0136) / capacité publique scopée', () => {
   skipIfNoServiceRole(
-    'un owner authentifié atteint le cœur temporairement rouvert et la surcharge publique scopée',
+    'un owner authentifié ne peut plus atteindre le cœur en HTTP ; la surcharge publique scopée reste résolue',
     async () => {
       const { admin, email, merchantAccountId, userId } =
         await createOwnerFixture('public-capability');
@@ -206,27 +207,39 @@ describe('post_stock_movement — cœur temporairement ouvert / capacité publiq
         p_movement_type: 'manual_adjustment',
         p_qty: 1,
         p_created_by: userId,
-        p_reason: 'preuve grant 0134',
+        p_reason: 'preuve 0136',
       };
 
-      // 0135 a rouvert temporairement le cœur à authenticated pour les
-      // transitions SECURITY INVOKER; la protection du cœur relève d'un lot dédié.
+      // 0136 a déplacé le cœur à 12 arguments dans le schéma `private`, non exposé
+      // par PostgREST : ce contournement HTTP authenticated (0134/0135) est fermé,
+      // pour TOUS les rôles, pas seulement l'agent — c'est le point exact de ce lot.
+      // PGRST202 (fonction introuvable), pas 42501 (droit refusé) : la barrière est
+      // au niveau du cache de schéma PostgREST, pas des grants SQL.
       const core = await post('post_stock_movement', {
         ...payload,
-        p_idempotency_key: `0134:core:${productId}`,
+        p_idempotency_key: `0136:core:${productId}`,
       });
-      expect(core.error).toBeNull();
-      expect(core.data).not.toBeNull();
+      expect(core.error).not.toBeNull();
+      expect(core.error?.message ?? '').toContain('Could not find the function');
 
       // Même charge utile, enrichie du contexte de boutique obligatoire : la
-      // surcharge 13-arguments est résolue et exécute le mouvement.
+      // surcharge 13-arguments, elle, reste publique — signature/grants/gardes
+      // inchangés par 0136, seule sa cible interne qualifiée a changé.
       const scoped = await post('post_stock_movement', {
         ...payload,
-        p_idempotency_key: `0134:public:${productId}`,
+        p_idempotency_key: `0136:public:${productId}`,
         p_expected_shop_id: product.shop_id,
       });
       expect(scoped.error).toBeNull();
       expect(scoped.data).not.toBeNull();
+
+      // Aucune écriture fantôme depuis l'appel refusé sur le cœur : un seul
+      // mouvement au ledger, celui posé par la surcharge publique.
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('id')
+        .eq('product_id', productId);
+      expect(movements).toHaveLength(1);
     },
   );
 });
@@ -328,10 +341,10 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
       await seedDriverShop(admin, merchantAccountId, driverId);
-      const post = postMovementRpc(admin);
 
+      // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
       // purchase_in 100 → entrepôt 100
-      await post('post_stock_movement', {
+      await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -342,7 +355,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       });
 
       // allocate_to_courier -30 → ledger-only depuis 0093 : entrepôt reste 100
-      const { error: allocErr } = await post('post_stock_movement', {
+      const { error: allocErr } = await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'allocate_to_courier',
@@ -354,7 +367,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       expect(allocErr).toBeNull();
 
       // courier_return_lot +10 → ledger-only depuis 0093 : entrepôt reste 100
-      await post('post_stock_movement', {
+      await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'courier_return_lot',
@@ -396,11 +409,11 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
       await seedDriverShop(admin, merchantAccountId, driverId);
-      const post = postMovementRpc(admin);
 
+      // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
       // purchase_in 100 puis allocate_to_courier -30 → ledger-only depuis 0093,
       // entrepôt reste 100.
-      await post('post_stock_movement', {
+      await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -409,7 +422,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
         p_created_by: userId,
         p_unit_cost: 5000,
       });
-      await post('post_stock_movement', {
+      await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'allocate_to_courier',
@@ -453,9 +466,9 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
     const productId = await createProduct(admin, merchantAccountId);
     const driverId = await createDriver(admin, merchantAccountId);
     await seedDriverShop(admin, merchantAccountId, driverId);
-    const post = postMovementRpc(admin);
 
-    await post('post_stock_movement', {
+    // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+    await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: productId,
       p_movement_type: 'purchase_in',
@@ -466,7 +479,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
     });
 
     const key = `idem:${productId}:alloc`;
-    const { data: id1 } = await post('post_stock_movement', {
+    const { data: id1 } = await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: productId,
       p_movement_type: 'allocate_to_courier',
@@ -477,7 +490,7 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
     });
     expect(id1).not.toBeNull();
 
-    const { data: id2 } = await post('post_stock_movement', {
+    const { data: id2 } = await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: productId,
       p_movement_type: 'allocate_to_courier',
@@ -502,9 +515,9 @@ describe('lot livreur : allocate_to_courier / courier_return_lot + invariant', (
   skipIfNoServiceRole('un lot sans livreur est rejeté (contrainte)', async () => {
     const { admin, merchantAccountId, userId } = await createOwnerFixture('lot-nodriver');
     const productId = await createProduct(admin, merchantAccountId);
-    const post = postMovementRpc(admin);
 
-    const { error } = await post('post_stock_movement', {
+    // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+    const { error } = await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: productId,
       p_movement_type: 'allocate_to_courier',
@@ -529,7 +542,6 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
     await seedDriverShop(admin, merchantAccountId, driverId);
     const ownerClient = await signIn(email);
     const post = postMovementRpc(ownerClient);
-    const seedPost = postMovementRpc(admin);
     const { data: product } = await admin
       .from('product')
       .select('shop_id')
@@ -538,7 +550,8 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
     if (!product?.shop_id) throw new Error('product shop_id missing');
 
     // Stock central : purchase_in 100 → entrepôt 100.
-    await seedPost('post_stock_movement', {
+    // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+    await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: productId,
       p_movement_type: 'purchase_in',
@@ -579,12 +592,12 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
   });
 
   skipIfNoServiceRole('driver_stock_set sans livreur est rejeté (contrainte)', async () => {
-    const { admin, email, merchantAccountId, userId } = await createOwnerFixture('dss-nodriver');
+    const { admin, merchantAccountId, userId } = await createOwnerFixture('dss-nodriver');
     const productId = await createProduct(admin, merchantAccountId);
-    const ownerClient = await signIn(email);
-    const post = postMovementRpc(ownerClient);
 
-    const { error } = await post('post_stock_movement', {
+    // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe
+    // (cette garde vit dans le cœur, jamais dans la surcharge publique).
+    const { error } = await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: productId,
       p_movement_type: 'driver_stock_set',
@@ -599,14 +612,13 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
   skipIfNoServiceRole(
     "driver_stock_set n'entre jamais dans l'allowlist de réconciliation (0032/0094)",
     async () => {
-      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('dss-recon');
+      const { admin, merchantAccountId, userId } = await createOwnerFixture('dss-recon');
       const productId = await createProduct(admin, merchantAccountId);
       const driverId = await createDriver(admin, merchantAccountId);
       await seedDriverShop(admin, merchantAccountId, driverId);
-      const ownerClient = await signIn(email);
-      const post = postMovementRpc(ownerClient);
 
-      await post('post_stock_movement', {
+      // 0136 : cœur post_stock_movement dans `private` — connexion Postgres directe.
+      await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'purchase_in',
@@ -615,7 +627,7 @@ describe('driver_stock_set : ledger-only, sans effet sur product_stock', () => {
         p_created_by: userId,
         p_unit_cost: 5000,
       });
-      await post('post_stock_movement', {
+      await callStockMovementEngine({
         p_merchant_account_id: merchantAccountId,
         p_product_id: productId,
         p_movement_type: 'driver_stock_set',

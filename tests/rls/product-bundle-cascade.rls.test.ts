@@ -16,6 +16,7 @@
  */
 
 import type { Database } from '@/lib/supabase/database.types';
+import { callStockMovementEngine } from '@/tests/helpers/stock-movement-engine';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -396,11 +397,10 @@ describe('garde bundle : allocate_to_courier / courier_return_lot / driver_stock
       isBundle: true,
     });
 
-    // Ces trois appels sont des seeds service-role : ils testent la garde du cœur,
-    // chemin interne jamais atteignable depuis une session authentifiée.
-    const post = postStockMovementRpc(admin);
-
-    const allocate = await post('post_stock_movement', {
+    // Ces deux appels exercent la garde du cœur, chemin interne jamais atteignable
+    // depuis une session authentifiée. 0136 : le cœur vit dans `private`, non exposé
+    // par PostgREST — connexion Postgres directe.
+    const allocate = await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: bundleId,
       p_movement_type: 'allocate_to_courier',
@@ -412,7 +412,7 @@ describe('garde bundle : allocate_to_courier / courier_return_lot / driver_stock
     expect(allocate.error).not.toBeNull();
     expect(allocate.error?.message).toMatch(/cannot be the target of movement_type/);
 
-    const returnLot = await post('post_stock_movement', {
+    const returnLot = await callStockMovementEngine({
       p_merchant_account_id: merchantAccountId,
       p_product_id: bundleId,
       p_movement_type: 'courier_return_lot',
