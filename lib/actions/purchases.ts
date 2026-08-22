@@ -1,6 +1,7 @@
 'use server';
 
 import { requireRole } from '@/lib/actions/safe-action';
+import { resolveProductInShop } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
 import { computeEta, formatEtaDate } from '@/lib/purchases/eta';
 import { allocateFees } from '@/lib/purchases/fee-allocation';
@@ -69,6 +70,21 @@ export const createPurchaseLotAction = requireRole('owner')
     // créer depuis une autre boutique.
     const shopId = await getRequestStoreId();
     if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // Fuite 3 (post-mortem 0138) : chaque productId doit être confronté à la boutique
+    // AVANT la première mutation — createPurchaseLotAction fait 2 appels PostgREST non
+    // transactionnels (lot puis lignes) ; un refus après l'insert du lot laisserait un
+    // lot orphelin en base. Ici la boutique active EST la boutique du lot qu'on s'apprête
+    // à créer (même valeur) : resolveProductInShop(shopId=active) est donc le bon parent.
+    for (const line of parsedInput.lines) {
+      const resolution = await resolveProductInShop(
+        admin,
+        merchantAccountId,
+        shopId,
+        line.productId,
+      );
+      if (!resolution.ok) return { ok: false as const, message: resolution.message };
+    }
 
     const { data: lot, error: lotErr } = await admin
       .from('purchase_lot')
@@ -150,6 +166,17 @@ export const addPurchaseLotLineAction = requireRole('owner')
 
     if (!lot) return { ok: false as const, message: 'Lot introuvable.' };
     if (lot.status === 'received') return { ok: false as const, message: 'Lot déjà reçu.' };
+
+    // Fuite 3 (post-mortem 0138) : confronte productId à la boutique DU LOT, jamais la
+    // boutique active — l'utilisateur a pu en changer depuis la création du lot. Avant
+    // la première (et unique) mutation de cette action.
+    const resolution = await resolveProductInShop(
+      admin,
+      merchantAccountId,
+      lot.shop_id,
+      parsedInput.productId,
+    );
+    if (!resolution.ok) return { ok: false as const, message: resolution.message };
 
     const { error } = await admin.from('purchase_lot_line').insert({
       merchant_account_id: merchantAccountId,
