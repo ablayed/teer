@@ -24,13 +24,14 @@ La purge d’identité est bloquée par toute commande active, livraison ouverte
 
 L’exécution est bornée à 100 lignes par catégorie et utilise `FOR UPDATE SKIP LOCKED`. Les artefacts DSAR suivent deux phases : claim avec lease, suppression Storage vérifiée, puis finalisation SQL. Une erreur Storage conserve la métadonnée en état retryable avec backoff.
 
-## Déclenchement futur
+## Déclenchement — activé
 
-La route interne `/api/cron/shopify-pcd-retention` accepte `mode=dry-run` ou `mode=execute`, exige `Authorization: Bearer <CRON_SECRET>`, refuse toute configuration absente et borne la taille des lots. Elle n’est pas ajoutée à `vercel.json` dans ce lot : aucun cron distant n’est activé.
+La route interne `/api/cron/shopify-pcd-retention` accepte `mode=dry-run` ou `mode=execute`, exige `Authorization: Bearer <CRON_SECRET>`, refuse toute configuration absente et borne la taille des lots (défaut 25, max 100, par catégorie).
+
+**Activée dans `vercel.json` à `0 3 * * *`** (03:00 UTC quotidien, `mode=execute`), après validation par le porteur : volumétrie de production nulle sur les 6 catégories (aucun arriéré), confirmée par la requête de contrôle du Stage 0 ; la séquence progressive de purge manuelle par lots n'a donc pas été nécessaire, seul un dry-run de contrôle a suffi. Horaire choisi 1h après `shopify-reconcile` (02:00) pour ne jamais chevaucher (durée max 300s de reconcile), et à distance de `keep-alive` (06:00, tous les 3 jours). Une exécution quotidienne est le plancher pratique du plan Hobby (crons limités à une exécution par jour, précision ±59 min) et correspond à la fenêtre la plus courte du produit (artefact DSAR, 24 heures) : une cadence quotidienne est donc à la fois le maximum permis par le plan et le minimum utile pour ne pas laisser un artefact DSAR expiré traîner plus d'un jour.
 
 ## Limites restantes
 
-- migration `0122` appliquée en production ; route validée localement et purge distante non prouvée ;
-- activation quotidienne à faire séparément après validation juridique et preuve de production ;
+- migration `0122` appliquée en production ; route désormais planifiée quotidiennement, preuve de purge de production en régime réel (au-delà du dry-run de contrôle) à observer sur les prochains runs ;
 - chiffrement de production, DLP, journalisation générale des lectures PCD et réponse aux incidents restent S1C/S1D ;
-- la suppression planifiée des artefacts et tombstones n’est effective qu’après activation du runner.
+- **asymétrie de traçabilité, à corriger avant la soumission Phase 4** : `execute_shopify_pcd_retention` (catégorie `expired_customer_identity`) appelle `redact_shopify_customer_copies` — la même fonction que le webhook `customers/redact` — mais, à la différence de `handleGdprWebhook` (qui écrit `audit_log` avec `action: 'gdpr.customers/redact'`), la boucle de purge automatique n'écrit **aucune ligne `audit_log`**. Seul un compteur agrégé sans identifiant client est conservé dans `shopify_pcd_purge_run`. Deux chemins mènent à la même destruction irréversible de l'identité d'un client ; un seul est tracé nommément. Ne pas corriger au fil de l'eau — traiter comme un lot dédié avant soumission, avec sa propre migration si `audit_log` doit être alimenté depuis `execute_shopify_pcd_retention`.
