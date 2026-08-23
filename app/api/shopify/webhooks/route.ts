@@ -57,6 +57,7 @@ function logWebhookError(message: string, ...details: unknown[]) {
 
 const CONTROLLED_WEBHOOK_ERROR_CODES = new Set([
   'gdpr_shop_domain_missing',
+  'gdpr_shop_domain_mismatch',
   'gdpr_shop_lookup_failed',
   'gdpr_shop_not_found',
   'gdpr_customer_id_missing',
@@ -78,6 +79,8 @@ const CONTROLLED_WEBHOOK_ERROR_CODES = new Set([
   'shopify_refund_order_update_failed',
   'shopify_refund_audit_failed',
   'shopify_pcd_audit_failed',
+  'shopify_uninstall_shop_domain_missing',
+  'shopify_uninstall_shop_domain_mismatch',
 ]);
 
 function sanitizeWebhookError(error: unknown): string {
@@ -308,6 +311,51 @@ function resolveShopDomain(headerShopDomain: string | null, payload: unknown): s
   return stringField(payload, 'shop_domain') ?? stringField(payload, 'myshopify_domain');
 }
 
+type SignedShopDomainResult =
+  | { ok: true; shopDomain: string }
+  | { ok: false; reason: 'missing' | 'mismatch' };
+
+// Résolution AUTORITATIVE de la boutique pour les topics dont le corps signé porte l'identité
+// (customers/data_request, customers/redact, shop/redact, app/uninstalled) — PAS pour orders/*,
+// products/*, refunds/create, bulk_operations/finish, dont le corps Shopify ne contient jamais
+// de shop_domain/shop_id (vérifié contre les fixtures E2E de ce dépôt, incident 2026-08-23).
+//
+// x-shopify-hmac-sha256 ne couvre QUE le corps brut — jamais les en-têtes. x-shopify-shop-domain
+// n'est donc pas authentifié. Un secret d'app Shopify est partagé par TOUTES les boutiques
+// installées sous cette app (lib/shopify/apps.ts : 4 apps fixes, dont teer-dev = app publique par
+// défaut) — un HMAC valide prouve seulement « signé par une boutique de cette app », jamais
+// laquelle. Un attaquant capturant un (rawBody, hmac) valide pour SA PROPRE boutique peut donc le
+// rejouer avec un x-shopify-shop-domain forgé désignant une boutique VICTIME de la même app, tant
+// que rien ne confronte le domaine du header à celui du corps signé.
+//
+// Contrat : le shop_domain du CORPS est la seule source de confiance ; le header n'est comparé à
+// titre de garde-fou. Toute divergence, ou absence des deux, refuse AVANT toute écriture.
+// `allowHeaderFallback` n'existe que pour app/uninstalled, dont le corps peut arriver vide selon
+// le SDK Shopify (comportement Shopify externe, non vérifiable depuis ce dépôt) — ne jamais le
+// passer à true pour un autre appelant.
+function resolveSignedShopDomain(
+  headerShopDomain: string | null,
+  payload: unknown,
+  { allowHeaderFallback = false }: { allowHeaderFallback?: boolean } = {},
+): SignedShopDomainResult {
+  const bodyShopDomain = isRecord(payload)
+    ? (stringField(payload, 'shop_domain') ?? stringField(payload, 'myshopify_domain'))
+    : null;
+
+  if (bodyShopDomain) {
+    if (headerShopDomain && headerShopDomain !== bodyShopDomain) {
+      return { ok: false, reason: 'mismatch' };
+    }
+    return { ok: true, shopDomain: bodyShopDomain };
+  }
+
+  if (allowHeaderFallback && headerShopDomain) {
+    return { ok: true, shopDomain: headerShopDomain };
+  }
+
+  return { ok: false, reason: 'missing' };
+}
+
 function toJson(value: unknown): Json {
   return JSON.parse(JSON.stringify(value)) as Json;
 }
@@ -509,12 +557,24 @@ async function handleAppUninstalledWebhook({
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
 }) {
-  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+  // Corps signé autoritatif ; le header n'est qu'un garde-fou comparé, jamais la seule source
+  // (cf. resolveSignedShopDomain — incident cross-tenant 2026-08-23). Le corps app/uninstalled
+  // peut arriver vide selon le SDK Shopify → seul topic autorisé à retomber sur le header seul.
+  const resolved = resolveSignedShopDomain(shopDomain, payload, { allowHeaderFallback: true });
 
-  if (!resolvedShopDomain) {
+  if (!resolved.ok) {
+    if (resolved.reason === 'mismatch') {
+      logWebhookError('[webhook] app/uninstalled shop domain mismatch', {
+        topic,
+        headerShopDomain: shopDomain,
+      });
+      throw new Error('shopify_uninstall_shop_domain_mismatch');
+    }
     logWebhookError('[webhook] app/uninstalled missing shop domain', { topic });
-    return;
+    throw new Error('shopify_uninstall_shop_domain_missing');
   }
+
+  const resolvedShopDomain = resolved.shopDomain;
 
   const shop = await getShopByDomain({ shopDomain: resolvedShopDomain, supabase });
 
@@ -523,9 +583,12 @@ async function handleAppUninstalledWebhook({
     return;
   }
 
-  // Désinstallation PAR BOUTIQUE : on marque UNIQUEMENT cette boutique (shop_domain unique)
-  // uninstalled + on révoque ses tokens (le refresh + les expirations) → sa sync s'arrête
-  // (les selects filtrent status='active'). Les autres boutiques et le compte ne sont pas touchés.
+  // Désinstallation PAR BOUTIQUE : on marque UNIQUEMENT cette boutique uninstalled + on révoque
+  // ses tokens (le refresh + les expirations) → sa sync s'arrête (les selects filtrent
+  // status='active'). Les autres boutiques et le compte ne sont pas touchés.
+  // Défense en profondeur : shop_domain seul reste la clé la plus fragile même une fois le
+  // domaine confirmé par le corps signé — id et merchant_account_id (déjà en main depuis le
+  // SELECT ci-dessus) sont ajoutés pour qu'aucune écriture ne repose sur une seule colonne.
   const { error: updateError } = await supabase
     .from('shop')
     .update({
@@ -536,6 +599,8 @@ async function handleAppUninstalledWebhook({
       refresh_token_expires_at: null,
       updated_at: new Date().toISOString(),
     })
+    .eq('id', shop.id)
+    .eq('merchant_account_id', shop.merchant_account_id)
     .eq('shop_domain', resolvedShopDomain);
 
   if (updateError) {
@@ -728,15 +793,28 @@ async function handleGdprWebhook({
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
 }): Promise<GdprProcessResult> {
-  const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
+  // Corps signé autoritatif ; le header n'est qu'un garde-fou comparé, jamais la seule source
+  // (cf. resolveSignedShopDomain — incident cross-tenant 2026-08-23). Les 3 topics GDPR portent
+  // shop_domain dans leur corps signé (vérifié contre les fixtures E2E de ce dépôt) : aucun
+  // repli sur le header n'est autorisé ici.
+  const resolved = resolveSignedShopDomain(shopDomain, payload);
+
+  if (!resolved.ok) {
+    if (resolved.reason === 'mismatch') {
+      logWebhookError(`[webhook] GDPR ${topic} shop domain mismatch`, {
+        topic,
+        headerShopDomain: shopDomain,
+      });
+      throw new Error('gdpr_shop_domain_mismatch');
+    }
+    throw new Error('gdpr_shop_domain_missing');
+  }
+
+  const resolvedShopDomain = resolved.shopDomain;
 
   logWebhookInfo(`[webhook] GDPR ${topic} received`, {
     shopDomain: resolvedShopDomain,
   });
-
-  if (!resolvedShopDomain) {
-    throw new Error('gdpr_shop_domain_missing');
-  }
 
   const shop = await getGdprShopByDomain({ shopDomain: resolvedShopDomain, supabase });
 
@@ -965,9 +1043,12 @@ function isTerminalWebhookError(error: unknown): boolean {
   const code = sanitizeWebhookError(error);
   return new Set([
     'gdpr_shop_domain_missing',
+    'gdpr_shop_domain_mismatch',
     'gdpr_shop_not_found',
     'gdpr_customer_id_missing',
     'gdpr_topic_not_supported',
+    'shopify_uninstall_shop_domain_missing',
+    'shopify_uninstall_shop_domain_mismatch',
   ]).has(code);
 }
 
@@ -994,8 +1075,23 @@ async function processWebhook({
     'customers/redact',
     'shop/redact',
   ]);
-  if (pcdTopics.has(topic) && shopDomain) {
-    const shop = await getShopByDomain({ shopDomain, supabase });
+  // Pré-audit PCD : pour les 3 topics GDPR (corps signé porteur de shop_domain), la même
+  // confrontation corps/header que handleGdprWebhook s'applique ici — sinon cette écriture
+  // d'audit se produirait AVANT le refus déclenché plus bas dans le dispatcher, avec un
+  // merchant_account_id/shop_id potentiellement forgé (incident cross-tenant 2026-08-23).
+  // orders/*/bulk_operations/finish restent sur le header seul : leur corps Shopify ne porte
+  // structurellement aucune identité boutique signée (cf. rapport Lot H), rien à confronter.
+  const isGdprSignedTopic =
+    topic === 'customers/data_request' || topic === 'customers/redact' || topic === 'shop/redact';
+  const pcdShopDomain = isGdprSignedTopic
+    ? (() => {
+        const resolved = resolveSignedShopDomain(shopDomain, payload);
+        return resolved.ok ? resolved.shopDomain : null;
+      })()
+    : shopDomain;
+
+  if (pcdTopics.has(topic) && pcdShopDomain) {
+    const shop = await getShopByDomain({ shopDomain: pcdShopDomain, supabase });
     if (shop) {
       try {
         await writePcdAccessAudit(supabase, {
