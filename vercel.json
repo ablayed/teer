@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/shopify-reconcile",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/shopify-pcd-retention?mode=execute",
+      "schedule": "0 3 * * *"
     }
   ]
 }
