@@ -73,11 +73,14 @@ périmètre `assistant/chat` signalé séparément :
 - **`get_customer_reliability`** : `SECURITY INVOKER`, sécurité entièrement dépendante des policies
   RLS de `customer`/`orders`/`order_state_transition`/`merchant_member`/`call_log`. Ces policies
   n'ont pas été ré-auditées dans le Lot F (elles l'ont été dans des lots RLS antérieurs selon
-  `CLAUDE.md`, non revérifiées à cette occasion). Le sweep du lot `0140` (cf. §8) a confirmé une
-  couche de protection supplémentaire non identifiée par le Lot F : ces 5 tables n'accordent aucun
-  `GRANT` à `anon`/`PUBLIC`, donc un appel `anon` échoue par « permission denied » avant même
-  l'évaluation de la RLS — mais ceci ne dispense pas de vérifier que la RLS elle-même est correcte
-  pour un rôle `authenticated` non membre du tenant concerné.
+  `CLAUDE.md`, non revérifiées à cette occasion). **Testé empiriquement en rôle `anon`** (transaction
+  ouverte en local, `merchant_id`/`customer_id` réels avec historique de commandes, `ROLLBACK` — pas
+  une déduction de code) : `select * from get_customer_reliability(...)` renvoie **0 ligne**. Les 5
+  tables sources n'accordent aucun `GRANT` à `anon`/`PUBLIC`, donc un appel `anon` échoue avant même
+  l'évaluation de la RLS. Exposée à l'exécution (`EXECUTE`) depuis `0014`, à travers le `DROP+CREATE`
+  de `0049`, jamais exploitable en pratique. Fermée par `0140` (cf. §3) — ceci ne dispense pas de
+  vérifier que la RLS elle-même reste correcte pour un rôle `authenticated` non membre du tenant
+  concerné, question distincte non retraitée ici.
 - **`assistant/chat`** : `buildAiToolSet` et la RLS de `ia_conversation` n'ont été vérifiés ni dans
   le Lot F (hors périmètre — ce n'est pas une RPC Postgres) ni dans ce lot.
 
@@ -90,26 +93,54 @@ lot où il restera valide.
 
 ---
 
-## 3. Migration 0140 — clôture du code mort exposé
+## 3. Migration 0140 — clôture du code mort exposé + de l'exécution ouverte à `anon`
 
 `supabase/migrations/0140_close_public_execute_gaps.sql` (écrite dans ce lot, **non poussée** — cf.
 §8 pour la procédure de vérification et le détail complet).
 
-Ferme trois classes de surface d'attaque gratuite, aucune fuite de données prouvée sur aucune des 11
-fonctions touchées :
+**Un premier balayage (texte des migrations) avait trouvé 9 fonctions dans cet état et en avait
+raté 7 — corrigé avant clôture de ce document, pas après.** Cause identifiée, pas supposée : ce
+projet tourne sur Supabase, dont le bootstrap de plateforme accorde `EXECUTE` **nommément** à
+`anon`/`authenticated`/`service_role` sur toute fonction créée dans `public` — pas via le pseudo-rôle
+`PUBLIC`. Un `revoke ... from public` (sans nommer `anon`) est alors un **no-op silencieux** pour ce
+mécanisme : la migration a l'air fermée en texte tout en restant grande ouverte en ACL réelle. C'est
+exactement ce qui s'est produit sur 5 fonctions dont les migrations d'origine (`0040`/`0041`/`0123`)
+contenaient un `revoke ... from public` jamais accompagné de `from anon`. Le mécanisme symétrique
+existe aussi : `reassign_order_driver` a reçu un `revoke ... from anon` en `0139` qui n'a RIEN retiré,
+car son exposition venait du défaut `PUBLIC` classique de PostgreSQL (jamais un grant nommé à `anon`
+à révoquer). **Seule une requête directe sur `pg_proc.proacl`, avant et après, permet de trancher —
+jamais la présence d'une instruction `revoke` dans le SQL.** Vérifié ainsi pour les 15 fonctions
+vivantes de ce fichier (capture avant/après sauvegardée), pas déduit du texte des migrations.
+
+Ferme quatre classes de surface d'attaque gratuite sur **18 fonctions**, aucune fuite de données
+prouvée sur aucune des 15 vivantes — 9 par lecture de garde de rôle NULL-safe/RLS, **6 par test
+empirique réel** (rôle `anon`, IDs de seed réels, transaction ouverte puis `ROLLBACK`) :
 
 - **3 fonctions mortes** (`list_orders_paginated`, `orders_view_counts`, `list_customer_reliability`)
   — zéro appelant TS/SQL/E2E confirmé, `revoke` total y compris `authenticated`.
-- **4 fonctions vivantes** avec un grant `authenticated` déjà posé par une migration antérieure
+- **8 fonctions vivantes** avec un grant `authenticated` déjà posé par une migration antérieure
   (`cash_aging`, `receive_purchase_lot`, `resolve_order_required_component_quantities`,
-  `get_customer_reliability`) — `revoke` de `public`/`anon` uniquement, le grant `authenticated`
-  existant n'est pas touché.
-- **4 fonctions vivantes n'ayant jamais reçu le moindre grant explicite** depuis leur création
+  `get_customer_reliability`, `ia_finance_cost_movements`, `ia_product_cump`,
+  `ia_count_recent_tool_calls`, `log_ia_tool_audit`, `reassign_order_driver`) — `revoke` de
+  `public`/`anon` uniquement, le grant `authenticated` existant n'est pas touché.
+- **5 fonctions vivantes n'ayant jamais reçu le moindre grant explicite** depuis leur création
   (`is_member_of`, `order_items_search_text`, `derive_legacy_cod_status`,
-  `validate_pcd_access_audit_metadata`) — `revoke` de `public`/`anon` **puis** `grant` explicite à
-  `authenticated`, pour ne rien casser. `is_member_of` en particulier est appelée directement dans
-  6 fichiers de policies RLS ; sans ce grant, toute requête `authenticated` sur les tables scopées
-  merchant aurait échoué en `permission denied`.
+  `validate_pcd_access_audit_metadata`, `sn_phone_e164`) — `revoke` de `public`/`anon` **puis**
+  `grant` explicite à `authenticated`, pour ne rien casser. `is_member_of` en particulier est
+  appelée directement dans 6 fichiers de policies RLS ; sans ce grant, toute requête `authenticated`
+  sur les tables scopées merchant aurait échoué en `permission denied`.
+- **1 fonction déjà restreinte à `service_role`** (`purge_pcd_access_audit`) — `revoke` de
+  `public`/`anon` seulement, aucun grant `authenticated` ajouté (la fonction refuse tout appelant
+  qui n'est pas `service_role`, testé empiriquement : `42501`).
+
+**Preuve empirique par fonction** (rôle `anon`, en transaction, `ROLLBACK` — aucune trace laissée) :
+`get_customer_reliability` → 0 ligne sur un couple merchant/customer réel avec historique ;
+`reassign_order_driver` → `order_not_found` sur un ordre réel, `assigned_driver_id` inchangé après
+coup (vérifié explicitement) ; `log_ia_tool_audit` → `NULL` retourné, aucune ligne insérée (vérifié
+par comptage après coup) ; `ia_count_recent_tool_calls` → `0` ; `purge_pcd_access_audit` → exception
+`42501`. `ia_finance_cost_movements`/`ia_product_cump` protégées par la garde NULL-safe du fix `0042`
+(incident historique déjà documenté, non re-testée empiriquement ici car déjà mutation-testée à
+l'époque). `sn_phone_e164` est une fonction pure sans accès table.
 
 Détail complet, table par table, dans le corps du fichier de migration.
 
