@@ -680,3 +680,301 @@ test('app/uninstalled désactive uniquement la boutique concernée', async ({ re
     await admin.auth.admin.deleteUser(userId);
   }
 });
+
+// --- Incident cross-tenant resolveShopDomain (2026-08-23) --------------------------------------
+// x-shopify-hmac-sha256 ne couvre que le corps brut, jamais x-shopify-shop-domain. Toutes les
+// boutiques semées par ce fichier retombent sur l'app par défaut du harness E2E (aucune ne
+// définit shopify_client_id) — exactement la condition « même app, secret partagé » qui rend
+// l'attaque possible en production (cf. lib/shopify/apps.ts, teer-dev = app publique par défaut).
+// Le corps est signé pour la boutique ATTAQUANTE (C) ; le header prétend être la boutique
+// VICTIME (A). Avant le correctif, resolveShopDomain préférait le header → la victime était
+// affectée. Après : refus avant toute écriture, sur les 4 topics dont le corps porte l'identité.
+
+async function waitForTerminalWebhookEvent(
+  admin: AdminClient,
+  webhookId: string,
+): Promise<{ status: string; last_error_code: string | null }> {
+  let row: { status: string; last_error_code: string | null } | null = null;
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('webhook_event')
+          .select('status, last_error_code')
+          .eq('shopify_webhook_id', webhookId)
+          .maybeSingle();
+        row = data as typeof row;
+        return row?.status ?? '';
+      },
+      { timeout: 15_000, intervals: [200, 400, 800] },
+    )
+    .toBe('terminal');
+  if (!row) throw new Error(`webhook_event introuvable pour ${webhookId}`);
+  return row;
+}
+
+test.describe('incident cross-tenant resolveShopDomain — rejeu forgé refusé sans mutation', () => {
+  test('app/uninstalled : corps signé C, en-tête forgé A, même app → refus, shop A intacte', async ({
+    request,
+  }) => {
+    const admin = adminClient();
+    const victim = await createMerchant(admin);
+    const attacker = await createMerchant(admin);
+    try {
+      const { shopDomain: shopDomainA, shopId: shopIdA } = await seedShop(
+        admin,
+        victim.merchantAccountId,
+      );
+      const { shopDomain: shopDomainC } = await seedShop(admin, attacker.merchantAccountId);
+
+      const before = await admin
+        .from('shop')
+        .select('status, uninstalled_at, refresh_token_encrypted')
+        .eq('id', shopIdA)
+        .single();
+      expect(before.data).toMatchObject({ status: 'active', uninstalled_at: null });
+      const tokenBefore = before.data?.refresh_token_encrypted ?? null;
+
+      const webhookId = `wh-forged-uninstall-${shopIdA}`;
+      const res = await postWebhook(request, {
+        topic: 'app/uninstalled',
+        shopDomain: shopDomainA, // en-tête forgé : domaine de la VICTIME
+        webhookId,
+        body: { shop_domain: shopDomainC }, // corps réellement signé pour l'ATTAQUANT
+        triggeredAt: '2026-08-23T10:00:00Z',
+      });
+      // La réponse HTTP est toujours 2xx (traitement dans after()) : ne rien en déduire.
+      expect(res.status()).toBe(200);
+
+      const event = await waitForTerminalWebhookEvent(admin, webhookId);
+      expect(event.last_error_code).toBe('shopify_uninstall_shop_domain_mismatch');
+
+      const after = await admin
+        .from('shop')
+        .select('status, uninstalled_at, refresh_token_encrypted')
+        .eq('id', shopIdA)
+        .single();
+      expect(after.data?.status).toBe('active');
+      expect(after.data?.uninstalled_at).toBeNull();
+      expect(after.data?.refresh_token_encrypted).toBe(tokenBefore);
+
+      const { count: auditCount } = await admin
+        .from('audit_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', victim.merchantAccountId)
+        .eq('action', 'shopify.app_uninstalled');
+      expect(auditCount).toBe(0);
+    } finally {
+      await admin.auth.admin.deleteUser(victim.userId);
+      await admin.auth.admin.deleteUser(attacker.userId);
+    }
+  });
+
+  test('customers/data_request : corps signé C, en-tête forgé A → refus, zéro artefact DSAR chez A', async ({
+    request,
+  }) => {
+    const admin = adminClient();
+    const victim = await createMerchant(admin);
+    const attacker = await createMerchant(admin);
+    try {
+      const { shopDomain: shopDomainA } = await seedShop(admin, victim.merchantAccountId);
+      const { shopDomain: shopDomainC } = await seedShop(admin, attacker.merchantAccountId);
+      const attackerCustomerId = String(70_000_000 + Math.floor(Math.random() * 1_000_000));
+
+      const webhookId = `wh-forged-data-request-${attackerCustomerId}`;
+      const res = await postWebhook(request, {
+        topic: 'customers/data_request',
+        shopDomain: shopDomainA,
+        webhookId,
+        body: { shop_domain: shopDomainC, customer: { id: attackerCustomerId } },
+        triggeredAt: '2026-08-23T10:01:00Z',
+      });
+      expect(res.status()).toBe(200);
+
+      const event = await waitForTerminalWebhookEvent(admin, webhookId);
+      expect(event.last_error_code).toBe('gdpr_shop_domain_mismatch');
+
+      const { count: artifactCount } = await admin
+        .from('shopify_dsar_artifact')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', victim.merchantAccountId);
+      expect(artifactCount).toBe(0);
+
+      // Second facteur : le pré-audit PCD (avant dispatcher) ne doit pas non plus avoir écrit
+      // sous le tenant victime — c'est la garde `isGdprSignedTopic` du correctif qui le prouve.
+      const { count: pcdAuditCount } = await admin
+        .from('pcd_access_audit')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', victim.merchantAccountId);
+      expect(pcdAuditCount).toBe(0);
+
+      const { data: storageList } = await admin.storage
+        .from('shopify-dsar')
+        .list(victim.merchantAccountId);
+      expect(storageList ?? []).toHaveLength(0);
+    } finally {
+      await admin.auth.admin.deleteUser(victim.userId);
+      await admin.auth.admin.deleteUser(attacker.userId);
+    }
+  });
+
+  test('customers/redact : corps signé C, en-tête forgé A → refus, client A inchangé même si l’ID coïncide', async ({
+    request,
+  }) => {
+    const admin = adminClient();
+    const victim = await createMerchant(admin);
+    const attacker = await createMerchant(admin);
+    try {
+      const { shopDomain: shopDomainA } = await seedShop(admin, victim.merchantAccountId);
+      const { shopDomain: shopDomainC } = await seedShop(admin, attacker.merchantAccountId);
+
+      // Pire cas : l'ID client visé par le corps de l'attaquant coïncide avec un client réel
+      // de la victime — si le correctif échouait, c'est CE client qui serait redacted.
+      const sharedCustomerId = String(71_000_000 + Math.floor(Math.random() * 1_000_000));
+      const { data: seededCustomer, error: seedError } = await admin
+        .from('customer')
+        .insert({
+          merchant_account_id: victim.merchantAccountId,
+          shopify_customer_id: sharedCustomerId,
+          full_name: 'Client Victime',
+          phone: '+221770000123',
+        })
+        .select('id, full_name, phone')
+        .single();
+      if (seedError || !seededCustomer) {
+        throw new Error(`customer fixture insert failed: ${seedError?.message ?? 'missing row'}`);
+      }
+
+      const webhookId = `wh-forged-customers-redact-${sharedCustomerId}`;
+      const res = await postWebhook(request, {
+        topic: 'customers/redact',
+        shopDomain: shopDomainA,
+        webhookId,
+        body: { shop_domain: shopDomainC, customer: { id: sharedCustomerId } },
+        triggeredAt: '2026-08-23T10:02:00Z',
+      });
+      expect(res.status()).toBe(200);
+
+      const event = await waitForTerminalWebhookEvent(admin, webhookId);
+      expect(event.last_error_code).toBe('gdpr_shop_domain_mismatch');
+
+      const { data: customerAfter } = await admin
+        .from('customer')
+        .select('full_name, phone')
+        .eq('id', seededCustomer.id)
+        .single();
+      expect(customerAfter).toMatchObject({ full_name: 'Client Victime', phone: '+221770000123' });
+    } finally {
+      await admin.auth.admin.deleteUser(victim.userId);
+      await admin.auth.admin.deleteUser(attacker.userId);
+    }
+  });
+
+  test('shop/redact : corps signé C, en-tête forgé A → refus, client/commande/adresse A intacts', async ({
+    request,
+  }) => {
+    const admin = adminClient();
+    const victim = await createMerchant(admin);
+    const attacker = await createMerchant(admin);
+    try {
+      const { shopDomain: shopDomainA, shopId: shopIdA } = await seedShop(
+        admin,
+        victim.merchantAccountId,
+      );
+      const { shopDomain: shopDomainC } = await seedShop(admin, attacker.merchantAccountId);
+
+      // Commande + client réels côté victime, créés via le vrai chemin orders/create (pas un
+      // insert direct) pour retomber sur exactement l'état qu'un shop/redact réussi rédigerait.
+      const orderId = 72_000_000 + Math.floor(Math.random() * 1_000_000);
+      const customerId = String(73_000_000 + Math.floor(Math.random() * 1_000_000));
+      const orderBody = {
+        id: orderId,
+        name: `#FORGED-${orderId}`,
+        created_at: '2026-08-23T09:00:00Z',
+        updated_at: '2026-08-23T09:00:00Z',
+        total_price: '15000',
+        currency: 'XOF',
+        customer: { id: customerId, first_name: 'Bou', last_name: 'Fall', phone: '+221770000456' },
+        shipping_address: { address1: 'Rue Victime', city: 'Dakar', name: 'Bou Fall' },
+        line_items: [{ title: 'Sac', quantity: 1, price: '15000' }],
+      };
+      expect(
+        (
+          await postWebhook(request, {
+            topic: 'orders/create',
+            shopDomain: shopDomainA,
+            webhookId: `wh-forged-order-seed-${orderId}`,
+            body: orderBody,
+            triggeredAt: '2026-08-23T09:00:01Z',
+          })
+        ).status(),
+      ).toBe(200);
+      const seededOrder = await waitForOrder(admin, victim.merchantAccountId, String(orderId));
+
+      const { data: seededCustomer } = await admin
+        .from('customer')
+        .select('id, full_name, phone')
+        .eq('merchant_account_id', victim.merchantAccountId)
+        .eq('shopify_customer_id', customerId)
+        .single();
+      expect(seededCustomer).toMatchObject({ full_name: 'Bou Fall', phone: '+221770000456' });
+
+      const { data: seededAddress, error: addressError } = await admin
+        .from('delivery_address')
+        .insert({
+          merchant_account_id: victim.merchantAccountId,
+          order_id: seededOrder.id,
+          quartier_commune: 'Plateau',
+          telephone_principal: '+221770000456',
+        })
+        .select('id')
+        .single();
+      if (addressError || !seededAddress) {
+        throw new Error(`delivery_address fixture insert failed: ${addressError?.message ?? ''}`);
+      }
+
+      const webhookId = `wh-forged-shop-redact-${shopIdA}`;
+      const res = await postWebhook(request, {
+        topic: 'shop/redact',
+        shopDomain: shopDomainA,
+        webhookId,
+        body: { shop_domain: shopDomainC },
+        triggeredAt: '2026-08-23T10:03:00Z',
+      });
+      expect(res.status()).toBe(200);
+
+      const event = await waitForTerminalWebhookEvent(admin, webhookId);
+      expect(event.last_error_code).toBe('gdpr_shop_domain_mismatch');
+
+      const { data: customerAfter } = await admin
+        .from('customer')
+        .select('full_name, phone')
+        .eq('id', seededCustomer?.id)
+        .single();
+      expect(customerAfter).toMatchObject({ full_name: 'Bou Fall', phone: '+221770000456' });
+
+      const { data: orderAfter } = await admin
+        .from('orders')
+        .select('shipping_address, note')
+        .eq('id', seededOrder.id)
+        .single();
+      expect(orderAfter?.shipping_address).not.toBeNull();
+
+      const { count: addressCount } = await admin
+        .from('delivery_address')
+        .select('id', { count: 'exact', head: true })
+        .eq('id', seededAddress.id);
+      expect(addressCount).toBe(1);
+
+      const { count: gdprAuditCount } = await admin
+        .from('audit_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', victim.merchantAccountId)
+        .eq('action', 'gdpr.shop/redact');
+      expect(gdprAuditCount).toBe(0);
+    } finally {
+      await admin.auth.admin.deleteUser(victim.userId);
+      await admin.auth.admin.deleteUser(attacker.userId);
+    }
+  });
+});
