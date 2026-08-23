@@ -112,9 +112,12 @@ car son exposition venait du défaut `PUBLIC` classique de PostgreSQL (jamais un
 jamais la présence d'une instruction `revoke` dans le SQL.** Vérifié ainsi pour les 15 fonctions
 vivantes de ce fichier (capture avant/après sauvegardée), pas déduit du texte des migrations.
 
-Ferme quatre classes de surface d'attaque gratuite sur **18 fonctions**, aucune fuite de données
-prouvée sur aucune des 15 vivantes — 9 par lecture de garde de rôle NULL-safe/RLS, **6 par test
-empirique réel** (rôle `anon`, IDs de seed réels, transaction ouverte puis `ROLLBACK`) :
+Ferme quatre classes de surface d'attaque gratuite sur **18 fonctions au total exposées à `anon`
+sur toute l'histoire du projet** — la trouvaille la plus large de ce chantier. Aucune fuite de
+données prouvée sur aucune des 15 vivantes : **12 par appel réel en rôle `anon`** (transaction
+ouverte, IDs de fixture réels, `ROLLBACK` — aucune trace laissée) et **3 par lecture complète du
+corps SQL**, qui ne contient structurellement aucune référence à une table (rien à interroger,
+donc rien à tester empiriquement — une preuve plus forte qu'un échantillon d'appels).
 
 - **3 fonctions mortes** (`list_orders_paginated`, `orders_view_counts`, `list_customer_reliability`)
   — zéro appelant TS/SQL/E2E confirmé, `revoke` total y compris `authenticated`.
@@ -133,14 +136,43 @@ empirique réel** (rôle `anon`, IDs de seed réels, transaction ouverte puis `R
   `public`/`anon` seulement, aucun grant `authenticated` ajouté (la fonction refuse tout appelant
   qui n'est pas `service_role`, testé empiriquement : `42501`).
 
-**Preuve empirique par fonction** (rôle `anon`, en transaction, `ROLLBACK` — aucune trace laissée) :
-`get_customer_reliability` → 0 ligne sur un couple merchant/customer réel avec historique ;
-`reassign_order_driver` → `order_not_found` sur un ordre réel, `assigned_driver_id` inchangé après
-coup (vérifié explicitement) ; `log_ia_tool_audit` → `NULL` retourné, aucune ligne insérée (vérifié
-par comptage après coup) ; `ia_count_recent_tool_calls` → `0` ; `purge_pcd_access_audit` → exception
-`42501`. `ia_finance_cost_movements`/`ia_product_cump` protégées par la garde NULL-safe du fix `0042`
-(incident historique déjà documenté, non re-testée empiriquement ici car déjà mutation-testée à
-l'époque). `sn_phone_e164` est une fonction pure sans accès table.
+**Les 12 fonctions testées par appel réel en rôle `anon`** (contrôle positif via une fixture réelle
+— owner authentique, produit, commande, mouvement de stock, ligne de commande, livreur — construite
+puis effacée dans la même transaction que le test anon, jamais commitée) :
+
+| Fonction | Contrôle positif (owner) | Résultat `anon` |
+|---|---|---|
+| `get_customer_reliability` | — (client réel avec historique) | **0 ligne** |
+| `reassign_order_driver` | — (ordre réel assigné) | `order_not_found`, **0 mutation** vérifiée après coup |
+| `log_ia_tool_audit` | — | `NULL` retourné, **0 ligne insérée** (compté après coup) |
+| `ia_count_recent_tool_calls` | — | **`0`** |
+| `purge_pcd_access_audit` | — | exception **`42501`** |
+| `ia_finance_cost_movements` | **1 ligne** (mouvement `sold` réel, coût 5000) | **0 ligne** |
+| `ia_product_cump` | **1 ligne** (coût unitaire 5000) | **0 ligne** |
+| `cash_aging` | **1 ligne** (livreur réel, 3000 en souffrance) | **0 ligne** |
+| `resolve_order_required_component_quantities` | **1 ligne** (quantité requise réelle) | exception **`42501`, `permission denied for table order_line`** — la table ne grant rien à `anon`, pas seulement la fonction |
+| `is_member_of` | **`true`** (owner réel) | **`false`** |
+| `receive_purchase_lot` | — | exception **`42501`, `forbidden`** avant tout accès table |
+| `sn_phone_e164` | — (fonction pure) | s'exécute (`+221770123456`), aucune donnée protégée à fuir |
+
+**Les 3 fonctions closes sans test `anon`, parce qu'il n'y a structurellement rien à tester** :
+`order_items_search_text`, `derive_legacy_cod_status`, `validate_pcd_access_audit_metadata` — corps
+SQL lu intégralement, chacune opère uniquement sur ses propres arguments (`jsonb`/`text`), aucune
+clause `FROM` vers une table. Un appel `anon` ne peut rien retourner qu'un attaquant ne fournisse
+déjà lui-même en argument.
+
+**Balayage jugé clos, pas seulement « pas encore retrouvé d'autres cas » :** une requête exhaustive
+sur `pg_proc` couvrant **tous les types d'objets** (fonctions, procédures) dans **les deux seuls
+schémas exposés par PostgREST** (`public` et `graphql_public` — confirmé dans
+`supabase/config.toml:6`, le schéma `private` où vit le cœur de `post_stock_movement` depuis `0136`
+n'y figure pas) ne trouve, après application de `0140`, plus aucune fonction avec
+`has_function_privilege('anon', oid, 'EXECUTE') = true` **hormis `graphql_public.graphql(...)`** —
+l'entrée GraphQL fournie par l'extension `pg_graphql` de la plateforme Supabase elle-même, jamais
+définie par une migration de ce projet (confirmé par grep, zéro résultat), hors du périmètre d'un
+`revoke` applicatif. Le critère de clôture est donc : **zéro fonction définie par ce projet, dans un
+schéma que PostgREST expose réellement, ne reste exécutable par `anon`.** Vérifié par requête directe
+sur le catalogue système après un `db reset --local` complet rejouant `0001`→`0140`, pas par relecture
+du texte des migrations.
 
 Détail complet, table par table, dans le corps du fichier de migration.
 
