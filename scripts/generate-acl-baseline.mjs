@@ -9,6 +9,14 @@
 // ces attributs changent pour de bonnes raisons à chaque lot. Voir CLAUDE.md, section
 // "Lot 4A — détection de l'exposition ACL", pour la procédure de mise à jour.
 //
+// Lot L1 (0142) étend ce périmètre aux TABLES de base (`relkind = 'r'`) des schémas
+// couverts : privilèges anon/authenticated/service_role par opération
+// (`has_table_privilege`, jamais une lecture de policy), plus RLS enabled/forced et
+// owner. Comme pour les fonctions, seule une mesure directe fait foi — la présence
+// d'une policy ne prouve rien sans le grant de table sous-jacent (0A-bis : les
+// privilèges par défaut Supabase accordent CRUD à anon/authenticated au niveau
+// table ; FORCE RLS + deny-by-default est la seule barrière réelle).
+//
 // Déterminisme strict : aucun OID, aucun horodatage, aucune version de plateforme, tri
 // explicite et complet, clé de fonction = schéma.nom(types d'arguments). Deux rejeux
 // propres doivent produire un fichier identique octet pour octet — vérifié par
@@ -148,6 +156,36 @@ async function main() {
       [BASELINE_SCHEMAS],
     );
 
+    const { rows: tables } = await client.query(
+      `
+        select
+          n.nspname as schema_name,
+          c.relname as table_name,
+          o.rolname as owner,
+          c.relrowsecurity as rls_enabled,
+          c.relforcerowsecurity as rls_forced,
+          has_table_privilege('anon', c.oid, 'SELECT') as anon_select,
+          has_table_privilege('anon', c.oid, 'INSERT') as anon_insert,
+          has_table_privilege('anon', c.oid, 'UPDATE') as anon_update,
+          has_table_privilege('anon', c.oid, 'DELETE') as anon_delete,
+          has_table_privilege('authenticated', c.oid, 'SELECT') as authenticated_select,
+          has_table_privilege('authenticated', c.oid, 'INSERT') as authenticated_insert,
+          has_table_privilege('authenticated', c.oid, 'UPDATE') as authenticated_update,
+          has_table_privilege('authenticated', c.oid, 'DELETE') as authenticated_delete,
+          has_table_privilege('service_role', c.oid, 'SELECT') as service_role_select,
+          has_table_privilege('service_role', c.oid, 'INSERT') as service_role_insert,
+          has_table_privilege('service_role', c.oid, 'UPDATE') as service_role_update,
+          has_table_privilege('service_role', c.oid, 'DELETE') as service_role_delete
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        join pg_roles o on o.oid = c.relowner
+        where n.nspname = any($1::text[])
+          and c.relkind = 'r'
+        order by n.nspname, c.relname
+      `,
+      [BASELINE_SCHEMAS],
+    );
+
     const { rows: roleMemberships } = await client.query(
       `
         select m.rolname as member_role, o.rolname as of_role
@@ -182,6 +220,26 @@ async function main() {
         anonExec: f.anon_exec,
         authenticatedExec: f.authenticated_exec,
         serviceRoleExec: f.service_role_exec,
+      })),
+      tables: tables.map((t) => ({
+        key: `${t.schema_name}.${t.table_name}`,
+        schema: t.schema_name,
+        name: t.table_name,
+        owner: t.owner,
+        rlsEnabled: t.rls_enabled,
+        rlsForced: t.rls_forced,
+        anonSelect: t.anon_select,
+        anonInsert: t.anon_insert,
+        anonUpdate: t.anon_update,
+        anonDelete: t.anon_delete,
+        authenticatedSelect: t.authenticated_select,
+        authenticatedInsert: t.authenticated_insert,
+        authenticatedUpdate: t.authenticated_update,
+        authenticatedDelete: t.authenticated_delete,
+        serviceRoleSelect: t.service_role_select,
+        serviceRoleInsert: t.service_role_insert,
+        serviceRoleUpdate: t.service_role_update,
+        serviceRoleDelete: t.service_role_delete,
       })),
       defaultAcl: defaultAcl.map((d) => ({
         creatorRole: d.creator_role,
