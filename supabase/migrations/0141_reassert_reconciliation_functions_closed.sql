@@ -1,0 +1,63 @@
+-- ============================================================
+-- 0141 : reversionne la fermeture anon/public/authenticated de 3 fonctions
+-- de maintenance — incident production hors migration (23-24 août 2026)
+-- ============================================================
+-- INCIDENT CONFIRMÉ, PAS UNE EXPOSITION THÉORIQUE : `reconcile_product_stock()`,
+-- appelée en `anon` en production, a retourné **13 lignes** (`product_id`,
+-- `merchant_account_id`, quantités stockées/ledger, delta) — tous tenants
+-- confondus. `SECURITY DEFINER`, `search_path = ''`, aucune garde de rôle
+-- interne, aucune RLS possible en dessous (DEFINER bypass RLS par
+-- construction) : une fuite de lecture cross-tenant réellement exploitée,
+-- pas seulement une ACL ouverte sans conséquence. `reconcile_order_cod_status()`
+-- (même famille, même absence de garde) a retourné 0 ligne au moment du
+-- contrôle — uniquement parce qu'aucune incohérence cod_status n'existait
+-- alors, pas parce que la fonction refuse quoi que ce soit ; elle aurait
+-- exposé dès qu'une incohérence serait apparue. `rebuild_product_stock()`
+-- (même famille) **écrit** — recompute global du stock à la demande,
+-- vecteur DoS en plus du risque de lecture des deux autres.
+--
+-- CE N'EST PAS UN TROU DANS LES MIGRATIONS. `0043_phase9_definer_gates_nullsafe.sql`
+-- (lignes 1004-1006) revoke déjà correctement les trois, nommément, des
+-- TROIS rôles (`public, anon, authenticated`) — le motif exact recommandé
+-- dans ce lot pour tout revoke robuste sur Supabase. Vérifié empiriquement,
+-- pas supposé : un `supabase db reset --local` qui rejoue l'historique
+-- complet des migrations committées (`0001`→`0140`, sans aucune modification)
+-- produit `has_function_privilege('anon', oid, 'EXECUTE') = false` ET
+-- `has_function_privilege('authenticated', oid, 'EXECUTE') = false` pour les
+-- trois fonctions, exactement comme voulu par `0043`. Le balayage exhaustif
+-- mené avant la fusion de `0140` (requête sur `pg_proc` couvrant tous les
+-- schémas exposés par PostgREST, après un `db reset --local` complet)
+-- reflétait donc FIDÈLEMENT ce que produisent les migrations committées —
+-- il n'avait ni angle mort de filtre, ni trou de couverture de schéma.
+--
+-- L'ÉCART EXACT, établi et non supposé : ce balayage a été exécuté contre
+-- une base LOCALE reconstruite depuis les fichiers de migration committés
+-- — jamais contre la production elle-même (interdiction explicite du lot
+-- d'audit qui l'a précédé, jamais levée pour ce lot). Le contrôle qui a
+-- trouvé la fuite, lui, a interrogé la PRODUCTION directement. La
+-- production a donc dérivé du référentiel versionné : à un moment non
+-- daté, postérieur à `0043`, un `GRANT EXECUTE` a été appliqué directement
+-- sur la base de production — hors de toute migration, jamais committé,
+-- jamais visible dans `supabase_migrations.schema_migrations` en tant que
+-- tel — rouvrant ce que `0043` avait pourtant correctement fermé. Aucun
+-- `db reset --local`, aussi rigoureux soit le balayage qui le suit, ne peut
+-- détecter ce type de dérive : il ne rejoue que ce qui est committé, jamais
+-- ce qui a été fait hors bande directement sur une base réelle. C'est une
+-- limite structurelle de toute vérification locale, pas un défaut de
+-- méthode corrigible par une requête différente.
+--
+-- CORRECTIF APPLIQUÉ EN PRODUCTION HORS MIGRATION (par le porteur, avant ce
+-- fichier) : `revoke execute ... from anon, public` manuel sur les trois
+-- fonctions, vérifié — plus aucune fonction du projet n'est exécutable par
+-- `anon` en production à ce jour. Cette migration reversionne le même
+-- correctif (revoke idempotent, sans effet si déjà appliqué, donc sans
+-- risque à `db push` même si la production est déjà dans l'état voulu) —
+-- pour que l'historique de migrations reflète enfin ce qui s'est
+-- réellement passé, et que toute reconstruction future depuis les
+-- migrations seules (nouvel environnement, restauration) ne dépende plus
+-- d'une action manuelle non versionnée pour rester fermée.
+-- ============================================================
+
+revoke all on function public.reconcile_product_stock() from public, anon, authenticated;
+revoke all on function public.reconcile_order_cod_status() from public, anon, authenticated;
+revoke all on function public.rebuild_product_stock() from public, anon, authenticated;

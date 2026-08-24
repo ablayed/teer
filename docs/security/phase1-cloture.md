@@ -112,9 +112,10 @@ car son exposition venait du défaut `PUBLIC` classique de PostgreSQL (jamais un
 jamais la présence d'une instruction `revoke` dans le SQL.** Vérifié ainsi pour les 15 fonctions
 vivantes de ce fichier (capture avant/après sauvegardée), pas déduit du texte des migrations.
 
-Ferme quatre classes de surface d'attaque gratuite sur **18 fonctions au total exposées à `anon`
-sur toute l'histoire du projet** — la trouvaille la plus large de ce chantier. Aucune fuite de
-données prouvée sur aucune des 15 vivantes : **12 par appel réel en rôle `anon`** (transaction
+Ferme quatre classes de surface d'attaque gratuite sur **18 fonctions** exposées à `anon` trouvées
+par le balayage local — **21 au total avec les 3 fermées séparément par `0141` en production, cf.
+§3bis, dont une fuite réellement exploitée, pas seulement une exposition théorique.** Aucune fuite de
+données prouvée sur aucune des 15 vivantes de ce fichier : **12 par appel réel en rôle `anon`** (transaction
 ouverte, IDs de fixture réels, `ROLLBACK` — aucune trace laissée) et **3 par lecture complète du
 corps SQL**, qui ne contient structurellement aucune référence à une table (rien à interroger,
 donc rien à tester empiriquement — une preuve plus forte qu'un échantillon d'appels).
@@ -169,12 +170,104 @@ n'y figure pas) ne trouve, après application de `0140`, plus aucune fonction av
 `has_function_privilege('anon', oid, 'EXECUTE') = true` **hormis `graphql_public.graphql(...)`** —
 l'entrée GraphQL fournie par l'extension `pg_graphql` de la plateforme Supabase elle-même, jamais
 définie par une migration de ce projet (confirmé par grep, zéro résultat), hors du périmètre d'un
-`revoke` applicatif. Le critère de clôture est donc : **zéro fonction définie par ce projet, dans un
-schéma que PostgREST expose réellement, ne reste exécutable par `anon`.** Vérifié par requête directe
-sur le catalogue système après un `db reset --local` complet rejouant `0001`→`0140`, pas par relecture
-du texte des migrations.
+`revoke` applicatif. Le critère de clôture est : **zéro fonction définie par ce projet, dans un
+schéma que PostgREST expose réellement, ne reste exécutable par `anon`.** **Ce critère a été vérifié
+UNIQUEMENT contre une base locale reconstruite depuis les migrations committées — jamais contre la
+production elle-même à ce stade.** C'est précisément la limite qui a laissé passer 3 fonctions
+supplémentaires, découvertes séparément en production et fermées par `0141` — cf. §3bis, qui
+corrige le compte final à **21 fonctions**, pas 18.
 
 Détail complet, table par table, dans le corps du fichier de migration.
+
+---
+
+## 3bis. Incident production — dérive ACL hors migration (24 août 2026)
+
+**Ce qui a été trouvé en production, pas en local, et pas par le balayage qui a précédé `0140`.**
+Un contrôle direct contre la production (hors de la portée de l'agent au moment de `0140` — jamais
+exécuté avant ce lot) a montré que `reconcile_product_stock()`, appelée en rôle `anon`, retournait
+**13 lignes réelles** (`product_id`, `merchant_account_id`, quantités stockées/ledger, delta) — tous
+tenants confondus. `SECURITY DEFINER`, `search_path = ''`, aucune garde de rôle interne : la RLS ne
+s'applique jamais sous `SECURITY DEFINER`, donc rien en dessous n'aurait pu bloquer cet appel.
+**C'est une fuite réellement exploitée au moment du contrôle, pas une exposition théorique** — la
+distinction centrale de cet incident. `reconcile_order_cod_status()` (même famille, même absence de
+garde) a renvoyé 0 ligne au moment du contrôle, uniquement parce qu'aucune incohérence `cod_status`
+n'existait alors en production — elle aurait exposé dès qu'une incohérence serait apparue, ce qui
+n'a rien de garanti dans le temps. `rebuild_product_stock()` (même famille) **écrit** : recompute
+global du stock à la demande, un vecteur de déni de service en plus du risque de lecture des deux
+autres.
+
+**Diagnostic établi, pas supposé : ce n'était pas un trou dans les migrations.**
+`0043_phase9_definer_gates_nullsafe.sql` (lignes 1004-1006) revoque déjà, nommément, les trois
+fonctions des trois rôles `public, anon, authenticated` — exactement le motif recommandé dans ce
+même lot pour tout `revoke` robuste sur Supabase. Vérifié empiriquement : un `supabase db reset
+--local` qui rejoue l'historique complet des migrations committées (`0001`→`0140`, sans aucune
+modification) produit `has_function_privilege('anon', oid, 'EXECUTE') = false` **et**
+`has_function_privilege('authenticated', oid, 'EXECUTE') = false` pour les trois fonctions, exactement
+comme voulu par `0043`. Le balayage exhaustif mené avant la fusion de `0140` (requête `pg_proc`
+couvrant tous les schémas exposés par PostgREST, après un `db reset --local` complet) reflétait donc
+fidèlement ce que produisent les migrations committées — aucun angle mort de filtre, aucun trou de
+couverture de schéma.
+
+**L'écart exact, établi et non supposé : le balayage a interrogé une base reconstruite depuis les
+migrations committées, jamais la production elle-même.** Le contrôle qui a trouvé la fuite, lui, a
+interrogé la production directement. La production avait donc dérivé du référentiel versionné : à un
+moment non daté, postérieur à `0043`, un `GRANT EXECUTE` a été appliqué directement sur la base de
+production — hors de toute migration, jamais committé, invisible dans
+`supabase_migrations.schema_migrations`. **Aucun `db reset --local`, aussi rigoureux soit le
+balayage qui le suit, ne peut détecter ce type de dérive : il ne rejoue que ce qui est committé,
+jamais ce qui a été fait hors bande directement sur une base réelle.** C'est une limite structurelle
+de toute vérification locale, pas un défaut de méthode corrigible par une requête différente — la
+conséquence pratique la plus large de tout ce chantier : **`supabase migration list --linked` peut
+afficher `Local = Remote` sur l'intégralité des migrations pendant que les ACL réelles divergent.**
+Cette commande compare la liste des migrations appliquées, pas l'état réel du schéma ; toute
+l'attestation de ce projet (cf. les nombreuses notes d'attestation historiques de `CLAUDE.md`) s'est
+jusqu'ici reposée sur elle seule pour ce genre de garantie.
+
+**Correctif manuel en production (par le porteur, avant `0141`), et son état exact aujourd'hui :**
+`revoke execute ... from anon, public` appliqué manuellement sur les trois fonctions — confirmé,
+`anon_exec = false` en production au moment de la vérification. **Ce correctif était partiel :
+`authenticated` n'a pas été touché.** Un contrôle direct et exhaustif contre la production (mené
+dans ce lot, comparant CHAQUE fonction des schémas exposés par PostgREST — `anon` et
+`authenticated` — plus chaque table (4 privilèges), chaque séquence et l'`USAGE` de schéma, local vs
+production) confirme : **`reconcile_product_stock`, `reconcile_order_cod_status` et
+`rebuild_product_stock` restent exécutables par `authenticated` en production à ce jour.** Comme ce
+sont des fonctions `SECURITY DEFINER` sans garde de rôle, **tout utilisateur connecté de n'importe
+quel tenant peut aujourd'hui encore obtenir la même fuite cross-tenant que celle observée en `anon`**
+— ce n'est pas résolu par le correctif manuel déjà appliqué, seulement par `0141` une fois poussée
+(ou par un second correctif manuel équivalent sur `authenticated`, plus urgent que le cycle normal de
+revue de cette PR).
+
+**Aucune autre dérive trouvée.** Le même contrôle exhaustif (toutes les tables du schéma `public`,
+les 4 privilèges standards, `anon` et `authenticated`, séquences, `USAGE` de schéma sur
+`public`/`graphql_public`/`private`) ne montre **aucune différence** entre l'état réel de production
+et un rejeu local propre — sur aucun objet en dehors des trois fonctions déjà connues. Ce n'est pas
+une preuve qu'aucune autre dérive n'existera jamais ailleurs dans le catalogue (index, triggers,
+policies RLS elles-mêmes, `pg_default_acl`) ; c'est une preuve que, sur le périmètre vérifié ici
+(fonctions × 2 rôles, tables × 4 privilèges × 2 rôles, séquences, schémas), **rien d'autre n'a
+dérivé au moment de ce contrôle.**
+
+**Origine du `GRANT` manuel — question ouverte, pas tranchée.** Un `GRANT` ne s'applique jamais seul
+: il vient soit d'une intervention manuelle passée (Studio UI, `psql`/`db query --linked` ad hoc,
+script d'exploitation), soit d'un outil (une opération de la plateforme Supabase, une migration
+d'un outil tiers, un reset partiel). Aucune trace exploitable n'a été trouvée dans ce lot pour
+trancher entre ces hypothèses — PostgreSQL ne journalise pas les `GRANT`/`REVOKE` par défaut (pas
+d'extension d'audit DDL confirmée active sur ce projet), et Supabase ne semble pas exposer d'historique
+d'audit des changements de privilèges consultable depuis cet environnement. **Sans connaître
+l'origine, on ne peut pas garantir que la dérive ne reviendra pas** — même après `0141`. À
+investiguer séparément (logs Supabase, historique d'accès à la base, mémoire de l'équipe), pas
+tranché ici.
+
+**Migration `0141`** (`supabase/migrations/0141_reassert_reconciliation_functions_closed.sql`) :
+reversionne le même `revoke` (les trois fonctions, `public, anon, authenticated`) — idempotent,
+sans effet si déjà appliqué (confirmé : `db reset --local` avec `0141` produit un état identique à
+sans elle, puisque `0043` fermait déjà tout en local). Elle ne protège que le cas d'un rejeu de
+migrations depuis zéro (nouvel environnement, restauration) — **elle ne détecte ni ne prévient une
+dérive future appliquée directement en production, hors migration, comme celle-ci.** Le vrai remède
+à cette classe de risque serait une vérification périodique des ACL en CI — un job comparant l'état
+`pg_proc`/`pg_class` attendu (déduit des migrations) à l'état réel de la production liée, alertant
+sur toute divergence avant qu'elle ne devienne un incident. **Non construit dans ce lot** (portée
+volontairement limitée à la fermeture immédiate), consigné ici comme dette pour un futur lot dédié.
 
 ---
 
@@ -257,6 +350,16 @@ EXECUTE »*. Les 7 autres ont été ajoutées à `CLAUDE.md` (section « Critica
    au parent autoritatif, transmis à une opération qui dérive le contexte de cet identifiant
    même.**
 
+**Règle n°8, ajoutée après l'incident production `0141` (§3bis)** : **`supabase migration list
+--linked` compare la liste des migrations appliquées, pas l'état réel du schéma.** Elle peut afficher
+`Local = Remote` sur l'intégralité de l'historique pendant que les ACL réelles ont dérivé par un
+`GRANT`/`REVOKE` appliqué directement en production, hors de toute migration — cette commande ne
+peut structurellement pas détecter ce cas. Toute garantie de sécurité au niveau des privilèges doit
+donc être vérifiée par une requête directe sur le catalogue système (`pg_proc.proacl`,
+`has_function_privilege`, `has_table_privilege`) exécutée **contre la base réellement concernée**
+(local pour valider une migration, production pour valider l'état réel) — jamais déduite de l'état
+« migrations appliquées » seul, aussi vert soit-il.
+
 ---
 
 ## 7. Protocole du smoke production — hors de la portée de ce document
@@ -282,7 +385,10 @@ simultanément.
 
 | | |
 |---|---|
-| Ce lot | migration `0140` (écrite, vérifiée localement, **non poussée**) + ce document |
+| Ce lot | migrations `0140` + `0141` (écrites, vérifiées localement, **non poussées**) + ce document |
+| **Urgent, indépendant du cycle de revue de cette PR** | `authenticated` reste exécutable en production sur les 3 fonctions de §3bis **à ce jour** — le correctif manuel du porteur n'a fermé que `anon`/`public`. Recommandé : second correctif manuel immédiat sur `authenticated`, sans attendre la fusion de `0141`. |
+| Origine du `GRANT` manuel | question ouverte, non tranchée — §3bis |
+| Vérification périodique des ACL en CI | dette consignée, non construite — §3bis / §6 règle n°8 |
 | Smoke production multi-boutiques | fondateur, protocole §7, ~1 h |
 | Deux exceptions à acter | §4 — déjà actées par écrit, pas résolues |
 | Clôture Phase 1 | après le smoke, pas avant |
