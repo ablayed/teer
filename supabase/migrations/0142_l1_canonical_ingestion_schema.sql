@@ -7,7 +7,9 @@
 -- VERROU DE DÉPLOIEMENT : cette migration ne part pas en production tant que
 -- le Lot 4B n'a pas produit une baseline production réussie avec le rôle
 -- `ci_schema_auditor`. Voir CLAUDE.md / le prompt de ce lot. Elle peut être
--- committée, appliquée en local, passer la CI — pas être déployée.
+-- committée, appliquée en local, passer la CI — pas être déployée. Séquence
+-- de déploiement complète (préflight production manuel en lecture seule,
+-- règle d'arrêt) : `docs/security/lot-l1-deployment-runbook.md`.
 --
 -- HARNAIS DE BACKFILL (scripts/l1-backfill-harness.sh, tests/rls dédié) : ce
 -- backfill ne s'exécutera QU'UNE SEULE FOIS en production, sur l'historique
@@ -258,8 +260,38 @@ create index if not exists orders_store_connection_idx
 
 -- (1) store_connection : deux boutiques Shopify du même domaine violeraient
 -- (platform, external_identifier). `shop.shop_domain` est déjà UNIQUE
--- globalement (0004) : structurellement impossible, vérifié plutôt que
--- supposé.
+-- globalement (`shop_shop_domain_key`, 0004) : structurellement impossible,
+-- vérifié plutôt que supposé.
+--
+-- PREUVE MANUELLE DOCUMENTÉE (session Lot L1, non automatisée en CI) : ce
+-- bloc défensif ne peut PAS être exercé par un chemin de production réel — il
+-- faudrait deux lignes `shop` du même `shop_domain`, ce que `shop_shop_domain_key`
+-- interdit avant même que 0142 s'exécute. Pour prouver que ce bloc réagit
+-- correctement s'il était un jour atteint (ex. `0004` retouchée par erreur),
+-- la contrainte a été SUSPENDUE le temps d'une session locale isolée
+-- (`alter table public.shop drop constraint shop_shop_domain_key`, jamais
+-- committée), deux boutiques du même domaine insérées sur deux tenants
+-- distincts, puis 0142 appliquée en isolation : échec obtenu,
+-- `l1_store_connection_domain_collision count=1
+-- domains=[l1-fixture-neg2-colliding.myshopify.com]`, aucun état partiel
+-- après l'échec (aucune des 3 tables créées, `0142` absente de
+-- `supabase_migrations.schema_migrations`), puis `supabase db reset --local`
+-- pour repartir d'un état strictement committé (la contrainte réelle revient
+-- avec le rejeu de `0004`).
+--
+-- Ce cas n'est PAS automatisé dans `scripts/l1-backfill-harness.sh` :
+-- suspendre une contrainte UNIQUE réelle dans un job CI routinier serait
+-- fragile (toute panne du script laisserait la contrainte hors service sur
+-- la base du runner) et déformerait le schéma pour tester un chemin que la
+-- production ne peut pas emprunter. La protection permanente et pertinente
+-- est ailleurs : la contrainte propre de `store_connection`
+-- (`store_connection_platform_external_key`, ligne ~90 de ce fichier) reste
+-- couverte EN CONTINU par le test structurel
+-- `tests/rls/l1-canonical-ingestion-schema.rls.test.ts` ("store_connection :
+-- unicité (platform, external_identifier)"), qui insère directement deux
+-- lignes concurrentes sans toucher à aucune contrainte de `shop` — c'est ce
+-- test-là qui protège réellement une future écriture (L2, service-role) qui
+-- contournerait le backfill.
 do $$
 declare
   v_dupes bigint;
