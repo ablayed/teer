@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 import {
-  SHOPIFY_E2E_CLIENT_ID,
-  SHOPIFY_E2E_HMAC_SECRET,
+  SHOPIFY_KOBA_CLIENT_ID_FALLBACK,
+  SHOPIFY_KOBA_HMAC_SECRET_FALLBACK,
+  SHOPIFY_PILOTE_CLIENT_ID_FALLBACK,
+  SHOPIFY_PILOTE_HMAC_SECRET_FALLBACK,
 } from './tests/e2e/helpers/shopify-webhook-harness';
 
 function loadEnvFile(path: string, override = false) {
@@ -44,11 +46,19 @@ function loadEnvFile(path: string, override = false) {
 loadEnvFile('.env.test', true);
 loadEnvFile('.env.test.local', true);
 
-if (process.env.E2E_SHOPIFY_WEBHOOKS === '1') {
-  // Le serveur Next charge parfois une configuration locale différente du processus Playwright.
-  // Le mode explicite impose une paire synthétique commune aux deux côtés du test.
-  process.env.SHOPIFY_API_KEY = SHOPIFY_E2E_CLIENT_ID;
-  process.env.SHOPIFY_API_SECRET = SHOPIFY_E2E_HMAC_SECRET;
+// Lot L0 — harnais multi-app KOBA/PILOTE (tests/e2e/shopify-koba-multi-app.spec.ts). Repli
+// SEULEMENT : n'écrase jamais une valeur déjà positionnée par `.env.test`/`.env.test.local` ou
+// par l'environnement du job CI (ci.yml positionne les mêmes chaînes directement). Ne concerne
+// pas SHOPIFY_API_KEY/SECRET (teer-dev), déjà couvert au-dessus / par ci.yml.
+for (const [key, fallback] of [
+  ['SHOPIFY_KOBA_API_KEY', SHOPIFY_KOBA_CLIENT_ID_FALLBACK],
+  ['SHOPIFY_KOBA_API_SECRET', SHOPIFY_KOBA_HMAC_SECRET_FALLBACK],
+  ['SHOPIFY_PILOTE_API_KEY', SHOPIFY_PILOTE_CLIENT_ID_FALLBACK],
+  ['SHOPIFY_PILOTE_API_SECRET', SHOPIFY_PILOTE_HMAC_SECRET_FALLBACK],
+] as const) {
+  if (!process.env[key]) {
+    process.env[key] = fallback;
+  }
 }
 
 process.env.E2E_TEST_MODE = '1';
