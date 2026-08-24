@@ -35,7 +35,6 @@ const environment = {
   ...process.env,
   E2E_EXTERNAL_SERVER: '1',
   E2E_PROD_BUILD: '1',
-  E2E_SHOPIFY_WEBHOOKS: '1',
   E2E_TEST_MODE: '1',
   SHOPIFY_API_KEY: 's2-e2e-shopify-app',
   SHOPIFY_API_SECRET: hmacSecret,

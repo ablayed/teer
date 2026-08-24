@@ -261,21 +261,31 @@ jobs:
           rm -rf .next/cache
           df -h /
       - name: List targeted Phase 1 E2E selection
-        run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts tests/e2e/workspace-routing.spec.ts --project=${{ matrix.project }} --list
+        run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts tests/e2e/shopify-koba-multi-app.spec.ts tests/e2e/workspace-routing.spec.ts --project=${{ matrix.project }} --list
       # Fast Phase 1 acceptance: explicitly pass the spec paths to Playwright.
       # Calling `pnpm test:e2e` here would expand the package script's
       # `tests/e2e` path before forwarding arguments on Windows and collect the
       # entire catalogue instead of this targeted set.
-      - run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts tests/e2e/workspace-routing.spec.ts --project=${{ matrix.project }}
+      - run: pnpm exec playwright test tests/e2e/shop-filter.spec.ts tests/e2e/shopify-webhooks.spec.ts tests/e2e/shopify-koba-multi-app.spec.ts tests/e2e/workspace-routing.spec.ts --project=${{ matrix.project }}
         env:
           E2E_PROD_BUILD: '1'
           # webServer (playwright.config.ts) hérite de cet env pour spawn `next start` ;
           # sans VERCEL_ENV=preview le runtime retombe aussi sous le garde-fou 142dfa8.
           VERCEL_ENV: preview
-          # Secret de test contrôlé : le serveur Next et les specs Playwright signent/vérifient
-          # la même valeur. Ne jamais substituer un secret Partner ou de production ici.
-          SHOPIFY_API_KEY: test-shopify-api-key
-          SHOPIFY_API_SECRET: test-shopify-api-secret
+          # Valeurs synthétiques ci-dessous : le serveur Next et les specs Playwright signent/
+          # vérifient la même chaîne factice, jamais un secret Partner ou de production. Tout
+          # secret réel de ce workflow passe par `secrets.*` — ces `test-only-fake-*` sont en
+          # clair délibérément : un secret GitHub ne se relit pas, et un credential factice qui
+          # se lit comme tel ne peut pas être confondu pour du réel ni remplacé sans y penser.
+          SHOPIFY_API_KEY: test-only-fake-dev-client-id
+          SHOPIFY_API_SECRET: test-only-fake-dev-secret
+          # Lot L0 — harnais multi-app KOBA/PILOTE (tests/e2e/shopify-koba-multi-app.spec.ts).
+          # Mêmes chaînes littérales que les valeurs de repli de
+          # tests/e2e/helpers/shopify-webhook-harness.ts.
+          SHOPIFY_KOBA_API_KEY: test-only-fake-koba-client-id
+          SHOPIFY_KOBA_API_SECRET: test-only-fake-koba-secret
+          SHOPIFY_PILOTE_API_KEY: test-only-fake-pilote-client-id
+          SHOPIFY_PILOTE_API_SECRET: test-only-fake-pilote-secret
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -441,8 +451,10 @@ jobs:
         env:
           E2E_PROD_BUILD: '1'
           VERCEL_ENV: preview
-          SHOPIFY_API_KEY: test-shopify-api-key
-          SHOPIFY_API_SECRET: test-shopify-api-secret
+          # Valeur synthétique, jamais un secret Partner — voir le commentaire équivalent dans
+          # le job test-e2e-phase1 ci-dessus.
+          SHOPIFY_API_KEY: test-only-fake-dev-client-id
+          SHOPIFY_API_SECRET: test-only-fake-dev-secret
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
