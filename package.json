@@ -16,6 +16,8 @@
     "test:s1d4:boundaries": "vitest run tests/unit/security/s1d4-environment-dlp.test.ts",
     "test:s1d4:fonts": "vitest run tests/unit/security/s1d4-fonts.test.ts",
     "security:s1d4:client-bundle": "node scripts/s1d4-check-client-bundle.mjs",
+    "security:acl-baseline:generate": "node scripts/generate-acl-baseline.mjs",
+    "security:acl-baseline:check": "node scripts/generate-acl-baseline.mjs --check",
     "test:rls": "vitest run tests/rls",
     "test:e2e": "playwright test tests/e2e",
     "test:e2e:shopify": "node scripts/test-shopify-webhooks.mjs",
