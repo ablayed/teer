@@ -110,6 +110,13 @@ jobs:
           SUPABASE_URL: http://127.0.0.1:54321
           SUPABASE_ANON_KEY: ${{ env.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+      # Lot 4A — Couche 2 : la baseline ACL committée doit refléter l'état réel du
+      # stack local fraîchement rejoué par ce même job. Échoue explicitement (jamais un
+      # saut silencieux) si le fichier est absent ou périmé — voir
+      # scripts/generate-acl-baseline.mjs et CLAUDE.md, section "Lot 4A".
+      - run: pnpm security:acl-baseline:check
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
 
   test-e2e-phase1:
     runs-on: ubuntu-latest
