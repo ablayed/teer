@@ -1,12 +1,17 @@
 -- ============================================================
 -- Spécification du rôle `ci_schema_auditor` — Phase 2 / Lot 4A, Couche 4
 -- ============================================================
--- NON APPLIQUÉ. Ce fichier vit hors de supabase/migrations/ précisément pour ne
--- JAMAIS être rejoué automatiquement par `supabase db reset`/`db push`. La création
--- de ce rôle part avec le Lot 4B, sur décision explicite du porteur — raison : si
--- `CREATE ROLE` échoue sur la plateforme hébergée (permissions, plan, contrainte
--- Supabase non anticipée ici), cela ne doit pas bloquer le correctif préventif dont
--- dépend le reste de la Phase 2 (couches 1-3 de ce lot, déjà livrées).
+-- Ce fichier vit hors de supabase/migrations/ précisément pour ne JAMAIS être
+-- rejoué automatiquement par `supabase db reset`/`db push`.
+--
+-- STATUT (Lot 4B) : les sections 1 à 4 (création du rôle, attributs, isolation,
+-- absence de grant applicatif) SONT APPLIQUÉES en production — rôle créé et
+-- vérifié en session dédiée (attributs, inertie sur `orders`/`reconcile_product_
+-- stock`, mesures d'ancrage — voir CLAUDE.md, section "Lot 4B"). La section 5bis
+-- (grant de lecture sur `supabase_migrations.schema_migrations`), elle, N'EST
+-- PAS ENCORE appliquée en production au moment de l'écriture de ce lot — validée
+-- uniquement en local, comme documenté dans cette section. C'est au porteur de
+-- l'appliquer.
 --
 -- OBJET : une sonde PRODUCTION récurrente (pas une formalité de clôture ponctuelle),
 -- qui interroge l'ACL réelle (`pg_proc.proacl`, `has_function_privilege`,
@@ -178,9 +183,66 @@ alter role ci_schema_auditor with
 --           déjà ouvert par défaut à `anon`/`authenticated`, FORCE RLS est la seule
 --           barrière réelle — ce que ce rôle doit justement pouvoir observer)
 --
--- Aucun `grant` n'apparaît donc dans ce fichier. Documenté ici plutôt qu'omis
--- silencieusement : l'absence de grants est le résultat d'une vérification, pas
--- d'un oubli.
+-- Aucun autre `grant` n'apparaît dans ce fichier au-delà de la section 5bis
+-- ci-dessous. Documenté ici plutôt qu'omis silencieusement : l'absence de grants
+-- sur le reste de la surface est le résultat d'une vérification, pas d'un oubli.
+
+-- --------------------------------------------------------------
+-- 5bis. Un seul GRANT réel — lecture des métadonnées de migration (Lot 4B).
+-- --------------------------------------------------------------
+-- La classification production de la sonde (Lot 4B) doit connaître la dernière
+-- migration réellement appliquée en production pour comparer contre la baseline
+-- de LA MÊME version, jamais contre la baseline courante du dépôt (0142 est
+-- mergée sur `main` mais n'a, à ce jour, jamais été poussée en production —
+-- comparer brut ferait échouer le tout premier run pour une raison légitime :
+-- une absence attendue, pas une dérive).
+--
+-- `supabase_migrations.schema_migrations` n'est PAS un catalogue système : elle
+-- n'est pas ouverte à PUBLIC (contrairement à pg_proc/pg_class/pg_default_acl/
+-- pg_auth_members/pg_attribute couverts en section 5/6). Vérifié en exécution
+-- réelle, session locale, connecté SOUS le rôle lui-même, AVANT tout grant :
+--   select * from supabase_migrations.schema_migrations limit 1;
+--     → ERROR:  permission denied for schema supabase_migrations
+-- Un accès explicite est donc nécessaire — le premier grant réel de ce rôle.
+--
+-- Inventaire du schéma AVANT d'accorder quoi que ce soit (même discipline que
+-- pour `public`/`private` en section 5) — deux tables, ZÉRO fonction :
+--   select c.relkind, c.relname, o.rolname from pg_class c
+--     join pg_namespace n on n.oid=c.relnamespace
+--     join pg_roles o on o.oid=c.relowner
+--     where n.nspname='supabase_migrations';
+--   → schema_migrations (r, owner postgres), schema_migrations_pkey (i),
+--     seed_files (r, owner postgres), seed_files_pkey (i)
+--   select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+--     where n.nspname='supabase_migrations';
+--   → 0 ligne
+-- Ce schéma n'héberge donc AUCUNE fonction `SECURITY DEFINER` — le risque qui a
+-- fait retirer `grant usage on schema public/private` en section 5 (élévation
+-- via une fonction du propriétaire) ne s'applique structurellement pas ici :
+-- `USAGE` sur ce schéma n'ouvre la porte à rien d'autre qu'une table nommée.
+--
+-- Grant minimal : USAGE sur le schéma, SELECT sur la SEULE table de métadonnées
+-- utile (`schema_migrations` : colonnes `version`/`name`/`statements` de chaque
+-- migration appliquée). `seed_files` (table interne de l'outillage CLI, sans
+-- usage pour la classification) N'EST PAS accordée — vérifié en exécution
+-- réelle que son accès reste refusé après le grant ci-dessous :
+--   select * from supabase_migrations.seed_files limit 1;
+--     → ERROR:  permission denied for table seed_files  (inchangé après grant)
+grant usage on schema supabase_migrations to ci_schema_auditor;
+grant select on supabase_migrations.schema_migrations to ci_schema_auditor;
+--
+-- Les trois preuves d'inertie de la section 4 ont été REJOUÉES après ce grant,
+-- sur le même stack local, sous le rôle lui-même — aucune n'a changé :
+--   select * from public.orders limit 1;
+--     → ERROR:  permission denied for table orders
+--   insert into public.orders (id) values (gen_random_uuid());
+--     → ERROR:  permission denied for table orders
+--   select public.reconcile_product_stock();
+--     → ERROR:  permission denied for function reconcile_product_stock
+-- Les trois mesures d'ancrage de la section 6bis (Lot 4B, voir plus bas) ont
+-- aussi été rejouées après ce grant, sur la même connexion, résultat identique.
+-- Le grant ci-dessus est donc bien ADDITIF et isolé : il n'élargit la surface
+-- que d'une seule table, sans effet mesurable sur le reste du rôle.
 
 -- --------------------------------------------------------------
 -- 6. Couverture des privilèges de COLONNE — vérifiée nécessaire à zéro grant.
