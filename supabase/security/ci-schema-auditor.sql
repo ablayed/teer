@@ -10,13 +10,20 @@
 --
 -- OBJET : une sonde PRODUCTION récurrente (pas une formalité de clôture ponctuelle),
 -- qui interroge l'ACL réelle (`pg_proc.proacl`, `has_function_privilege`,
--- `has_table_privilege`) directement sur la base de production — la seule façon de
--- détecter une dérive appliquée hors migration, à la manière de l'incident `0141`
--- (GRANT manuel jamais committé, invisible à tout rejeu local `db reset --local`).
+-- `has_table_privilege`, `has_column_privilege`) directement sur la base de
+-- production — la seule façon de détecter une dérive appliquée hors migration, à la
+-- manière de l'incident `0141` (GRANT manuel jamais committé, invisible à tout rejeu
+-- local `db reset --local`).
 --
 -- Aucun mot de passe n'est fixé ici, ni dans aucune migration. Le mot de passe est
 -- généré au moment de la création réelle (Lot 4B) et stocké UNIQUEMENT dans le
 -- secret CI (`CI_SCHEMA_AUDITOR_DB_URL` ou équivalent) — jamais dans le dépôt.
+--
+-- VALIDÉ PAR EXÉCUTION RÉELLE SUR STACK LOCAL (pas par lecture), session dédiée.
+-- Quatre défauts suspectés dans une version antérieure de ce fichier ont été
+-- confirmés ou infirmés en faisant réellement tourner le script — voir le
+-- détail de chaque suppression dans les sections correspondantes ci-dessous.
+-- Rien de tout cela n'a été exécuté en production.
 -- ============================================================
 
 -- --------------------------------------------------------------
@@ -27,21 +34,65 @@
 -- de la création réelle, avec un secret généré, jamais committé.
 create role ci_schema_auditor with login;
 
--- Interdictions explicites, chacune motivée :
---   NOSUPERUSER   : contournerait purement et simplement RLS et tout le reste — une
---                   sonde d'audit n'a besoin d'aucun bypass, seulement de lecture
---                   catalogue.
+-- Interdictions explicites, chacune motivée. `NOSUPERUSER` n'apparaît PAS ici —
+-- retiré parce qu'il PROVOQUE UNE ERREUR, pas parce qu'il serait inutile. La
+-- propriété « ce rôle n'est pas superutilisateur » tient malgré tout : elle tient
+-- par le DÉFAUT de `CREATE ROLE` sans qualificatif, jamais par une assertion
+-- explicite de ce script. À ne pas lire comme un oubli si un futur lecteur cherche
+-- où `NOSUPERUSER` est posé — il ne l'est nulle part ici, volontairement.
+-- `ALTER ROLE ... NOSUPERUSER` a été testé en exécution réelle sur le stack local
+-- et a échoué :
+--   ERROR:  permission denied to alter role
+--   DETAIL:  Only roles with the SUPERUSER attribute may alter roles with the
+--            SUPERUSER attribute.
+-- PostgreSQL restreint TOUTE altération de l'attribut SUPERUSER (y compris pour le
+-- retirer explicitement, alors qu'il est déjà absent) au seul appelant qui EST
+-- lui-même superutilisateur. Or `postgres` sur Supabase ne l'est pas (`rolsuper=f`,
+-- vérifié : `select rolsuper from pg_roles where rolname='postgres'`), donc CETTE
+-- instruction précise aurait fait échouer TOUT le script si `ON_ERROR_STOP` avait
+-- été actif au moment de la création réelle. `NOSUPERUSER` est de toute façon le
+-- défaut de `CREATE ROLE` sans qualificatif — l'omettre ne change rien au résultat,
+-- seulement à la capacité du script à s'exécuter sans erreur. Les trois attributs
+-- restants (NOCREATEDB/NOCREATEROLE/NOBYPASSRLS) n'ont pas cette restriction : ils
+-- ne nécessitent que CREATEROLE côté appelant, que `postgres` possède
+-- (`rolcreaterole=t`), et l'ALTER correspondant a réussi tel quel.
 --   NOCREATEROLE  : un rôle d'audit qui peut créer des rôles peut s'accorder des
 --                   privilèges à lui-même a posteriori — inacceptable pour un rôle
 --                   dont le seul but est de lire.
 --   NOCREATEDB    : aucun besoin de créer des bases ; un rôle d'audit ne doit jamais
 --                   pouvoir provisionner de nouvelle surface.
 --   NOBYPASSRLS   : la sonde lit des CATALOGUES SYSTÈME (pg_proc, pg_default_acl,
---                   pg_class, pg_policies, information_schema), qui ne sont pas
---                   soumis à RLS de toute façon — BYPASSRLS ne lui donnerait rien de
---                   plus tout en élargissant sa surface de risque si le rôle était un
---                   jour compromis ou mal utilisé pour lire des tables applicatives.
-alter role ci_schema_auditor with nosuperuser nocreatedb nocreaterole nobypassrls;
+--                   pg_class, pg_policies, pg_attribute, information_schema), qui ne
+--                   sont pas soumis à RLS de toute façon — BYPASSRLS ne lui
+--                   donnerait rien de plus tout en élargissant sa surface de risque
+--                   si le rôle était un jour compromis ou mal utilisé pour lire des
+--                   tables applicatives.
+--   NOINHERIT     : le rôle n'est membre d'AUCUN autre rôle (section 2) — NOINHERIT
+--                   n'a donc aucun effet observable aujourd'hui. Il est posé en
+--                   défense en profondeur contre une régression future précise :
+--                   si une migration ultérieure ajoutait par erreur
+--                   `grant anon to ci_schema_auditor` en croyant "faciliter"
+--                   l'audit (risque documenté en section 2 ci-dessous), INHERIT
+--                   activerait silencieusement tous les privilèges d'`anon` pour ce
+--                   rôle ; NOINHERIT exigerait un `SET ROLE anon` explicite, un acte
+--                   visible en session/log, pas une élévation passive.
+--   CONNECTION LIMIT 2 : le rôle sert une CI qui se connecte une fois par jour
+--                   (fréquence documentée plus bas), une seule connexion active à la
+--                   fois suffit largement. La limite n'est pas fixée à 1 pour
+--                   tolérer un recouvrement bénin (une connexion précédente pas
+--                   encore totalement fermée côté serveur au moment où la suivante
+--                   s'ouvre, ou une connexion d'investigation manuelle ponctuelle du
+--                   porteur avec les mêmes identifiants). Fixée à 2, elle rend
+--                   structurellement impossible qu'un identifiant compromis serve à
+--                   ouvrir un grand nombre de connexions concurrentes contre la
+--                   production (scénario de charge/DoS), sans introduire de risque
+--                   de contention sur l'usage réel et attendu du rôle.
+alter role ci_schema_auditor with
+  nocreatedb
+  nocreaterole
+  nobypassrls
+  noinherit
+  connection limit 2;
 
 -- --------------------------------------------------------------
 -- 2. Isolation d'appartenance — non membre des rôles applicatifs.
@@ -62,40 +113,89 @@ alter role ci_schema_auditor with nosuperuser nocreatedb nocreaterole nobypassrl
 -- --------------------------------------------------------------
 -- 4. Aucun privilège d'écriture, sur aucun objet.
 -- --------------------------------------------------------------
--- Aucune instruction `grant insert/update/delete` n'existe dans ce fichier. Seuls des
--- `grant select`/`grant usage` explicites suivent, sur des catalogues nommés.
+-- Aucune instruction `grant insert/update/delete` n'existe dans ce fichier. Aucune
+-- instruction `grant select`/`grant usage` non plus (section 5) — vérifié en
+-- exécution réelle que le rôle n'en a besoin d'aucune.
+--
+-- Prouvé, pas supposé (session de validation locale, connecté SOUS le compte du
+-- rôle lui-même, sur une base de test réelle du projet) :
+--   select * from public.orders limit 1;
+--     → ERROR:  permission denied for table orders
+--   insert into public.orders (id) values (gen_random_uuid());
+--     → ERROR:  permission denied for table orders
+--   select public.reconcile_product_stock();
+--     → ERROR:  permission denied for function reconcile_product_stock
+-- Ce dernier point compte double : `reconcile_product_stock` est `SECURITY
+-- DEFINER`, propriété historique de l'incident `0141` (fuite cross-tenant quand
+-- elle était exécutable par `anon`). Le rôle d'audit ne peut ni la lire au
+-- catalogue-privilège ni l'exécuter — aucun chemin d'écriture indirecte via une
+-- fonction `SECURITY DEFINER` du schéma `public`.
 
 -- --------------------------------------------------------------
--- 5. SELECT sur les seuls catalogues nécessaires à la baseline — énumérés.
+-- 5. Aucun GRANT explicite — vérifié suffisant, pas supposé.
 -- --------------------------------------------------------------
--- Ces catalogues sont TOUS des vues/tables système, lisibles par n'importe quel rôle
--- via `information_schema`/`pg_catalog` par défaut sur PostgreSQL standard — mais
--- Supabase verrouille `pg_catalog`/`information_schema` à `anon`/`authenticated`
--- selon son propre modèle RLS ; ce rôle est un rôle SQL nu, hors RLS applicative, donc
--- ces `grant` sont explicites plutôt que supposés hérités.
-grant usage on schema pg_catalog to ci_schema_auditor;
-grant usage on schema information_schema to ci_schema_auditor;
-grant usage on schema public to ci_schema_auditor;
-grant usage on schema private to ci_schema_auditor;
+-- Une version antérieure de ce fichier accordait explicitement USAGE sur 4 schémas
+-- (pg_catalog, information_schema, public, private) et SELECT sur 9 tables de
+-- pg_catalog. Exécutée telle quelle sur le stack local, seules 2 de ces 13
+-- instructions ont eu un effet réel :
+--   grant usage on schema public to ci_schema_auditor;   → GRANT (effet réel)
+--   grant usage on schema private to ci_schema_auditor;  → GRANT (effet réel)
+-- Les 11 autres (USAGE sur pg_catalog/information_schema, SELECT sur les 9 tables
+-- système) ont chacune renvoyé :
+--   WARNING:  no privileges were granted for "<objet>"
+-- c'est-à-dire un GRANT qui s'exécute sans erreur mais ne change rien : le
+-- privilège était déjà accordé à PUBLIC par PostgreSQL par défaut. Supprimées ici
+-- comme bruit inutile — pas des instructions "impossibles", des instructions sans
+-- effet mesurable.
+--
+-- `grant usage on schema public`/`private`, elles, N'ONT PAS été supprimées comme
+-- du bruit : elles ont un effet réel et c'est précisément ce qui les rend
+-- dangereuses. USAGE sur `public` n'est nécessaire pour AUCUNE des lectures
+-- catalogue de ce rôle (elles vivent toutes dans `pg_catalog`/`information_schema`,
+-- déjà ouverts à PUBLIC) — mais ce USAGE permettrait au rôle d'appeler toute
+-- fonction du schéma `public` exécutable par `PUBLIC`. Plusieurs de ces fonctions
+-- sont `SECURITY DEFINER` et s'exécutent sous le propriétaire (`postgres`) : le
+-- rôle pourrait alors ÉCRIRE via une fonction, sans jamais avoir reçu le moindre
+-- `GRANT INSERT`. Même raisonnement pour `private` (`post_stock_movement`, cœur
+-- ledger, y vit depuis 0136). Retirées entièrement — pas réduites, retirées.
+--
+-- Le résultat, vérifié en reconnectant SOUS le rôle après une recréation propre
+-- (`drop role` puis recréation depuis ce fichier, zéro grant restant d'une session
+-- précédente) : les 5 catalogues nommément demandés restent lisibles SANS AUCUN
+-- grant, parce qu'ils sont déjà ouverts à PUBLIC par PostgreSQL —
+--   select count(*) from pg_proc;          → 3579
+--   select count(*) from pg_default_acl;   →   30
+--   select count(*) from pg_class;         → 1041
+--   select count(*) from pg_policies;      →  103
+--   select count(*) from pg_auth_members;  →   24
+-- et `has_function_privilege`/`has_table_privilege` restent appelables sans grant
+-- (fonctions STABLE, aucune garde de rôle applicative, exécutables par PUBLIC par
+-- défaut sur PostgreSQL de base) :
+--   select has_function_privilege('anon', 'public.set_updated_at()', 'EXECUTE');
+--     → t
+--   select has_table_privilege('anon', 'public.orders', 'SELECT');
+--     → t  (cohérent avec le modèle documenté du projet : le GRANT de table est
+--           déjà ouvert par défaut à `anon`/`authenticated`, FORCE RLS est la seule
+--           barrière réelle — ce que ce rôle doit justement pouvoir observer)
+--
+-- Aucun `grant` n'apparaît donc dans ce fichier. Documenté ici plutôt qu'omis
+-- silencieusement : l'absence de grants est le résultat d'une vérification, pas
+-- d'un oubli.
 
-grant select on pg_catalog.pg_proc to ci_schema_auditor;
-grant select on pg_catalog.pg_namespace to ci_schema_auditor;
-grant select on pg_catalog.pg_roles to ci_schema_auditor;
-grant select on pg_catalog.pg_default_acl to ci_schema_auditor;
-grant select on pg_catalog.pg_class to ci_schema_auditor;
-grant select on pg_catalog.pg_policies to ci_schema_auditor;
-grant select on pg_catalog.pg_type to ci_schema_auditor;
-grant select on pg_catalog.pg_auth_members to ci_schema_auditor;
-grant select on pg_catalog.pg_event_trigger to ci_schema_auditor;
-
 -- --------------------------------------------------------------
--- 6. Capacité d'appeler has_function_privilege / has_table_privilege.
+-- 6. Couverture des privilèges de COLONNE — vérifiée nécessaire à zéro grant.
 -- --------------------------------------------------------------
--- Ces deux fonctions sont STABLE, sans garde de rôle applicative (fonctions système
--- PostgreSQL de base, jamais redéfinies par ce projet) — exécutables par tout rôle
--- connecté par défaut. Aucun grant supplémentaire n'est nécessaire ; documenté ici
--- pour que la vérification "peut-il vraiment les appeler" figure dans la spec, et
--- soit re-testée au moment de la création réelle (Lot 4B) plutôt que supposée.
+-- 0A-bis a établi que `unit_cost` (product) est fermé au niveau COLONNE et non par
+-- RLS — une baseline qui ne mesurerait que les privilèges de table/fonction serait
+-- aveugle à cette dimension. `pg_attribute` (catalogue des colonnes, base de
+-- `has_column_privilege`) et `has_column_privilege` elle-même ont été vérifiés dans
+-- la même session, sans aucun grant supplémentaire :
+--   select count(*) from pg_attribute;  → 6403 (déjà ouvert à PUBLIC, même famille
+--                                          que pg_proc/pg_class ci-dessus)
+--   select has_column_privilege('anon', 'public.product', 'unit_cost', 'SELECT');
+--     → f  (cohérent : `unit_cost` est effectivement fermé à `anon` au niveau
+--           colonne, exactement ce que ce rôle doit pouvoir constater)
+-- Aucun grant nécessaire, comme pour le reste de la section 5.
 
 -- ============================================================
 -- Utilisation prévue depuis la CI (Lot 4B, non appliqué ici)
@@ -120,5 +220,6 @@ grant select on pg_catalog.pg_event_trigger to ci_schema_auditor;
 --   fréquence quotidienne borne le délai de détection à 24h tout en gardant le
 --   risque opérationnel (charge sur la base de prod, surface d'exposition d'un
 --   secret supplémentaire) proportionné. À ajuster si un futur incident démontre
---   qu'un délai de 24h est trop long.
+--   qu'un délai de 24h est trop long. Cohérent avec `CONNECTION LIMIT 2` ci-dessus
+--   (un usage quotidien mono-connexion n'a besoin d'aucune marge supplémentaire).
 -- ============================================================
