@@ -9,6 +9,23 @@
 -- `ci_schema_auditor`. Voir CLAUDE.md / le prompt de ce lot. Elle peut être
 -- committée, appliquée en local, passer la CI — pas être déployée.
 --
+-- HARNAIS DE BACKFILL (scripts/l1-backfill-harness.sh, tests/rls dédié) : ce
+-- backfill ne s'exécutera QU'UNE SEULE FOIS en production, sur l'historique
+-- complet du moment — pas de seconde tentative. `supabase/seed.sql` ne
+-- contient aucune boutique Shopify : un `db reset --local` ordinaire exécute
+-- les DO blocks ci-dessous à 0=0, ce qui ne prouve rien. Le harnais monte des
+-- bases fraîches et isolées (jamais le seed global), injecte une fixture
+-- Shopify réaliste (2 tenants, 2 apps, GID multiples, variantes partageant un
+-- `shopify_product_id`), applique CETTE migration en isolation (jamais depuis
+-- 0001) et vérifie les comptes exacts par entité — ainsi que le cas négatif
+-- « webhook dont la boutique n'est pas résoluble » (cas prod réel, 2026-05-30).
+-- Preuve de non-partialité obtenue : les DO blocks ci-dessous s'exécutent tous
+-- dans la transaction implicite du fichier de migration — un échec à
+-- n'importe quel statement laisse la base EXACTEMENT à l'état d'avant (aucune
+-- des 3 tables créées, `orders.store_connection_id` absente, `0142` absente
+-- de `supabase_migrations.schema_migrations`), vérifié empiriquement, pas
+-- supposé.
+--
 -- ÉCARTS entre le prompt d'origine de ce lot et le dépôt réel, vérifiés avant
 -- d'écrire (voir rapport de session pour le détail complet) :
 --   * order_line n'a NI `shopify_variant_id` NI `shopify_sku`. Les colonnes
@@ -246,8 +263,10 @@ create index if not exists orders_store_connection_idx
 do $$
 declare
   v_dupes bigint;
+  v_sample text;
 begin
-  select count(*) into v_dupes
+  select count(*), string_agg(shop_domain, ', ' order by shop_domain)
+    into v_dupes, v_sample
   from (
     select shop_domain
     from public.shop
@@ -257,7 +276,7 @@ begin
   ) d;
 
   if v_dupes > 0 then
-    raise exception 'l1_store_connection_domain_collision duplicate_domains=%', v_dupes;
+    raise exception 'l1_store_connection_domain_collision count=% domains=[%]', v_dupes, v_sample;
   end if;
 end;
 $$;
@@ -270,10 +289,12 @@ $$;
 do $$
 declare
   v_collisions bigint;
+  v_sample text;
 begin
-  select count(*) into v_collisions
+  select count(*), string_agg(format('shop=%s gid=%s customers=%s', shop_id, gid, ids), '; ' order by gid)
+    into v_collisions, v_sample
   from (
-    select c.shop_id, gid
+    select c.shop_id, gid, string_agg(c.id::text, ',' order by c.id) as ids
     from public.customer c
     cross join lateral jsonb_array_elements_text(c.shopify_customer_gids) as gid
     group by c.shop_id, gid
@@ -281,7 +302,7 @@ begin
   ) d;
 
   if v_collisions > 0 then
-    raise exception 'l1_external_ref_customer_gid_collision rows=%', v_collisions;
+    raise exception 'l1_external_ref_customer_gid_collision count=% [%]', v_collisions, v_sample;
   end if;
 end;
 $$;
@@ -293,10 +314,12 @@ $$;
 do $$
 declare
   v_collisions bigint;
+  v_sample text;
 begin
-  select count(*) into v_collisions
+  select count(*), string_agg(format('shop=%s variant=%s products=%s', shop_id, shopify_variant_id, ids), '; ' order by shopify_variant_id)
+    into v_collisions, v_sample
   from (
-    select p.shop_id, p.shopify_variant_id
+    select p.shop_id, p.shopify_variant_id, string_agg(p.id::text, ',' order by p.id) as ids
     from public.product p
     where p.shopify_variant_id is not null
     group by p.shop_id, p.shopify_variant_id
@@ -304,7 +327,7 @@ begin
   ) d;
 
   if v_collisions > 0 then
-    raise exception 'l1_external_ref_product_variant_collision rows=%', v_collisions;
+    raise exception 'l1_external_ref_product_variant_collision count=% [%]', v_collisions, v_sample;
   end if;
 end;
 $$;
@@ -316,10 +339,12 @@ $$;
 do $$
 declare
   v_collisions bigint;
+  v_sample text;
 begin
-  select count(*) into v_collisions
+  select count(*), string_agg(format('shop=%s shopify_order_id=%s orders=%s', shop_id, shopify_order_id, ids), '; ' order by shopify_order_id)
+    into v_collisions, v_sample
   from (
-    select o.shop_id, o.shopify_order_id
+    select o.shop_id, o.shopify_order_id, string_agg(o.id::text, ',' order by o.id) as ids
     from public.orders o
     where o.shopify_order_id is not null
     group by o.shop_id, o.shopify_order_id
@@ -327,7 +352,7 @@ begin
   ) d;
 
   if v_collisions > 0 then
-    raise exception 'l1_external_ref_order_collision rows=%', v_collisions;
+    raise exception 'l1_external_ref_order_collision count=% [%]', v_collisions, v_sample;
   end if;
 end;
 $$;
@@ -340,13 +365,15 @@ $$;
 do $$
 declare
   v_missing bigint;
+  v_sample text;
 begin
-  select count(*) into v_missing
+  select count(*), string_agg(shopify_webhook_id, ', ' order by received_at)
+    into v_missing, v_sample
   from public.webhook_event
   where merchant_account_id is null or shop_id is null;
 
   if v_missing > 0 then
-    raise exception 'l1_ingestion_event_backfill_missing_shop_context rows=%', v_missing;
+    raise exception 'l1_ingestion_event_backfill_missing_shop_context count=% webhook_ids=[%]', v_missing, v_sample;
   end if;
 end;
 $$;
