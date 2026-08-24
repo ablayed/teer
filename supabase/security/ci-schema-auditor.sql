@@ -8,10 +8,19 @@
 -- absence de grant applicatif) SONT APPLIQUÉES en production — rôle créé et
 -- vérifié en session dédiée (attributs, inertie sur `orders`/`reconcile_product_
 -- stock`, mesures d'ancrage — voir CLAUDE.md, section "Lot 4B"). La section 5bis
--- (grant de lecture sur `supabase_migrations.schema_migrations`), elle, N'EST
--- PAS ENCORE appliquée en production au moment de l'écriture de ce lot — validée
--- uniquement en local, comme documenté dans cette section. C'est au porteur de
--- l'appliquer.
+-- (grant de lecture sur `supabase_migrations.schema_migrations`) EST ELLE AUSSI
+-- APPLIQUÉE en production — confirmé le 2026-08-24 par le run réel `workflow_
+-- dispatch` de `.github/workflows/acl-production-probe.yml` (run GitHub Actions
+-- `32790630417`) : la sonde a lu `dernière migration appliquée en production =
+-- 0141` directement depuis cette table, sous les identifiants `ci_schema_auditor`
+-- — une lecture qui aurait échoué en `permission denied` sans ce grant. **PASS
+-- 4B** obtenu ce run : inventaire live non vide (103 fonctions, 44 tables),
+-- invariant absolu vert, 0 objet en catégorie 3 (aucun objet en production que
+-- le dépôt ignore — exactement la classe de dérive de l'incident `0141` qu'il
+-- s'agissait de détecter), les 3 tables de `0142` (`store_connection`,
+-- `external_ref`, `ingestion_event`) correctement classées en catégorie 2 (retard
+-- de déploiement expliqué, non bloquant). Détail complet : CLAUDE.md, section
+-- "Lot 4B".
 --
 -- OBJET : une sonde PRODUCTION récurrente (pas une formalité de clôture ponctuelle),
 -- qui interroge l'ACL réelle (`pg_proc.proacl`, `has_function_privilege`,
@@ -243,6 +252,16 @@ grant select on supabase_migrations.schema_migrations to ci_schema_auditor;
 -- aussi été rejouées après ce grant, sur la même connexion, résultat identique.
 -- Le grant ci-dessus est donc bien ADDITIF et isolé : il n'élargit la surface
 -- que d'une seule table, sans effet mesurable sur le reste du rôle.
+--
+-- APPLIQUÉ EN PRODUCTION le 2026-08-24 (par le porteur, hors de cet agent — cf.
+-- règle projet #2). Confirmé, pas supposé : le run `workflow_dispatch`
+-- `32790630417` de `.github/workflows/acl-production-probe.yml` a lu la version
+-- de migration réelle (`0141`) depuis `supabase_migrations.schema_migrations` EN
+-- PRODUCTION sous ce rôle — impossible sans ce grant, qui aurait renvoyé
+-- `permission denied for schema supabase_migrations` sinon (signature identique
+-- au test local ci-dessus). `seed_files` n'a PAS été revérifiée contre la
+-- production — ce test local reste la seule preuve disponible pour cette table
+-- précise ; ne pas présumer du comportement en production sans le mesurer.
 
 -- --------------------------------------------------------------
 -- 6. Couverture des privilèges de COLONNE — vérifiée nécessaire à zéro grant.
