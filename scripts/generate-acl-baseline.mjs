@@ -32,20 +32,18 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
+import { BASELINE_SCHEMAS, collectAclSnapshot } from './lib/acl-snapshot.mjs';
 
 const { Client } = pg;
 
 const PROJECT_ROOT = resolve(import.meta.dirname, '..');
-const BASELINE_PATH = resolve(PROJECT_ROOT, 'supabase/security/acl-baseline.json');
-
-// Doit rester synchronisé avec `supabase/config.toml:6` (`api.schemas`) et avec
-// `tests/rls/function-execute-acl-invariant.rls.test.ts` (`EXPOSED_SCHEMAS`).
-const EXPOSED_SCHEMAS = ['public', 'graphql_public'];
-
-// Schémas couverts par la baseline en plus des schémas exposés : `private` n'est pas
-// exposé PostgREST mais héberge le cœur `post_stock_movement` (0136) — surveillé ici
-// pour la même raison que les schémas exposés (dérive de owner/security/search_path).
-const BASELINE_SCHEMAS = ['public', 'private', 'graphql_public'];
+// Lot 4B : ACL_BASELINE_OUTPUT permet à scripts/acl-baseline-at-version.mjs de
+// générer une baseline jetable (non committée, sous un chemin temporaire) sans
+// dupliquer ce script. Par défaut (aucune variable posée), le comportement est
+// STRICTEMENT inchangé — le chemin committé du dépôt.
+const BASELINE_PATH = process.env.ACL_BASELINE_OUTPUT
+  ? resolve(process.env.ACL_BASELINE_OUTPUT)
+  : resolve(PROJECT_ROOT, 'supabase/security/acl-baseline.json');
 
 const dbUrl =
   process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -87,171 +85,16 @@ async function main() {
   await client.connect();
 
   try {
-    const { rows: functions } = await client.query(
-      `
-        select
-          n.nspname as schema_name,
-          p.proname as func_name,
-          pg_get_function_identity_arguments(p.oid) as args,
-          t.typname as return_type,
-          p.prosecdef as security_definer,
-          case p.provolatile
-            when 'i' then 'immutable'
-            when 's' then 'stable'
-            when 'v' then 'volatile'
-          end as volatility,
-          case p.proparallel
-            when 's' then 'safe'
-            when 'r' then 'restricted'
-            when 'u' then 'unsafe'
-          end as parallel_safety,
-          o.rolname as owner,
-          coalesce(
-            (select string_agg(cfg, ',' order by cfg) from unnest(coalesce(p.proconfig, array[]::text[])) as cfg),
-            ''
-          ) as search_path_config,
-          p.proacl is null as acl_is_default,
-          coalesce(
-            (
-              select string_agg(a, ',' order by a)
-              from unnest(case when p.proacl is null then array[]::text[] else p.proacl::text[] end) as a
-            ),
-            ''
-          ) as proacl_sorted,
-          has_function_privilege('anon', p.oid, 'EXECUTE') as anon_exec,
-          has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_exec,
-          has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_exec
-        from pg_proc p
-        join pg_namespace n on n.oid = p.pronamespace
-        join pg_roles o on o.oid = p.proowner
-        join pg_type t on t.oid = p.prorettype
-        where n.nspname = any($1::text[])
-        order by n.nspname, p.proname, args
-      `,
-      [BASELINE_SCHEMAS],
-    );
+    // Lot 4B : requêtes extraites vers scripts/lib/acl-snapshot.mjs, réutilisées
+    // à l'identique par la baseline versionnée et par la sonde de production —
+    // voir ce module pour le détail des colonnes. BASELINE_SCHEMAS peut être
+    // surchargé via ACL_BASELINE_SCHEMAS (CSV) pour un usage ponctuel ; par
+    // défaut (aucune variable posée), inchangé.
+    const schemas = process.env.ACL_BASELINE_SCHEMAS
+      ? process.env.ACL_BASELINE_SCHEMAS.split(',').map((s) => s.trim())
+      : BASELINE_SCHEMAS;
 
-    const { rows: defaultAcl } = await client.query(
-      `
-        select
-          r.rolname as creator_role,
-          coalesce(n.nspname, '(database-wide)') as schema_name,
-          case d.defaclobjtype
-            when 'r' then 'table'
-            when 'f' then 'function'
-            when 'S' then 'sequence'
-            when 'T' then 'type'
-            else d.defaclobjtype::text
-          end as object_type,
-          coalesce(
-            (select string_agg(a, ',' order by a) from unnest(d.defaclacl::text[]) as a),
-            ''
-          ) as acl_sorted
-        from pg_default_acl d
-        join pg_roles r on r.oid = d.defaclrole
-        left join pg_namespace n on n.oid = d.defaclnamespace
-        where n.nspname is null or n.nspname = any($1::text[])
-        order by creator_role, schema_name, object_type
-      `,
-      [BASELINE_SCHEMAS],
-    );
-
-    const { rows: tables } = await client.query(
-      `
-        select
-          n.nspname as schema_name,
-          c.relname as table_name,
-          o.rolname as owner,
-          c.relrowsecurity as rls_enabled,
-          c.relforcerowsecurity as rls_forced,
-          has_table_privilege('anon', c.oid, 'SELECT') as anon_select,
-          has_table_privilege('anon', c.oid, 'INSERT') as anon_insert,
-          has_table_privilege('anon', c.oid, 'UPDATE') as anon_update,
-          has_table_privilege('anon', c.oid, 'DELETE') as anon_delete,
-          has_table_privilege('authenticated', c.oid, 'SELECT') as authenticated_select,
-          has_table_privilege('authenticated', c.oid, 'INSERT') as authenticated_insert,
-          has_table_privilege('authenticated', c.oid, 'UPDATE') as authenticated_update,
-          has_table_privilege('authenticated', c.oid, 'DELETE') as authenticated_delete,
-          has_table_privilege('service_role', c.oid, 'SELECT') as service_role_select,
-          has_table_privilege('service_role', c.oid, 'INSERT') as service_role_insert,
-          has_table_privilege('service_role', c.oid, 'UPDATE') as service_role_update,
-          has_table_privilege('service_role', c.oid, 'DELETE') as service_role_delete
-        from pg_class c
-        join pg_namespace n on n.oid = c.relnamespace
-        join pg_roles o on o.oid = c.relowner
-        where n.nspname = any($1::text[])
-          and c.relkind = 'r'
-        order by n.nspname, c.relname
-      `,
-      [BASELINE_SCHEMAS],
-    );
-
-    const { rows: roleMemberships } = await client.query(
-      `
-        select m.rolname as member_role, o.rolname as of_role
-        from pg_auth_members am
-        join pg_roles m on m.oid = am.member
-        join pg_roles o on o.oid = am.roleid
-        where m.rolname in ('anon', 'authenticated', 'service_role', 'postgres')
-           or o.rolname in ('anon', 'authenticated', 'service_role', 'postgres')
-        order by of_role, member_role
-      `,
-    );
-
-    const baseline = {
-      exposedSchemas: [...EXPOSED_SCHEMAS].sort(),
-      baselineSchemas: [...BASELINE_SCHEMAS].sort(),
-      knownAnonExecuteExceptions: [
-        'graphql_public.graphql("operationName" text, query text, variables jsonb, extensions jsonb)',
-      ],
-      functions: functions.map((f) => ({
-        key: `${f.schema_name}.${f.func_name}(${f.args})`,
-        schema: f.schema_name,
-        name: f.func_name,
-        args: f.args,
-        returnType: f.return_type,
-        securityDefiner: f.security_definer,
-        volatility: f.volatility,
-        parallelSafety: f.parallel_safety,
-        owner: f.owner,
-        searchPathConfig: f.search_path_config,
-        aclIsDefault: f.acl_is_default,
-        proaclSorted: f.proacl_sorted,
-        anonExec: f.anon_exec,
-        authenticatedExec: f.authenticated_exec,
-        serviceRoleExec: f.service_role_exec,
-      })),
-      tables: tables.map((t) => ({
-        key: `${t.schema_name}.${t.table_name}`,
-        schema: t.schema_name,
-        name: t.table_name,
-        owner: t.owner,
-        rlsEnabled: t.rls_enabled,
-        rlsForced: t.rls_forced,
-        anonSelect: t.anon_select,
-        anonInsert: t.anon_insert,
-        anonUpdate: t.anon_update,
-        anonDelete: t.anon_delete,
-        authenticatedSelect: t.authenticated_select,
-        authenticatedInsert: t.authenticated_insert,
-        authenticatedUpdate: t.authenticated_update,
-        authenticatedDelete: t.authenticated_delete,
-        serviceRoleSelect: t.service_role_select,
-        serviceRoleInsert: t.service_role_insert,
-        serviceRoleUpdate: t.service_role_update,
-        serviceRoleDelete: t.service_role_delete,
-      })),
-      defaultAcl: defaultAcl.map((d) => ({
-        creatorRole: d.creator_role,
-        schema: d.schema_name,
-        objectType: d.object_type,
-        aclSorted: d.acl_sorted,
-      })),
-      roleMemberships: roleMemberships.map((m) => ({
-        member: m.member_role,
-        of: m.of_role,
-      })),
-    };
+    const baseline = await collectAclSnapshot(client, schemas);
 
     const output = stableStringify(baseline);
 

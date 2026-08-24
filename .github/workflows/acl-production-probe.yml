@@ -1,0 +1,77 @@
+name: acl-production-probe
+
+# Phase 2 / Lot 4B — sonde ACL PRODUCTION. Détecte la classe de dérive de
+# l'incident 0141 (GRANT manuel appliqué en production hors migration, jamais
+# committé, invisible à tout `db reset --local`) : seule une mesure directe de
+# l'ACL réelle EN PRODUCTION peut la voir. Voir CLAUDE.md, section "Lot 4B", et
+# supabase/security/ci-schema-auditor.sql.
+#
+# QUOTIDIEN, PAS À CHAQUE PUSH — cette sonde ouvre une connexion à la
+# production réelle ; une dérive hors-migration ne se produit pas à chaque
+# commit. CONNECTION LIMIT 2 sur le rôle a été dimensionné pour cet usage.
+#
+# Secret requis : CI_SCHEMA_AUDITOR_DB_URL (chaîne de connexion complète, via
+# le pooler Supabase — la connexion directe ne résout qu'en IPv6, inatteignable
+# depuis ce runner). Absent → le job échoue explicitement (scripts/acl-
+# production-probe.mjs vérifie AVANT toute tentative de connexion), jamais un
+# saut silencieux.
+
+on:
+  schedule:
+    # 03:00 UTC, quotidien.
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: acl-production-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: supabase/setup-cli@v1
+        # Même version épinglée que le job test-rls de ci.yml — nécessaire pour
+        # que scripts/acl-baseline-at-version.sh (qui appelle `supabase db
+        # reset --local`) produise un stack cohérent avec la baseline courante.
+        with: { version: 2.102.0 }
+      - run: pnpm install --frozen-lockfile
+
+      # Garde AVANT toute action coûteuse : le script lui-même revérifie cette
+      # variable en tout premier (scripts/acl-production-probe.mjs), mais un
+      # échec ici évite de démarrer Supabase pour rien si le secret est absent.
+      - name: Vérifie la présence du secret
+        run: |
+          if [ -z "${CI_SCHEMA_AUDITOR_DB_URL:-}" ]; then
+            echo "::error::CI_SCHEMA_AUDITOR_DB_URL est absent. Le rôle ci_schema_auditor doit être créé en production et le secret déposé avant que ce workflow puisse tourner — voir supabase/security/ci-schema-auditor.sql et CLAUDE.md, section Lot 4B."
+            exit 1
+          fi
+        env:
+          CI_SCHEMA_AUDITOR_DB_URL: ${{ secrets.CI_SCHEMA_AUDITOR_DB_URL }}
+
+      # Stack LOCAL, jetable — sert uniquement à générer la baseline versionnée
+      # (scripts/acl-baseline-at-version.sh) à laquelle la mesure de production
+      # est comparée. Aucune donnée de production ne transite par ce stack.
+      - name: Start Supabase (sanitized diagnostics)
+        run: |
+          supabase_log="$(mktemp)"
+          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
+            rm -f "$supabase_log"
+          else
+            status=$?
+            echo "::error::supabase start failed (exit $status)"
+            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
+              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line]' \
+              || true
+            rm -f "$supabase_log"
+            exit "$status"
+          fi
+
+      - name: Sonde production
+        run: pnpm security:acl-production-probe
+        env:
+          CI_SCHEMA_AUDITOR_DB_URL: ${{ secrets.CI_SCHEMA_AUDITOR_DB_URL }}

@@ -18,6 +18,7 @@
     "security:s1d4:client-bundle": "node scripts/s1d4-check-client-bundle.mjs",
     "security:acl-baseline:generate": "node scripts/generate-acl-baseline.mjs",
     "security:acl-baseline:check": "node scripts/generate-acl-baseline.mjs --check",
+    "security:acl-production-probe": "node scripts/acl-production-probe.mjs",
     "test:rls": "vitest run tests/rls",
     "test:e2e": "playwright test tests/e2e",
     "test:e2e:shopify": "node scripts/test-shopify-webhooks.mjs",
