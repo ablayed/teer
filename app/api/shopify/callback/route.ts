@@ -136,6 +136,29 @@ export async function GET(request: NextRequest) {
       throw auditError;
     }
 
+    // Lot L2 : chaque install (nouvelle ou reconnexion) doit poser/rafraîchir sa
+    // store_connection, sinon la double écriture (ingestion_event/external_ref) reste inerte
+    // pour toute boutique connectée après le backfill ponctuel de 0142 (Lot L1). Best-effort et
+    // non bloquant : un échec ici ne doit jamais empêcher une connexion Shopify réelle de réussir.
+    const { error: storeConnectionError } = await supabase.from('store_connection').upsert(
+      {
+        merchant_account_id: payload.merchantAccountId,
+        shop_id: savedShop.id,
+        platform: 'shopify',
+        external_identifier: shop,
+        platform_app_id: app.clientId,
+        status: 'active',
+        uninstalled_at: null,
+      },
+      { onConflict: 'platform,external_identifier' },
+    );
+    if (storeConnectionError) {
+      Sentry.captureException(new Error('shopify_store_connection_upsert_failed'), {
+        tags: { module: 'shopify.callback' },
+        extra: { message: storeConnectionError.message, shopDomain: shop },
+      });
+    }
+
     const productsSyncResult = await syncProductsForShop({
       accessToken: tokenResponse.accessToken,
       actorUserId: null,

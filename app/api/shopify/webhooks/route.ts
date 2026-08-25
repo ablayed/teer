@@ -1,3 +1,9 @@
+import {
+  dualWriteBulkOperationFinishedWebhook,
+  dualWriteOrderWebhook,
+  dualWriteProductWebhook,
+  dualWriteRefundWebhook,
+} from '@/lib/ingestion/shopify-dual-write';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { getRegisteredShopifyApps, getShopifyAppForShop } from '@/lib/shopify/apps';
@@ -369,7 +375,7 @@ async function getActiveShopByDomain({
 }) {
   const { data, error } = await supabase
     .from('shop')
-    .select('id, merchant_account_id, shop_domain')
+    .select('id, merchant_account_id, shop_domain, shopify_client_id')
     .eq('shop_domain', shopDomain)
     .eq('store_kind', 'shopify')
     .eq('status', 'active')
@@ -434,16 +440,33 @@ async function getGdprShopByDomain({
   return data;
 }
 
+// Double écriture best-effort — ne doit JAMAIS faire échouer le chemin legacy qui reste
+// autoritatif en lecture dans ce lot (aucune bascule). Toute erreur est absorbée ici, jamais
+// laissée remonter au handler appelant.
+async function runDualWrite(label: string, work: () => Promise<void>) {
+  try {
+    await work();
+  } catch (error) {
+    logWebhookError(`[ingestion] dual-write failed (${label})`, {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function handleOrderWebhook({
   payload,
   shopDomain,
   supabase,
   topic,
+  webhookId,
+  triggeredAt,
 }: {
   payload: unknown;
   shopDomain: string | null;
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
+  webhookId: string | null;
+  triggeredAt: string | null;
 }) {
   const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
 
@@ -479,6 +502,16 @@ async function handleOrderWebhook({
       topic,
       shopDomain: resolvedShopDomain,
     });
+    await runDualWrite('order', () =>
+      dualWriteOrderWebhook({
+        supabase,
+        shop,
+        topic,
+        orderNode,
+        deliveryId: webhookId,
+        triggeredAt,
+      }),
+    );
   } else {
     logWebhookError('[webhook] order persist failed', {
       errorCode: sanitizeWebhookError(result.error),
@@ -495,11 +528,15 @@ async function handleProductWebhook({
   shopDomain,
   supabase,
   topic,
+  webhookId,
+  triggeredAt,
 }: {
   payload: unknown;
   shopDomain: string | null;
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
+  webhookId: string | null;
+  triggeredAt: string | null;
 }) {
   const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
 
@@ -535,6 +572,16 @@ async function handleProductWebhook({
       topic,
       shopDomain: resolvedShopDomain,
     });
+    await runDualWrite('product', () =>
+      dualWriteProductWebhook({
+        supabase,
+        shop,
+        topic,
+        productNode,
+        deliveryId: webhookId,
+        triggeredAt,
+      }),
+    );
   } else {
     logWebhookError('[webhook] product persist failed', {
       errorCode: sanitizeWebhookError(result.error),
@@ -614,6 +661,15 @@ async function handleAppUninstalledWebhook({
     return;
   }
 
+  // Best-effort : ne bloque jamais le traitement principal (shop.status déjà posé ci-dessus).
+  await runDualWrite('app_uninstalled_connection_status', async () => {
+    await supabase
+      .from('store_connection')
+      .update({ status: 'uninstalled', uninstalled_at: new Date().toISOString() })
+      .eq('platform', 'shopify')
+      .eq('external_identifier', resolvedShopDomain);
+  });
+
   const { error: auditError } = await supabase.from('audit_log').insert({
     merchant_account_id: shop.merchant_account_id,
     actor_user_id: null,
@@ -642,11 +698,15 @@ async function handleRefundWebhook({
   shopDomain,
   supabase,
   topic,
+  webhookId,
+  triggeredAt,
 }: {
   payload: unknown;
   shopDomain: string | null;
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
+  webhookId: string | null;
+  triggeredAt: string | null;
 }) {
   const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
 
@@ -725,6 +785,17 @@ async function handleRefundWebhook({
   if (refundAuditError) {
     throw new Error('shopify_refund_audit_failed');
   }
+
+  await runDualWrite('refund', () =>
+    dualWriteRefundWebhook({
+      supabase,
+      shop,
+      topic,
+      orderId: refund.orderId,
+      deliveryId: webhookId,
+      triggeredAt,
+    }),
+  );
 }
 
 // bulk_operations/finish : la bulk operation est terminée → traite le JSONL (fallback du polling).
@@ -733,11 +804,15 @@ async function handleBulkFinishWebhook({
   shopDomain,
   supabase,
   topic,
+  webhookId,
+  triggeredAt,
 }: {
   payload: unknown;
   shopDomain: string | null;
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
+  webhookId: string | null;
+  triggeredAt: string | null;
 }) {
   const resolvedShopDomain = resolveShopDomain(shopDomain, payload);
   if (!resolvedShopDomain) {
@@ -766,6 +841,16 @@ async function handleBulkFinishWebhook({
 
   const result = await processFinishedBulkForShop(supabase, shop, app.clientId, app.clientSecret);
   logWebhookInfo('[webhook] bulk finish processed', { resolvedShopDomain, ok: result.ok });
+
+  await runDualWrite('bulk_operation_finished', () =>
+    dualWriteBulkOperationFinishedWebhook({
+      supabase,
+      shop,
+      topic,
+      deliveryId: webhookId,
+      triggeredAt,
+    }),
+  );
 }
 
 type GdprProcessResult = {
@@ -1058,12 +1143,16 @@ async function processWebhook({
   shopDomain,
   supabase,
   topic,
+  webhookId,
+  triggeredAt,
 }: {
   eventId: string;
   payload: unknown;
   shopDomain: string | null;
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
+  webhookId: string | null;
+  triggeredAt: string | null;
 }): Promise<GdprProcessResult | null> {
   const pcdTopics = new Set([
     'orders/create',
@@ -1125,17 +1214,24 @@ async function processWebhook({
     case 'orders/updated':
     case 'orders/cancelled':
     case 'orders/fulfilled':
-      await handleOrderWebhook({ payload, shopDomain, supabase, topic });
+      await handleOrderWebhook({ payload, shopDomain, supabase, topic, webhookId, triggeredAt });
       return null;
     case 'refunds/create':
-      await handleRefundWebhook({ payload, shopDomain, supabase, topic });
+      await handleRefundWebhook({ payload, shopDomain, supabase, topic, webhookId, triggeredAt });
       return null;
     case 'bulk_operations/finish':
-      await handleBulkFinishWebhook({ payload, shopDomain, supabase, topic });
+      await handleBulkFinishWebhook({
+        payload,
+        shopDomain,
+        supabase,
+        topic,
+        webhookId,
+        triggeredAt,
+      });
       return null;
     case 'products/create':
     case 'products/update':
-      await handleProductWebhook({ payload, shopDomain, supabase, topic });
+      await handleProductWebhook({ payload, shopDomain, supabase, topic, webhookId, triggeredAt });
       return null;
     case 'app/uninstalled':
       await handleAppUninstalledWebhook({ payload, shopDomain, supabase, topic });
@@ -1157,6 +1253,8 @@ async function runWebhookEvent({
   supabase,
   topic,
   replay,
+  webhookId,
+  triggeredAt,
 }: {
   eventId: string;
   payload: unknown;
@@ -1164,6 +1262,8 @@ async function runWebhookEvent({
   supabase: NonNullable<SupabaseAdminClient>;
   topic: string;
   replay: boolean;
+  webhookId: string | null;
+  triggeredAt: string | null;
 }) {
   let effectivePayload = payload;
   let effectiveShopDomain = shopDomain;
@@ -1194,6 +1294,8 @@ async function runWebhookEvent({
       shopDomain: effectiveShopDomain,
       supabase,
       topic: effectiveTopic,
+      webhookId,
+      triggeredAt,
     });
     await finishWebhookStatus({
       supabase,
@@ -1320,6 +1422,8 @@ export async function POST(request: Request) {
           supabase,
           topic,
           replay: true,
+          webhookId,
+          triggeredAt,
         }),
       );
     }
@@ -1335,6 +1439,8 @@ export async function POST(request: Request) {
       supabase,
       topic,
       replay: false,
+      webhookId,
+      triggeredAt,
     }),
   );
 
