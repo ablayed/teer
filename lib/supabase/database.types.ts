@@ -4,7 +4,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '14.5';
+    PostgrestVersion: '14.17';
   };
   graphql_public: {
     Tables: {
@@ -2790,6 +2790,50 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'shop';
             referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
+      store_connection_webhook_token: {
+        Row: {
+          created_at: string;
+          id: string;
+          previous_secret_expires_at: string | null;
+          previous_secret_hash: string | null;
+          public_id: string;
+          revoked_at: string | null;
+          rotated_at: string | null;
+          secret_hash: string;
+          store_connection_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          previous_secret_expires_at?: string | null;
+          previous_secret_hash?: string | null;
+          public_id: string;
+          revoked_at?: string | null;
+          rotated_at?: string | null;
+          secret_hash: string;
+          store_connection_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          previous_secret_expires_at?: string | null;
+          previous_secret_hash?: string | null;
+          public_id?: string;
+          revoked_at?: string | null;
+          rotated_at?: string | null;
+          secret_hash?: string;
+          store_connection_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_connection_webhook_token_store_connection_id_fkey';
+            columns: ['store_connection_id'];
+            isOneToOne: true;
+            referencedRelation: 'store_connection';
+            referencedColumns: ['id'];
           },
         ];
       };

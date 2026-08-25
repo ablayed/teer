@@ -10,10 +10,10 @@
  *      (membre réel du tenant propriétaire de la connexion) ne rend rien —
  *      ni ligne, ni fragment de secret_hash.
  *
- * `store_connection_webhook_token` n'est pas encore dans `database.types.ts`
- * (0143 pas confirmée en prod, règle #3 CLAUDE.md) — client non typé pour les
- * seuls appels touchant cette table, même motif que
- * tests/rls/l1-canonical-ingestion-schema.rls.test.ts.
+ * `store_connection_webhook_token` est confirmée en production (`supabase
+ * migration list --linked`, Local=Remote=0143) et typée dans
+ * `database.types.ts` depuis la régénération qui a suivi — un seul client
+ * Supabase typé est utilisé partout dans ce fichier.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -32,16 +32,9 @@ const password = 'l3-webhook-token-secrecy-pw-0143';
 const createdUserIds: string[] = [];
 
 type Client = SupabaseClient<Database>;
-type RawClient = SupabaseClient;
 
 function adminClient(): Client {
   return createClient<Database>(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
-
-function rawAdminClient(): RawClient {
-  return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }
@@ -98,8 +91,8 @@ async function createShopifyShop(admin: Client, merchantAccountId: string) {
   return data.id;
 }
 
-async function signIn(email: string): Promise<RawClient> {
-  const client = createClient(supabaseUrl, anonKey, {
+async function signIn(email: string): Promise<Client> {
+  const client = createClient<Database>(supabaseUrl, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const { error } = await client.auth.signInWithPassword({ email, password });
@@ -109,14 +102,13 @@ async function signIn(email: string): Promise<RawClient> {
 
 async function setUpFixture() {
   const admin = adminClient();
-  const rawAdmin = rawAdminClient();
   const email = `l3-token-secrecy-owner-${Date.now()}-${randomUUID()}@example.com`;
   const userId = await createConfirmedUser(admin, email);
   const merchantAccountId = await waitForMerchantAccount(admin, userId);
   const defaultShop = await defaultShopId(admin, merchantAccountId);
   const shopId = await createShopifyShop(admin, merchantAccountId);
 
-  const { data: connection, error: connectionError } = await rawAdmin
+  const { data: connection, error: connectionError } = await admin
     .from('store_connection')
     .insert({
       merchant_account_id: merchantAccountId,
@@ -134,7 +126,7 @@ async function setUpFixture() {
   const secretHash = hashWebhookTokenSecret(secret);
   const publicId = randomUUID();
 
-  const { error: tokenError } = await rawAdmin.from('store_connection_webhook_token').insert({
+  const { error: tokenError } = await admin.from('store_connection_webhook_token').insert({
     store_connection_id: connection.id,
     public_id: publicId,
     secret_hash: secretHash,
@@ -199,7 +191,7 @@ describe.skipIf(!serviceRoleKey)('Lot L3 — ACL de table réelle (has_table_pri
 describe.skipIf(!serviceRoleKey)('Lot L3 — preuve n°5 : select réel, anon et authenticated', () => {
   it('anon : select PostgREST ne rend aucune ligne', async () => {
     await setUpFixture();
-    const anon = createClient(supabaseUrl, anonKey, {
+    const anon = createClient<Database>(supabaseUrl, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const { data, error } = await anon.from('store_connection_webhook_token').select('*');

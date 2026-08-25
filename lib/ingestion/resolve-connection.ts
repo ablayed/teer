@@ -15,11 +15,6 @@ import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 type AdminClient = SupabaseClient<Database>;
-// store_connection_webhook_token (migration 0143) n'est pas encore dans database.types.ts tant que
-// 0143 n'est pas confirmée en production (règle #3, CLAUDE.md) — même motif que
-// tests/rls/l1-canonical-ingestion-schema.rls.test.ts pour 0142 : un client non typé, réservé aux
-// seuls appels touchant cette table.
-type RawAdminClient = SupabaseClient;
 
 // Cette fonction est le SEUL endroit du dépôt habilité à produire une valeur de type
 // ResolvedConnectionContext : le brand nominal (symbole privé de lib/ingestion/canonical.ts) rend
@@ -95,18 +90,10 @@ export type ResolveConnectionByTokenResult =
   | { ok: true; connection: TokenIdentifiedConnection }
   | { ok: false; reason: TokenRefusalReason };
 
-type StoreConnectionWebhookTokenRow = {
-  secret_hash: string;
-  previous_secret_hash: string | null;
-  previous_secret_expires_at: string | null;
-  revoked_at: string | null;
-  store_connection_id: string;
-};
-
 // Résout la connexion à partir du seul jeton présent dans l'URL — aucune lecture d'en-tête, aucune
-// lecture de corps. `supabase` reste le client admin typé habituel ; l'accès à la table non encore
-// typée (0143, pas confirmée en prod) passe par un cast localisé, seul endroit de ce fichier qui en
-// a besoin.
+// lecture de corps. `store_connection_webhook_token` est typée dans database.types.ts depuis la
+// confirmation prod de 0143 (`supabase migration list --linked`, Local=Remote=0143) — plus besoin
+// de cast localisé.
 export async function resolveConnectionByToken(
   supabase: AdminClient,
   rawToken: string,
@@ -117,8 +104,7 @@ export async function resolveConnectionByToken(
     return { ok: false, reason: 'malformed_token' };
   }
 
-  const rawSupabase = supabase as unknown as RawAdminClient;
-  const { data: tokenRow, error: tokenError } = await rawSupabase
+  const { data: row, error: tokenError } = await supabase
     .from('store_connection_webhook_token')
     .select(
       'secret_hash, previous_secret_hash, previous_secret_expires_at, revoked_at, store_connection_id',
@@ -126,11 +112,9 @@ export async function resolveConnectionByToken(
     .eq('public_id', parsed.publicId)
     .maybeSingle();
 
-  if (tokenError || !tokenRow) {
+  if (tokenError || !row) {
     return { ok: false, reason: 'unknown_token' };
   }
-
-  const row = tokenRow as StoreConnectionWebhookTokenRow;
 
   if (row.revoked_at) {
     return { ok: false, reason: 'revoked' };
