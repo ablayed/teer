@@ -513,6 +513,19 @@ jobs:
           # le job test-e2e-phase1 ci-dessus.
           SHOPIFY_API_KEY: test-only-fake-dev-client-id
           SHOPIFY_API_SECRET: test-only-fake-dev-secret
+          # Ce job balaie tout tests/e2e (contrairement à test-e2e-phase1, qui liste ses specs
+          # nommément) et ramasse donc aussi tests/e2e/shopify-koba-multi-app.spec.ts et
+          # tests/e2e/shopify-ingestion-dual-write.spec.ts. Sans ces quatre lignes, ces specs
+          # tournent quand même : playwright.config.ts pose un repli inconditionnel pour ces
+          # quatre variables dès qu'elles sont absentes de l'environnement (vérifié : run local
+          # avec exactement SHOPIFY_API_KEY/SECRET seuls → 6/6 tests KOBA exécutés, zéro skip).
+          # Elles sont posées ICI explicitement pour ne plus dépendre de ce repli dans un job qui
+          # gate le merge — si le repli de playwright.config.ts est un jour resserré, ce job ne
+          # doit pas se mettre à skipper silencieusement sans signal CI.
+          SHOPIFY_KOBA_API_KEY: test-only-fake-koba-client-id
+          SHOPIFY_KOBA_API_SECRET: test-only-fake-koba-secret
+          SHOPIFY_PILOTE_API_KEY: test-only-fake-pilote-client-id
+          SHOPIFY_PILOTE_API_SECRET: test-only-fake-pilote-secret
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

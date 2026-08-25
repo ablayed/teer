@@ -16,6 +16,12 @@ const KOBA_CLIENT_ID = process.env.SHOPIFY_KOBA_API_KEY ?? '';
 const KOBA_SECRET = process.env.SHOPIFY_KOBA_API_SECRET ?? '';
 const hasKobaEnv = Boolean(KOBA_CLIENT_ID && KOBA_SECRET);
 
+// Nécessaire uniquement au test de désaccord d'app ci-dessous (store_connection.platform_app_id
+// délibérément différent de shop.shopify_client_id) — une seconde app enregistrée distincte de
+// teer-koba, jamais utilisée pour signer.
+const PILOTE_CLIENT_ID = process.env.SHOPIFY_PILOTE_API_KEY ?? '';
+const hasPiloteEnv = Boolean(PILOTE_CLIENT_ID);
+
 type AdminClient = SupabaseClient;
 
 function adminClient(): AdminClient {
@@ -295,6 +301,116 @@ test('boutique sans store_connection (connexion inconnue) : orders reste écrite
       .select('id', { count: 'exact', head: true })
       .eq('delivery_id', webhookId);
     expect(ingestionCount).toBe(0);
+  } finally {
+    await admin.auth.admin.deleteUser(userId);
+  }
+});
+
+// Preuve #3 (recoupement d'app) via le canal HTTP réel — pas seulement l'unitaire de
+// resolve-connection.test.ts. Scénario réel, pas artificiel : une store_connection dont
+// platform_app_id a divergé de shop.shopify_client_id (ex. réinstallation sous une autre app sans
+// mise à jour de la connexion existante). Le HMAC est routé et validé via shop.shopify_client_id
+// (teer-koba, chemin legacy inchangé) — la commande est donc créée normalement. Le recoupement
+// d'app, lui, compare l'app qui a VALIDÉ (teer-koba) au platform_app_id enregistré sur la
+// store_connection trouvée (teer-pilote, volontairement divergent) → refus de la double écriture
+// uniquement, avant toute écriture ingestion_event/external_ref.
+test("désaccord d'app : store_connection.platform_app_id divergent de l'app ayant validé le HMAC → double écriture refusée, chemin legacy intact", async ({
+  request,
+}) => {
+  // Skip scopé à CE test uniquement — un test.skip() en tête de fichier skipperait tout le
+  // fichier, pas seulement ce cas (contrairement à hasSupabaseAdmin/hasKobaEnv ci-dessus, qui
+  // conditionnent réellement tous les tests du fichier).
+  test.skip(!hasPiloteEnv, 'SHOPIFY_PILOTE_API_KEY manquant (voir playwright.config.ts)');
+  const admin = adminClient();
+  const { userId, merchantAccountId } = await createMerchant(admin);
+  try {
+    const shopDomain = `e2e-l2-appmismatch-${Date.now()}-${Math.random().toString(36).slice(2)}.myshopify.com`;
+    const { data: shop, error: shopError } = await admin
+      .from('shop')
+      .insert({
+        merchant_account_id: merchantAccountId,
+        shop_domain: shopDomain,
+        access_token_encrypted: 'dummy',
+        scopes: 'read_orders,read_customers,read_products',
+        status: 'active',
+        // La boutique pointe vers teer-koba : c'est CE secret qui doit signer le HMAC pour que le
+        // chemin legacy (inchangé par ce lot) accepte la requête.
+        shopify_client_id: KOBA_CLIENT_ID,
+      })
+      .select('id')
+      .single();
+    if (shopError || !shop) throw new Error(`shop insert failed: ${shopError?.message}`);
+
+    const { data: connection, error: connectionError } = await admin
+      .from('store_connection')
+      .insert({
+        merchant_account_id: merchantAccountId,
+        shop_id: shop.id,
+        platform: 'shopify',
+        external_identifier: shopDomain,
+        // Volontairement DIVERGENT de shop.shopify_client_id (teer-koba) — c'est le cas que le
+        // recoupement d'app doit intercepter.
+        platform_app_id: PILOTE_CLIENT_ID,
+        status: 'active',
+      })
+      .select('id')
+      .single();
+    if (connectionError || !connection)
+      throw new Error(`store_connection insert failed: ${connectionError?.message}`);
+
+    const orderId = 98_000_000 + Math.floor(Math.random() * 1_000_000);
+    const webhookId = `wh-l2-appmismatch-${orderId}`;
+    const res = await postOrderWebhook(request, { shopDomain, webhookId, orderId });
+    // Chemin legacy INCHANGÉ : le HMAC est validé via shop.shopify_client_id (teer-koba), donc
+    // signé avec KOBA_SECRET ici → 200, la commande est créée normalement.
+    expect(res.status()).toBe(200);
+
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from('orders')
+            .select('id')
+            .eq('merchant_account_id', merchantAccountId)
+            .eq('shop_id', shop.id)
+            .eq('shopify_order_id', String(orderId))
+            .maybeSingle();
+          return data?.id ?? '';
+        },
+        { timeout: 15_000, intervals: [300, 500, 1000] },
+      )
+      .not.toBe('');
+
+    // Double écriture refusée : ni ingestion_event ni external_ref, malgré le succès du chemin
+    // legacy. Lu après un court délai déterministe (le webhook_event terminal implique que
+    // handleOrderWebhook — dual-write compris — a fini de s'exécuter dans le même after()).
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from('webhook_event')
+            .select('status')
+            .eq('shopify_webhook_id', webhookId)
+            .maybeSingle();
+          return data?.status ?? '';
+        },
+        { timeout: 10_000, intervals: [200, 400, 800] },
+      )
+      .toBe('done');
+
+    const { count: ingestionCount } = await admin
+      .from('ingestion_event')
+      .select('id', { count: 'exact', head: true })
+      .eq('delivery_id', webhookId);
+    expect(ingestionCount).toBe(0);
+
+    const { count: refCount } = await admin
+      .from('external_ref')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_connection_id', connection.id)
+      .eq('entity_type', 'order')
+      .eq('external_id', String(orderId));
+    expect(refCount).toBe(0);
   } finally {
     await admin.auth.admin.deleteUser(userId);
   }

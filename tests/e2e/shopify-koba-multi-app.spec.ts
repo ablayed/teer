@@ -366,13 +366,26 @@ test('routage OAuth : install pour une boutique rattachée à teer-koba produit 
 // --- Comportements ouverts — épinglés, JAMAIS corrigés ici --------------------------------------
 
 test.describe('comportements ouverts épinglés (protection de non-régression, pas un correctif)', () => {
-  test('PIN — repli silencieux sur teer-dev pour shopify_client_id NULL (À INVERSER PAR LE LOT L2 : une connexion inconnue doit devenir un refus)', async ({
+  test("PIN — repli silencieux sur teer-dev pour shopify_client_id NULL (DÉCISION L2 : le chemin legacy N'EST PAS inversé, seule la double écriture est refusée — voir corps du test)", async ({
     request,
   }) => {
     test.skip(
       !hasDevAppEnv,
       'SHOPIFY_API_KEY/SECRET manquants localement — sans eux teer-dev ne devient pas le défaut réel (voir hasDevAppEnv). Toujours présents en CI (ci.yml, test-e2e-phase1).',
     );
+    // Justification consignée, corrigée après coup : le titre de ce test annonçait "À INVERSER
+    // PAR LE LOT L2 : une connexion inconnue doit devenir un refus". Le Lot L2 (branche
+    // phase2/lot-l2-platform-connector) a tranché l'INVERSE, délibérément : inverser le repli
+    // aurait changé le comportement OBSERVABLE du webhook (200 → 401/silence) pour toute boutique
+    // réelle sans shopify_client_id enregistré, un changement à plus large rayon que celui promis
+    // par le prompt du lot ("aucune modification de la résolution boutique des webhooks"). Casser
+    // une ingestion de commande réelle en production pour fermer un repli n'était pas justifiable
+    // sans décision produit explicite. Le repli synchrone reste donc TEL QUEL, épinglé comme
+    // avant — mais la double écriture (ingestion_event/external_ref, lib/ingestion/
+    // shopify-dual-write.ts) refuse bien cette boutique : aucune store_connection n'existe pour
+    // elle (jamais créée hors du backfill 0142 ou du callback OAuth), donc
+    // resolveConnectionForWebhook renvoie 'unknown_connection'. C'est la seule inversion réelle
+    // livrée par L2 pour ce scénario, vérifiée ci-dessous plutôt qu'affirmée.
     const admin = adminClient();
     const { userId, merchantAccountId } = await createMerchant(admin);
     try {
@@ -381,11 +394,13 @@ test.describe('comportements ouverts épinglés (protection de non-régression, 
       const orderId = 93_000_000 + Math.floor(Math.random() * 1_000_000);
 
       // (a) signé avec le secret de l'app par défaut (teer-dev) → verifie et écrit — preuve du
-      // repli, pas d'une coïncidence : la boutique n'a AUCUNE app enregistrée.
+      // repli, pas d'une coïncidence : la boutique n'a AUCUNE app enregistrée. Comportement
+      // INCHANGÉ par L2.
+      const webhookIdDefault = `wh-koba-fallback-ok-${orderId}`;
       const resDefault = await postWebhook(request, {
         topic: 'orders/create',
         shopDomain,
-        webhookId: `wh-koba-fallback-ok-${orderId}`,
+        webhookId: webhookIdDefault,
         body: orderBody(orderId),
         triggeredAt: '2026-08-24T09:02:00Z',
         hmacSecret: DEV_SECRET,
@@ -393,9 +408,31 @@ test.describe('comportements ouverts épinglés (protection de non-régression, 
       expect(resDefault.status()).toBe(200);
       await waitForOrder(admin, merchantAccountId, shopId, String(orderId));
 
+      // Décision L2, vérifiée : le chemin legacy réussit (ci-dessus) MAIS la double écriture est
+      // refusée — aucune ligne ingestion_event pour ce webhook, connexion inconnue.
+      await expect
+        .poll(
+          async () => {
+            const { data } = await admin
+              .from('webhook_event')
+              .select('status')
+              .eq('shopify_webhook_id', webhookIdDefault)
+              .maybeSingle();
+            return data?.status ?? '';
+          },
+          { timeout: 10_000, intervals: [200, 400, 800] },
+        )
+        .toBe('done');
+      const { count: ingestionCount } = await admin
+        .from('ingestion_event')
+        .select('id', { count: 'exact', head: true })
+        .eq('delivery_id', webhookIdDefault);
+      expect(ingestionCount).toBe(0);
+
       // (b) signé avec un AUTRE secret enregistré (teer-koba) → échoue quand même : la boutique
       // n'est pas « ouverte à tout secret », elle est bien liée SPÉCIFIQUEMENT à teer-dev par le
-      // repli, comportement actuel que ce test fige.
+      // repli, comportement actuel que ce test fige. INCHANGÉ par L2 (le recoupement d'app de L2
+      // vit APRÈS la vérification HMAC synchrone, jamais à sa place).
       const orderId2 = orderId + 1;
       const resOther = await postWebhook(request, {
         topic: 'orders/create',

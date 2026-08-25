@@ -26,6 +26,7 @@ import { processFinishedBulkForShop } from '@/lib/shopify/reconcile';
 import { deriveRefundWebhook } from '@/lib/shopify/refunds';
 import { verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
+import * as Sentry from '@sentry/nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { after } from 'next/server';
 
@@ -449,6 +450,9 @@ async function runDualWrite(label: string, work: () => Promise<void>) {
   } catch (error) {
     logWebhookError(`[ingestion] dual-write failed (${label})`, {
       message: error instanceof Error ? error.message : String(error),
+    });
+    Sentry.captureException(error, {
+      tags: { module: 'shopify.webhooks', dualWriteLabel: label },
     });
   }
 }
