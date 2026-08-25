@@ -51,25 +51,30 @@ traitement applicatif rattachable à une boutique) d'un événement **encore en 
 (`processing`/`retryable`) ou à **contexte partiel** (une seule des deux colonnes nulle) sans
 contexte, qui doit continuer à bloquer.
 
+**Le prédicat ci-dessous est une copie LITTÉRALE du `WHERE` du bloc préflight (5) de `0142`** — pas
+une reformulation ni un `group by status`. Un `group by status` séparé (version antérieure de ce
+document) mélangerait, sous un même statut, une ligne à contexte totalement absent (sans risque, à
+exclure) et une ligne à contexte PARTIEL portant le même statut (doit bloquer) : la prose « si
+toutes les lignes ont `status in ('done','terminal')` → pousser » serait alors fausse dans le cas
+exact que la migration bloque — un contexte partiel avec `status='done'`. La requête ci-dessous ne
+peut pas commettre cette erreur : elle réévalue le MÊME prédicat booléen que le DO block, ligne par
+ligne, jamais un résumé par statut.
+
 ```sql
 select
-  status,
-  count(*) as rows_without_full_shop_context,
+  (merchant_account_id is null or shop_id is null)
+    and not (
+      merchant_account_id is null
+      and shop_id is null
+      and status in ('done', 'terminal')
+    ) as bloque,
+  count(*) as rows,
   string_agg(shopify_webhook_id, ', ' order by received_at) as webhook_ids
 from public.webhook_event
 where merchant_account_id is null or shop_id is null
-group by status
-order by status;
+group by bloque
+order by bloque desc;
 ```
-
-Cette requête reproduit exactement le bloc préflight (5) de `0142` — reste à appliquer la même
-ventilation que la migration :
-
-- **`status in ('done', 'terminal')` ET les DEUX colonnes nulles** → exclu du backfill sans
-  bloquer (`l1_ingestion_event_backfill_excluded_no_context`, `RAISE NOTICE`).
-- **Toute autre ligne de ce résultat** — `status` en dehors de `('done','terminal')` (en vol, ou
-  toute valeur imprévue), OU une seule des deux colonnes nulle quel que soit le statut — →
-  `l1_ingestion_event_backfill_missing_shop_context`, `RAISE EXCEPTION`, migration bloquée.
 
 Aucune lecture de `shop_domain` dans cette décision, même si le domaine correspond à une boutique
 active : c'est un en-tête webhook non signé (incident cross-tenant `resolveShopDomain`, cf.
@@ -79,19 +84,20 @@ active : c'est un en-tête webhook non signé (incident cross-tenant `resolveSho
 
 ## La règle, sans ambiguïté
 
-- **Si toutes les lignes retournées ont `status in ('done', 'terminal')`** (ou si la requête ne
-  retourne aucune ligne) : `0142` peut être poussée (`supabase db push`, exécuté par le porteur —
-  jamais par un agent, cf. `CLAUDE.md` règle #2). Le décompte exact de ces lignes est le nombre
-  d'exclusions attendu au déploiement — le retrouver dans le `NOTICE`
-  `l1_ingestion_event_backfill_excluded_no_context` de la sortie `db push` confirme que rien
-  d'inattendu ne s'est glissé entre le préflight et le push.
-- **Si au moins une ligne a un `status` hors de `('done', 'terminal')`, ou porte un contexte
-  partiel (une seule colonne nulle)** : **le déploiement s'arrête ici.** `0142` échouera à
-  l'identique en production (même DO block, même distinction) — mais en production, après un
-  `db push` engagé, pas avant. Ne pas pousser en espérant que ça passe.
+- **Si la requête ne retourne aucune ligne `bloque = true`** (soit aucune ligne du tout, soit une
+  seule ligne `bloque = false`) : `0142` peut être poussée (`supabase db push`, exécuté par le
+  porteur — jamais par un agent, cf. `CLAUDE.md` règle #2). Le `rows` de la ligne `bloque = false`
+  (si elle existe) est le nombre d'exclusions attendu au déploiement — le retrouver dans le
+  `NOTICE` `l1_ingestion_event_backfill_excluded_no_context` de la sortie `db push` confirme que
+  rien d'inattendu ne s'est glissé entre le préflight et le push.
+- **Si une ligne `bloque = true` existe** — qu'elle vienne d'un statut hors de `('done','terminal')`
+  (en vol, ou toute valeur imprévue) ou d'un contexte partiel (une seule colonne nulle, quel que
+  soit le statut, y compris `'done'`/`'terminal'`) : **le déploiement s'arrête ici.** `0142`
+  échouera à l'identique en production (même prédicat, littéralement) — mais en production, après
+  un `db push` engagé, pas avant. Ne pas pousser en espérant que ça passe.
 
-  Ce n'est pas un avertissement à franchir avec un correctif de dernière minute. `webhook_ids`
-  liste les lignes concernées par statut. Pour une ligne en vol (`processing`/`retryable`), la
+  Ce n'est pas un avertissement à franchir avec un correctif de dernière minute. `webhook_ids` de
+  la ligne `bloque = true` liste les lignes concernées. Pour une ligne en vol (`processing`/`retryable`), la
   question à trancher est opérationnelle : laisser le rejeu naturel (cron de retry) la faire
   progresser vers un état terminal, ou l'investiguer si elle est bloquée depuis longtemps — jamais
   la forcer manuellement en `done`/`terminal` pour débloquer le déploiement. Pour un contexte
@@ -115,10 +121,10 @@ active : c'est un en-tête webhook non signé (incident cross-tenant `resolveSho
 
 1. Confirmer le PASS du Lot 4B (baseline `ci_schema_auditor` en production).
 2. Exécuter le préflight ventilé ci-dessus contre la production, en lecture seule.
-3. Toutes les lignes retournées (s'il y en a) ont `status in ('done', 'terminal')` → passer à
-   l'étape 4, en notant le décompte total comme exclusions attendues. Sinon (au moins une ligne en
-   vol ou à contexte partiel) → **STOP**, rapporter le compte ventilé et les `webhook_ids` au
-   fondateur, ne pas pousser.
+3. Aucune ligne `bloque = true` → passer à l'étape 4, en notant le `rows` de la ligne
+   `bloque = false` (s'il y en a une) comme exclusions attendues. Sinon (une ligne `bloque = true`
+   existe — événement en vol ou contexte partiel) → **STOP**, rapporter le compte et les
+   `webhook_ids` de cette ligne au fondateur, ne pas pousser.
 4. `supabase db push` (porteur) — vérifier dans sa sortie que le `NOTICE`
    `l1_ingestion_event_backfill_excluded_no_context` porte exactement le décompte noté à l'étape 3.
 5. `supabase migration list --linked` (confirmer `0142` en colonnes *Local* et *Remote*).
