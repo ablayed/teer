@@ -12,6 +12,17 @@
 # harnais, pour que `db reset --local` ordinaire reste utilisable par tout le
 # monde.
 #
+# LOT L3 (25 août 2026) : 0143 (store_connection_webhook_token) référence
+# store_connection (créée par 0142) via une FK — la stashant seule cassait ce
+# harnais dès qu'une migration ultérieure dépend du schéma de 0142 (constaté
+# en CI : "relation public.store_connection does not exist" pendant le reset
+# qui excluait 0142 mais laissait 0143 en place). Le harnais stashe donc
+# désormais TOUTE migration >= 0142 (tri lexicographique = chronologique,
+# cf. TAIL_MIGRATIONS ci-dessous), jamais 0142 seule — et ne restaure que
+# 0142 pour la phase d'isolation, jamais le reste, qui ne revient qu'à la
+# toute fin. Générique : une future migration 0144+ qui dépendrait à son
+# tour de 0142/0143 n'aura pas besoin de retoucher ce script.
+#
 # LOT L1-BIS (25 août 2026) : le préflight de 0142 est passé de deux issues
 # (bloque / passe) à trois (bloque / exclut+notifie / passe), après que le
 # préflight production réel a trouvé 8 lignes sans contexte — toutes
@@ -51,13 +62,27 @@ TARGET_MIGRATION="0142_l1_canonical_ingestion_schema.sql"
 STASH_DIR="$(mktemp -d)"
 FAILED=0
 
+# Toute migration >= 0142, tri lexicographique (= chronologique, préfixe
+# numérique fixe) — pas seulement 0142. Recalculé une fois au démarrage :
+# stable pour toute la durée du script, la liste de fichiers ne change pas.
+mapfile -t TAIL_MIGRATIONS < <(
+  find "${MIGRATIONS_DIR}" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' \
+    | awk -v t="${TARGET_MIGRATION}" '$0 >= t' \
+    | sort
+)
+
 trap 'cleanup' EXIT
 
+# Restaure TOUT ce qui a été stashé et ne serait pas déjà revenu — jamais un
+# état partiel en sortie de script, y compris sur une interruption (Ctrl-C,
+# échec `set -e`).
 cleanup() {
-  if [ -f "${STASH_DIR}/${TARGET_MIGRATION}" ] && [ ! -f "${MIGRATIONS_DIR}/${TARGET_MIGRATION}" ]; then
-    mv "${STASH_DIR}/${TARGET_MIGRATION}" "${MIGRATIONS_DIR}/"
-    echo "[l1-harness] ${TARGET_MIGRATION} restauré dans ${MIGRATIONS_DIR}."
-  fi
+  for f in "${TAIL_MIGRATIONS[@]}"; do
+    if [ -f "${STASH_DIR}/${f}" ] && [ ! -f "${MIGRATIONS_DIR}/${f}" ]; then
+      mv "${STASH_DIR}/${f}" "${MIGRATIONS_DIR}/"
+      echo "[l1-harness] ${f} restauré dans ${MIGRATIONS_DIR}."
+    fi
+  done
   rm -rf "${STASH_DIR}"
 }
 
@@ -68,13 +93,46 @@ if [ ! -f "${MIGRATIONS_DIR}/${TARGET_MIGRATION}" ]; then
   exit 1
 fi
 
+if [ "${#TAIL_MIGRATIONS[@]}" -eq 0 ]; then
+  echo "[l1-harness] ERREUR : aucune migration >= ${TARGET_MIGRATION} trouvée (au moins elle-même est attendue)." >&2
+  exit 1
+fi
+step "migrations stashées pendant chaque reset d'isolation : ${TAIL_MIGRATIONS[*]}"
+
+# Idempotent : ne déplace que ce qui est ACTUELLEMENT dans MIGRATIONS_DIR.
+# Nécessaire car après le premier cycle, seule TARGET_MIGRATION est revenue
+# sur disque (restore_target_only) — le reste de la queue (0143+) est déjà
+# dans STASH_DIR et ne doit pas être re-déplacé (mv échouerait : fichier
+# source absent).
+stash_present_tail() {
+  for f in "${TAIL_MIGRATIONS[@]}"; do
+    if [ -f "${MIGRATIONS_DIR}/${f}" ]; then
+      mv "${MIGRATIONS_DIR}/${f}" "${STASH_DIR}/"
+    fi
+  done
+}
+
+# Ne restaure QUE 0142 (la cible testée en isolation) — le reste de la queue
+# (0143+) reste stashé jusqu'à la restauration finale.
+restore_target_only() {
+  mv "${STASH_DIR}/${TARGET_MIGRATION}" "${MIGRATIONS_DIR}/"
+}
+
+restore_full_tail() {
+  for f in "${TAIL_MIGRATIONS[@]}"; do
+    if [ -f "${STASH_DIR}/${f}" ]; then
+      mv "${STASH_DIR}/${f}" "${MIGRATIONS_DIR}/"
+    fi
+  done
+}
+
 apply_fixture_and_migrate() {
   local fixture_path="$1"
-  mv "${MIGRATIONS_DIR}/${TARGET_MIGRATION}" "${STASH_DIR}/"
+  stash_present_tail
   pnpm exec supabase db reset --local >/dev/null
   docker exec -i supabase_db_teer-dev psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
     < "${fixture_path}" >/dev/null
-  mv "${STASH_DIR}/${TARGET_MIGRATION}" "${MIGRATIONS_DIR}/"
+  restore_target_only
 }
 
 # ── Cas nominal ─────────────────────────────────────────────────────────────
@@ -215,8 +273,14 @@ else
   step "cas (3) : aucun état partiel après l'échec attendu : OK"
 fi
 
-# ── Restauration finale : base au dernier état déclaré (0142 appliqué) ─────
-step "restauration finale : db reset --local avec 0142 en place"
+# ── Restauration finale : base au dernier état déclaré (queue complète) ────
+# À ce point, seule TARGET_MIGRATION (0142) est revenue dans MIGRATIONS_DIR —
+# le reste de la queue (0143+) est toujours dans STASH_DIR. Le restaurer
+# AVANT ce dernier reset, sinon le dépôt termine avec 0143 manquante sur
+# disque (jamais committé ainsi, mais un état de travail cassé) et le reset
+# rejouerait une queue tronquée.
+restore_full_tail
+step "restauration finale : db reset --local avec la queue complète (0142..dernière) en place"
 pnpm exec supabase db reset --local >/dev/null
 
 if [ "${FAILED}" -ne 0 ]; then

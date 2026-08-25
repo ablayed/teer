@@ -14,12 +14,10 @@
  *      et les contraintes d'unicité (platform, external_identifier) /
  *      (store_connection_id, entity_type, external_id).
  *
- * Les trois tables ne figurent pas encore dans `database.types.ts` (aucun
- * `db push` n'a eu lieu — verrou de déploiement du lot, cf. CLAUDE.md). Ce
- * fichier utilise donc un client Supabase SANS le générique `Database` pour
- * les seuls appels touchant ces tables ou `orders.store_connection_id` ;
- * tout le reste (shop, merchant_member, orders sans cette colonne, …) reste
- * typé normalement.
+ * Migration 0142 confirmée en production (`supabase migration list --linked`,
+ * Local=Remote=0142) ; les trois tables sont typées dans `database.types.ts`
+ * depuis la régénération qui a suivi (Lot L2). Un seul client Supabase typé
+ * est donc utilisé partout dans ce fichier.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -38,8 +36,6 @@ const createdUserIds: string[] = [];
 const skipIfNoServiceRole = !serviceRoleKey ? it.skip : it;
 
 type Client = SupabaseClient<Database>;
-// Client non typé, réservé aux tables/colonnes pas encore dans database.types.ts.
-type RawClient = SupabaseClient;
 
 function adminClient(): Client {
   return createClient<Database>(supabaseUrl, serviceRoleKey, {
@@ -47,14 +43,8 @@ function adminClient(): Client {
   });
 }
 
-function rawAdminClient(): RawClient {
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
-
-function anonRawClient(): RawClient {
-  return createClient(supabaseUrl, anonKey, {
+function anonClient(): Client {
+  return createClient<Database>(supabaseUrl, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }
@@ -131,8 +121,8 @@ async function addAgent(admin: Client, merchantAccountId: string) {
   return { email, userId };
 }
 
-async function signIn(email: string): Promise<RawClient> {
-  const client = createClient(supabaseUrl, anonKey, {
+async function signIn(email: string): Promise<Client> {
+  const client = createClient<Database>(supabaseUrl, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const { error } = await client.auth.signInWithPassword({ email, password });
@@ -140,7 +130,7 @@ async function signIn(email: string): Promise<RawClient> {
   return client;
 }
 
-async function createStoreConnection(admin: RawClient, merchantAccountId: string, shopId: string) {
+async function createStoreConnection(admin: Client, merchantAccountId: string, shopId: string) {
   const { data, error } = await admin
     .from('store_connection')
     .insert({
@@ -229,7 +219,7 @@ describe('Lot L1 — isolation RLS + contrôle positif', () => {
       const tenantB = await createTenant('sc-b');
       const shopA2 = await createShopifyShop(tenantA.admin, tenantA.merchantAccountId);
       const connectionId = await createStoreConnection(
-        rawAdminClient(),
+        adminClient(),
         tenantA.merchantAccountId,
         shopA2,
       );
@@ -266,7 +256,7 @@ describe('Lot L1 — isolation RLS + contrôle positif', () => {
       if (tenantBError) throw tenantBError;
       expect(hiddenFromTenantB).toEqual([]);
 
-      const { error: anonError } = await anonRawClient()
+      const { error: anonError } = await anonClient()
         .from('store_connection')
         .select('id')
         .eq('id', connectionId);
@@ -281,11 +271,11 @@ describe('Lot L1 — isolation RLS + contrôle positif', () => {
       const tenantB = await createTenant('er-b');
       const shopA2 = await createShopifyShop(tenantA.admin, tenantA.merchantAccountId);
       const connectionId = await createStoreConnection(
-        rawAdminClient(),
+        adminClient(),
         tenantA.merchantAccountId,
         shopA2,
       );
-      const admin = rawAdminClient();
+      const admin = adminClient();
       const fakeEntityId = randomUUID();
       const { data: ref, error: refError } = await admin
         .from('external_ref')
@@ -315,7 +305,7 @@ describe('Lot L1 — isolation RLS + contrôle positif', () => {
       if (hiddenError) throw hiddenError;
       expect(hidden).toEqual([]);
 
-      const { error: anonError } = await anonRawClient()
+      const { error: anonError } = await anonClient()
         .from('external_ref')
         .select('id')
         .eq('id', ref.id);
@@ -330,11 +320,11 @@ describe('Lot L1 — isolation RLS + contrôle positif', () => {
       const tenantB = await createTenant('ie-b');
       const shopA2 = await createShopifyShop(tenantA.admin, tenantA.merchantAccountId);
       const connectionId = await createStoreConnection(
-        rawAdminClient(),
+        adminClient(),
         tenantA.merchantAccountId,
         shopA2,
       );
-      const admin = rawAdminClient();
+      const admin = adminClient();
       const { data: event, error: eventError } = await admin
         .from('ingestion_event')
         .insert({
@@ -365,7 +355,7 @@ describe('Lot L1 — isolation RLS + contrôle positif', () => {
       if (hiddenError) throw hiddenError;
       expect(hidden).toEqual([]);
 
-      const { error: anonError } = await anonRawClient()
+      const { error: anonError } = await anonClient()
         .from('ingestion_event')
         .select('id')
         .eq('id', event.id);
@@ -380,7 +370,7 @@ describe('Lot L1 — contraintes structurelles (service-role, hors RLS)', () => 
     async () => {
       const tenantA = await createTenant('fk-a');
       const tenantB = await createTenant('fk-b');
-      const admin = rawAdminClient();
+      const admin = adminClient();
       // shopA2 appartient au tenant A ; on tente de créer une connexion en
       // déclarant le compte du tenant B avec la boutique du tenant A.
       const shopA2 = await createShopifyShop(tenantA.admin, tenantA.merchantAccountId);
@@ -398,7 +388,7 @@ describe('Lot L1 — contraintes structurelles (service-role, hors RLS)', () => 
     const tenant = await createTenant('uniq-sc');
     const shop1 = await createShopifyShop(tenant.admin, tenant.merchantAccountId);
     const shop2 = await createShopifyShop(tenant.admin, tenant.merchantAccountId);
-    const admin = rawAdminClient();
+    const admin = adminClient();
     const domain = `l1-schema-uniq-${Date.now()}.myshopify.com`;
     const { error: firstError } = await admin.from('store_connection').insert({
       merchant_account_id: tenant.merchantAccountId,
@@ -423,11 +413,11 @@ describe('Lot L1 — contraintes structurelles (service-role, hors RLS)', () => 
       const tenant = await createTenant('uniq-er');
       const shop = await createShopifyShop(tenant.admin, tenant.merchantAccountId);
       const connectionId = await createStoreConnection(
-        rawAdminClient(),
+        adminClient(),
         tenant.merchantAccountId,
         shop,
       );
-      const admin = rawAdminClient();
+      const admin = adminClient();
       const externalId = `shopify-order-uniq-${Date.now()}`;
       const { error: firstError } = await admin.from('external_ref').insert({
         entity_type: 'order',
@@ -454,11 +444,11 @@ describe('Lot L1 — contraintes structurelles (service-role, hors RLS)', () => 
       const tenantB = await createTenant('order-fk-b');
       const shopA2 = await createShopifyShop(tenantA.admin, tenantA.merchantAccountId);
       const connectionA = await createStoreConnection(
-        rawAdminClient(),
+        adminClient(),
         tenantA.merchantAccountId,
         shopA2,
       );
-      const admin = rawAdminClient();
+      const admin = adminClient();
       const { error } = await admin.from('orders').insert({
         merchant_account_id: tenantB.merchantAccountId,
         shop_id: tenantB.defaultShop,
@@ -482,11 +472,11 @@ describe('Lot L1 — contraintes structurelles (service-role, hors RLS)', () => 
       const tenant = await createTenant('order-fk-ok');
       const shop = await createShopifyShop(tenant.admin, tenant.merchantAccountId);
       const connectionId = await createStoreConnection(
-        rawAdminClient(),
+        adminClient(),
         tenant.merchantAccountId,
         shop,
       );
-      const admin = rawAdminClient();
+      const admin = adminClient();
 
       const { error: manualError } = await admin.from('orders').insert({
         merchant_account_id: tenant.merchantAccountId,

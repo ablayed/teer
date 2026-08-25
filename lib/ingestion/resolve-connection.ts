@@ -5,7 +5,12 @@
 // résolu (ResolvedConnectionContext, lib/ingestion/canonical.ts). Un événement dont le HMAC est
 // validé par l'app A mais dont la store_connection trouvée porte le platform_app_id de l'app B est
 // refusé ICI, avant toute écriture — jamais après.
-import type { ResolveConnectionResult, VerifiedWebhook } from '@/lib/ingestion/canonical';
+import type {
+  ResolveConnectionResult,
+  ResolvedConnectionContext,
+  VerifiedWebhook,
+} from '@/lib/ingestion/canonical';
+import { parseWebhookToken, verifyWebhookTokenSecret } from '@/lib/ingestion/webhook-token';
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -49,5 +54,142 @@ export async function resolveConnectionForWebhook(
       platform: data.platform,
       platformAppId: data.platform_app_id,
     } as unknown as import('@/lib/ingestion/canonical').ResolvedConnectionContext,
+  };
+}
+
+// ============================================================================
+// Phase 2 / Lot L3 (périmètre réduit) — résolution par jeton d'URL opaque.
+// ============================================================================
+// Ordre d'autorité : URL (jeton) → connexion → platform_app_id → HMAC du corps → comparaison de
+// l'en-tête. `resolveConnectionByToken` couvre la PREMIÈRE étape (URL → connexion), en s'appuyant
+// UNIQUEMENT sur les matériaux du jeton — jamais un en-tête, jamais le corps. `finalizeResolvedConnection`
+// couvre la 3ᵉ (platform_app_id → recoupement), une fois que l'appelant a lui-même identifié quelle
+// app a validé le HMAC (2ᵉ étape, hors de ce module — cf. lib/shopify/adapter.ts `identifyValidatingApps`).
+
+export type TokenIdentifiedConnection = {
+  readonly storeConnectionId: string;
+  readonly merchantAccountId: string;
+  readonly shopId: string;
+  readonly platform: string;
+  readonly platformAppId: string | null;
+  readonly externalIdentifier: string;
+};
+
+// Six causes distinctes en interne — JAMAIS exposées telles quelles à l'appelant HTTP, qui doit
+// répondre de façon indifférenciée (preuve #4 du lot). `app_mismatch` (ConnectionRefusalReason,
+// export existant) est une 7ᵉ cause distincte, à un autre étage (finalizeResolvedConnection).
+export type TokenRefusalReason =
+  | 'malformed_token'
+  | 'unknown_token'
+  | 'revoked'
+  | 'secret_expired'
+  | 'secret_mismatch'
+  | 'connection_inactive';
+
+export type ResolveConnectionByTokenResult =
+  | { ok: true; connection: TokenIdentifiedConnection }
+  | { ok: false; reason: TokenRefusalReason };
+
+// Résout la connexion à partir du seul jeton présent dans l'URL — aucune lecture d'en-tête, aucune
+// lecture de corps. `store_connection_webhook_token` est typée dans database.types.ts depuis la
+// confirmation prod de 0143 (`supabase migration list --linked`, Local=Remote=0143) — plus besoin
+// de cast localisé.
+export async function resolveConnectionByToken(
+  supabase: AdminClient,
+  rawToken: string,
+): Promise<ResolveConnectionByTokenResult> {
+  const parsed = parseWebhookToken(rawToken);
+
+  if (!parsed) {
+    return { ok: false, reason: 'malformed_token' };
+  }
+
+  const { data: row, error: tokenError } = await supabase
+    .from('store_connection_webhook_token')
+    .select(
+      'secret_hash, previous_secret_hash, previous_secret_expires_at, revoked_at, store_connection_id',
+    )
+    .eq('public_id', parsed.publicId)
+    .maybeSingle();
+
+  if (tokenError || !row) {
+    return { ok: false, reason: 'unknown_token' };
+  }
+
+  if (row.revoked_at) {
+    return { ok: false, reason: 'revoked' };
+  }
+
+  const matchesCurrent = verifyWebhookTokenSecret(parsed.secret, row.secret_hash);
+
+  if (!matchesCurrent) {
+    const matchesPrevious =
+      Boolean(row.previous_secret_hash) &&
+      verifyWebhookTokenSecret(parsed.secret, row.previous_secret_hash as string);
+
+    if (!matchesPrevious) {
+      return { ok: false, reason: 'secret_mismatch' };
+    }
+
+    const graceStillOpen =
+      Boolean(row.previous_secret_expires_at) &&
+      new Date(row.previous_secret_expires_at as string).getTime() > Date.now();
+
+    if (!graceStillOpen) {
+      return { ok: false, reason: 'secret_expired' };
+    }
+  }
+
+  const { data: connection, error: connectionError } = await supabase
+    .from('store_connection')
+    .select(
+      'id, merchant_account_id, shop_id, platform, platform_app_id, external_identifier, status',
+    )
+    .eq('id', row.store_connection_id)
+    .maybeSingle();
+
+  if (connectionError || !connection) {
+    return { ok: false, reason: 'unknown_token' };
+  }
+
+  if (connection.status !== 'active') {
+    return { ok: false, reason: 'connection_inactive' };
+  }
+
+  return {
+    ok: true,
+    connection: {
+      storeConnectionId: connection.id,
+      merchantAccountId: connection.merchant_account_id,
+      shopId: connection.shop_id,
+      platform: connection.platform,
+      platformAppId: connection.platform_app_id,
+      externalIdentifier: connection.external_identifier,
+    },
+  };
+}
+
+// Recoupement final : la connexion identifiée par le jeton doit porter le platform_app_id de l'app
+// qui a effectivement validé le HMAC. Même comparaison, même raison de refus (`app_mismatch`) que
+// `resolveConnectionForWebhook` — c'est le même contrôle, appliqué à une connexion déjà résolue par
+// jeton plutôt que par (platform, external_identifier). Seul module habilité à produire la seconde
+// forme de ResolvedConnectionContext.
+export function finalizeResolvedConnection(
+  connection: TokenIdentifiedConnection,
+  verifiedApp: { readonly clientId: string },
+): ResolveConnectionResult {
+  if (!connection.platformAppId || connection.platformAppId !== verifiedApp.clientId) {
+    return { ok: false, reason: 'app_mismatch' };
+  }
+
+  return {
+    ok: true,
+    context: {
+      storeConnectionId: connection.storeConnectionId,
+      merchantAccountId: connection.merchantAccountId,
+      shopId: connection.shopId,
+      platform: connection.platform,
+      platformAppId: connection.platformAppId,
+    } as unknown as ResolvedConnectionContext,
   };
 }
