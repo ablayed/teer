@@ -64,6 +64,35 @@
 --     connaît pas — un trou de rétention hors du périmètre de ce lot.
 --     `ingestion_event` porte les métadonnées de cycle de vie, jamais le
 --     contenu brut.
+--
+-- CORRECTION L1-bis (25 août 2026) — préflight (5) ci-dessous, édité SUR
+-- PLACE (0142 jamais déployée en production à ce moment, confirmé par
+-- `supabase migration list --linked` : colonne Remote vide pour 0142 ; voir
+-- l'exception d'édition documentée dans CLAUDE.md, section « migrations non
+-- déployées »). Le préflight production réel du 25 août a trouvé 8 lignes
+-- sans contexte (le runbook n'en documentait que 2, chiffre historique
+-- devenu trompeur) : les 8 sont `status in ('done','terminal')`, donc
+-- terminées, jamais rejouables. Le préflight original bloquait TOUT
+-- `merchant_account_id is null or shop_id is null`, y compris une ligne déjà
+-- terminée sans contexte — un tel événement n'a jamais eu de traitement
+-- applicatif rattachable à une boutique et n'a donc rien à perdre à rester
+-- hors du nouveau registre canonique. Nouvelle règle, à trois issues : (a)
+-- contexte complet → backfillé normalement ; (b) contexte totalement absent
+-- (les deux colonnes nulles) ET ligne terminée (`done`/`terminal`, les deux
+-- seules sorties définitives écrites par `finish_shopify_webhook_event`,
+-- 0121) → exclue du backfill, comptée et rapportée par `RAISE NOTICE` ; (c)
+-- tout le reste — contexte PARTIEL (une seule des deux colonnes nulle, quel
+-- que soit le statut) OU contexte totalement absent mais ligne NON terminée
+-- (encore `processing`/`retryable`, ou un statut nul/inconnu, traité comme
+-- non terminal par défaut) → bloque la migration, `RAISE EXCEPTION` nommant
+-- les identifiants. Le prédicat « sans contexte » reste un OR
+-- (`merchant_account_id is null or shop_id is null`), jamais un AND — un AND
+-- laisserait passer un contexte partiel. Aucune lecture de `shop_domain`
+-- nulle part dans ce préflight ni dans le backfill, y compris pour les 5 des
+-- 8 lignes production dont le domaine correspond à une boutique active
+-- (`teer-test.myshopify.com`) : cet en-tête n'est pas signé (cf. incident
+-- cross-tenant `resolveShopDomain`, CLAUDE.md) et son autorité ne doit
+-- jamais être gravée dans le modèle canonique.
 -- ============================================================================
 
 -- ── store_connection ─────────────────────────────────────────────────────
@@ -389,23 +418,63 @@ begin
 end;
 $$;
 
--- (5) ingestion_event : tout événement historique dont la boutique ne peut
--- être établie fait échouer la migration. Aucun repli sur une boutique par
--- défaut — contrairement au motif utilisé ailleurs pour des lignes
--- métier, un événement d'ingestion mal attribué serait indiscernable d'un
--- événement d'une autre boutique.
+-- (5) ingestion_event : trois issues, jamais deux. Aucun repli sur une
+-- boutique par défaut dans aucun des trois cas — contrairement au motif
+-- utilisé ailleurs pour des lignes métier, un événement d'ingestion mal
+-- attribué serait indiscernable d'un événement d'une autre boutique.
+--
+--   (a) contexte complet (les deux colonnes renseignées) → backfillé
+--       normalement, hors de ce bloc.
+--   (b) contexte totalement absent (les deux colonnes nulles) ET ligne
+--       TERMINÉE (`status in ('done','terminal')` — les deux seules sorties
+--       définitives écrites par `finish_shopify_webhook_event`, 0121 ;
+--       `processing`/`retryable` sont les deux états encore en vol) → exclue
+--       du backfill, jamais insérée dans `ingestion_event`, comptée et
+--       rapportée par `RAISE NOTICE`.
+--   (c) tout le reste : contexte PARTIEL (une seule des deux colonnes
+--       nulle, quel que soit le statut — un contexte à moitié établi n'est
+--       pas moins dangereux qu'une absence totale) OU contexte absent mais
+--       ligne NON terminée (encore en vol, ou un statut nul/absent de la
+--       liste terminale — traité comme non terminal par défaut, jamais
+--       toléré) → bloque la migration, `RAISE EXCEPTION` nommant les
+--       identifiants concernés.
+--
+-- Le prédicat « sans contexte » reste un OR (`merchant_account_id is null or
+-- shop_id is null`), jamais un AND : un AND laisserait passer un contexte
+-- partiel sans jamais bloquer. Aucune lecture de `shop_domain` ici, y
+-- compris quand ce domaine correspond à une boutique active — cet en-tête
+-- n'est pas signé (incident cross-tenant `resolveShopDomain`, CLAUDE.md) et
+-- son autorité ne doit jamais être gravée dans le modèle canonique.
 do $$
 declare
-  v_missing bigint;
-  v_sample text;
+  v_blocking bigint;
+  v_blocking_sample text;
+  v_excluded bigint;
+  v_excluded_sample text;
 begin
   select count(*), string_agg(shopify_webhook_id, ', ' order by received_at)
-    into v_missing, v_sample
+    into v_blocking, v_blocking_sample
   from public.webhook_event
-  where merchant_account_id is null or shop_id is null;
+  where (merchant_account_id is null or shop_id is null)
+    and not (
+      merchant_account_id is null
+      and shop_id is null
+      and status in ('done', 'terminal')
+    );
 
-  if v_missing > 0 then
-    raise exception 'l1_ingestion_event_backfill_missing_shop_context count=% webhook_ids=[%]', v_missing, v_sample;
+  if v_blocking > 0 then
+    raise exception 'l1_ingestion_event_backfill_missing_shop_context count=% webhook_ids=[%]', v_blocking, v_blocking_sample;
+  end if;
+
+  select count(*), string_agg(shopify_webhook_id, ', ' order by received_at)
+    into v_excluded, v_excluded_sample
+  from public.webhook_event
+  where merchant_account_id is null
+    and shop_id is null
+    and status in ('done', 'terminal');
+
+  if v_excluded > 0 then
+    raise notice 'l1_ingestion_event_backfill_excluded_no_context count=% webhook_ids=[%]', v_excluded, v_excluded_sample;
   end if;
 end;
 $$;
@@ -495,7 +564,9 @@ select
   we.completed_at,
   we.processing_proof
 from public.webhook_event we
-left join public.store_connection sc on sc.shop_id = we.shop_id;
+left join public.store_connection sc on sc.shop_id = we.shop_id
+where we.merchant_account_id is not null
+  and we.shop_id is not null;
 
 -- ============================================================================
 -- Preuve d'exhaustivité — comptes avant/après doivent coïncider exactement.
@@ -532,7 +603,19 @@ begin
     raise exception 'l1_backfill_mismatch table=external_ref/product source=% target=%', v_source, v_target;
   end if;
 
-  select count(*) into v_source from public.webhook_event;
+  -- webhook_event à contexte complet = lignes réellement backfillées dans
+  -- ingestion_event. La seconde égalité (webhook_event terminal sans
+  -- contexte = exclusions signalées par le RAISE NOTICE du préflight (5))
+  -- ne peut pas être vérifiée ICI : `ingestion_event` ne stocke aucune trace
+  -- des lignes exclues par construction (c'est le but), donc il n'y a rien
+  -- côté cible à comparer. Elle est vérifiée par le harnais
+  -- (`scripts/l1-backfill-harness.sh`), qui recalcule le compte exclu
+  -- directement depuis `webhook_event` après migration (jamais modifiée par
+  -- ce lot) et le compare au compte annoncé par le RAISE NOTICE capturé dans
+  -- la sortie de `supabase migration up --local`.
+  select count(*) into v_source
+  from public.webhook_event
+  where merchant_account_id is not null and shop_id is not null;
   select count(*) into v_target from public.ingestion_event;
   if v_source <> v_target then
     raise exception 'l1_backfill_mismatch table=ingestion_event source=% target=%', v_source, v_target;
