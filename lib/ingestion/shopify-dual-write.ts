@@ -65,26 +65,26 @@ async function resolveShopConnection(
   return resolved.ok ? resolved.context : null;
 }
 
-export async function dualWriteOrderWebhook({
-  supabase,
-  shop,
-  topic,
-  orderNode,
-  deliveryId,
-  triggeredAt,
-}: {
-  supabase: AdminClient;
-  shop: ShopForDualWrite;
-  topic: string;
-  orderNode: { id: string };
-  deliveryId: string | null;
-  triggeredAt: string | null;
-}): Promise<void> {
-  const ctx = await resolveShopConnection(supabase, shop);
-  if (!ctx) {
-    return;
-  }
-
+// ── Cœur ctx-based, réutilisé par le legacy (shop → ctx via domaine) et par le nouvel endpoint à
+// jeton opaque (Lot L3, ctx déjà résolu par lib/ingestion/resolve-connection.ts). Extraire ce cœur
+// évite de dupliquer la logique d'écriture entre les deux points d'entrée — un seul endroit sait
+// écrire ingestion_event/external_ref pour une ressource donnée, quelle que soit la façon dont ctx
+// a été obtenu.
+export async function writeOrderIngestion(
+  supabase: AdminClient,
+  ctx: ResolvedConnectionContext,
+  {
+    topic,
+    orderNode,
+    deliveryId,
+    triggeredAt,
+  }: {
+    topic: string;
+    orderNode: { id: string };
+    deliveryId: string | null;
+    triggeredAt: string | null;
+  },
+): Promise<void> {
   const envelope = normalizeShopifyOrder(orderNode);
 
   const ingestionResult = await writeIngestionEvent(supabase, {
@@ -143,18 +143,18 @@ export async function dualWriteOrderWebhook({
   }
 }
 
-export async function dualWriteProductWebhook({
+export async function dualWriteOrderWebhook({
   supabase,
   shop,
   topic,
-  productNode,
+  orderNode,
   deliveryId,
   triggeredAt,
 }: {
   supabase: AdminClient;
   shop: ShopForDualWrite;
   topic: string;
-  productNode: { id: string; variants: { edges: Array<{ node: { id: string } }> } };
+  orderNode: { id: string };
   deliveryId: string | null;
   triggeredAt: string | null;
 }): Promise<void> {
@@ -162,7 +162,24 @@ export async function dualWriteProductWebhook({
   if (!ctx) {
     return;
   }
+  await writeOrderIngestion(supabase, ctx, { topic, orderNode, deliveryId, triggeredAt });
+}
 
+export async function writeProductIngestion(
+  supabase: AdminClient,
+  ctx: ResolvedConnectionContext,
+  {
+    topic,
+    productNode,
+    deliveryId,
+    triggeredAt,
+  }: {
+    topic: string;
+    productNode: { id: string; variants: { edges: Array<{ node: { id: string } }> } };
+    deliveryId: string | null;
+    triggeredAt: string | null;
+  },
+): Promise<void> {
   const envelope = normalizeShopifyProduct(productNode);
 
   const ingestionResult = await writeIngestionEvent(supabase, {
@@ -219,18 +236,18 @@ export async function dualWriteProductWebhook({
   }
 }
 
-export async function dualWriteRefundWebhook({
+export async function dualWriteProductWebhook({
   supabase,
   shop,
   topic,
-  orderId,
+  productNode,
   deliveryId,
   triggeredAt,
 }: {
   supabase: AdminClient;
   shop: ShopForDualWrite;
   topic: string;
-  orderId: string | null;
+  productNode: { id: string; variants: { edges: Array<{ node: { id: string } }> } };
   deliveryId: string | null;
   triggeredAt: string | null;
 }): Promise<void> {
@@ -238,7 +255,24 @@ export async function dualWriteRefundWebhook({
   if (!ctx) {
     return;
   }
+  await writeProductIngestion(supabase, ctx, { topic, productNode, deliveryId, triggeredAt });
+}
 
+export async function writeRefundIngestion(
+  supabase: AdminClient,
+  ctx: ResolvedConnectionContext,
+  {
+    topic,
+    orderId,
+    deliveryId,
+    triggeredAt,
+  }: {
+    topic: string;
+    orderId: string | null;
+    deliveryId: string | null;
+    triggeredAt: string | null;
+  },
+): Promise<void> {
   const envelope = normalizeShopifyRefund({ orderId });
 
   const ingestionResult = await writeIngestionEvent(supabase, {
@@ -260,6 +294,59 @@ export async function dualWriteRefundWebhook({
   // Pas d'external_ref pour 'refund' — cf. CanonicalRefund (lib/ingestion/canonical.ts).
 }
 
+export async function dualWriteRefundWebhook({
+  supabase,
+  shop,
+  topic,
+  orderId,
+  deliveryId,
+  triggeredAt,
+}: {
+  supabase: AdminClient;
+  shop: ShopForDualWrite;
+  topic: string;
+  orderId: string | null;
+  deliveryId: string | null;
+  triggeredAt: string | null;
+}): Promise<void> {
+  const ctx = await resolveShopConnection(supabase, shop);
+  if (!ctx) {
+    return;
+  }
+  await writeRefundIngestion(supabase, ctx, { topic, orderId, deliveryId, triggeredAt });
+}
+
+export async function writeBulkOperationIngestion(
+  supabase: AdminClient,
+  ctx: ResolvedConnectionContext,
+  {
+    topic,
+    deliveryId,
+    triggeredAt,
+  }: {
+    topic: string;
+    deliveryId: string | null;
+    triggeredAt: string | null;
+  },
+): Promise<void> {
+  const ingestionResult = await writeIngestionEvent(supabase, {
+    ctx,
+    topic,
+    deliveryId,
+    resourceKind: 'bulk_operation_finished',
+    resourceExternalId: null,
+    status: 'done',
+    triggeredAt,
+  });
+  if (!ingestionResult.ok) {
+    reportDualWriteFailure('write_ingestion_event', ingestionResult.error, {
+      topic,
+      deliveryId,
+      storeConnectionId: ctx.storeConnectionId,
+    });
+  }
+}
+
 export async function dualWriteBulkOperationFinishedWebhook({
   supabase,
   shop,
@@ -277,21 +364,5 @@ export async function dualWriteBulkOperationFinishedWebhook({
   if (!ctx) {
     return;
   }
-
-  const ingestionResult = await writeIngestionEvent(supabase, {
-    ctx,
-    topic,
-    deliveryId,
-    resourceKind: 'bulk_operation_finished',
-    resourceExternalId: null,
-    status: 'done',
-    triggeredAt,
-  });
-  if (!ingestionResult.ok) {
-    reportDualWriteFailure('write_ingestion_event', ingestionResult.error, {
-      topic,
-      deliveryId,
-      storeConnectionId: ctx.storeConnectionId,
-    });
-  }
+  await writeBulkOperationIngestion(supabase, ctx, { topic, deliveryId, triggeredAt });
 }
