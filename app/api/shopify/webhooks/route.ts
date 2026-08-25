@@ -3,6 +3,7 @@ import {
   dualWriteOrderWebhook,
   dualWriteProductWebhook,
   dualWriteRefundWebhook,
+  resolveShopConnection,
 } from '@/lib/ingestion/shopify-dual-write';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import { checkRateLimit } from '@/lib/security/rate-limit';
@@ -27,7 +28,7 @@ import { deriveRefundWebhook } from '@/lib/shopify/refunds';
 import { verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
-import { createClient } from '@supabase/supabase-js';
+import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { after } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -748,46 +749,98 @@ async function handleRefundWebhook({
     localOrderId = localOrder?.id ?? null;
   }
 
-  if (refund.shouldUpdateFinancialStatus && localOrderId) {
-    const { error: orderUpdateError } = await supabase
-      .from('orders')
-      .update({
-        financial_status: 'partially_refunded',
-        shopify_financial_status: 'partially_refunded',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', localOrderId);
+  const auditPayload = toJson({
+    cashStillHeldByTeer: refund.cashStillHeldByTeer,
+    localOrderId,
+    nonCashRefundedMinor: refund.nonCashRefundedMinor,
+    orderId: refund.orderId,
+    shopDomain: resolvedShopDomain,
+    shouldUpdateFinancialStatus: refund.shouldUpdateFinancialStatus,
+    successfulRefundCount: refund.successfulRefundCount,
+    transactionSummary: refund.transactionSummary,
+  });
+  const resourceType = localOrderId ? 'orders' : 'shop';
+  const resourceId = localOrderId ?? shop.id;
 
-    if (orderUpdateError) {
-      logWebhookError('[webhook] refund order update failed', {
-        errorCode: sanitizeWebhookError(orderUpdateError.message),
+  // Idempotence métier (lot dédié) : store_connection_id + externalRefundId, jamais delivery_id
+  // (deux delivery_id distincts pour le MÊME remboursement — le scénario exact d'une bascule
+  // d'abonnement mal séquencée — ne doivent produire qu'une seule écriture). Le garde-fou vit
+  // dans record_shopify_refund_receipt (migration dédiée, une seule transaction pour la garde +
+  // orders.financial_status + audit_log). Repli sur l'ancien comportement INCHANGÉ (update +
+  // insert séparés, sans garde) uniquement quand la connexion ne peut pas être résolue ou que le
+  // payload ne porte pas d'id de remboursement — jamais un silence qui ferait disparaître l'audit.
+  const connection = await resolveShopConnection(supabase, shop);
+
+  if (connection && refund.externalRefundId) {
+    // record_shopify_refund_receipt (migration 0144) n'est pas encore dans database.types.ts tant
+    // qu'elle n'est pas confirmée en production (règle #3, CLAUDE.md) — cast localisé, même motif
+    // que lib/ingestion/resolve-connection.ts pour 0143.
+    const rawSupabase = supabase as unknown as SupabaseClient;
+    const { data: recorded, error: rpcError } = await rawSupabase.rpc(
+      'record_shopify_refund_receipt',
+      {
+        p_store_connection_id: connection.storeConnectionId,
+        p_external_id: refund.externalRefundId,
+        p_local_order_id: localOrderId,
+        p_should_update_financial_status: refund.shouldUpdateFinancialStatus,
+        p_merchant_account_id: shop.merchant_account_id,
+        p_actor_user_id: null,
+        p_resource_type: resourceType,
+        p_resource_id: resourceId,
+        p_audit_payload: auditPayload,
+      },
+    );
+
+    if (rpcError) {
+      logWebhookError('[webhook] refund receipt rpc failed', {
+        errorCode: sanitizeWebhookError(rpcError.message),
         localOrderId,
         orderId: refund.orderId,
         resolvedShopDomain,
       });
-      throw new Error('shopify_refund_order_update_failed');
+      throw new Error('shopify_refund_receipt_failed');
     }
-  }
 
-  const { error: refundAuditError } = await supabase.from('audit_log').insert({
-    merchant_account_id: shop.merchant_account_id,
-    actor_user_id: null,
-    action: 'shopify.refund_received',
-    resource_type: localOrderId ? 'orders' : 'shop',
-    resource_id: localOrderId ?? shop.id,
-    payload: toJson({
-      cashStillHeldByTeer: refund.cashStillHeldByTeer,
-      localOrderId,
-      nonCashRefundedMinor: refund.nonCashRefundedMinor,
-      orderId: refund.orderId,
-      shopDomain: resolvedShopDomain,
-      shouldUpdateFinancialStatus: refund.shouldUpdateFinancialStatus,
-      successfulRefundCount: refund.successfulRefundCount,
-      transactionSummary: refund.transactionSummary,
-    }),
-  });
-  if (refundAuditError) {
-    throw new Error('shopify_refund_audit_failed');
+    if (recorded === false) {
+      logWebhookInfo('[webhook] refund already recorded, skipping duplicate write', {
+        externalRefundId: refund.externalRefundId,
+        storeConnectionId: connection.storeConnectionId,
+        topic,
+      });
+    }
+  } else {
+    if (refund.shouldUpdateFinancialStatus && localOrderId) {
+      const { error: orderUpdateError } = await supabase
+        .from('orders')
+        .update({
+          financial_status: 'partially_refunded',
+          shopify_financial_status: 'partially_refunded',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', localOrderId);
+
+      if (orderUpdateError) {
+        logWebhookError('[webhook] refund order update failed', {
+          errorCode: sanitizeWebhookError(orderUpdateError.message),
+          localOrderId,
+          orderId: refund.orderId,
+          resolvedShopDomain,
+        });
+        throw new Error('shopify_refund_order_update_failed');
+      }
+    }
+
+    const { error: refundAuditError } = await supabase.from('audit_log').insert({
+      merchant_account_id: shop.merchant_account_id,
+      actor_user_id: null,
+      action: 'shopify.refund_received',
+      resource_type: resourceType,
+      resource_id: resourceId,
+      payload: auditPayload,
+    });
+    if (refundAuditError) {
+      throw new Error('shopify_refund_audit_failed');
+    }
   }
 
   await runDualWrite('refund', () =>

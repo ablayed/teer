@@ -4,6 +4,12 @@ type RefundDerivation = {
   cashStillHeldByTeer: boolean;
   nonCashRefundedMinor: number;
   orderId: string | null;
+  // Identifiant PROPRE du remboursement (champ racine `id` de l'objet Refund Shopify,
+  // shopify.dev/docs/api/admin-rest/latest/resources/refund) — distinct de `orderId`, stable
+  // entre deux livraisons du même événement. Base de l'idempotence métier (lot dédié) :
+  // jamais confondu avec un delivery_id de webhook, qui diffère à chaque livraison même pour
+  // le même remboursement.
+  externalRefundId: string | null;
   shouldUpdateFinancialStatus: boolean;
   successfulRefundCount: number;
   transactionSummary: Json;
@@ -60,6 +66,7 @@ export function isCashLikeRefundGateway(gateway: string | null): boolean {
 export function deriveRefundWebhook(payload: unknown): RefundDerivation {
   const record = isRecord(payload) ? payload : null;
   const orderId = record ? stringField(record, 'order_id') : null;
+  const externalRefundId = record ? stringField(record, 'id') : null;
   const transactions = record && Array.isArray(record.transactions) ? record.transactions : [];
 
   let successfulRefundCount = 0;
@@ -96,6 +103,7 @@ export function deriveRefundWebhook(payload: unknown): RefundDerivation {
     cashStillHeldByTeer,
     nonCashRefundedMinor,
     orderId,
+    externalRefundId,
     shouldUpdateFinancialStatus: nonCashRefundedMinor > 0,
     successfulRefundCount,
     transactionSummary,

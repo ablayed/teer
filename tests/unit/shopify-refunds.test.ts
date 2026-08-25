@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 describe('deriveRefundWebhook', () => {
   it('met a jour le miroir financier seulement si un refund non-COD a reussi', () => {
     const result = deriveRefundWebhook({
+      id: 509562969,
       order_id: 123456789,
       transactions: [
         {
@@ -16,10 +17,23 @@ describe('deriveRefundWebhook', () => {
     });
 
     expect(result.orderId).toBe('123456789');
+    expect(result.externalRefundId).toBe('509562969');
     expect(result.nonCashRefundedMinor).toBe(15000);
     expect(result.cashStillHeldByTeer).toBe(false);
     expect(result.shouldUpdateFinancialStatus).toBe(true);
     expect(result.successfulRefundCount).toBe(1);
+  });
+
+  it("extrait l'id du remboursement, distinct de order_id — jamais confondu ni omis", () => {
+    const result = deriveRefundWebhook({ id: 42, order_id: 43, transactions: [] });
+    expect(result.externalRefundId).toBe('42');
+    expect(result.orderId).toBe('43');
+    expect(result.externalRefundId).not.toBe(result.orderId);
+  });
+
+  it('payload sans id (forme inattendue) -> externalRefundId null, jamais une exception', () => {
+    const result = deriveRefundWebhook({ order_id: 43, transactions: [] });
+    expect(result.externalRefundId).toBeNull();
   });
 
   it('n interprete pas un refund COD comme cash sorti de Teer', () => {
