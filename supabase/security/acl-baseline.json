@@ -2773,6 +2773,26 @@
       "serviceRoleUpdate": true
     },
     {
+      "anonDelete": false,
+      "anonInsert": false,
+      "anonSelect": false,
+      "anonUpdate": false,
+      "authenticatedDelete": false,
+      "authenticatedInsert": false,
+      "authenticatedSelect": false,
+      "authenticatedUpdate": false,
+      "key": "public.store_connection_webhook_token",
+      "name": "store_connection_webhook_token",
+      "owner": "postgres",
+      "rlsEnabled": true,
+      "rlsForced": true,
+      "schema": "public",
+      "serviceRoleDelete": true,
+      "serviceRoleInsert": true,
+      "serviceRoleSelect": true,
+      "serviceRoleUpdate": true
+    },
+    {
       "anonDelete": true,
       "anonInsert": true,
       "anonSelect": true,
