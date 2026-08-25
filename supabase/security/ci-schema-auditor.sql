@@ -259,9 +259,14 @@ grant select on supabase_migrations.schema_migrations to ci_schema_auditor;
 -- de migration réelle (`0141`) depuis `supabase_migrations.schema_migrations` EN
 -- PRODUCTION sous ce rôle — impossible sans ce grant, qui aurait renvoyé
 -- `permission denied for schema supabase_migrations` sinon (signature identique
--- au test local ci-dessus). `seed_files` n'a PAS été revérifiée contre la
--- production — ce test local reste la seule preuve disponible pour cette table
--- précise ; ne pas présumer du comportement en production sans le mesurer.
+-- au test local ci-dessus). Le run `32790630417` ne requête jamais `seed_files`
+-- (aucun grant dessus, cf. ci-dessus) — il n'en dit rien. **`seed_files`
+-- N'EXISTE PAS en production**, constaté séparément le 2026-08-25 en session
+-- manuelle (porteur, `psql` direct) — donnée distincte de ce run, à ne pas lui
+-- attribuer. Plus fort que le refus de privilège mesuré en local (où la table
+-- existe et le `SELECT` est simplement refusé) : sur la plateforme hébergée,
+-- l'outillage CLI qui la crée localement (`supabase db reset`) n'a jamais
+-- tourné contre la production de la même façon.
 
 -- --------------------------------------------------------------
 -- 6. Couverture des privilèges de COLONNE — vérifiée nécessaire à zéro grant.
