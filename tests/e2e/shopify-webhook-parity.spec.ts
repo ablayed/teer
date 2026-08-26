@@ -113,6 +113,26 @@ async function seedConnectionAndToken(
   return { storeConnectionId: connection.id, rawToken: token.raw };
 }
 
+// Legacy n'a pas besoin d'un jeton (identité par en-tête), mais la double-écriture L2
+// (dualWriteOrderWebhook -> resolveShopConnection) exige une store_connection résolvable pour
+// écrire ingestion_event — sans elle, resolveShopConnection renvoie null et le dual-write est
+// silencieusement sauté (comportement voulu par ailleurs, mais pas ce qu'on veut comparer ici).
+async function seedLegacyStoreConnection(
+  admin: AdminClient,
+  merchantAccountId: string,
+  shopId: string,
+  shopDomain: string,
+): Promise<void> {
+  const { error } = await admin.from('store_connection').insert({
+    merchant_account_id: merchantAccountId,
+    shop_id: shopId,
+    platform: 'shopify',
+    external_identifier: shopDomain,
+    platform_app_id: KOBA_CLIENT_ID,
+  });
+  if (error) throw new Error(`store_connection insert failed (legacy): ${error.message}`);
+}
+
 function sign(rawBody: string, secret: string): string {
   return createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
 }
@@ -177,7 +197,10 @@ type OrderSnapshot = {
   currency: string;
   shopify_financial_status: string | null;
   shopify_fulfillment_status: string | null;
-  note: string | null;
+  // La note du payload REST est stockée dans shopify_order_attributes.note (JSON), PAS dans
+  // orders.note (colonne distincte — la note d'équipe libre, jamais écrite par la sync Shopify,
+  // cf. CLAUDE.md « Note libre sur la commande »). Comparer le blob JSON entier, pas un flat.
+  shopify_order_attributes: unknown;
 };
 
 async function waitForOrderSnapshot(
@@ -192,7 +215,7 @@ async function waitForOrderSnapshot(
         const { data } = await admin
           .from('orders')
           .select(
-            'delivery_state, cod_status, total_amount, currency, shopify_financial_status, shopify_fulfillment_status, note',
+            'delivery_state, cod_status, total_amount, currency, shopify_financial_status, shopify_fulfillment_status, shopify_order_attributes',
           )
           .eq('merchant_account_id', merchantAccountId)
           .eq('shopify_order_id', shopifyOrderId)
@@ -207,7 +230,13 @@ async function waitForOrderSnapshot(
   return row;
 }
 
-type ProductSnapshot = { title: string; status: string | null };
+// product n'a PAS de colonne `status` (trouvé en debug local : 42703 column does not exist) —
+// la colonne réelle est `is_active` (booléen). Note pré-existante, hors périmètre de ce lot :
+// mapShopifyVariantToProductInsert (lib/shopify/products-sync.ts) compare
+// `productNode.status === 'ACTIVE'` (enum GraphQL majuscule) alors que le payload REST webhook
+// porte un statut minuscule ('active') — is_active vaut donc TOUJOURS false sur ce chemin,
+// legacy comme opaque identiquement (bug partagé, pas un défaut de parité).
+type ProductSnapshot = { title: string; is_active: boolean };
 
 async function waitForProductSnapshot(
   admin: AdminClient,
@@ -220,7 +249,7 @@ async function waitForProductSnapshot(
       async () => {
         const { data } = await admin
           .from('product')
-          .select('title, status')
+          .select('title, is_active')
           .eq('merchant_account_id', merchantAccountId)
           .eq('shopify_product_id', shopifyProductId)
           .maybeSingle();
@@ -304,6 +333,12 @@ test('parité orders/create : même commande créée à l’identique sur les de
   try {
     const legacyShop = await seedShop(admin, legacyMerchant.merchantAccountId, 'oc-legacy');
     const opaqueShop = await seedShop(admin, opaqueMerchant.merchantAccountId, 'oc-opaque');
+    await seedLegacyStoreConnection(
+      admin,
+      legacyMerchant.merchantAccountId,
+      legacyShop.shopId,
+      legacyShop.shopDomain,
+    );
     const { rawToken } = await seedConnectionAndToken(
       admin,
       opaqueMerchant.merchantAccountId,
@@ -768,10 +803,13 @@ test("garde hors-ordre : un orders/updated plus ancien n'écrase pas l'état dé
     );
     const orderId = 90_700_000 + Math.floor(Math.random() * 100_000);
 
-    // État récent appliqué en premier (updated_at le plus tardif).
+    // État récent appliqué en premier (updated_at le plus tardif). shopify_fulfillment_status —
+    // colonne réelle écrite directement par mapShopifyOrder, contrairement à `note` du payload
+    // qui atterrit dans shopify_order_attributes (JSON), pas dans une colonne plate comparable
+    // ici aussi simplement.
     const recentBody = orderBody(orderId, {
       updated_at: '2026-08-26T12:00:00Z',
-      note: 'note récente',
+      fulfillment_status: 'fulfilled',
     });
     await postOpaque(request, {
       topic: 'orders/create',
@@ -786,7 +824,7 @@ test("garde hors-ordre : un orders/updated plus ancien n'écrase pas l'état dé
     // ne doit jamais écraser l'état déjà appliqué.
     const staleBody = orderBody(orderId, {
       updated_at: '2026-08-26T11:00:00Z',
-      note: 'note périmée — ne doit jamais apparaître',
+      fulfillment_status: null,
     });
     const staleRes = await postOpaque(request, {
       topic: 'orders/updated',
@@ -800,11 +838,11 @@ test("garde hors-ordre : un orders/updated plus ancien n'écrase pas l'état dé
 
     const { data: orderAfter } = await admin
       .from('orders')
-      .select('note')
+      .select('shopify_fulfillment_status')
       .eq('merchant_account_id', merchant.merchantAccountId)
       .eq('shopify_order_id', String(orderId))
       .single();
-    expect(orderAfter?.note).toBe('note récente');
+    expect(orderAfter?.shopify_fulfillment_status).toBe('fulfilled');
   } finally {
     await admin.auth.admin.deleteUser(merchant.userId);
   }
