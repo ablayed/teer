@@ -2793,6 +2793,38 @@ export type Database = {
           },
         ];
       };
+      store_connection_resource_receipt: {
+        Row: {
+          created_at: string;
+          external_id: string;
+          id: string;
+          resource_kind: string;
+          store_connection_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          external_id: string;
+          id?: string;
+          resource_kind: string;
+          store_connection_id: string;
+        };
+        Update: {
+          created_at?: string;
+          external_id?: string;
+          id?: string;
+          resource_kind?: string;
+          store_connection_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_connection_resource_receipt_store_connection_id_fkey';
+            columns: ['store_connection_id'];
+            isOneToOne: false;
+            referencedRelation: 'store_connection';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       store_connection_webhook_token: {
         Row: {
           created_at: string;
@@ -3854,6 +3886,20 @@ export type Database = {
           p_note: string;
         };
         Returns: Json;
+      };
+      record_shopify_refund_receipt: {
+        Args: {
+          p_actor_user_id: string;
+          p_audit_payload: Json;
+          p_external_id: string;
+          p_local_order_id: string;
+          p_merchant_account_id: string;
+          p_resource_id: string;
+          p_resource_type: string;
+          p_should_update_financial_status: boolean;
+          p_store_connection_id: string;
+        };
+        Returns: boolean;
       };
       redact_shopify_customer_copies: {
         Args: {
