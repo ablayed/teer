@@ -75,7 +75,11 @@ describe('S1C-2 bounded access and exfiltration controls', () => {
     const customerActions = read('lib/actions/customers.ts');
     const whatsapp = read('lib/actions/pcd-access.ts');
     const feedback = read('lib/actions/feedback.ts');
-    const webhook = read('app/api/shopify/webhooks/route.ts');
+    // Phase 2 / Verrou 0 : le pré-audit PCD du chemin webhook vit désormais dans le cœur partagé
+    // (lib/shopify/webhook-core.ts, dispatchWebhookCore), appelé identiquement par les deux
+    // endpoints (legacy et URL opaque) — plus dans app/api/shopify/webhooks/route.ts directement.
+    const webhook = read('lib/shopify/webhook-core.ts');
+    const webhookRoute = read('app/api/shopify/webhooks/route.ts');
 
     expect(orderActions).toContain('writePcdAccessAuditCategories');
     expect(customerActions).toContain('writePcdAccessAuditCategories');
@@ -84,5 +88,6 @@ describe('S1C-2 bounded access and exfiltration controls', () => {
     expect(feedback).toContain('detectPcdCategories');
     expect(webhook).toContain('idempotencyKey: `webhook:${eventId}:pcd-read`');
     expect(webhook).not.toContain('extra: { payload');
+    expect(webhookRoute).not.toContain('extra: { payload');
   });
 });

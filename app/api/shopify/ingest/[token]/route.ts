@@ -1,4 +1,4 @@
-// Phase 2 / Lot L3 (périmètre réduit) — endpoint webhook à URL opaque par installation.
+// Phase 2 / Lot L3 + Verrou 0 — endpoint webhook à URL opaque par installation.
 //
 // Ordre d'autorité, dans cet ordre, jamais inversé : URL (jeton) → connexion → platform_app_id →
 // HMAC du corps → comparaison de l'en-tête. Chaque étape ne peut être décidée que par la
@@ -8,38 +8,33 @@
 // Six causes de refus distinctes en interne (jeton malformé, inconnu, expiré, mauvais secret, HMAC
 // invalide, en-tête divergent) + une 7ᵉ (désaccord app/jeton, recoupement L2) → UNE SEULE réponse
 // externe (401, corps vide), pour toutes. Un appelant ne doit jamais pouvoir distinguer ces cas.
+// Toutes vérifiées AVANT tout appel au cœur métier — le cœur n'est jamais atteint avec un contexte
+// douteux (preuve : absence de ligne dans webhook_event/ingestion_event/orders/product, pas
+// seulement le code de réponse — cf. tests/e2e/shopify-ingest-token-endpoint.spec.ts).
 //
-// Portée volontairement réduite de ce lot (cf. rapport de session) : cet endpoint prouve
-// l'identité/le routage via le registre canonique déjà posé par L2 (ingestion_event/external_ref) —
-// il n'appelle PAS encore les écritures métier legacy (persistShopifyOrder et alliés, qui restent
-// la seule voie qui alimente réellement `orders`/`product`). Aucun abonnement Shopify réel ne
-// pointe vers cet endpoint dans ce lot (la bascule d'abonnements est un lot séparé, hors périmètre
-// L3 réduit) : il n'accepte donc aucun trafic Shopify de production à ce stade, seulement le
-// trafic de test qui prouve les propriétés ci-dessus.
+// Verrou 0 (rapport de session dédié) : cet endpoint appelle désormais le MÊME cœur métier que
+// l'endpoint legacy (lib/shopify/webhook-core.ts) — webhook_event redevient alimenté ici aussi
+// (autoritaire en lecture, Phase 2), la persistance orders/product/refund/app-uninstalled est
+// complète (plus seulement le registre L1/L2 ingestion_event/external_ref). Le cœur ne lit ni
+// en-tête, ni jeton, ni URL : il reçoit une boutique déjà résolue via le jeton (jamais un domaine).
 import {
   finalizeResolvedConnection,
   resolveConnectionByToken,
 } from '@/lib/ingestion/resolve-connection';
-import {
-  writeBulkOperationIngestion,
-  writeOrderIngestion,
-  writeProductIngestion,
-  writeRefundIngestion,
-} from '@/lib/ingestion/shopify-dual-write';
-import {
-  identifyValidatingApps,
-  normalizeShopifyBulkOperationFinished,
-} from '@/lib/shopify/adapter';
+import { identifyValidatingApps } from '@/lib/shopify/adapter';
 import { getRegisteredShopifyApps } from '@/lib/shopify/apps';
-import { deriveRefundWebhook } from '@/lib/shopify/refunds';
+import {
+  recordWebhookReceipt,
+  resolveShopForTopic,
+  runResolvedWebhookEvent,
+  toJson,
+} from '@/lib/shopify/webhook-core';
 import type { Database } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
 import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
 
 function createSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -75,24 +70,6 @@ function refuse(reason: IngestRefusalReason, extra: Record<string, unknown> = {}
   // biome-ignore lint/suspicious/noConsole: journal interne des causes de refus (jamais exposé au demandeur).
   console.error('[ingest] refused', { reason, ...extra });
   return new Response(null, { status: 401 });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function extractResourceId(payload: unknown): string | null {
-  if (!isRecord(payload)) {
-    return null;
-  }
-  const id = payload.id;
-  if (typeof id === 'string') {
-    return id;
-  }
-  if (typeof id === 'number' && Number.isFinite(id)) {
-    return String(id);
-  }
-  return null;
 }
 
 function parseJsonSafely(rawBody: string): unknown {
@@ -146,7 +123,6 @@ export async function POST(
   if (!resolved.ok) {
     return refuse(resolved.reason, { topic, webhookId });
   }
-  const ctx = resolved.context;
 
   // Étape 4 — comparaison de l'en-tête : garde-fou comparé, jamais autoritatif. La connexion est
   // déjà entièrement déterminée par le jeton ; une divergence signale une requête incohérente,
@@ -155,160 +131,77 @@ export async function POST(
     return refuse('header_mismatch', { topic, webhookId });
   }
 
+  // Identité prouvée. Aucun refus possible après ce point — tout ce qui suit passe par le MÊME
+  // cœur que l'endpoint legacy, jamais un traitement ad hoc.
+  if (!webhookId) {
+    // biome-ignore lint/suspicious/noConsole: journal opérationnel, miroir de l'endpoint legacy.
+    console.error('[ingest] missing webhook id', { topic });
+    return new Response(null, { status: 200 });
+  }
+
   const payload = parseJsonSafely(rawBody);
 
-  await processIngestedEvent(supabase, ctx, {
+  // shop_domain déjà connu sans requête (connection.externalIdentifier EST le domaine, résolu par
+  // le jeton) ; shopId/merchantAccountId déjà connus via la connexion. webhook_event est donc
+  // alimenté SANS lookup supplémentaire côté bookkeeping, contrairement à legacy (qui doit, lui,
+  // résoudre une boutique depuis un en-tête non prouvé).
+  const receipt = await recordWebhookReceipt({
+    supabase,
+    webhookId,
+    topic,
+    shopDomain: connection.externalIdentifier,
+    shopId: connection.shopId,
+    merchantAccountId: connection.merchantAccountId,
+    triggeredAt,
+    payload: toJson(payload),
+  });
+
+  if (receipt.error) {
+    return new Response(null, { status: 503 });
+  }
+
+  if (receipt.duplicate) {
+    // Contrairement à legacy (after() + réclamation asynchrone), cet endpoint reste synchrone :
+    // un doublon retryable dû est retraité immédiatement, avant la réponse — pas de fenêtre
+    // d'attente d'un cron/retry externe. Le résultat final (webhook_event.status) est identique.
+    const due =
+      receipt.status === 'retryable' &&
+      (receipt.nextAttemptAt === null || Date.parse(receipt.nextAttemptAt) <= Date.now());
+    if (!due || !receipt.eventId) {
+      return new Response(null, { status: 200 });
+    }
+    const shop = await resolveShopForTopic(supabase, topic, {
+      by: 'id',
+      shopId: connection.shopId,
+    });
+    await runResolvedWebhookEvent({
+      supabase,
+      eventId: receipt.eventId,
+      shop,
+      topic,
+      payload: receipt.payload,
+      webhookId,
+      triggeredAt,
+    });
+    return new Response(null, { status: 200 });
+  }
+
+  const shop = await resolveShopForTopic(supabase, topic, { by: 'id', shopId: connection.shopId });
+
+  // Les topics GDPR (customers/data_request, customers/redact, shop/redact) ne sont jamais
+  // souscriptibles via l'Admin API (enum WebhookSubscriptionTopic, vérifié dans le lot précédent)
+  // — ils n'atteignent donc structurellement jamais cet endpoint. dispatchWebhookCore les
+  // traiterait quand même correctement s'ils arrivaient ici (même dispatcher que legacy), mais
+  // aucun trafic Shopify réel ne peut emprunter ce chemin pour ces trois topics.
+  await runResolvedWebhookEvent({
+    supabase,
+    eventId: receipt.eventId as string,
+    shop,
     topic,
     payload,
-    deliveryId: webhookId,
+    webhookId,
     triggeredAt,
   });
 
   return new Response(null, { status: 200 });
-}
-
-// Best-effort, à l'image de lib/ingestion/shopify-dual-write.ts : aucune erreur de traitement ne
-// doit transformer un événement dont l'identité est déjà prouvée en échec HTTP — la preuve de
-// sécurité de ce lot porte sur l'identité/le routage, pas sur la résilience complète du pipeline
-// métier (hors périmètre réduit, cf. rapport de session).
-async function processIngestedEvent(
-  supabase: NonNullable<AdminClient>,
-  ctx: Parameters<typeof writeOrderIngestion>[1],
-  {
-    topic,
-    payload,
-    deliveryId,
-    triggeredAt,
-  }: { topic: string; payload: unknown; deliveryId: string | null; triggeredAt: string | null },
-): Promise<void> {
-  try {
-    switch (topic) {
-      case 'orders/create':
-      case 'orders/updated':
-      case 'orders/cancelled':
-      case 'orders/fulfilled': {
-        const id = extractResourceId(payload);
-        if (!id) {
-          return;
-        }
-        await writeOrderIngestion(supabase, ctx, {
-          topic,
-          orderNode: { id },
-          deliveryId,
-          triggeredAt,
-        });
-        return;
-      }
-      case 'products/create':
-      case 'products/update': {
-        const id = extractResourceId(payload);
-        if (!id) {
-          return;
-        }
-        const variants =
-          isRecord(payload) && Array.isArray(payload.variants)
-            ? payload.variants
-                .filter(isRecord)
-                .map((variant) => ({ node: { id: extractResourceId(variant) ?? '' } }))
-                .filter((edge) => edge.node.id !== '')
-            : [];
-        await writeProductIngestion(supabase, ctx, {
-          topic,
-          productNode: { id, variants: { edges: variants } },
-          deliveryId,
-          triggeredAt,
-        });
-        return;
-      }
-      case 'refunds/create': {
-        const refund = deriveRefundWebhook(payload);
-        await writeRefundIngestion(supabase, ctx, {
-          topic,
-          orderId: refund.orderId,
-          deliveryId,
-          triggeredAt,
-        });
-        return;
-      }
-      case 'bulk_operations/finish': {
-        normalizeShopifyBulkOperationFinished(payload);
-        await writeBulkOperationIngestion(supabase, ctx, { topic, deliveryId, triggeredAt });
-        return;
-      }
-      case 'app/uninstalled': {
-        await handleAppUninstalledIngestion(supabase, ctx);
-        return;
-      }
-      default:
-        return;
-    }
-  } catch (error) {
-    Sentry.captureException(error, {
-      tags: { module: 'shopify.ingest' },
-      extra: { topic, deliveryId, storeConnectionId: ctx.storeConnectionId },
-    });
-  }
-}
-
-// Correctif de revue (rapport de session dédié, avant bascule des abonnements réels) : ce topic
-// était absent du switch ci-dessus — une désinstallation réelle serait passée sans effet, la base
-// aurait divergé de la réalité Shopify sans aucun signal. Miroir de handleAppUninstalledWebhook
-// (app/api/shopify/webhooks/route.ts, mêmes 3 écritures : shop, store_connection, audit_log) mais
-// SANS résolution de domaine — l'identité est ici déjà prouvée par le jeton d'URL opaque
-// (ctx.shopId/merchantAccountId/storeConnectionId), jamais par le corps ou l'en-tête, donc aucun
-// des pièges `resolveSignedShopDomain` (corps vide, en-tête non signé) ne s'applique à ce chemin.
-// Best-effort comme le reste de processIngestedEvent : jamais un throw qui ferait échouer la
-// requête HTTP, l'identité étant déjà prouvée avant d'arriver ici.
-async function handleAppUninstalledIngestion(
-  supabase: NonNullable<AdminClient>,
-  ctx: Parameters<typeof writeOrderIngestion>[1],
-): Promise<void> {
-  const { error: shopError } = await supabase
-    .from('shop')
-    .update({
-      status: 'uninstalled',
-      uninstalled_at: new Date().toISOString(),
-      refresh_token_encrypted: null,
-      access_token_expires_at: null,
-      refresh_token_expires_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', ctx.shopId)
-    .eq('merchant_account_id', ctx.merchantAccountId);
-
-  if (shopError) {
-    Sentry.captureException(new Error('shopify_ingest_app_uninstalled_shop_update_failed'), {
-      tags: { module: 'shopify.ingest' },
-      extra: { storeConnectionId: ctx.storeConnectionId, code: shopError.code },
-    });
-    return;
-  }
-
-  const { error: connectionError } = await supabase
-    .from('store_connection')
-    .update({ status: 'uninstalled', uninstalled_at: new Date().toISOString() })
-    .eq('id', ctx.storeConnectionId);
-
-  if (connectionError) {
-    Sentry.captureException(new Error('shopify_ingest_app_uninstalled_connection_update_failed'), {
-      tags: { module: 'shopify.ingest' },
-      extra: { storeConnectionId: ctx.storeConnectionId, code: connectionError.code },
-    });
-  }
-
-  const { error: auditError } = await supabase.from('audit_log').insert({
-    merchant_account_id: ctx.merchantAccountId,
-    actor_user_id: null,
-    action: 'shopify.app_uninstalled',
-    resource_type: 'shop',
-    resource_id: ctx.shopId,
-    payload: {},
-  });
-
-  if (auditError) {
-    Sentry.captureException(new Error('shopify_ingest_app_uninstalled_audit_failed'), {
-      tags: { module: 'shopify.ingest' },
-      extra: { storeConnectionId: ctx.storeConnectionId, code: auditError.code },
-    });
-  }
 }
