@@ -4,56 +4,97 @@
 // opaque par installation (Lot L3, migration 0143).
 // ============================================================================
 //
-// Deux modes, JAMAIS combinés dans la même invocation :
-//   --plan   lecture seule. Interroge l'Admin API de chaque boutique connectée, produit
-//            l'inventaire réel des abonnements et le diff attendu. AUCUNE mutation, ni
-//            côté Shopify ni côté base — pas même la génération d'un jeton.
-//   --apply  mutation, explicite. Remplace un abonnement existant plutôt que d'en ajouter
-//            un second ; vérifie par relecture après chaque boutique ; idempotent (une
-//            boutique déjà conforme n'est jamais retouchée).
+// Trois modes, JAMAIS combinés dans la même invocation :
+//   --plan                       lecture seule. Interroge l'Admin API de chaque boutique
+//                                 connectée, produit l'inventaire réel et le diff attendu.
+//                                 AUCUNE mutation, ni côté Shopify ni côté base — pas même la
+//                                 génération d'un jeton.
+//   --apply                      mutation, explicite, mais NE TOURNE JAMAIS un jeton existant.
+//                                 Provisionne un jeton UNIQUEMENT pour une connexion qui n'en a
+//                                 encore aucun (première bascule) ; remplace un abonnement
+//                                 existant plutôt que d'en ajouter un second ; vérifie par
+//                                 relecture ; idempotent (cf. section « idempotence » ci-dessous).
+//                                 Une connexion dont le jeton existe déjà et qui a besoin d'une
+//                                 mutation est SIGNALÉE, jamais touchée — --rotate-token est requis.
+//   --rotate-token <connection>  fait tourner le secret d'UNE connexion (même public_id, ancien
+//                                 secret accepté durant la fenêtre de grâce, cf.
+//                                 scripts/lib/webhook-token-provisioning.mjs) ET RE-ENREGISTRE LES
+//                                 9 TOPICS EN UNE SEULE PASSE, synchrone, avant de rendre la main —
+//                                 jamais étalé sur plusieurs exécutions futures. C'est la seule
+//                                 opération qui invalide des URL déjà enregistrées côté Shopify ;
+//                                 elle est donc explicite et jamais un effet de bord de --apply.
 //
 // Usage :
 //   node scripts/webhook-subscription-migration.mjs --plan
 //   node scripts/webhook-subscription-migration.mjs --apply
+//   node scripts/webhook-subscription-migration.mjs --rotate-token <store_connection_id>
 //
-// Env requis (les deux modes) :
+// ── Idempotence de --apply (corrige un défaut trouvé en revue, cf. rapport de session) ────
+// La version précédente de cet outil appelait un helper qui FAISAIT TOURNER le secret dès qu'une
+// ligne de jeton existait déjà, à chaque fois qu'AU MOINS UN topic nécessitait une mutation — même
+// si ce topic était le seul non conforme sur 9. Le secret fait partie de l'URL enregistrée côté
+// Shopify (public_id.secret) : une rotation invalide donc TOUTES les URL déjà enregistrées pour
+// les topics par ailleurs conformes de la même connexion, y compris ceux que ce run ne
+// re-enregistrait pas — un second passage, censé être sûr à rejouer, aurait donc pu couper
+// l'ingestion en silence. Fixé : --apply ne crée un jeton QUE pour une connexion qui n'en a
+// ENCORE AUCUN (scripts/lib/webhook-subscription-plan.mjs::decideConnectionApplyPlan, 'provision')
+// ; toute connexion dont le jeton existe déjà et qui a des topics actionnables tombe en
+// 'requires_rotation' — SIGNALÉE, JAMAIS mutée automatiquement. Deux --apply consécutifs sur le
+// même état laissent donc structurellement inchangés (prouvé, pas supposé — cf.
+// tests/unit/shopify/webhook-subscription-plan.test.ts) : le jeton (aucune mutation tentée en
+// 'already_conformant'), l'URL cible de chaque abonnement (idem), et l'identifiant Shopify de
+// chaque abonnement (idem — 'conforme' ne mute jamais).
+//
+// Env requis (les trois modes) :
 //   NEXT_PUBLIC_SUPABASE_URL (ou SUPABASE_URL) + SUPABASE_SERVICE_ROLE_KEY
 //   SHOPIFY_TOKEN_ENCRYPTION_KEY (+ _PREVIOUS optionnel, cf. lib/shopify/crypto.ts)
 //   Au moins une paire SHOPIFY_*_API_KEY/SECRET (lib/shopify/apps.ts, mêmes 4 apps)
 //   WEBHOOK_PUBLIC_BASE_URL — HTTPS, SANS slash final. Refuse de démarrer si absente ou
 //   malformée. Aucune URL de production en dur dans ce fichier.
 //
-// Topics : cf. ADMIN_API_TOPICS / APP_LEVEL_ONLY_TOPICS ci-dessous. Les trois topics de
-// conformité GDPR (customers/data_request, customers/redact, shop/redact) ne sont PAS
-// souscriptibles via webhookSubscriptionCreate (confirmé contre l'énumération
-// WebhookSubscriptionTopic de l'API Admin, qui ne les liste pas) — ils restent configurés
-// au niveau app (Partner Dashboard / TOML) et continuent de router vers l'ancien endpoint
-// signé par corps (app/api/shopify/webhooks/route.ts). app/uninstalled EST dans cette
-// énumération et bascule donc comme les autres.
+// Topics : cf. scripts/lib/webhook-subscription-plan.mjs. Les trois topics de conformité GDPR
+// (customers/data_request, customers/redact, shop/redact) ne sont PAS souscriptibles via
+// webhookSubscriptionCreate (confirmé contre l'énumération WebhookSubscriptionTopic de l'API
+// Admin, qui ne les liste pas) — ils restent configurés au niveau app (Partner Dashboard / TOML)
+// et continuent de router vers l'ancien endpoint signé par corps
+// (app/api/shopify/webhooks/route.ts). app/uninstalled EST dans cette énumération et bascule donc
+// comme les autres — traité sur le nouvel endpoint (app/api/shopify/ingest/[token]/route.ts,
+// cf. rapport de session pour le correctif dédié).
 //
-// Discipline de secret : le jeton d'accès Admin API et le secret webhook généré par ce
-// script ne sortent jamais de la mémoire du processus. Toute URL affichée est masquée
-// (segment de jeton opaque remplacé par ***). Un garde-fou de l'environnement bloqué
-// (permission refusée, classifieur) n'est jamais contourné : ce script s'arrête et
-// rapporte, il ne réessaie pas.
+// Discipline de secret : le jeton d'accès Admin API et le secret webhook généré par ce script ne
+// sortent jamais de la mémoire du processus. Toute URL affichée est masquée (segment de jeton
+// opaque remplacé par ***). Un garde-fou de l'environnement bloqué (permission refusée,
+// classifieur) n'est jamais contourné : ce script s'arrête et rapporte, il ne réessaie pas.
 //
-// Note d'implémentation — pourquoi lib/shopify/token.ts n'est PAS importé directement :
-// ce script est exécuté par le Node natif (support TypeScript intégré), pas par le
-// résolveur de chemins de Next/tsc — il ne comprend pas l'alias `@/*` (tsconfig.json).
-// lib/shopify/token.ts (orchestration decrypt+refresh+persist) importe en interne
-// `@/lib/shopify/crypto` et `@/lib/shopify/oauth`, ce qui casse sa résolution ici. Les
-// PRIMITIVES qu'il orchestre (lib/shopify/crypto.ts, lib/shopify/oauth.ts,
-// lib/shopify/graphql.ts) n'ont, elles, AUCUN import interne aliasé — importées ci-dessous
-// SANS modification, exactement comme le reste du dépôt les utilise. `getValidAccessToken`
-// plus bas reproduit UNIQUEMENT l'orchestration (vérification d'expiration, persistance du
-// nouveau couple) de lib/shopify/token.ts — jamais son contenu cryptographique, qui reste
-// entièrement délégué aux fonctions importées.
+// Note d'implémentation — pourquoi lib/shopify/token.ts n'est PAS importé directement : ce script
+// est exécuté par le Node natif (support TypeScript intégré), pas par le résolveur de chemins de
+// Next/tsc — il ne comprend pas l'alias `@/*` (tsconfig.json). lib/shopify/token.ts
+// (orchestration decrypt+refresh+persist) importe en interne `@/lib/shopify/crypto` et
+// `@/lib/shopify/oauth`, ce qui casse sa résolution ici. Les PRIMITIVES qu'il orchestre
+// (lib/shopify/crypto.ts, lib/shopify/oauth.ts, lib/shopify/graphql.ts) n'ont, elles, AUCUN
+// import interne aliasé — importées ci-dessous SANS modification, exactement comme le reste du
+// dépôt les utilise. `getValidAccessToken` plus bas reproduit UNIQUEMENT l'orchestration
+// (vérification d'expiration, persistance du nouveau couple) de lib/shopify/token.ts — jamais son
+// contenu cryptographique, qui reste entièrement délégué aux fonctions importées.
 import { createClient } from '@supabase/supabase-js';
 import { SHOPIFY_APP_ENV_KEYS } from '../lib/shopify/app-registry-sources.ts';
 import { decryptToken, encryptToken } from '../lib/shopify/crypto.ts';
 import { shopifyGraphQL } from '../lib/shopify/graphql.ts';
 import { refreshAccessToken } from '../lib/shopify/oauth.ts';
-import { ensureWebhookToken } from './lib/webhook-token-provisioning.mjs';
+import {
+  ADMIN_API_TOPICS,
+  APP_LEVEL_ONLY_TOPICS,
+  INGEST_PATH_PREFIX,
+  decideConnectionApplyPlan,
+  maskIngestUrl,
+  planTopicAction,
+  subscriptionsByGraphqlTopic,
+} from './lib/webhook-subscription-plan.mjs';
+import {
+  createWebhookToken,
+  getWebhookToken,
+  rotateWebhookToken,
+} from './lib/webhook-token-provisioning.mjs';
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -140,39 +181,28 @@ function logError(...args) {
   console.error(...args);
 }
 
-// ── Topics ───────────────────────────────────────────────────────────────────────────────
-// rest = forme historique (webhook_event.topic, ingestion_event.topic) ; graphql = valeur de
-// l'enum WebhookSubscriptionTopic attendue par webhookSubscriptionCreate/Update.
-const ADMIN_API_TOPICS = [
-  { rest: 'orders/create', graphql: 'ORDERS_CREATE' },
-  { rest: 'orders/updated', graphql: 'ORDERS_UPDATED' },
-  { rest: 'orders/cancelled', graphql: 'ORDERS_CANCELLED' },
-  { rest: 'orders/fulfilled', graphql: 'ORDERS_FULFILLED' },
-  { rest: 'products/create', graphql: 'PRODUCTS_CREATE' },
-  { rest: 'products/update', graphql: 'PRODUCTS_UPDATE' },
-  { rest: 'refunds/create', graphql: 'REFUNDS_CREATE' },
-  { rest: 'bulk_operations/finish', graphql: 'BULK_OPERATIONS_FINISH' },
-  { rest: 'app/uninstalled', graphql: 'APP_UNINSTALLED' },
-];
-
-// Non souscriptibles par l'Admin API (absents de l'enum WebhookSubscriptionTopic, vérifié
-// contre la documentation Shopify avant d'écrire ce script — jamais supposé). Restent
-// configurés au niveau app et continuent de router vers l'ancien endpoint signé par corps.
-const APP_LEVEL_ONLY_TOPICS = ['customers/data_request', 'customers/redact', 'shop/redact'];
-
-const INGEST_PATH_PREFIX = '/api/shopify/ingest/';
-
 // ── Args ─────────────────────────────────────────────────────────────────────────────────
-const wantsPlan = process.argv.includes('--plan');
-const wantsApply = process.argv.includes('--apply');
+const argv = process.argv.slice(2);
+const wantsPlan = argv.includes('--plan');
+const wantsApply = argv.includes('--apply');
+const rotateFlagIndex = argv.indexOf('--rotate-token');
+const wantsRotate = rotateFlagIndex !== -1;
+const rotateConnectionId = wantsRotate ? argv[rotateFlagIndex + 1] : null;
 
-if (wantsPlan === wantsApply) {
+const modesRequested = [wantsPlan, wantsApply, wantsRotate].filter(Boolean).length;
+if (modesRequested !== 1) {
   logError(
-    'webhook-subscription-migration: usage: node scripts/webhook-subscription-migration.mjs (--plan|--apply) — exactement un des deux.',
+    'webhook-subscription-migration: usage: node scripts/webhook-subscription-migration.mjs (--plan|--apply|--rotate-token <connection_id>) — exactement un des trois.',
   );
   process.exit(1);
 }
-const mode = wantsPlan ? 'plan' : 'apply';
+if (wantsRotate && (!rotateConnectionId || rotateConnectionId.startsWith('--'))) {
+  logError(
+    'webhook-subscription-migration: --rotate-token requiert un store_connection_id en argument suivant.',
+  );
+  process.exit(1);
+}
+const mode = wantsPlan ? 'plan' : wantsApply ? 'apply' : 'rotate';
 
 // ── Env : Supabase ───────────────────────────────────────────────────────────────────────
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -247,25 +277,6 @@ const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-// ── Masquage : tout jeton opaque présent dans une URL est masqué, systématiquement. ────
-function maskIngestUrl(rawUrl) {
-  if (typeof rawUrl !== 'string') {
-    return '<absente>';
-  }
-  const idx = rawUrl.indexOf(INGEST_PATH_PREFIX);
-  if (idx === -1) {
-    // URL qui ne pointe pas vers notre endpoint opaque (ancien endpoint, service tiers…) :
-    // rien à masquer, mais on ne montre jamais de query string par prudence.
-    try {
-      const u = new URL(rawUrl);
-      return `${u.origin}${u.pathname}`;
-    } catch {
-      return '<url non parseable>';
-    }
-  }
-  return `${rawUrl.slice(0, idx)}${INGEST_PATH_PREFIX}***`;
-}
-
 function targetUrl(publicId, secret) {
   return `${rawBaseUrl}${INGEST_PATH_PREFIX}${publicId}.${secret}`;
 }
@@ -290,7 +301,7 @@ async function fetchAll(table, select, filter) {
   return rows;
 }
 
-async function loadState() {
+async function loadActiveConnections() {
   const connections = await fetchAll(
     'store_connection',
     'id, merchant_account_id, shop_id, external_identifier, platform_app_id, status',
@@ -378,112 +389,28 @@ async function listSubscriptions(shopDomain, accessToken) {
   return data.webhookSubscriptions.edges.map((e) => e.node);
 }
 
-function subscriptionsByGraphqlTopic(subscriptions) {
-  const map = new Map();
-  for (const sub of subscriptions) {
-    const list = map.get(sub.topic) ?? [];
-    list.push(sub);
-    map.set(sub.topic, list);
-  }
-  return map;
-}
-
-// Décide l'action pour UN topic Admin-API-souscriptible d'UNE boutique, à partir de
-// l'inventaire réel et du jeton local connu (jamais son secret — seul public_id est comparé,
-// stocké en clair, cf. 0143). Ne calcule QUE le diagnostic ; aucune mutation ici.
-function planTopicAction({ existingForTopic, knownPublicId, ourOrigin }) {
-  if (existingForTopic.length > 1) {
-    return {
-      action: 'anomalie_multiple',
-      detail: `${existingForTopic.length} abonnements actifs simultanés sur ce topic (invariant violé) — résolution manuelle requise, jamais automatique.`,
-    };
-  }
-
-  if (existingForTopic.length === 0) {
-    return { action: 'creer', detail: 'aucun abonnement existant sur ce topic.' };
-  }
-
-  const sub = existingForTopic[0];
-  const endpoint = sub.endpoint;
-
-  if (endpoint?.__typename !== 'WebhookHttpEndpoint' || !endpoint.callbackUrl) {
-    return {
-      action: 'remplacer',
-      detail: `endpoint non-HTTP ou illisible (${endpoint?.__typename ?? 'inconnu'}) — remplacé par l'URL opaque.`,
-      existingId: sub.id,
-    };
-  }
-
-  let existingUrl;
-  try {
-    existingUrl = new URL(endpoint.callbackUrl);
-  } catch {
-    return {
-      action: 'remplacer',
-      detail: `callbackUrl illisible (${maskIngestUrl(endpoint.callbackUrl)}).`,
-      existingId: sub.id,
-    };
-  }
-
-  if (existingUrl.origin !== ourOrigin || !existingUrl.pathname.startsWith(INGEST_PATH_PREFIX)) {
-    return {
-      action: 'remplacer',
-      detail: `pointe ailleurs (${maskIngestUrl(endpoint.callbackUrl)}) — probablement l'ancien endpoint ou une configuration de test.`,
-      existingId: sub.id,
-    };
-  }
-
-  const tokenSegment = existingUrl.pathname.slice(INGEST_PATH_PREFIX.length);
-  const existingPublicId = tokenSegment.split('.')[0];
-
-  if (!knownPublicId) {
-    return {
-      action: 'anomalie_token_local_absent',
-      detail:
-        "Shopify pointe déjà vers l'URL opaque mais aucun jeton local n'existe pour cette connexion — état incohérent, résolution manuelle requise.",
-      existingId: sub.id,
-    };
-  }
-
-  if (existingPublicId === knownPublicId) {
-    return { action: 'conforme', detail: 'abonnement déjà aligné sur le jeton actuel.' };
-  }
-
-  return {
-    action: 'remplacer',
-    detail: 'abonnement pointe vers un jeton différent (rotation antérieure jamais propagée).',
-    existingId: sub.id,
-  };
-}
-
 async function planConnection({ connection, shop, app, knownToken }) {
-  const rows = [];
   const tokenResult = await getValidAccessToken(admin, shop, app);
 
   if (!tokenResult.ok) {
-    return {
-      connection,
-      shop,
-      app,
-      blocked: true,
-      reason: tokenResult.reason,
-      topics: [],
-    };
+    return { connection, shop, app, blocked: true, reason: tokenResult.reason, topics: [] };
   }
 
   const subscriptions = await listSubscriptions(shop.shop_domain, tokenResult.accessToken);
   const byTopic = subscriptionsByGraphqlTopic(subscriptions);
   const ourOrigin = baseUrl.origin;
-  const knownPublicId = knownToken && !knownToken.revoked_at ? knownToken.public_id : null;
+  const hasLocalToken = Boolean(knownToken && !knownToken.revoked_at);
+  const knownPublicId = hasLocalToken ? knownToken.public_id : null;
 
+  const topics = [];
   for (const topic of ADMIN_API_TOPICS) {
     const existingForTopic = byTopic.get(topic.graphql) ?? [];
     const result = planTopicAction({ existingForTopic, knownPublicId, ourOrigin });
-    rows.push({ topic: topic.rest, graphqlTopic: topic.graphql, ...result });
+    topics.push({ topic: topic.rest, graphqlTopic: topic.graphql, ...result });
   }
 
   for (const topic of APP_LEVEL_ONLY_TOPICS) {
-    rows.push({
+    topics.push({
       topic,
       graphqlTopic: null,
       action: 'non_applicable',
@@ -492,8 +419,6 @@ async function planConnection({ connection, shop, app, knownToken }) {
     });
   }
 
-  // Inventaire complet (colonnes exactes demandées), tous topics confondus — pas seulement
-  // les 9 ciblés, pour donner une visibilité réelle sur ce que Shopify sait de cette boutique.
   const inventory = subscriptions.map((sub) => ({
     topic: sub.topic,
     subscriptionId: sub.id,
@@ -501,7 +426,16 @@ async function planConnection({ connection, shop, app, knownToken }) {
     callbackUrl: maskIngestUrl(sub.endpoint?.callbackUrl),
   }));
 
-  return { connection, shop, app, blocked: false, topics: rows, inventory, tokenResult };
+  return {
+    connection,
+    shop,
+    app,
+    blocked: false,
+    hasLocalToken,
+    topics,
+    inventory,
+    tokenResult,
+  };
 }
 
 function printPlanReport(results) {
@@ -517,6 +451,7 @@ function printPlanReport(results) {
       continue;
     }
 
+    log(`  Jeton local : ${r.hasLocalToken ? 'existant' : 'absent'}`);
     log(`  Inventaire réel (${r.inventory.length} abonnement(s), tous topics) :`);
     for (const inv of r.inventory) {
       log(
@@ -527,6 +462,13 @@ function printPlanReport(results) {
     log('  Diff attendu (9 topics Admin-API + 3 hors périmètre) :');
     for (const t of r.topics) {
       log(`    ${t.topic.padEnd(28)} -> ${t.action.padEnd(26)} ${t.detail}`);
+    }
+
+    const plan = decideConnectionApplyPlan({ topics: r.topics, hasLocalToken: r.hasLocalToken });
+    if (plan.kind === 'requires_rotation') {
+      log(
+        `  --apply refusera de toucher cette connexion (jeton déjà existant + ${plan.actionable.length} topic(s) actionnable(s)) : --rotate-token ${r.connection.id} requis.`,
+      );
     }
     log('');
   }
@@ -547,97 +489,55 @@ function printPlanReport(results) {
   const anomalies = results
     .filter((r) => !r.blocked)
     .flatMap((r) => r.topics.filter((t) => t.action.startsWith('anomalie')));
+  const needsRotation = results.filter(
+    (r) =>
+      !r.blocked &&
+      decideConnectionApplyPlan({ topics: r.topics, hasLocalToken: r.hasLocalToken }).kind ===
+        'requires_rotation',
+  ).length;
 
-  if (blockedCount > 0 || anomalies.length > 0) {
+  if (blockedCount > 0 || anomalies.length > 0 || needsRotation > 0) {
     log('');
     log(
-      `ATTENTION : ${blockedCount} boutique(s) bloquée(s) et ${anomalies.length} anomalie(s) — --apply s'arrêtera sur ces cas sans les résoudre automatiquement.`,
+      `ATTENTION : ${blockedCount} boutique(s) bloquée(s), ${anomalies.length} anomalie(s), ${needsRotation} boutique(s) nécessitant --rotate-token.`,
     );
   }
 }
 
 // ── --apply ──────────────────────────────────────────────────────────────────────────────
-async function applyConnection(planned) {
-  if (planned.blocked) {
-    return { shopDomain: planned.shop.shop_domain, ok: false, reason: `bloqué: ${planned.reason}` };
+async function registerTopic({ shopDomain, accessToken, topic, existingId, input }) {
+  if (existingId) {
+    const data = await shopifyGraphQL({
+      shopDomain,
+      accessToken,
+      query: WEBHOOK_SUBSCRIPTION_UPDATE,
+      variables: { id: existingId, webhookSubscription: input },
+    });
+    const errors = data.webhookSubscriptionUpdate.userErrors;
+    return errors.length === 0
+      ? { ok: true, mutation: 'update' }
+      : { ok: false, detail: errors.map((e) => e.message).join('; ') };
   }
+  const data = await shopifyGraphQL({
+    shopDomain,
+    accessToken,
+    query: WEBHOOK_SUBSCRIPTION_CREATE,
+    variables: { topic, webhookSubscription: input },
+  });
+  const errors = data.webhookSubscriptionCreate.userErrors;
+  return errors.length === 0
+    ? { ok: true, mutation: 'create' }
+    : { ok: false, detail: errors.map((e) => e.message).join('; ') };
+}
 
-  const actionable = planned.topics.filter((t) => t.action === 'creer' || t.action === 'remplacer');
-  const blocking = planned.topics.filter((t) => t.action.startsWith('anomalie'));
-
-  if (blocking.length > 0) {
-    return {
-      shopDomain: planned.shop.shop_domain,
-      ok: false,
-      reason: `${blocking.length} anomalie(s) non résolue(s) automatiquement — ${blocking.map((b) => `${b.topic}: ${b.detail}`).join(' | ')}`,
-    };
-  }
-
-  if (actionable.length === 0) {
-    return {
-      shopDomain: planned.shop.shop_domain,
-      ok: true,
-      changed: false,
-      detail: 'déjà conforme.',
-    };
-  }
-
-  // Un seul jeton généré/tourné par boutique pour toute cette passe (jamais un par topic) —
-  // le secret en clair ne vit que dans cette fonction, jamais loggé, jamais renvoyé au-delà.
-  const { publicId, secret } = await ensureWebhookToken(admin, planned.connection.id);
-  const url = targetUrl(publicId, secret);
-  const input = { callbackUrl: url, format: 'JSON' };
-
-  const changes = [];
-  for (const t of actionable) {
-    if (t.action === 'creer') {
-      const data = await shopifyGraphQL({
-        shopDomain: planned.shop.shop_domain,
-        accessToken: planned.tokenResult.accessToken,
-        query: WEBHOOK_SUBSCRIPTION_CREATE,
-        variables: { topic: t.graphqlTopic, webhookSubscription: input },
-      });
-      const errors = data.webhookSubscriptionCreate.userErrors;
-      if (errors.length > 0) {
-        changes.push({
-          topic: t.topic,
-          ok: false,
-          detail: errors.map((e) => e.message).join('; '),
-        });
-        continue;
-      }
-      changes.push({ topic: t.topic, ok: true, mutation: 'create' });
-    } else {
-      const data = await shopifyGraphQL({
-        shopDomain: planned.shop.shop_domain,
-        accessToken: planned.tokenResult.accessToken,
-        query: WEBHOOK_SUBSCRIPTION_UPDATE,
-        variables: { id: t.existingId, webhookSubscription: input },
-      });
-      const errors = data.webhookSubscriptionUpdate.userErrors;
-      if (errors.length > 0) {
-        changes.push({
-          topic: t.topic,
-          ok: false,
-          detail: errors.map((e) => e.message).join('; '),
-        });
-        continue;
-      }
-      changes.push({ topic: t.topic, ok: true, mutation: 'update' });
-    }
-  }
-
-  // Vérification finale par relecture — jamais une confiance aveugle dans le retour de la
-  // mutation. Un abonnement dupliqué détecté ici (ne devrait jamais arriver avec update, mais
-  // vérifié plutôt que supposé) est supprimé explicitement : remplacer, jamais ajouter.
-  const freshSubscriptions = await listSubscriptions(
-    planned.shop.shop_domain,
-    planned.tokenResult.accessToken,
-  );
-  const freshByTopic = subscriptionsByGraphqlTopic(freshSubscriptions);
+// Vérifie, pour chacun des `topics` donnés, qu'il existe EXACTEMENT un abonnement pointant vers
+// `publicId` — et retire tout abonnement périmé trouvé en plus (remplacer, jamais ajouter).
+async function verifyAndCleanup({ shopDomain, accessToken, topics, publicId }) {
+  const fresh = await listSubscriptions(shopDomain, accessToken);
+  const freshByTopic = subscriptionsByGraphqlTopic(fresh);
   const verification = [];
 
-  for (const t of actionable) {
+  for (const t of topics) {
     const list = freshByTopic.get(t.graphqlTopic) ?? [];
     const matching = list.filter((sub) => {
       const cb = sub.endpoint?.callbackUrl;
@@ -665,8 +565,8 @@ async function applyConnection(planned) {
     const stale = list.filter((sub) => sub.id !== matching[0].id);
     for (const staleSub of stale) {
       const del = await shopifyGraphQL({
-        shopDomain: planned.shop.shop_domain,
-        accessToken: planned.tokenResult.accessToken,
+        shopDomain,
+        accessToken,
         query: WEBHOOK_SUBSCRIPTION_DELETE,
         variables: { id: staleSub.id },
       });
@@ -684,9 +584,81 @@ async function applyConnection(planned) {
     verification.push({
       topic: t.topic,
       ok: true,
+      subscriptionId: matching[0].id,
       detail: 'relecture confirmée : un seul abonnement, jeton courant.',
     });
   }
+
+  return verification;
+}
+
+async function applyConnection(planned) {
+  if (planned.blocked) {
+    return { shopDomain: planned.shop.shop_domain, ok: false, reason: `bloqué: ${planned.reason}` };
+  }
+
+  const decision = decideConnectionApplyPlan({
+    topics: planned.topics,
+    hasLocalToken: planned.hasLocalToken,
+  });
+
+  if (decision.kind === 'blocked_anomalie') {
+    return {
+      shopDomain: planned.shop.shop_domain,
+      ok: false,
+      reason: `${decision.blocking.length} anomalie(s) non résolue(s) automatiquement — ${decision.blocking.map((b) => `${b.topic}: ${b.detail}`).join(' | ')}`,
+    };
+  }
+
+  if (decision.kind === 'already_conformant') {
+    // Zéro appel réseau de mutation. Les 3 invariants d'idempotence (jeton, URL cible, id
+    // d'abonnement) restent inchangés PAR CONSTRUCTION — aucune mutation n'est même tentée.
+    // Rapporté explicitement, topic par topic, plutôt qu'un simple "rien à faire" global.
+    return {
+      shopDomain: planned.shop.shop_domain,
+      ok: true,
+      changed: false,
+      alreadyConformant: planned.topics
+        .filter((t) => t.action === 'conforme')
+        .map((t) => ({ topic: t.topic, subscriptionId: t.existingId })),
+    };
+  }
+
+  if (decision.kind === 'requires_rotation') {
+    // JAMAIS de rotation implicite : cf. en-tête de fichier. Signalé, pas résolu automatiquement.
+    return {
+      shopDomain: planned.shop.shop_domain,
+      ok: false,
+      needsRotation: true,
+      connectionId: planned.connection.id,
+      reason: `${decision.actionable.length} topic(s) actionnable(s) mais un jeton existe déjà pour cette connexion — exécuter --rotate-token ${planned.connection.id} explicitement.`,
+    };
+  }
+
+  // decision.kind === 'provision' : aucun jeton local n'existe encore pour cette connexion —
+  // création sûre, rien à invalider côté Shopify (aucun topic n'était déjà 'conforme').
+  const { publicId, secret } = await createWebhookToken(admin, planned.connection.id);
+  const url = targetUrl(publicId, secret);
+  const input = { callbackUrl: url, format: 'JSON' };
+
+  const changes = [];
+  for (const t of decision.actionable) {
+    const result = await registerTopic({
+      shopDomain: planned.shop.shop_domain,
+      accessToken: planned.tokenResult.accessToken,
+      topic: t.graphqlTopic,
+      existingId: t.existingId ?? null,
+      input,
+    });
+    changes.push({ topic: t.topic, ...result });
+  }
+
+  const verification = await verifyAndCleanup({
+    shopDomain: planned.shop.shop_domain,
+    accessToken: planned.tokenResult.accessToken,
+    topics: decision.actionable,
+    publicId,
+  });
 
   const allOk = changes.every((c) => c.ok) && verification.every((v) => v.ok);
 
@@ -703,12 +675,19 @@ function printApplyReport(results) {
   log('=== webhook-subscription-migration --apply ===');
   for (const r of results) {
     log(`— ${r.shopDomain}`);
+    if (r.needsRotation) {
+      log(`  ROTATION REQUISE : ${r.reason}`);
+      continue;
+    }
     if (!r.ok && !r.changed) {
       log(`  ÉCHEC : ${r.reason}`);
       continue;
     }
     if (!r.changed) {
-      log(`  ${r.detail}`);
+      log('  Déjà conforme — AUCUNE mutation tentée. Invariants inchangés :');
+      for (const t of r.alreadyConformant) {
+        log(`    ${t.topic.padEnd(28)} id=${t.subscriptionId} (inchangé)`);
+      }
       continue;
     }
     for (const c of r.changes) {
@@ -721,15 +700,137 @@ function printApplyReport(results) {
   }
 
   const failed = results.filter((r) => !r.ok);
+  const needsRotationCount = results.filter((r) => r.needsRotation).length;
   if (failed.length > 0) {
-    logError(`webhook-subscription-migration: ${failed.length} boutique(s) non validée(s).`);
+    logError(
+      `webhook-subscription-migration: ${failed.length} boutique(s) non validée(s), dont ${needsRotationCount} nécessitant --rotate-token.`,
+    );
   }
   return failed.length;
 }
 
+// ── --rotate-token ───────────────────────────────────────────────────────────────────────
+// Fait tourner le secret PUIS re-enregistre les 9 topics Admin-API en une seule passe synchrone
+// (jamais étalé sur plusieurs runs futurs — « les abonnements sont recréés avant l'expiration de
+// l'ancien secret, jamais après »). L'ancien secret reste valide durant la fenêtre de grâce
+// (24h, cf. scripts/lib/webhook-token-provisioning.mjs) : si cette passe échoue en cours de
+// route, les topics déjà re-enregistrés restent valides et les topics non encore traités
+// continuent de fonctionner sur l'ancien secret jusqu'à expiration de la fenêtre — la
+// vérification finale par relecture couvre l'ensemble des 9 topics, pas seulement ceux qui
+// semblaient actionnables avant la rotation.
+async function rotateConnection(connectionId) {
+  const { data: connection, error: connectionError } = await admin
+    .from('store_connection')
+    .select('id, merchant_account_id, shop_id, status')
+    .eq('id', connectionId)
+    .eq('platform', 'shopify')
+    .maybeSingle();
+
+  if (connectionError || !connection) {
+    logError(`webhook-subscription-migration: store_connection introuvable (id=${connectionId}).`);
+    process.exit(1);
+  }
+  if (connection.status !== 'active') {
+    logError(
+      `webhook-subscription-migration: store_connection ${connectionId} n'est pas active (status=${connection.status}) — rotation refusée.`,
+    );
+    process.exit(1);
+  }
+
+  const { data: shop, error: shopError } = await admin
+    .from('shop')
+    .select(
+      'id, shop_domain, shopify_client_id, access_token_encrypted, refresh_token_encrypted, access_token_expires_at, refresh_token_expires_at',
+    )
+    .eq('id', connection.shop_id)
+    .maybeSingle();
+
+  if (shopError || !shop) {
+    logError(`webhook-subscription-migration: shop introuvable pour connexion ${connectionId}.`);
+    process.exit(1);
+  }
+
+  const app = shop.shopify_client_id ? (appsByClientId.get(shop.shopify_client_id) ?? null) : null;
+  if (!app) {
+    logError(
+      `webhook-subscription-migration: app Shopify inconnue pour ${shop.shop_domain} (client_id=${shop.shopify_client_id ?? 'null'}).`,
+    );
+    process.exit(1);
+  }
+
+  const tokenResult = await getValidAccessToken(admin, shop, app);
+  if (!tokenResult.ok) {
+    logError(
+      `webhook-subscription-migration: jeton Admin API indisponible pour ${shop.shop_domain} (${tokenResult.reason}).`,
+    );
+    process.exit(1);
+  }
+
+  const existingBefore = await getWebhookToken(admin, connectionId);
+  log(
+    `webhook-subscription-migration --rotate-token: ${shop.shop_domain} — jeton ${existingBefore ? 'existant, rotation' : 'absent, création'}.`,
+  );
+
+  const { publicId, secret } = await rotateWebhookToken(admin, connectionId);
+  const url = targetUrl(publicId, secret);
+  const input = { callbackUrl: url, format: 'JSON' };
+
+  const subscriptions = await listSubscriptions(shop.shop_domain, tokenResult.accessToken);
+  const byTopic = subscriptionsByGraphqlTopic(subscriptions);
+
+  const changes = [];
+  for (const topic of ADMIN_API_TOPICS) {
+    const existing = byTopic.get(topic.graphql) ?? [];
+    // En rotation, TOUS les topics sont re-enregistrés — y compris ceux déjà 'conforme' avant la
+    // rotation, puisque la rotation invalide leur URL. `existing[0]?.id` réutilise
+    // l'identifiant Shopify existant s'il y en a un (update, jamais un doublon) ; s'il y en avait
+    // plus d'un (anomalie préexistante), on cible le premier et on nettoie les autres à la
+    // vérification finale, comme --apply.
+    const result = await registerTopic({
+      shopDomain: shop.shop_domain,
+      accessToken: tokenResult.accessToken,
+      topic: topic.graphql,
+      existingId: existing[0]?.id ?? null,
+      input,
+    });
+    changes.push({ topic: topic.rest, graphqlTopic: topic.graphql, ...result });
+  }
+
+  const verification = await verifyAndCleanup({
+    shopDomain: shop.shop_domain,
+    accessToken: tokenResult.accessToken,
+    topics: changes,
+    publicId,
+  });
+
+  log('=== webhook-subscription-migration --rotate-token ===');
+  log(`— ${shop.shop_domain} (connexion=${connectionId})`);
+  for (const c of changes) {
+    log(`  mutation ${c.mutation ?? '?'} topic=${c.topic} ${c.ok ? 'OK' : `ÉCHEC: ${c.detail}`}`);
+  }
+  for (const v of verification) {
+    log(`  relecture topic=${v.topic} ${v.ok ? 'OK' : `ÉCHEC: ${v.detail}`}`);
+  }
+
+  const allOk = changes.every((c) => c.ok) && verification.every((v) => v.ok);
+  if (!allOk) {
+    logError(
+      "webhook-subscription-migration --rotate-token: ÉCHEC PARTIEL — les topics en échec restent sur l'ANCIEN secret (fenêtre de grâce 24h) ; ré-exécuter --rotate-token sur la même connexion avant expiration.",
+    );
+  } else {
+    log('webhook-subscription-migration --rotate-token: rotation confirmée sur les 9 topics.');
+  }
+  process.exit(allOk ? 0 : 1);
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────────────────
 async function main() {
-  const { connections, shopById, tokenByConnection } = await loadState();
+  if (mode === 'rotate') {
+    await rotateConnection(rotateConnectionId);
+    return;
+  }
+
+  const { connections, shopById, tokenByConnection } = await loadActiveConnections();
 
   if (connections.length === 0) {
     log('webhook-subscription-migration: aucune store_connection Shopify active — rien à faire.');
