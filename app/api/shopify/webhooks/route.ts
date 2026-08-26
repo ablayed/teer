@@ -27,8 +27,9 @@ import { processFinishedBulkForShop } from '@/lib/shopify/reconcile';
 import { deriveRefundWebhook } from '@/lib/shopify/refunds';
 import { verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
 import type { Database, Json } from '@/lib/supabase/database.types';
+import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import * as Sentry from '@sentry/nextjs';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { after } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -772,19 +773,15 @@ async function handleRefundWebhook({
   const connection = await resolveShopConnection(supabase, shop);
 
   if (connection && refund.externalRefundId) {
-    // record_shopify_refund_receipt (migration 0144) n'est pas encore dans database.types.ts tant
-    // qu'elle n'est pas confirmée en production (règle #3, CLAUDE.md) — cast localisé, même motif
-    // que lib/ingestion/resolve-connection.ts pour 0143.
-    const rawSupabase = supabase as unknown as SupabaseClient;
-    const { data: recorded, error: rpcError } = await rawSupabase.rpc(
+    const { data: recorded, error: rpcError } = await supabase.rpc(
       'record_shopify_refund_receipt',
       {
         p_store_connection_id: connection.storeConnectionId,
         p_external_id: refund.externalRefundId,
-        p_local_order_id: localOrderId,
+        p_local_order_id: nullableRpcArg(localOrderId),
         p_should_update_financial_status: refund.shouldUpdateFinancialStatus,
         p_merchant_account_id: shop.merchant_account_id,
-        p_actor_user_id: null,
+        p_actor_user_id: nullableRpcArg<string>(null),
         p_resource_type: resourceType,
         p_resource_id: resourceId,
         p_audit_payload: auditPayload,
