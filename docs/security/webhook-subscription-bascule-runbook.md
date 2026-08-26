@@ -118,6 +118,20 @@ explicitement désactivé pour ces 9 topics seulement.
 C'est **cette** date — celle où le refus opérationnel sur l'ancien endpoint est en place et
 vérifié — qui doit être consignée dans `CLAUDE.md`, pas la date de la bascule des abonnements.
 
+**Le critère du Temps 2 n'est valable que si `webhook_event` est écrit EXCLUSIVEMENT par l'ancien
+endpoint — vérifié, pas supposé.** Une requête qui compte des livraisons dans une table alimentée
+par les deux endpoints, sans marqueur pour les distinguer, serait inopérante sans que rien ne le
+signale. Recherche exhaustive (`grep -rn ".from('webhook_event')" app/ lib/ scripts/`, hors
+tests) : **deux occurrences, toutes deux dans `app/api/shopify/webhooks/route.ts`** (l'ancien
+endpoint), aucune ailleurs. Le nouvel endpoint (`app/api/shopify/ingest/[token]/route.ts`) écrit
+exclusivement dans `ingestion_event` — via `writeIngestionEvent`
+(`lib/ingestion/dual-write.ts`/`lib/ingestion/shopify-dual-write.ts`), qui ne touche jamais
+`webhook_event` (confirmé par lecture de ces deux fichiers, aucune occurrence). Les deux tables
+sont donc séparées par construction, une par endpoint — le critère SQL du Temps 2 est bien
+opérant tel qu'écrit, sans correctif préalable. Si un jour un chemin venait à écrire dans
+`webhook_event` depuis le nouvel endpoint (ou l'inverse), cette séparation devrait être
+re-vérifiée avant de refaire confiance à ce critère — ne pas la présumer strictement permanente.
+
 ---
 
 ## La marge résiduelle — bornée, puis arbitraire, dit comme tel
