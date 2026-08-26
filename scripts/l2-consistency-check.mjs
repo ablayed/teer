@@ -1,26 +1,41 @@
 #!/usr/bin/env node
-// Phase 2 / Lot L2 — contrôle de cohérence entre webhook_event (legacy, autoritaire) et
-// ingestion_event (nouveau registre, alimenté en parallèle par ce lot).
+// Phase 2 / Lot L2, mis à jour Verrou 0 — contrôle de cohérence entre webhook_event (autoritaire
+// en lecture, Phase 2) et ingestion_event (registre L1/L2, alimenté en parallèle).
 //
 // PAS un comptage : une jointure par identité de livraison (webhook_event.shopify_webhook_id ↔
 // ingestion_event.delivery_id), comparant topic / connexion+tenant+boutique / statut / id de
 // commande externe / orders.store_connection_id. Les écarts sont listés ligne par ligne, avec le
 // champ divergent nommé et les deux valeurs — jamais un "écart nul" global.
 //
+// ── Ce que CE script prouve, et ce qu'il NE prouve PAS (clarification demandée en revue, Verrou 0)
+// Ce script mesure l'ÉCART entre les deux représentations d'un même événement (webhook_event vs
+// ingestion_event) — il n'ATTESTE PAS laquelle des deux fait autorité. Que webhook_event reste la
+// table autoritaire en lecture est une DÉCISION produit de Phase 2 (documentée dans CLAUDE.md,
+// « Voie A »), indépendante de ce script : un écart nul ici ne prouve pas que webhook_event est
+// correct, seulement que les deux tables s'accordent. Ne jamais lire un « PASS » comme une preuve
+// d'autorité — seulement comme une preuve de cohérence entre les deux vues.
+//
+// ── Depuis le Verrou 0 (lib/shopify/webhook-core.ts), les DEUX endpoints webhook (legacy ET URL
+// opaque) écrivent désormais webhook_event ET ingestion_event de façon identique — le cœur
+// partagé appelle recordWebhookReceipt (webhook_event) pour les deux chemins. Ce script reste
+// donc pleinement significatif aujourd'hui, y compris pour le trafic de test sur l'endpoint
+// opaque (aucun abonnement Shopify réel ne le cible encore).
+//
 // ── Limite POST-BASCULE (Phase 2 — Clôture, runbook
-// docs/security/webhook-subscription-bascule-runbook.md) ──────────────────────────────────────
-// Ce script joint webhook_event → ingestion_event. Une fois les abonnements Shopify réels
-// basculés vers l'endpoint à URL opaque (Temps 1 du runbook), plus AUCUNE nouvelle ligne
-// webhook_event n'est créée pour les 9 topics opérationnels (le nouvel endpoint écrit
-// exclusivement ingestion_event, jamais webhook_event — vérifié par grep exhaustif, cf. runbook).
-// Ce script n'a alors plus rien de nouveau à joindre pour ces topics : `diffs.length === 0`
-// resterait vrai non pas parce que tout concorde, mais parce qu'il n'y a plus rien à comparer —
-// un « PASS » lu vite après le Temps 1 serait donc trompeur. La section « post-bascule » de la
-// sortie ci-dessous rend ce fait visible à chaque exécution plutôt que de le laisser implicite :
-// un compte croissant y est ATTENDU et NORMAL après le Temps 1, jamais un signal d'échec. Ce
-// script reste pleinement significatif pour l'historique pré-bascule et pour les 3 topics de
-// conformité GDPR, qui continuent d'alimenter webhook_event indéfiniment (jamais souscriptibles
-// via l'Admin API, cf. runbook).
+// docs/security/webhook-subscription-bascule-runbook.md), qui reste EXACTE : ce document nommait
+// une limite qui s'active seulement quand des abonnements Shopify RÉELS basculent vers l'URL
+// opaque (Temps 1 du runbook, pas encore fait) ET que le Temps 2 (refus des topics opérationnels
+// sur l'ancien endpoint) est franchi — à partir de là, plus aucune NOUVELLE ligne webhook_event
+// n'arrive pour les 9 topics opérationnels sur le chemin qui reste actif (l'URL opaque écrit
+// pourtant bien webhook_event, mais legacy — la seule source que ce script attendait pour ces
+// topics avant la bascule réelle — n'en reçoit plus). Un « PASS » lu vite à ce moment-là serait
+// trompeur pour la même raison qu'avant : `diffs.length === 0` resterait vrai non pas parce que
+// tout concorde, mais parce qu'il n'y a plus rien de NOUVEAU à joindre depuis ce sens de jointure.
+// La section « post-bascule » de la sortie ci-dessous rend ce fait visible à chaque exécution
+// plutôt que de le laisser implicite : un compte croissant y est ATTENDU et NORMAL après le
+// Temps 1 réel, jamais un signal d'échec. Ce script reste pleinement significatif pour
+// l'historique et pour les 3 topics de conformité GDPR, qui continuent d'alimenter webhook_event
+// indéfiniment (jamais souscriptibles via l'Admin API, cf. runbook).
 //
 // Usage : node scripts/l2-consistency-check.mjs
 // Nécessite NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (local ou linked, en lecture
