@@ -258,15 +258,17 @@ describe('Shopify PCD retention', () => {
   it('réutilise le même garde dans les chemins normal, webhook et Bulk/réconciliation', () => {
     const ordersSync = readFileSync(resolve(process.cwd(), 'lib/shopify/orders-sync.ts'), 'utf8');
     const shopSync = readFileSync(resolve(process.cwd(), 'lib/shopify/shop-sync.ts'), 'utf8');
-    const webhooks = readFileSync(
-      resolve(process.cwd(), 'app/api/shopify/webhooks/route.ts'),
-      'utf8',
-    );
+    // Phase 2 / Verrou 0 : les deux endpoints webhook (legacy + URL opaque) appellent désormais
+    // le même cœur partagé (lib/shopify/webhook-core.ts), qui appelle persistShopifyOrder — ni
+    // route.ts ni ingest/[token]/route.ts ne l'appellent plus directement (extraction, pas une
+    // suppression du garde-fou : voir tests/e2e/shopify-webhook-parity.spec.ts pour la preuve de
+    // parité ligne par ligne).
+    const webhookCore = readFileSync(resolve(process.cwd(), 'lib/shopify/webhook-core.ts'), 'utf8');
     const reconcile = readFileSync(resolve(process.cwd(), 'lib/shopify/reconcile.ts'), 'utf8');
 
     expect(ordersSync).toContain('isShopifyCustomerActivityRetained');
     expect(shopSync).toContain('persistShopifyOrder');
-    expect(webhooks).toContain('persistShopifyOrder');
+    expect(webhookCore).toContain('persistShopifyOrder');
     expect(reconcile).toContain('persistShopifyOrder');
   });
 
