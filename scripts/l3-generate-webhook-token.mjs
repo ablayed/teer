@@ -14,11 +14,13 @@
 // dans store_connection_webhook_token — jamais dans store_connection ni ailleurs.
 //
 // Phase 2 / Clôture : l'orchestration DB (créer vs faire tourner, MÊME public_id) vit désormais
-// dans scripts/lib/webhook-token-provisioning.mjs — réutilisée telle quelle par
-// scripts/webhook-subscription-migration.mjs (--apply), jamais une seconde implémentation.
+// dans scripts/lib/webhook-token-provisioning.mjs. rotateWebhookToken() y garde le comportement
+// historique de CE script (« créer ou tourner » en une seule commande opérateur) ;
+// webhook-subscription-migration.mjs --apply, lui, n'appelle JAMAIS rotateWebhookToken —
+// uniquement createWebhookToken (jamais de rotation en effet de bord d'une mutation automatique).
 
 import { createClient } from '@supabase/supabase-js';
-import { ROTATION_GRACE_MS, ensureWebhookToken } from './lib/webhook-token-provisioning.mjs';
+import { ROTATION_GRACE_MS, rotateWebhookToken } from './lib/webhook-token-provisioning.mjs';
 
 function log(...args) {
   // biome-ignore lint/suspicious/noConsole: script CLI, sa sortie EST le livrable.
@@ -68,7 +70,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { publicId, secret, mode } = await ensureWebhookToken(admin, storeConnectionId);
+  const { publicId, secret, mode } = await rotateWebhookToken(admin, storeConnectionId);
   const rawToken = `${publicId}.${secret}`;
 
   log(`l3-generate-webhook-token: mode=${mode} store_connection_id=${storeConnectionId}`);
