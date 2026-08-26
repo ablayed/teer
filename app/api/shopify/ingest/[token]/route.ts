@@ -235,6 +235,10 @@ async function processIngestedEvent(
         await writeBulkOperationIngestion(supabase, ctx, { topic, deliveryId, triggeredAt });
         return;
       }
+      case 'app/uninstalled': {
+        await handleAppUninstalledIngestion(supabase, ctx);
+        return;
+      }
       default:
         return;
     }
@@ -242,6 +246,69 @@ async function processIngestedEvent(
     Sentry.captureException(error, {
       tags: { module: 'shopify.ingest' },
       extra: { topic, deliveryId, storeConnectionId: ctx.storeConnectionId },
+    });
+  }
+}
+
+// Correctif de revue (rapport de session dédié, avant bascule des abonnements réels) : ce topic
+// était absent du switch ci-dessus — une désinstallation réelle serait passée sans effet, la base
+// aurait divergé de la réalité Shopify sans aucun signal. Miroir de handleAppUninstalledWebhook
+// (app/api/shopify/webhooks/route.ts, mêmes 3 écritures : shop, store_connection, audit_log) mais
+// SANS résolution de domaine — l'identité est ici déjà prouvée par le jeton d'URL opaque
+// (ctx.shopId/merchantAccountId/storeConnectionId), jamais par le corps ou l'en-tête, donc aucun
+// des pièges `resolveSignedShopDomain` (corps vide, en-tête non signé) ne s'applique à ce chemin.
+// Best-effort comme le reste de processIngestedEvent : jamais un throw qui ferait échouer la
+// requête HTTP, l'identité étant déjà prouvée avant d'arriver ici.
+async function handleAppUninstalledIngestion(
+  supabase: NonNullable<AdminClient>,
+  ctx: Parameters<typeof writeOrderIngestion>[1],
+): Promise<void> {
+  const { error: shopError } = await supabase
+    .from('shop')
+    .update({
+      status: 'uninstalled',
+      uninstalled_at: new Date().toISOString(),
+      refresh_token_encrypted: null,
+      access_token_expires_at: null,
+      refresh_token_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', ctx.shopId)
+    .eq('merchant_account_id', ctx.merchantAccountId);
+
+  if (shopError) {
+    Sentry.captureException(new Error('shopify_ingest_app_uninstalled_shop_update_failed'), {
+      tags: { module: 'shopify.ingest' },
+      extra: { storeConnectionId: ctx.storeConnectionId, code: shopError.code },
+    });
+    return;
+  }
+
+  const { error: connectionError } = await supabase
+    .from('store_connection')
+    .update({ status: 'uninstalled', uninstalled_at: new Date().toISOString() })
+    .eq('id', ctx.storeConnectionId);
+
+  if (connectionError) {
+    Sentry.captureException(new Error('shopify_ingest_app_uninstalled_connection_update_failed'), {
+      tags: { module: 'shopify.ingest' },
+      extra: { storeConnectionId: ctx.storeConnectionId, code: connectionError.code },
+    });
+  }
+
+  const { error: auditError } = await supabase.from('audit_log').insert({
+    merchant_account_id: ctx.merchantAccountId,
+    actor_user_id: null,
+    action: 'shopify.app_uninstalled',
+    resource_type: 'shop',
+    resource_id: ctx.shopId,
+    payload: {},
+  });
+
+  if (auditError) {
+    Sentry.captureException(new Error('shopify_ingest_app_uninstalled_audit_failed'), {
+      tags: { module: 'shopify.ingest' },
+      extra: { storeConnectionId: ctx.storeConnectionId, code: auditError.code },
     });
   }
 }

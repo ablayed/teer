@@ -550,3 +550,78 @@ test.describe('preuve #7 : rotation — fenêtre bornée, jamais deux secrets va
     }
   });
 });
+
+// --- Correctif de revue : app/uninstalled sur le nouvel endpoint --------------------------
+// Trouvé absent du switch de processIngestedEvent avant bascule (rapport de session dédié) —
+// une désinstallation réelle serait passée sans effet, la base aurait divergé de la réalité
+// Shopify sans aucun signal. Miroir des 2 écritures de statut du chemin legacy
+// (handleAppUninstalledWebhook, app/api/shopify/webhooks/route.ts), vérifiées ici via le canal
+// HTTP réel du nouvel endpoint — jamais un appel direct de fonction.
+
+test("app/uninstalled sur l'endpoint opaque : marque shop.status ET store_connection.status", async ({
+  request,
+}) => {
+  const admin = adminClient();
+  const merchant = await createMerchant(admin);
+  try {
+    const conn = await seedConnection(
+      admin,
+      merchant.merchantAccountId,
+      KOBA_CLIENT_ID,
+      'uninstall',
+    );
+    const token = await issueToken(admin, conn.storeConnectionId);
+    const webhookId = `wh-l3-app-uninstalled-${Date.now()}`;
+
+    const res = await postIngest(request, {
+      token,
+      topic: 'app/uninstalled',
+      body: { id: 1, name: conn.externalIdentifier, domain: conn.externalIdentifier },
+      webhookId,
+      hmacSecret: KOBA_SECRET,
+    });
+    expect(res.status()).toBe(200);
+
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from('shop')
+            .select('status, uninstalled_at, refresh_token_encrypted')
+            .eq('id', conn.shopId)
+            .maybeSingle();
+          return data?.status ?? null;
+        },
+        { timeout: 10_000, intervals: [200, 400, 800] },
+      )
+      .toBe('uninstalled');
+
+    const { data: shopRow } = await admin
+      .from('shop')
+      .select('status, uninstalled_at, refresh_token_encrypted')
+      .eq('id', conn.shopId)
+      .maybeSingle();
+    expect(shopRow?.status).toBe('uninstalled');
+    expect(shopRow?.uninstalled_at).not.toBeNull();
+    expect(shopRow?.refresh_token_encrypted).toBeNull();
+
+    const { data: connectionRow } = await admin
+      .from('store_connection')
+      .select('status, uninstalled_at')
+      .eq('id', conn.storeConnectionId)
+      .maybeSingle();
+    expect(connectionRow?.status).toBe('uninstalled');
+    expect(connectionRow?.uninstalled_at).not.toBeNull();
+
+    const { data: auditRow } = await admin
+      .from('audit_log')
+      .select('id')
+      .eq('merchant_account_id', merchant.merchantAccountId)
+      .eq('action', 'shopify.app_uninstalled')
+      .eq('resource_id', conn.shopId)
+      .maybeSingle();
+    expect(auditRow).not.toBeNull();
+  } finally {
+    await admin.auth.admin.deleteUser(merchant.userId);
+  }
+});
