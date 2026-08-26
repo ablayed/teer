@@ -22,6 +22,8 @@
     "test:rls": "vitest run tests/rls",
     "test:e2e": "playwright test tests/e2e",
     "test:e2e:shopify": "node scripts/test-shopify-webhooks.mjs",
+    "shopify:webhook-migration:plan": "node scripts/webhook-subscription-migration.mjs --plan",
+    "shopify:webhook-migration:apply": "node scripts/webhook-subscription-migration.mjs --apply",
     "test:visual:desktop": "playwright test tests/visual --project=chromium",
     "test:visual:mobile": "playwright test tests/visual --project=pixel-7 --project=iphone-14",
     "db:types": "supabase gen types typescript --linked > lib/supabase/database.types.ts && biome format --write lib/supabase/database.types.ts && node scripts/apply-database-types-overrides.mjs"
