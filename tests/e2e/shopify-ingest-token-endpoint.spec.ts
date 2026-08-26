@@ -282,6 +282,19 @@ test("preuve #3 : jeton d'une connexion sous teer-koba, corps signé par teer-pi
       .select('id', { count: 'exact', head: true })
       .eq('delivery_id', webhookId);
     expect(count).toBe(0);
+    // Verrou 0 : le cœur métier partagé écrit désormais webhook_event ET orders — vérifier leur
+    // absence aussi, pas seulement ingestion_event (registre L1/L2), qui ne couvre plus toute la
+    // surface d'écriture possible depuis ce lot.
+    const { count: webhookEventCount } = await admin
+      .from('webhook_event')
+      .select('id', { count: 'exact', head: true })
+      .eq('shopify_webhook_id', webhookId);
+    expect(webhookEventCount).toBe(0);
+    const { count: orderCount } = await admin
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('shopify_order_id', String(orderId));
+    expect(orderCount).toBe(0);
   } finally {
     await admin.auth.admin.deleteUser(merchant.userId);
   }
@@ -317,6 +330,17 @@ test('preuve #1 : webhook correctement signé pour A, en-tête shop-domain forg�
       .select('id', { count: 'exact', head: true })
       .eq('delivery_id', webhookId);
     expect(count).toBe(0);
+    // Verrou 0 : idem — webhook_event et orders doivent rester vierges, pas seulement le registre L1/L2.
+    const { count: webhookEventCount } = await admin
+      .from('webhook_event')
+      .select('id', { count: 'exact', head: true })
+      .eq('shopify_webhook_id', webhookId);
+    expect(webhookEventCount).toBe(0);
+    const { count: orderCount } = await admin
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('shopify_order_id', String(orderId));
+    expect(orderCount).toBe(0);
   } finally {
     await admin.auth.admin.deleteUser(merchantA.userId);
     await admin.auth.admin.deleteUser(merchantB.userId);
@@ -365,15 +389,23 @@ test.describe('preuve #4 : six causes de refus, une seule réponse externe (401,
       const [publicId] = token.split('.');
       const wrongSecret = generateWebhookToken().secret;
 
+      const orderId = 990_003;
       const res = await postIngest(request, {
         token: `${publicId}.${wrongSecret}`,
         topic: 'orders/create',
-        body: orderBody(3),
+        body: orderBody(orderId),
         webhookId: `wh-l3-cause-wrong-secret-${Date.now()}`,
         hmacSecret: KOBA_SECRET,
       });
       expect(res.status()).toBe(401);
       expect((await res.body()).length).toBe(0);
+      // Verrou 0 : refus AVANT écriture — vérifié par absence de ligne, pas seulement par le code
+      // de réponse (le cœur métier écrirait désormais orders/webhook_event s'il était atteint).
+      const { count } = await admin
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_order_id', String(orderId));
+      expect(count).toBe(0);
     } finally {
       await admin.auth.admin.deleteUser(merchant.userId);
     }
@@ -393,15 +425,21 @@ test.describe('preuve #4 : six causes de refus, une seule réponse externe (401,
       );
       const token = await issueToken(admin, conn.storeConnectionId);
 
+      const orderId = 990_004;
       const res = await postIngest(request, {
         token,
         topic: 'orders/create',
-        body: orderBody(4),
+        body: orderBody(orderId),
         webhookId: `wh-l3-cause-bad-hmac-${Date.now()}`,
         hmacSecret: 'not-a-registered-app-secret',
       });
       expect(res.status()).toBe(401);
       expect((await res.body()).length).toBe(0);
+      const { count } = await admin
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_order_id', String(orderId));
+      expect(count).toBe(0);
     } finally {
       await admin.auth.admin.deleteUser(merchant.userId);
     }
@@ -420,16 +458,22 @@ test.describe('preuve #4 : six causes de refus, une seule réponse externe (401,
         'hdr-cause',
       );
       const token = await issueToken(admin, conn.storeConnectionId);
+      const orderId = 990_005;
       const res = await postIngest(request, {
         token,
         topic: 'orders/create',
-        body: orderBody(5),
+        body: orderBody(orderId),
         webhookId: `wh-l3-cause-header-${Date.now()}`,
         hmacSecret: KOBA_SECRET,
         shopDomainHeader: 'totalement-different.myshopify.com',
       });
       expect(res.status()).toBe(401);
       expect((await res.body()).length).toBe(0);
+      const { count } = await admin
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_order_id', String(orderId));
+      expect(count).toBe(0);
     } finally {
       await admin.auth.admin.deleteUser(merchant.userId);
     }
@@ -456,15 +500,21 @@ test.describe('preuve #4 : six causes de refus, une seule réponse externe (401,
       });
       if (error) throw error;
 
+      const orderId = 990_006;
       const res = await postIngest(request, {
         token: token.raw,
         topic: 'orders/create',
-        body: orderBody(6),
+        body: orderBody(orderId),
         webhookId: `wh-l3-cause-revoked-${Date.now()}`,
         hmacSecret: KOBA_SECRET,
       });
       expect(res.status()).toBe(401);
       expect((await res.body()).length).toBe(0);
+      const { count } = await admin
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_order_id', String(orderId));
+      expect(count).toBe(0);
     } finally {
       await admin.auth.admin.deleteUser(merchant.userId);
     }
