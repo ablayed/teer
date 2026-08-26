@@ -32,6 +32,67 @@ du « lot de bascule » ; ce document en est la confirmation formelle avant exé
 
 ---
 
+## Verrou 0-bis — conséquence de la séparation des tables, à vérifier avant le câblage du Verrou 0
+
+**Constat déclencheur** : `webhook_event` reste, par décision de Phase 2, la table **autoritaire
+en lecture** (la bascule de lecture vers `ingestion_event` a été explicitement reportée hors
+phase — cf. `lib/ingestion/dual-write.ts`, en-tête). Or le nouvel endpoint n'écrit **jamais**
+`webhook_event` (Verrou 0-bis ci-dessous confirme cette séparation, déjà établie plus haut dans ce
+document pour le critère du Temps 2) — il écrit exclusivement `ingestion_event`. Une fois le
+Verrou 0 levé et les abonnements réels basculés, les événements opérationnels n'atterrissent donc
+plus dans la table que la Phase 2 a désignée comme autoritaire. Trois conséquences vérifiées par
+lecture, pas supposées :
+
+**1. Idempotence par livraison sur le chemin opérationnel — EFFECTIVE, vérifiée.**
+`writeIngestionEvent` (`lib/ingestion/dual-write.ts`) insère `delivery_id` (issu de
+`x-shopify-webhook-id`, transmis sans transformation depuis `route.ts`) dans `ingestion_event`,
+protégée par l'index partiel unique `(store_connection_id, platform, delivery_id) where
+delivery_id is not null` (migration `0142`). Un conflit (`23505`) est traité comme un rejeu
+attendu (`{ ok: true, duplicate: true }`), jamais une erreur. L'unicité par livraison ne vit donc
+plus sur `webhook_event` pour ce chemin, mais elle **existe bien**, portée par `ingestion_event`
+elle-même — ce n'est pas un chemin dédupliqué par la table autoritaire, mais il est dédupliqué.
+Restent, en complément, les gardes métier propres à chaque ressource : la contrainte unique sur
+`orders` (`shopify_order_id`), et `store_connection_resource_receipt` pour `refunds/create`
+(migration `0144`).
+
+**2. Garde hors-ordre sur les commandes — INDÉPENDANTE de `webhook_event` par construction,
+vérifiée.** `isStaleShopifyUpdate` (`lib/shopify/orders-sync.ts`) compare `orders.shopify_updated_at`
+(colonne stockée) à l'`updatedAt` du nœud entrant — une comparaison de colonnes, appelée à
+l'intérieur de `persistShopifyOrder`, sans aucune lecture de `webhook_event`. Cette garde survivra
+donc la bascule **à une condition explicite, non encore garantie** : que le câblage du Verrou 0
+appelle `persistShopifyOrder` (et `persistShopifyProductWebhook` pour les produits) **tel quel**,
+jamais une réécriture parallèle du chemin d'écriture `orders`/`product` pour le nouvel endpoint.
+**Exigence à inscrire dans le lot qui lève le Verrou 0** : réutiliser ces fonctions verbatim,
+exactement comme `writeOrderIngestion`/`writeProductIngestion` réutilisent déjà
+`normalizeShopifyOrder`/`normalizeShopifyProduct` plutôt que de reparser les payloads. Aujourd'hui,
+avant ce câblage, la garde n'est simplement jamais atteinte par le nouvel endpoint (il n'appelle
+pas encore ces fonctions) — ni cassée, ni contournée, juste hors chemin.
+
+**3. `scripts/l2-consistency-check.mjs` — devient VACUEUSEMENT vert pour les topics opérationnels
+après le Temps 1, pas cassé mais trompeur.** Ce script joint `ingestion_event` aux lignes de
+`webhook_event` par `delivery_id`, en itérant sur `webhook_event`. Après le Temps 1, plus aucune
+nouvelle ligne `webhook_event` n'est créée pour les 9 topics opérationnels (Verrou 0-bis point de
+départ) — le script n'a donc plus rien de nouveau à joindre pour eux : `joined` cesse de croître,
+`diffs.length` reste à 0 non pas parce que tout concorde, mais parce qu'il n'y a plus rien à
+comparer. Une lecture rapide de sa sortie (« PASS — aucun écart ») resterait fausse par silence
+après le Temps 1, exactement la classe d'erreur documentée ailleurs dans ce projet (« un test
+purement négatif peut être vert parce que la surface est cassée »). **Corrigé dans ce lot** (pas
+un fix architectural — le script continue de servir son rôle historique : vérifier la parité
+pendant la période où les deux chemins coexistent) : son en-tête et sa sortie déclarent désormais
+explicitement cette limite, avec un décompte séparé des topics opérationnels sans ligne
+`webhook_event` récente, pour qu'un lecteur futur ne puisse pas confondre « rien à signaler » et
+« plus rien à comparer ». Ce script reste pleinement significatif pour l'historique pré-bascule et
+pour les 3 topics GDPR, qui continuent d'alimenter `webhook_event` indéfiniment.
+
+**Conclusion** : les trois points sont sûrs — (1) et (2) le sont par construction (aucune
+dépendance à `webhook_event`), (2) sous la condition explicite ci-dessus à respecter lors du
+câblage du Verrou 0, (3) est un script d'observabilité devenu partiellement obsolète après le
+Temps 1, corrigé pour le dire plutôt que le masquer. Rien ici n'interdit la bascule elle-même ;
+le point 2 est une exigence à porter dans le lot qui lève le Verrou 0, pas un blocage de ce
+document.
+
+---
+
 ## Prérequis fondateur — sous-domaine dédié (bloquant pour Étape 1 seulement)
 
 Un sous-domaine dédié et stable doit exister avant toute mutation d'abonnement réel :

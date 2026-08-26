@@ -7,11 +7,29 @@
 // commande externe / orders.store_connection_id. Les écarts sont listés ligne par ligne, avec le
 // champ divergent nommé et les deux valeurs — jamais un "écart nul" global.
 //
+// ── Limite POST-BASCULE (Phase 2 — Clôture, runbook
+// docs/security/webhook-subscription-bascule-runbook.md) ──────────────────────────────────────
+// Ce script joint webhook_event → ingestion_event. Une fois les abonnements Shopify réels
+// basculés vers l'endpoint à URL opaque (Temps 1 du runbook), plus AUCUNE nouvelle ligne
+// webhook_event n'est créée pour les 9 topics opérationnels (le nouvel endpoint écrit
+// exclusivement ingestion_event, jamais webhook_event — vérifié par grep exhaustif, cf. runbook).
+// Ce script n'a alors plus rien de nouveau à joindre pour ces topics : `diffs.length === 0`
+// resterait vrai non pas parce que tout concorde, mais parce qu'il n'y a plus rien à comparer —
+// un « PASS » lu vite après le Temps 1 serait donc trompeur. La section « post-bascule » de la
+// sortie ci-dessous rend ce fait visible à chaque exécution plutôt que de le laisser implicite :
+// un compte croissant y est ATTENDU et NORMAL après le Temps 1, jamais un signal d'échec. Ce
+// script reste pleinement significatif pour l'historique pré-bascule et pour les 3 topics de
+// conformité GDPR, qui continuent d'alimenter webhook_event indéfiniment (jamais souscriptibles
+// via l'Admin API, cf. runbook).
+//
 // Usage : node scripts/l2-consistency-check.mjs
 // Nécessite NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (local ou linked, en lecture
 // seule — ce script n'écrit rien).
 
 import { createClient } from '@supabase/supabase-js';
+import { ADMIN_API_TOPICS } from './lib/webhook-subscription-plan.mjs';
+
+const OPERATIONAL_TOPICS = new Set(ADMIN_API_TOPICS.map((t) => t.rest));
 
 function log(...args) {
   // biome-ignore lint/suspicious/noConsole: script CLI de diagnostic, sa sortie EST le livrable.
@@ -139,6 +157,27 @@ async function main() {
   log(
     `l2-consistency-check: ${joined} lignes jointes par delivery_id, ${notYetMirrored} non miroitées (attendu : historique pré-lot ou connexion refusée).`,
   );
+
+  // Post-bascule : lignes ingestion_event de topics OPÉRATIONNELS sans AUCUNE ligne webhook_event
+  // correspondante. Un compte croissant ici est ATTENDU dès que le Temps 1 du runbook a eu lieu —
+  // ce n'est jamais un écart, juste la preuve que ce script ne compare plus rien de nouveau pour
+  // ces topics. Reporté séparément pour qu'un lecteur ne le confonde jamais avec `diffs`.
+  const webhookDeliveryIds = new Set(webhookEvents.map((we) => we.shopify_webhook_id));
+  const postBasculeByTopic = new Map();
+  for (const ie of ingestionEvents) {
+    if (!OPERATIONAL_TOPICS.has(ie.topic)) continue;
+    if (ie.delivery_id && webhookDeliveryIds.has(ie.delivery_id)) continue;
+    postBasculeByTopic.set(ie.topic, (postBasculeByTopic.get(ie.topic) ?? 0) + 1);
+  }
+  const postBasculeTotal = [...postBasculeByTopic.values()].reduce((a, b) => a + b, 0);
+  if (postBasculeTotal > 0) {
+    log(
+      `l2-consistency-check: ${postBasculeTotal} ligne(s) ingestion_event de topics opérationnels sans webhook_event correspondant (NORMAL après le Temps 1 du runbook de bascule — ce script ne compare plus rien de nouveau pour ces topics, ce n'est PAS un écart) :`,
+    );
+    for (const [topic, count] of postBasculeByTopic) {
+      log(`    ${topic.padEnd(28)} ${count}`);
+    }
+  }
 
   if (diffs.length === 0) {
     log('l2-consistency-check: PASS — aucun écart de champ sur les lignes jointes.');
