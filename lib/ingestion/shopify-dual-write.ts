@@ -48,7 +48,11 @@ function reportDualWriteFailure(
 // est inconnue ou si l'app ne correspond pas — refus SILENCIEUX (pas d'exception Sentry) : ce cas
 // est structurellement fréquent tant que toutes les boutiques n'ont pas de store_connection
 // résolvable (comportement voulu, cf. rapport de session), pas un signal d'incident.
-async function resolveShopConnection(
+//
+// Exportée (Lot idempotence refund) : app/api/shopify/webhooks/route.ts la réutilise pour obtenir
+// le store_connection_id nécessaire à record_shopify_refund_receipt, plutôt que de dupliquer cette
+// résolution.
+export async function resolveShopConnection(
   supabase: AdminClient,
   shop: ShopForDualWrite,
 ): Promise<ResolvedConnectionContext | null> {

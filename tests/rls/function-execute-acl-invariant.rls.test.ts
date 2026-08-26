@@ -47,8 +47,8 @@ const ANON_EXECUTE_WHITELIST = new Set<string>([
 ]);
 
 // Fonctions confirmées `service_role`-only par lecture directe des migrations
-// (0087, 0124, 0141) — jamais de grant `authenticated`. Une régression ici rouvrirait
-// des chemins financiers/maintenance à toute session utilisateur normale.
+// (0087, 0124, 0141, 0144) — jamais de grant `authenticated`. Une régression ici
+// rouvrirait des chemins financiers/maintenance à toute session utilisateur normale.
 const AUTHENTICATED_FORBIDDEN = new Set<string>([
   'get_finance_collected_joins',
   'get_finance_returned_joins',
@@ -56,6 +56,11 @@ const AUTHENTICATED_FORBIDDEN = new Set<string>([
   'rebuild_product_stock',
   'reconcile_product_stock',
   'reconcile_order_cod_status',
+  // 0144 — garde d'idempotence refund + écritures métier atomiques. Appelée
+  // exclusivement par le client service-role du Route Handler webhook ; aucune
+  // session authenticated ne doit jamais pouvoir écrire orders/audit_log par ce
+  // chemin (contournerait toutes les gardes RBAC applicatives).
+  'record_shopify_refund_receipt',
 ]);
 
 const dbUrl =
