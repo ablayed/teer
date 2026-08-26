@@ -11,6 +11,7 @@
 
 import { env } from '@/lib/env';
 import { type ShopifyAppConfig, createShopifyAppRegistry } from '@/lib/shopify/app-registry';
+import { SHOPIFY_APP_ENV_KEYS } from '@/lib/shopify/app-registry-sources';
 
 export type {
   ShopifyAppConfig,
@@ -21,25 +22,15 @@ export type {
 export { createShopifyAppRegistry } from '@/lib/shopify/app-registry';
 
 // Singleton construit depuis les env vars (lu une fois au chargement du module).
-// Teer Dev en premier = app par défaut (rétrocompat).
-const REGISTRY = createShopifyAppRegistry([
-  { label: 'teer-dev', clientId: env.SHOPIFY_API_KEY, clientSecret: env.SHOPIFY_API_SECRET },
-  {
-    label: 'teer-pilote',
-    clientId: env.SHOPIFY_PILOTE_API_KEY,
-    clientSecret: env.SHOPIFY_PILOTE_API_SECRET,
-  },
-  {
-    label: 'teer-marchand',
-    clientId: env.SHOPIFY_MARCHAND_API_KEY,
-    clientSecret: env.SHOPIFY_MARCHAND_API_SECRET,
-  },
-  {
-    label: 'teer-koba',
-    clientId: env.SHOPIFY_KOBA_API_KEY,
-    clientSecret: env.SHOPIFY_KOBA_API_SECRET,
-  },
-]);
+// Teer Dev en premier = app par défaut (rétrocompat). Liste des 4 apps/clés nommée une seule
+// fois (lib/shopify/app-registry-sources.ts), partagée avec scripts/webhook-subscription-migration.mjs.
+const REGISTRY = createShopifyAppRegistry(
+  SHOPIFY_APP_ENV_KEYS.map(({ label, clientIdKey, clientSecretKey }) => ({
+    label,
+    clientId: env[clientIdKey],
+    clientSecret: env[clientSecretKey],
+  })),
+);
 
 // Renvoie la config de l'app correspondant au client_id, ou null si inconnu/non enregistré.
 export function getShopifyAppByClientId(

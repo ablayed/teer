@@ -12,13 +12,13 @@
 //
 // Nécessite NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (local ou linked). N'écrit QUE
 // dans store_connection_webhook_token — jamais dans store_connection ni ailleurs.
+//
+// Phase 2 / Clôture : l'orchestration DB (créer vs faire tourner, MÊME public_id) vit désormais
+// dans scripts/lib/webhook-token-provisioning.mjs — réutilisée telle quelle par
+// scripts/webhook-subscription-migration.mjs (--apply), jamais une seconde implémentation.
 
-import { createHash, randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-
-const PUBLIC_ID_BYTES = 16;
-const SECRET_BYTES = 32;
-const ROTATION_GRACE_MS = 24 * 60 * 60 * 1000; // 24h — bien en-deçà du plafond dur de 30 jours (0143).
+import { ROTATION_GRACE_MS, ensureWebhookToken } from './lib/webhook-token-provisioning.mjs';
 
 function log(...args) {
   // biome-ignore lint/suspicious/noConsole: script CLI, sa sortie EST le livrable.
@@ -28,14 +28,6 @@ function log(...args) {
 function logError(...args) {
   // biome-ignore lint/suspicious/noConsole: script CLI, sa sortie EST le livrable.
   console.error(...args);
-}
-
-function hashSecret(secret) {
-  return createHash('sha256').update(secret, 'utf8').digest('hex');
-}
-
-function generateSecret() {
-  return randomBytes(SECRET_BYTES).toString('base64url');
 }
 
 const storeConnectionId = process.argv[2];
@@ -76,55 +68,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { data: existing, error: existingError } = await admin
-    .from('store_connection_webhook_token')
-    .select('id, public_id, secret_hash')
-    .eq('store_connection_id', storeConnectionId)
-    .maybeSingle();
-
-  if (existingError) {
-    throw new Error(`store_connection_webhook_token lookup failed: ${existingError.message}`);
-  }
-
-  const secret = generateSecret();
-  const secretHash = hashSecret(secret);
-
-  let publicId;
-  let mode;
-
-  if (existing) {
-    // Rotation : MÊME public_id (URL stable), ancien secret déplacé en previous_secret_hash avec
-    // une fenêtre de grâce bornée. Jamais une seconde ligne pour la même connexion (contrainte
-    // unique(store_connection_id), 0143).
-    publicId = existing.public_id;
-    mode = 'rotate';
-    const { error: updateError } = await admin
-      .from('store_connection_webhook_token')
-      .update({
-        secret_hash: secretHash,
-        previous_secret_hash: existing.secret_hash,
-        previous_secret_expires_at: new Date(Date.now() + ROTATION_GRACE_MS).toISOString(),
-        rotated_at: new Date().toISOString(),
-      })
-      .eq('id', existing.id);
-
-    if (updateError) {
-      throw new Error(`rotation update failed: ${updateError.message}`);
-    }
-  } else {
-    publicId = randomBytes(PUBLIC_ID_BYTES).toString('base64url');
-    mode = 'create';
-    const { error: insertError } = await admin.from('store_connection_webhook_token').insert({
-      store_connection_id: storeConnectionId,
-      public_id: publicId,
-      secret_hash: secretHash,
-    });
-
-    if (insertError) {
-      throw new Error(`insert failed: ${insertError.message}`);
-    }
-  }
-
+  const { publicId, secret, mode } = await ensureWebhookToken(admin, storeConnectionId);
   const rawToken = `${publicId}.${secret}`;
 
   log(`l3-generate-webhook-token: mode=${mode} store_connection_id=${storeConnectionId}`);
