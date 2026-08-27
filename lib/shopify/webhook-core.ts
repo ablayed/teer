@@ -747,10 +747,14 @@ async function processRefundCore({
   let localOrderId: string | null = null;
 
   if (refund.orderId) {
+    // Lot R2 (Phase F) : même correction que persistShopifyOrder — résolution par
+    // (shop_id, shopify_order_id), jamais merchant_account_id seul. `shop` est déjà résolu de
+    // façon autoritaire par le dispatcher (resolveShopForTopic) avant d'atteindre ce point.
     const { data: localOrder, error: orderLookupError } = await supabase
       .from('orders')
       .select('id')
       .eq('merchant_account_id', shop.merchant_account_id)
+      .eq('shop_id', shop.id)
       .eq('shopify_order_id', refund.orderId)
       .maybeSingle();
 

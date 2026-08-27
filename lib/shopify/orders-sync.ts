@@ -630,12 +630,18 @@ export async function persistShopifyOrder({
       return { ok: false, error: 'Shopify order is missing shopify_order_id' };
     }
 
+    // Lot R2 (Phase F) : résolution par (shop_id, shopify_order_id), alignée sur l'index unique
+    // réel (orders_shop_shopify_order_unique_idx, migration 0037) — les ids de commande Shopify
+    // ne sont uniques que par boutique, pas par compte marchand. `shopId` provient toujours du
+    // parent autoritaire déjà résolu par l'appelant (ligne `shop` en base pour le cron, résolution
+    // webhook signée/token pour les deux endpoints) — jamais d'un identifiant reçu du payload.
     const { data: existingOrder, error: orderSelectError } = await supabaseServiceClient
       .from('orders')
       .select(
         'id, cod_status, shopify_updated_at, cart_locally_modified_at, delivery_state, cash_state',
       )
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       .eq('shopify_order_id', shopifyOrderId)
       .maybeSingle();
 
