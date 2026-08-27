@@ -46,7 +46,11 @@ export function ScopedMetricCard({ label, value, scope, delta, className }: Scop
       )}
     >
       <p className="text-xs font-medium text-muted @min-[10rem]/scoped-stat:text-sm">{label}</p>
-      <p className="mt-1 truncate text-2xl font-semibold text-text @min-[10rem]/scoped-stat:text-3xl">
+      {/* Jamais `truncate` ici : une valeur monétaire ne se coupe jamais (voir
+          tests/e2e/lot-u1f-money-no-truncation.spec.ts). Si la carte est trop étroite pour le
+          montant, la ligne défile horizontalement au lieu de perdre des chiffres — le montant
+          reste intégralement présent et atteignable, jamais silencieusement caché. */}
+      <p className="mt-1 overflow-x-auto whitespace-nowrap text-2xl font-semibold text-text @min-[10rem]/scoped-stat:text-3xl">
         {value}
       </p>
       <div className="mt-1">

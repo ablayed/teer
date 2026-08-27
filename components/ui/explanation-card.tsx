@@ -77,6 +77,11 @@ export function ExplanationCard({
         onClick={() => setOpen(true)}
         type="button"
       >
+        {/* `truncate` ici est un choix, pas un effet de bord : `label` et le sous-titre de
+            portée sont du texte libellé (jamais un chiffre), et cette ligne d'en-tête doit
+            rester sur une seule ligne à côté du total + chevron. Le total lui-même
+            (ValueAmount ci-dessous) n'a jamais `truncate` — voir scoped-metric-card.tsx pour
+            le bug que ça a produit quand appliqué à un montant. */}
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-muted">{label}</span>
           {scope ? (
