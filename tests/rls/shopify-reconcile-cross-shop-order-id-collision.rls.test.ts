@@ -1,8 +1,7 @@
 /**
- * Phase F — Lot R1 : VÉRIFICATION (pas correction, hors périmètre de ce lot) d'un défaut signalé
- * en revue avant fusion.
+ * Phase F — Lot R2 : correctif du défaut prouvé en R1.
  *
- * `persistShopifyOrder` (lib/shopify/orders-sync.ts:633-640) cherche la commande existante par
+ * `persistShopifyOrder` (lib/shopify/orders-sync.ts) cherchait la commande existante par
  * `(merchant_account_id, shopify_order_id)`. L'index unique qui protège réellement la base,
  * `orders_shop_shopify_order_unique_idx` (migration 0037), porte sur `(shop_id, shopify_order_id)`
  * — la migration ayant explicitement déplacé l'autorité de dédup du marchand vers la boutique :
@@ -11,17 +10,15 @@
  *    multi-boutiques la clé de dédup doit être (shop_id, shopify_order_id)."
  *   (supabase/migrations/0037_phase7a_shopify_foundation.sql:51-52)
  *
- * Le SELECT applicatif n'a jamais suivi ce déplacement. Ce test prouve la conséquence : pour un
- * marchand multi-boutiques, si deux boutiques Shopify distinctes produisent le même
- * `shopify_order_id` (le format numérique extrait de la GID, dont l'unicité globale n'est PAS
- * garantie par Shopify selon le commentaire de 0037 ci-dessus), la commande de la boutique B écrase
- * en place le contenu de la commande de la boutique A — sans jamais passer par un INSERT, donc
- * sans jamais toucher l'index unique qui aurait pu l'empêcher. Aucune ligne en double n'apparaît ;
- * c'est une corruption silencieuse, pas un doublon visible.
+ * Le SELECT applicatif ne suivait pas ce déplacement — R1 en a apporté la preuve (test rouge,
+ * historique git). R2 aligne la résolution sur `(shop_id, shopify_order_id)` : ce fichier prouve
+ * désormais le comportement CORRECT — deux boutiques d'un même marchand, même `shopify_order_id`,
+ * produisent deux commandes distinctes, chacune rattachée à sa boutique, aucun écrasement.
  *
- * Conséquence pour la Phase F : tant que ce défaut n'est pas corrigé, un rejeu massif de
- * l'historique (recul du curseur, cf. Bloc E3 du diagnostic D0-bis) est la circonstance exacte qui
- * le déclencherait sur un marchand multi-boutiques — NE PAS lancer ce rejeu avant correction.
+ * Mutation-testé (rapporté dans le rapport de fin de lot, pas dans ce fichier) : retirer le
+ * `.eq('shop_id', shopId)` ajouté par R2 dans `persistShopifyOrder` fait repasser ce test au
+ * rouge — c'est exactement l'état d'avant-correctif, prouvé par ce même fichier avant sa réécriture
+ * (git history : `shopify-reconcile-cross-shop-order-id-collision.rls.test.ts` pré-R2).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -124,7 +121,7 @@ function buildOrderNode(
   };
 }
 
-describe('DÉFAUT SIGNALÉ (non corrigé dans ce lot) — collision shopify_order_id entre deux boutiques du même marchand', () => {
+describe('CORRIGÉ (Lot R2) — deux boutiques du même marchand, même shopify_order_id → deux commandes distinctes', () => {
   afterEach(async () => {
     if (!serviceRoleKey || createdUserIds.length === 0) return;
     const admin = adminClient();
@@ -134,7 +131,7 @@ describe('DÉFAUT SIGNALÉ (non corrigé dans ce lot) — collision shopify_orde
   });
 
   skipIfNoServiceRole(
-    'la commande de la boutique B écrase silencieusement la commande de la boutique A quand le même shopify_order_id apparaît sur les deux',
+    'la commande de la boutique B est insérée séparément, la commande de la boutique A reste intacte',
     async () => {
       const admin = adminClient();
       const email = `reconcile-collision-${Date.now()}-${randomUUID()}@example.com`;
@@ -158,27 +155,51 @@ describe('DÉFAUT SIGNALÉ (non corrigé dans ce lot) — collision shopify_orde
         shopId: shopBId,
         supabaseServiceClient: admin,
         // updated_at postérieur : évite que la garde hors-ordre (isStaleShopifyUpdate, égalité
-        // traitée comme périmée) masque la question testée ici, qui est la portée du SELECT de
-        // dédup, pas la garde hors-ordre.
+        // traitée comme périmée) interfère avec la question testée ici, qui est la portée du
+        // SELECT de dédup, pas la garde hors-ordre.
         orderNode: buildOrderNode(collidingShopifyOrderId, '999999', '2026-08-01T01:00:00Z'),
       });
-      // ok:true — persistShopifyOrder ne remonte AUCUNE erreur ici : c'est bien une corruption
-      // silencieuse, pas un échec visible.
       expect(resultB.ok).toBe(true);
 
       const { data: rows, error } = await admin
         .from('orders')
         .select('id, shop_id, total_amount')
         .eq('merchant_account_id', merchantAccountId)
-        .eq('shopify_order_id', collidingShopifyOrderId);
+        .eq('shopify_order_id', collidingShopifyOrderId)
+        .order('shop_id', { ascending: true });
       if (error) throw error;
 
-      // Le défaut, en une phrase : une seule ligne existe (pas de doublon — l'index unique
-      // (shop_id, shopify_order_id) n'a jamais été consulté puisqu'aucun INSERT n'a eu lieu pour
-      // B), elle reste rattachée à la boutique A, mais son contenu est celui de la boutique B.
-      expect(rows).toHaveLength(1);
-      expect(rows?.[0]?.shop_id).toBe(shopAId);
-      expect(Number(rows?.[0]?.total_amount)).toBe(999999);
+      // Le correctif, en une phrase : deux lignes distinctes existent désormais (l'index unique
+      // (shop_id, shopify_order_id) est bien consulté puisque B produit un INSERT, plus un
+      // UPDATE) — chacune rattachée à sa propre boutique, avec son propre contenu.
+      expect(rows).toHaveLength(2);
+      const byShop = new Map((rows ?? []).map((row) => [row.shop_id, Number(row.total_amount)]));
+      expect(byShop.get(shopAId)).toBe(1000);
+      expect(byShop.get(shopBId)).toBe(999999);
+
+      // Contrôle positif : rejouer A (même shopify_order_id, même boutique, updated_at postérieur)
+      // continue de mettre à jour SA ligne, jamais d'en créer une troisième.
+      const resultAReplay = await persistShopifyOrder({
+        merchantAccountId,
+        shopId: shopAId,
+        supabaseServiceClient: admin,
+        orderNode: buildOrderNode(collidingShopifyOrderId, '4242', '2026-08-01T02:00:00Z'),
+      });
+      expect(resultAReplay.ok).toBe(true);
+
+      const { data: rowsAfterReplay, error: replayError } = await admin
+        .from('orders')
+        .select('id, shop_id, total_amount')
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shopify_order_id', collidingShopifyOrderId);
+      if (replayError) throw replayError;
+
+      expect(rowsAfterReplay).toHaveLength(2);
+      const byShopAfterReplay = new Map(
+        (rowsAfterReplay ?? []).map((row) => [row.shop_id, Number(row.total_amount)]),
+      );
+      expect(byShopAfterReplay.get(shopAId)).toBe(4242);
+      expect(byShopAfterReplay.get(shopBId)).toBe(999999);
     },
   );
 });
