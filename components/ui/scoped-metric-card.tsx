@@ -1,0 +1,58 @@
+import { cn } from '@/lib/utils';
+import { CalendarRange, Clock } from 'lucide-react';
+import type * as React from 'react';
+
+/**
+ * Deux familles à ne jamais confondre : un solde à une date (argent chez le livreur, invendu)
+ * et un flux sur une période (CA, marge). Partagé avec ExplanationCard.
+ */
+export type TemporalScope =
+  | { kind: 'balance'; asOfLabel: string }
+  | { kind: 'flow'; periodLabel: string };
+
+type ScopedMetricCardProps = {
+  label: string;
+  value: React.ReactNode;
+  /** Obligatoire — une carte sans portée temporelle ne doit pas compiler. */
+  scope: TemporalScope;
+  delta?: React.ReactNode;
+  className?: string;
+};
+
+function ScopeSubtitle({ scope }: { scope: TemporalScope }) {
+  if (scope.kind === 'balance') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-muted">
+        <Clock aria-hidden="true" className="size-3.5 shrink-0" />
+        {`Solde au ${scope.asOfLabel}`}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted">
+      <CalendarRange aria-hidden="true" className="size-3.5 shrink-0" />
+      {`Sur ${scope.periodLabel}`}
+    </span>
+  );
+}
+
+export function ScopedMetricCard({ label, value, scope, delta, className }: ScopedMetricCardProps) {
+  return (
+    <div
+      className={cn(
+        '@container/scoped-stat rounded-lg border border-border bg-surface p-3 @min-[10rem]/scoped-stat:p-4',
+        className,
+      )}
+    >
+      <p className="text-xs font-medium text-muted @min-[10rem]/scoped-stat:text-sm">{label}</p>
+      <p className="mt-1 truncate text-2xl font-semibold text-text @min-[10rem]/scoped-stat:text-3xl">
+        {value}
+      </p>
+      <div className="mt-1">
+        <ScopeSubtitle scope={scope} />
+      </div>
+      {delta ? <div className="mt-1 text-xs text-muted">{delta}</div> : null}
+    </div>
+  );
+}
