@@ -210,6 +210,7 @@ export async function GET(request: Request) {
     generatedOn: t('generatedOn'),
     grossMarginEstimated: finance('kpis.margin'),
     headerTitle: t('headerTitle'),
+    marginUnavailable: finance('profit.marginUnavailable'),
     pnl: {
       ca: finance('profit.ca'),
       cogs: finance('profit.netCogs'),

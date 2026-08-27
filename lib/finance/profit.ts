@@ -214,6 +214,16 @@ export function computeProductBreakdown(
     .sort((a, b) => b.cogsMinor - a.cogsMinor);
 }
 
+// Lot A1 (Phase F) : règle d'affichage binaire — dès qu'au moins une commande ou une ligne
+// est exclue du calcul du COGS, la marge/le résultat net sont des chiffres FAUX (dénominateur
+// amputé), jamais de simples approximations. Un seuil de couverture est une décision de
+// conception qui relève de F2 ; cette fonction ne fait que signaler l'exclusion, jamais un taux.
+export function isProfitCoverageIncomplete(
+  report: Pick<FinanceReport, 'cogsExcludedOrderCount' | 'cogsUnknownLineCount'>,
+): boolean {
+  return report.cogsExcludedOrderCount > 0 || report.cogsUnknownLineCount > 0;
+}
+
 export function computeFinanceReport({
   collectedOrders,
   soldMovementsForCollected,

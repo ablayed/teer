@@ -210,7 +210,9 @@ async function AnalyticsContent({ fromISO, toISO }: { fromISO: string; toISO: st
       </section>
 
       <LossAnalyticsChartsLoader
+        cancellationRateLabel={t('scorecard.cancellationRate')}
         emptyLabel={t('trends.empty')}
+        rtoRateLabel={t('scorecard.rtoRate')}
         sourceData={analytics.sourceScorecard.slice(0, 6).map((item) => ({
           cancellationRate: item.cancellationRate,
           rtoRate: item.rtoRate,

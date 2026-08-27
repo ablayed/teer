@@ -1,13 +1,15 @@
 'use client';
 
-import type { FinanceReport } from '@/lib/finance/profit';
+import { type FinanceReport, isProfitCoverageIncomplete } from '@/lib/finance/profit';
 import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useCallback } from 'react';
 
 type Props = {
   report: FinanceReport;
   from: string;
+  storeId: string;
   to: string;
 };
 
@@ -56,8 +58,26 @@ function Divider() {
   return <div className="border-border border-t" />;
 }
 
-export function ProfitSection({ report, from, to }: Props) {
+// Ligne masquée : le calcul exclut des données, le chiffre serait faux (pas approximatif).
+// Règle binaire, pas un seuil de couverture — cf. isProfitCoverageIncomplete.
+function MaskedProfitRow({ label }: { label: string }) {
   const t = useTranslations('finance.profit');
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-2">
+      <span className="text-sm font-semibold text-text">{label}</span>
+      <span
+        className="shrink-0 text-right text-xs font-medium text-amber-700 dark:text-amber-300"
+        title={t('marginUnavailableHint')}
+      >
+        {t('marginUnavailable')}
+      </span>
+    </div>
+  );
+}
+
+export function ProfitSection({ report, from, storeId, to }: Props) {
+  const t = useTranslations('finance.profit');
+  const coverageIncomplete = isProfitCoverageIncomplete(report);
 
   const handleCsvExport = useCallback(() => {
     const rows: string[][] = [
@@ -72,7 +92,12 @@ export function ProfitSection({ report, from, to }: Props) {
         cat.code === 'OTHER' ? '65' : cat.code,
         String(cat.totalMinor),
       ]),
-      ['Résultat', t('netProfit'), '12', String(report.netProfitMinor)],
+      [
+        'Résultat',
+        t('netProfit'),
+        '12',
+        coverageIncomplete ? t('marginUnavailable') : String(report.netProfitMinor),
+      ],
     ];
     const csv = rows
       .map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
@@ -84,7 +109,7 @@ export function ProfitSection({ report, from, to }: Props) {
     a.download = `teer_resultats_${from}_${to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [report, from, to, t]);
+  }, [report, from, to, t, coverageIncomplete]);
 
   const netProfitVariant =
     report.netProfitMinor > 0 ? 'positive' : report.netProfitMinor < 0 ? 'negative' : 'bold';
@@ -96,22 +121,31 @@ export function ProfitSection({ report, from, to }: Props) {
       <div className="mb-4 flex items-center justify-between gap-4">
         <h2 className="text-base font-semibold text-text">{t('title')}</h2>
         <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-              marginEstimated
-                ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
-                : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
-            }`}
-            title={
-              marginEstimated
-                ? t('marginEstimatedHint', {
-                    amount: formatMoney(report.cogsEstimatedMinor, 'XOF'),
-                  })
-                : t('marginRealHint')
-            }
-          >
-            {marginEstimated ? t('marginEstimated') : t('marginReal')}
-          </span>
+          {coverageIncomplete ? (
+            <span
+              className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+              title={t('marginUnavailableHint')}
+            >
+              {t('marginUnavailable')}
+            </span>
+          ) : (
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                marginEstimated
+                  ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+                  : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
+              }`}
+              title={
+                marginEstimated
+                  ? t('marginEstimatedHint', {
+                      amount: formatMoney(report.cogsEstimatedMinor, 'XOF'),
+                    })
+                  : t('marginRealHint')
+              }
+            >
+              {marginEstimated ? t('marginEstimated') : t('marginReal')}
+            </span>
+          )}
           <button
             className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
             onClick={handleCsvExport}
@@ -153,12 +187,16 @@ export function ProfitSection({ report, from, to }: Props) {
             variant="muted"
           />
         )}
-        <ProfitRow
-          label={t('grossMargin')}
-          note={formatRate(report.grossMarginBps)}
-          value={report.grossMarginMinor}
-          variant="bold"
-        />
+        {coverageIncomplete ? (
+          <MaskedProfitRow label={t('grossMargin')} />
+        ) : (
+          <ProfitRow
+            label={t('grossMargin')}
+            note={formatRate(report.grossMarginBps)}
+            value={report.grossMarginMinor}
+            variant="bold"
+          />
+        )}
         <p className="pb-2 text-xs text-muted">{t('grossMarginHint')}</p>
         {report.cogsExcludedOrderCount > 0 && (
           <p className="pb-2 text-xs text-amber-700 dark:text-amber-300">
@@ -168,6 +206,16 @@ export function ProfitSection({ report, from, to }: Props) {
         {report.cogsUnknownLineCount > 0 && (
           <p className="pb-2 text-xs text-amber-700 dark:text-amber-300">
             {t('blindSpotLines', { count: report.cogsUnknownLineCount })}
+          </p>
+        )}
+        {coverageIncomplete && (
+          <p className="pb-2 text-xs">
+            <Link
+              className="font-medium text-accent underline"
+              href={`/s/${storeId}/finances?tab=produits`}
+            >
+              {t('marginUnavailableCta')}
+            </Link>
           </p>
         )}
 
@@ -187,16 +235,20 @@ export function ProfitSection({ report, from, to }: Props) {
 
         <Divider />
 
-        <ProfitRow
-          label={t('netProfit')}
-          note={
-            report.netCAMinor > 0
-              ? formatRate(Math.round((report.netProfitMinor * 10_000) / report.netCAMinor))
-              : undefined
-          }
-          value={report.netProfitMinor}
-          variant={netProfitVariant}
-        />
+        {coverageIncomplete ? (
+          <MaskedProfitRow label={t('netProfit')} />
+        ) : (
+          <ProfitRow
+            label={t('netProfit')}
+            note={
+              report.netCAMinor > 0
+                ? formatRate(Math.round((report.netProfitMinor * 10_000) / report.netCAMinor))
+                : undefined
+            }
+            value={report.netProfitMinor}
+            variant={netProfitVariant}
+          />
+        )}
       </div>
     </section>
   );
