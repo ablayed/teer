@@ -15,7 +15,9 @@ import {
 } from 'recharts';
 
 type LossAnalyticsChartsProps = {
+  cancellationRateLabel: string;
   emptyLabel: string;
+  rtoRateLabel: string;
   sourceData: Array<{
     cancellationRate: number;
     rtoRate: number;
@@ -59,7 +61,9 @@ function EmptyChart({ label }: { label: string }) {
 }
 
 export function LossAnalyticsCharts({
+  cancellationRateLabel,
   emptyLabel,
+  rtoRateLabel,
   sourceData,
   sourceTitle,
   trendData,
@@ -113,6 +117,7 @@ export function LossAnalyticsCharts({
                 dataKey="rtoRate"
                 fill="url(#lossAnalyticsRto)"
                 isAnimationActive={false}
+                name={rtoRateLabel}
                 stroke="var(--danger)"
                 strokeWidth={2}
                 type="monotone"
@@ -152,11 +157,18 @@ export function LossAnalyticsCharts({
                 }}
                 formatter={(value) => formatPercent(Number(value))}
               />
-              <Bar dataKey="rtoRate" fill="var(--danger)" isAnimationActive={false} radius={8} />
+              <Bar
+                dataKey="rtoRate"
+                fill="var(--danger)"
+                isAnimationActive={false}
+                name={rtoRateLabel}
+                radius={8}
+              />
               <Bar
                 dataKey="cancellationRate"
                 fill="var(--muted)"
                 isAnimationActive={false}
+                name={cancellationRateLabel}
                 radius={8}
               />
             </BarChart>

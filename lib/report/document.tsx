@@ -1,3 +1,4 @@
+import { isProfitCoverageIncomplete } from '@/lib/finance/profit';
 import type { ReportData, ReportStatusSummary } from '@/lib/report/data';
 import { Document, Page, Polyline, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
 
@@ -15,6 +16,7 @@ type ReportLabels = {
   generatedOn: string;
   grossMarginEstimated: string;
   headerTitle: string;
+  marginUnavailable: string;
   method: Record<string, string>;
   pending: string;
   period: string;
@@ -286,6 +288,7 @@ function PnlLine({
   currency,
   label,
   last,
+  textValue,
   value,
 }: {
   bold?: boolean;
@@ -293,13 +296,16 @@ function PnlLine({
   formatMoney: (amount: number, currency?: string | null) => string;
   label: string;
   last?: boolean;
+  // Quand présent, remplace le montant formaté — utilisé quand le calcul exclut des données
+  // et que le chiffre serait faux (règle A1, isProfitCoverageIncomplete).
+  textValue?: string;
   value: number;
 }) {
   return (
     <View style={rowStyle(Boolean(last))} wrap={false}>
       <Text style={[styles.cellGrow, bold ? { fontWeight: 700 } : {}]}>{label}</Text>
       <Text style={[styles.cellSmall, bold ? { fontWeight: 700 } : {}]}>
-        {formatMoney(value, currency)}
+        {textValue ?? formatMoney(value, currency)}
       </Text>
     </View>
   );
@@ -317,6 +323,7 @@ function PnlSection({
   profit: NonNullable<ReportData['profit']>;
 }) {
   const products = profit.productBreakdown;
+  const coverageIncomplete = isProfitCoverageIncomplete(profit);
   return (
     <>
       <View style={styles.section}>
@@ -361,6 +368,7 @@ function PnlSection({
           currency={currency}
           formatMoney={formatMoney}
           label={labels.pnl.grossMargin}
+          textValue={coverageIncomplete ? labels.marginUnavailable : undefined}
           value={profit.grossMarginMinor}
         />
         {profit.mobileMoneyFeesMinor > 0 ? (
@@ -385,6 +393,7 @@ function PnlSection({
           formatMoney={formatMoney}
           label={labels.pnl.netProfit}
           last
+          textValue={coverageIncomplete ? labels.marginUnavailable : undefined}
           value={profit.netProfitMinor}
         />
         <Text style={[styles.muted, { fontSize: 8, marginTop: 6 }]}>

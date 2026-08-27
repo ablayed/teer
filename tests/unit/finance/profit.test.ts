@@ -8,6 +8,7 @@ import {
   computeMobileMoneyFees,
   computeReturnContraRevenue,
   computeReturnedCogsReversal,
+  isProfitCoverageIncomplete,
 } from '@/lib/finance/profit';
 import { describe, expect, it } from 'vitest';
 
@@ -392,5 +393,29 @@ describe('computeFinanceReport — qualité du COGS (fix marge 100 %)', () => {
     // marge brute = CA net (28 000) − COGS connu (5 000) = 23 000. o2 est signalée comme exclue/inconnue.
     expect(report.netCAMinor).toBe(28_000);
     expect(report.grossMarginMinor).toBe(28_000 - 5_000);
+  });
+});
+
+// Lot A1 (Phase F) : règle d'affichage binaire — cette fonction est le SEUL point de décision
+// pour masquer marge/résultat net sur tous les points de sortie (écran, PDF, CSV). Contrôle
+// positif inclus (0 exclusion → false) pour éviter qu'un test purement négatif ne valide un
+// masquage permanent.
+describe('isProfitCoverageIncomplete', () => {
+  it('retourne false quand la couverture est complète (contrôle positif)', () => {
+    expect(isProfitCoverageIncomplete({ cogsExcludedOrderCount: 0, cogsUnknownLineCount: 0 })).toBe(
+      false,
+    );
+  });
+
+  it('retourne true dès qu’une commande est exclue', () => {
+    expect(isProfitCoverageIncomplete({ cogsExcludedOrderCount: 1, cogsUnknownLineCount: 0 })).toBe(
+      true,
+    );
+  });
+
+  it('retourne true dès qu’une ligne au coût inconnu existe', () => {
+    expect(isProfitCoverageIncomplete({ cogsExcludedOrderCount: 0, cogsUnknownLineCount: 1 })).toBe(
+      true,
+    );
   });
 });

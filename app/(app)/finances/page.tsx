@@ -21,6 +21,7 @@ import {
   estimatedMarginMinor,
 } from '@/lib/finance/fees';
 import { fetchFinanceProductCostReport } from '@/lib/finance/product-cost';
+import { isProfitCoverageIncomplete } from '@/lib/finance/profit';
 import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { formatMoney } from '@/lib/format/fcfa';
 import type { ActivePeriod } from '@/lib/periods/date-range';
@@ -236,6 +237,7 @@ async function GlobalTabContent({
   isShopFiltered,
   merchantAccountId,
   selectedShopId,
+  storeId,
   supabase,
   to,
 }: {
@@ -243,6 +245,7 @@ async function GlobalTabContent({
   isShopFiltered: boolean;
   merchantAccountId: string;
   selectedShopId: string | null;
+  storeId: string;
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
   to: Date;
 }) {
@@ -348,7 +351,12 @@ async function GlobalTabContent({
       </p>
 
       {profitReport ? (
-        <ProfitSection from={toDateInput(from)} report={profitReport} to={toDateInput(to)} />
+        <ProfitSection
+          from={toDateInput(from)}
+          report={profitReport}
+          storeId={storeId}
+          to={toDateInput(to)}
+        />
       ) : null}
 
       <ExpenseSection
@@ -365,17 +373,27 @@ async function GlobalTabContent({
           formatMoney(cashMinor, 'XOF'),
         )}
         {profitReport ? (
-          <DefinitionCard
-            definition={t('kpis.grossMarginDefinition')}
-            description={
-              profitReport.cogsEstimated
-                ? t('kpis.grossMarginDescEstimated')
-                : t('kpis.grossMarginDescReal')
-            }
-            formula={t('kpis.grossMarginFormula')}
-            label={t('kpis.grossMargin')}
-            value={formatMoney(profitReport.grossMarginMinor, 'XOF')}
-          />
+          isProfitCoverageIncomplete(profitReport) ? (
+            <DefinitionCard
+              definition={t('kpis.grossMarginDefinition')}
+              description={t('profit.marginUnavailableHint')}
+              formula={t('kpis.grossMarginFormula')}
+              label={t('kpis.grossMargin')}
+              value={t('profit.marginUnavailable')}
+            />
+          ) : (
+            <DefinitionCard
+              definition={t('kpis.grossMarginDefinition')}
+              description={
+                profitReport.cogsEstimated
+                  ? t('kpis.grossMarginDescEstimated')
+                  : t('kpis.grossMarginDescReal')
+              }
+              formula={t('kpis.grossMarginFormula')}
+              label={t('kpis.grossMargin')}
+              value={formatMoney(profitReport.grossMarginMinor, 'XOF')}
+            />
+          )
         ) : (
           <DefinitionCard
             definition={t('kpis.grossMarginDefinition')}
@@ -386,19 +404,29 @@ async function GlobalTabContent({
           />
         )}
         {profitReport ? (
-          <DefinitionCard
-            definition={t('kpis.netProfitDefinition')}
-            description={t('kpis.netProfitDesc')}
-            formula={t('kpis.netProfitFormula')}
-            label={t('kpis.netProfit')}
-            value={formatMoney(profitReport.netProfitMinor, 'XOF')}
-          />
+          isProfitCoverageIncomplete(profitReport) ? (
+            <DefinitionCard
+              definition={t('kpis.netProfitDefinition')}
+              description={t('profit.marginUnavailableHint')}
+              formula={t('kpis.netProfitFormula')}
+              label={t('kpis.netProfit')}
+              value={t('profit.marginUnavailable')}
+            />
+          ) : (
+            <DefinitionCard
+              definition={t('kpis.netProfitDefinition')}
+              description={t('kpis.netProfitDesc')}
+              formula={t('kpis.netProfitFormula')}
+              label={t('kpis.netProfit')}
+              value={formatMoney(profitReport.netProfitMinor, 'XOF')}
+            />
+          )
         ) : null}
         <DefinitionCard
           definition={t('kpis.rtoDefinition')}
           formula={t('kpis.rtoFormula')}
           label={t('kpis.rto')}
-          value={`${new Intl.NumberFormat('fr-FR').format(kpis.taux_refus)} %`}
+          value={`${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(kpis.taux_refus)} %`}
         />
         {kpiCard(
           t('kpis.driversConcernedTitle'),
@@ -623,6 +651,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
             isShopFiltered={selectedShopId !== null}
             merchantAccountId={merchantAccountId}
             selectedShopId={selectedShopId}
+            storeId={storeId}
             supabase={supabase}
             to={to}
           />
