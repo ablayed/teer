@@ -3,6 +3,12 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { resolveProductInShop } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
+import { isAllocationMethodAvailable } from '@/lib/finance/lot-profitability';
+import {
+  type PurchaseLotProfitabilityRpcResult,
+  type PurchaseLotProfitabilitySummary,
+  assemblePurchaseLotProfitability,
+} from '@/lib/finance/lot-profitability-assembly';
 import { computeEta, formatEtaDate } from '@/lib/purchases/eta';
 import { allocateFees } from '@/lib/purchases/fee-allocation';
 import type { Database, Json } from '@/lib/supabase/database.types';
@@ -32,6 +38,22 @@ function receivePurchaseLotRpc(client: { rpc: SupabaseClient<Database>['rpc'] })
       p_lines: Json;
     },
   ) => Promise<{ data: null; error: { message: string } | null }>;
+}
+
+// get_purchase_lot_profitability est SECURITY INVOKER, sans garde de rôle : les
+// policies RLS existantes (owner-only sur purchase_lot/purchase_lot_line)
+// s'appliquent sous l'identité de l'appelant. Appelée via le client
+// authentifié — RLS est le SEUL gate de cette lecture, jamais l'admin.
+// Cast temporaire : database.types.ts ne connaît pas encore cette fonction
+// (migration 0146 non poussée) — à retirer une fois le type régénéré.
+function getPurchaseLotProfitabilityRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'get_purchase_lot_profitability',
+    args: { p_purchase_lot_id: string },
+  ) => Promise<{
+    data: PurchaseLotProfitabilityRpcResult | null;
+    error: { message: string } | null;
+  }>;
 }
 
 // Lot C : modèle simplifié — un seul frais « Transport », un seul « délai estimé »,
@@ -450,3 +472,157 @@ export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLo
 
   return { ok: true, lots: result };
 }
+
+// ── PROFITABILITY (Lot F2) ───────────────────────────────────────────────────
+
+export async function getPurchaseLotProfitability(
+  lotId: string,
+): Promise<PurchaseLotProfitabilitySummary> {
+  const supabase = await createSupabaseServerClient();
+  const call = getPurchaseLotProfitabilityRpc(supabase);
+  const { data, error } = await call('get_purchase_lot_profitability', {
+    p_purchase_lot_id: lotId,
+  });
+
+  if (error) return { ok: false, reason: 'not_found' };
+  return assemblePurchaseLotProfitability(data);
+}
+
+const allocationMethodSchema = z.object({
+  lotId: z.string().uuid(),
+  method: z.enum(['value', 'quantity', 'weight']),
+});
+
+export const setPurchaseLotAllocationMethodAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.set_allocation_method', section: 'purchases' })
+  .inputSchema(allocationMethodSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    // lotId confronté à son parent autoritaire (compte marchand) AVANT toute
+    // écriture — motif récurrent du projet (0134/0135, cross-tenant webhooks).
+    const { data: lines, error: lineErr } = await admin
+      .from('purchase_lot_line')
+      .select('weight_grams')
+      .eq('purchase_lot_id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId);
+
+    if (lineErr) return { ok: false as const, message: lineErr.message };
+
+    if (parsedInput.method === 'weight') {
+      const availability = isAllocationMethodAvailable(
+        (lines ?? []).map((l) => ({ weightGrams: l.weight_grams })),
+        'weight',
+      );
+      if (!availability.available) {
+        return {
+          ok: false as const,
+          message:
+            'Poids manquant sur au moins une ligne : la répartition au poids est indisponible.',
+        };
+      }
+    }
+
+    const { error } = await admin
+      .from('purchase_lot')
+      .update({ allocation_method: parsedInput.method })
+      .eq('id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId);
+
+    if (error) return { ok: false as const, message: error.message };
+    revalidatePath('/produits');
+    return { ok: true as const };
+  });
+
+const setWeightSchema = z.object({
+  lotId: z.string().uuid(),
+  lineId: z.string().uuid(),
+  weightGrams: z.number().int().min(0).nullable(),
+});
+
+export const setPurchaseLotLineWeightAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.set_line_weight', section: 'purchases' })
+  .inputSchema(setWeightSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    // lineId ET lotId confrontés à leur parent autoritaire (compte marchand)
+    // dans la même clause .eq() que l'écriture — jamais un identifiant reçu du
+    // client transmis sans être vérifié contre son parent.
+    const { error } = await admin
+      .from('purchase_lot_line')
+      .update({ weight_grams: parsedInput.weightGrams })
+      .eq('id', parsedInput.lineId)
+      .eq('purchase_lot_id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId);
+
+    if (error) return { ok: false as const, message: error.message };
+    revalidatePath('/produits');
+    return { ok: true as const };
+  });
+
+const createAdSpendSchema = z.object({
+  productId: z.string().uuid(),
+  purchaseLotId: z.string().uuid(), // jamais optionnel dans CETTE action — règle non négociable du prompt F2
+  amountMinor: z.number().int().min(0),
+  spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  clientRequestId: z.string().uuid(), // idempotence — écrit dans external_ref
+});
+
+const AD_SPEND_UNIQUE_EXTERNAL_REF_VIOLATION = '23505';
+
+export const createProductAdSpendAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.create_ad_spend', section: 'purchases' })
+  .inputSchema(createAdSpendSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    // Le produit ET le lot doivent être confrontés à leur parent autoritaire
+    // (compte + boutique) AVANT toute écriture — motif récurrent du projet.
+    const { data: product } = await admin
+      .from('product')
+      .select('id, shop_id')
+      .eq('id', parsedInput.productId)
+      .eq('merchant_account_id', merchantAccountId)
+      .maybeSingle();
+    if (!product) return { ok: false as const, message: 'Produit introuvable.' };
+
+    const { data: lot } = await admin
+      .from('purchase_lot')
+      .select('id, shop_id')
+      .eq('id', parsedInput.purchaseLotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .maybeSingle();
+    if (!lot) return { ok: false as const, message: 'Arrivage introuvable.' };
+    if (lot.shop_id !== product.shop_id) {
+      return { ok: false as const, message: "Ce produit n'appartient pas à cet arrivage." };
+    }
+
+    const { error } = await admin.from('product_ad_spend').insert({
+      merchant_account_id: merchantAccountId,
+      shop_id: product.shop_id,
+      product_id: parsedInput.productId,
+      purchase_lot_id: parsedInput.purchaseLotId,
+      amount_minor: parsedInput.amountMinor,
+      spent_at: parsedInput.spentAt,
+      source: 'manuel',
+      external_ref: parsedInput.clientRequestId,
+      created_by: ctx.user.id,
+    });
+
+    if (error) {
+      // Renvoi de la même mutation (offline queue) : le doublon est REFUSÉ par
+      // l'index unique (merchant_account_id, shop_id, external_ref) — traité
+      // comme un succès idempotent, jamais comme une erreur.
+      if (error.code === AD_SPEND_UNIQUE_EXTERNAL_REF_VIOLATION) {
+        return { ok: true as const, alreadyRecorded: true as const };
+      }
+      return { ok: false as const, message: error.message };
+    }
+
+    revalidatePath('/produits');
+    return { ok: true as const, alreadyRecorded: false as const };
+  });
