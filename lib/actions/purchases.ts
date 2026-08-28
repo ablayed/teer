@@ -14,6 +14,7 @@ import { allocateFees } from '@/lib/purchases/fee-allocation';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestStoreId } from '@/lib/workspace/store';
+import * as Sentry from '@sentry/nextjs';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -484,7 +485,16 @@ export async function getPurchaseLotProfitability(
     p_purchase_lot_id: lotId,
   });
 
-  if (error) return { ok: false, reason: 'not_found' };
+  if (error) {
+    // Une vraie erreur RPC (permission, timeout, PGRST202 tant que 0146 n'est
+    // pas déployée) n'est PAS « lot introuvable » — CLAUDE.md (toMetricLoadState)
+    // interdit de faire retomber une panne d'action financière sur 0/liste vide.
+    Sentry.captureException(new Error('get_purchase_lot_profitability_rpc_failed'), {
+      tags: { module: 'purchases.get_purchase_lot_profitability' },
+      extra: { lotId, message: error.message },
+    });
+    return { ok: false, reason: 'error' };
+  }
   return assemblePurchaseLotProfitability(data);
 }
 
@@ -500,13 +510,34 @@ export const setPurchaseLotAllocationMethodAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
-    // lotId confronté à son parent autoritaire (compte marchand) AVANT toute
-    // écriture — motif récurrent du projet (0134/0135, cross-tenant webhooks).
+    // Boutique ACTIVE explicite — un owner multi-boutiques du même tenant ne
+    // doit jamais pouvoir écrire sur un lot d'une autre boutique que celle où
+    // il agit (finding revue : le service-role bypass RLS, le seul filtre
+    // merchant_account_id ne suffit pas). Échec fermé si non résolue.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // lotId confronté à son parent autoritaire (compte marchand + boutique
+    // active) AVANT toute écriture — motif récurrent du projet (0134/0135,
+    // cross-tenant webhooks). Un lot d'une autre boutique du même tenant doit
+    // échouer en « Lot introuvable », jamais en un update qui touche 0 ligne
+    // silencieusement.
+    const { data: lot } = await admin
+      .from('purchase_lot')
+      .select('id')
+      .eq('id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+
+    if (!lot) return { ok: false as const, message: 'Lot introuvable.' };
+
     const { data: lines, error: lineErr } = await admin
       .from('purchase_lot_line')
       .select('weight_grams')
       .eq('purchase_lot_id', parsedInput.lotId)
-      .eq('merchant_account_id', merchantAccountId);
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (lineErr) return { ok: false as const, message: lineErr.message };
 
@@ -528,7 +559,8 @@ export const setPurchaseLotAllocationMethodAction = requireRole('owner')
       .from('purchase_lot')
       .update({ allocation_method: parsedInput.method })
       .eq('id', parsedInput.lotId)
-      .eq('merchant_account_id', merchantAccountId);
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (error) return { ok: false as const, message: error.message };
     revalidatePath('/produits');
@@ -548,15 +580,22 @@ export const setPurchaseLotLineWeightAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
-    // lineId ET lotId confrontés à leur parent autoritaire (compte marchand)
-    // dans la même clause .eq() que l'écriture — jamais un identifiant reçu du
-    // client transmis sans être vérifié contre son parent.
+    // Boutique ACTIVE explicite — même garde que setPurchaseLotAllocationMethodAction
+    // (finding revue : le service-role bypass RLS, seul merchant_account_id ne
+    // suffit pas à empêcher une écriture cross-boutique du même tenant).
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // lineId ET lotId confrontés à leur parent autoritaire (compte marchand +
+    // boutique active) dans la même clause .eq() que l'écriture — jamais un
+    // identifiant reçu du client transmis sans être vérifié contre son parent.
     const { error } = await admin
       .from('purchase_lot_line')
       .update({ weight_grams: parsedInput.weightGrams })
       .eq('id', parsedInput.lineId)
       .eq('purchase_lot_id', parsedInput.lotId)
-      .eq('merchant_account_id', merchantAccountId);
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (error) return { ok: false as const, message: error.message };
     revalidatePath('/produits');
@@ -580,13 +619,20 @@ export const createProductAdSpendAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
+    // Boutique ACTIVE explicite — même garde que les deux actions ci-dessus :
+    // le service-role bypass RLS, seul merchant_account_id ne suffit pas à
+    // empêcher une écriture cross-boutique du même tenant.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
     // Le produit ET le lot doivent être confrontés à leur parent autoritaire
-    // (compte + boutique) AVANT toute écriture — motif récurrent du projet.
+    // (compte + boutique active) AVANT toute écriture — motif récurrent du projet.
     const { data: product } = await admin
       .from('product')
       .select('id, shop_id')
       .eq('id', parsedInput.productId)
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       .maybeSingle();
     if (!product) return { ok: false as const, message: 'Produit introuvable.' };
 
@@ -595,6 +641,7 @@ export const createProductAdSpendAction = requireRole('owner')
       .select('id, shop_id')
       .eq('id', parsedInput.purchaseLotId)
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       .maybeSingle();
     if (!lot) return { ok: false as const, message: 'Arrivage introuvable.' };
     if (lot.shop_id !== product.shop_id) {

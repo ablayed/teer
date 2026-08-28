@@ -61,7 +61,8 @@ export type PurchaseLotProfitabilitySummary =
       reason: 'missing_weight';
       allocationMethod: AllocationMethod;
     }
-  | { ok: false; reason: 'not_found' };
+  | { ok: false; reason: 'not_found' }
+  | { ok: false; reason: 'error' };
 
 function toLotProductLine(row: PurchaseLotProfitabilityRpcRow): LotProductLine {
   return {
