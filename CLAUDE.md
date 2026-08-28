@@ -44,6 +44,7 @@ Single e2e spec: `pnpm exec playwright test tests/e2e/<spec>.ts --project=chromi
 10. **Never switch agents on a dirty tree.** Commit + push first; `git status` must be empty.
 11. **Any `revoke` on a function must name every role explicitly (`revoke all on function ... from public, anon;`), both together, always.** On Supabase, `revoke ... from public` alone is a no-op (grants are made nominally to `anon`/`authenticated`/`service_role`, not via `PUBLIC`); a bare `DROP`+`CREATE` separately reopens `EXECUTE` to `PUBLIC`. Verify with `pg_proc.proacl`/`has_function_privilege`, never by the presence of a `revoke` statement in the SQL text.
 12. **Before revoking `GRANT EXECUTE` on any function, list every SQL/TS caller and determine its *effective role*.** A `SECURITY INVOKER` function runs as the final caller's role, not its owner's — missing this produced the 0134/0135 production incident (see below).
+13. **Consult `docs/lexique-microcopie.md` before writing or restoring any user-facing string.** It carries decisions already made and closed — a forbidden notion pulled back in from a design-research doc, or a register choice (vouvoiement, sans exception) — with the reasoning behind each. Add an entry there, not just a fix in place, whenever a similar decision is made in the future.
 
 ## Architecture
 

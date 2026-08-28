@@ -41,14 +41,18 @@ afterEach(() => {
 });
 
 const completeRows: ExplanationCardRow[] = [
-  { sentence: 'Tu as encaissé', sign: 'add', state: { kind: 'confirmed', amountMinor: 408_000 } },
   {
-    sentence: 'Les articles vendus t’ont coûté',
+    sentence: 'Vous avez encaissé',
+    sign: 'add',
+    state: { kind: 'confirmed', amountMinor: 408_000 },
+  },
+  {
+    sentence: 'Les articles vendus vous ont coûté',
     sign: 'subtract',
     state: { kind: 'confirmed', amountMinor: 251_940 },
   },
   {
-    sentence: 'La publicité t’a coûté',
+    sentence: 'La publicité vous a coûté',
     sign: 'subtract',
     state: { kind: 'confirmed', amountMinor: 66_700 },
   },
@@ -77,7 +81,7 @@ describe('computeExplanationTotal', () => {
     const rowsWithEstimate: ExplanationCardRow[] = [
       completeRows[0],
       {
-        sentence: 'La publicité t’a coûté',
+        sentence: 'La publicité vous a coûté',
         sign: 'subtract',
         state: { kind: 'estimated', amountMinor: 66_700, label: 'Coût à confirmer' },
       },
@@ -90,7 +94,7 @@ describe('computeExplanationTotal', () => {
 
 describe('ExplanationCard', () => {
   it('affiche le total en tête et le rend accessible via un seul bouton discret', () => {
-    render(<ExplanationCard label="Marge" rows={completeRows} totalSentence="Il te reste" />);
+    render(<ExplanationCard label="Marge" rows={completeRows} totalSentence="Il vous reste" />);
 
     expect(screen.getByText('Marge')).toBeTruthy();
     expect(screen.getByRole('button', { expanded: false })).toBeTruthy();
@@ -98,12 +102,12 @@ describe('ExplanationCard', () => {
   });
 
   it('déplié : montre chaque ligne en phrase avec son montant, puis le total en emphase', () => {
-    render(<ExplanationCard label="Marge" rows={completeRows} totalSentence="Il te reste" />);
+    render(<ExplanationCard label="Marge" rows={completeRows} totalSentence="Il vous reste" />);
 
     fireEvent.click(screen.getByRole('button', { expanded: false }));
 
-    expect(screen.getByText('Tu as encaissé')).toBeTruthy();
-    expect(screen.getByText('Il te reste')).toBeTruthy();
+    expect(screen.getByText('Vous avez encaissé')).toBeTruthy();
+    expect(screen.getByText('Il vous reste')).toBeTruthy();
   });
 
   it('ne montre JAMAIS de total sur des lignes incomplètes : le chiffre disparaît, un message apparaît', () => {
@@ -112,7 +116,7 @@ describe('ExplanationCard', () => {
       { sentence: 'Autre coût', sign: 'subtract', state: { kind: 'missing' } },
     ];
 
-    render(<ExplanationCard label="Marge" rows={rowsWithGap} totalSentence="Il te reste" />);
+    render(<ExplanationCard label="Marge" rows={rowsWithGap} totalSentence="Il vous reste" />);
 
     expect(screen.queryByText(/89 360 F CFA/)).toBeNull();
     expect(screen.getByText('Il manque des coûts')).toBeTruthy();

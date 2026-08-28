@@ -8,7 +8,7 @@ import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
 export type ExplanationCardRow = {
-  /** Phrase déjà rédigée dans le langage du marchand (ex. "Tu as encaissé"). */
+  /** Phrase déjà rédigée dans le langage du marchand (ex. "Vous avez encaissé"). */
   sentence: string;
   sign: 'add' | 'subtract';
   state: MoneyValueState;
@@ -16,7 +16,7 @@ export type ExplanationCardRow = {
 
 type ExplanationCardProps = {
   label: string;
-  /** Phrase de la ligne de total (ex. "Il te reste"). */
+  /** Phrase de la ligne de total (ex. "Il vous reste"). */
   totalSentence: string;
   rows: ExplanationCardRow[];
   scope?: TemporalScope;
