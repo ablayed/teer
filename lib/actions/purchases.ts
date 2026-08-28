@@ -644,7 +644,26 @@ export const createProductAdSpendAction = requireRole('owner')
       .eq('shop_id', shopId)
       .maybeSingle();
     if (!lot) return { ok: false as const, message: 'Arrivage introuvable.' };
-    if (lot.shop_id !== product.shop_id) {
+
+    // Le produit ET le lot appartiennent chacun (vérifié ci-dessus) à la boutique
+    // active — mais rien ne garantit encore qu'ils sont RÉELLEMENT liés : un
+    // productId et un purchaseLotId valides mais sans rapport entre eux
+    // passeraient les deux gardes précédentes. Sans cette troisième vérification,
+    // product_ad_spend accepterait une dépense « orpheline » : comptée dans
+    // totals.adSpendMinor (assemblage — somme de TOUT rpc.productAdSpend) mais
+    // jamais déduite de totals.marginMinor (qui ne répartit la publicité que sur
+    // les purchase_lot_line RÉELLES du lot) — les deux chiffres de tête
+    // divergeraient silencieusement. On confronte donc explicitement le couple
+    // (productId, purchaseLotId) à son parent autoritaire : une ligne d'arrivage.
+    const { data: line } = await admin
+      .from('purchase_lot_line')
+      .select('id')
+      .eq('product_id', parsedInput.productId)
+      .eq('purchase_lot_id', parsedInput.purchaseLotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+    if (!line) {
       return { ok: false as const, message: "Ce produit n'appartient pas à cet arrivage." };
     }
 

@@ -811,6 +811,140 @@ describe('product_ad_spend — unicité external_ref dans son périmètre (preuv
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// Correctif F2 : createProductAdSpendAction (lib/actions/purchases.ts) doit
+// refuser une dépense publicitaire pour un produit/lot valides individuellement
+// (même compte, même boutique) mais SANS relation réelle entre eux — c'est-à-
+// dire sans purchase_lot_line (product_id, purchase_lot_id) correspondante.
+//
+// Avant ce correctif, l'action ne vérifiait que l'appartenance tenant/boutique
+// du produit et du lot séparément (jamais leur relation), et son message
+// d'erreur « Ce produit n'appartient pas à cet arrivage. » n'était en réalité
+// JAMAIS émis dans ce cas (seulement sur un mismatch shop_id structurellement
+// impossible, les deux requêtes filtrant déjà sur la même boutique active).
+// Une dépense orpheline gonflait alors totals.adSpendMinor (assemblage —
+// somme de TOUT rpc.productAdSpend, cf. lib/finance/lot-profitability-assembly.ts)
+// sans jamais être déduite de totals.marginMinor (qui ne répartit la publicité
+// que sur les purchase_lot_line RÉELLES du lot) — désaccord silencieux entre
+// les deux chiffres de tête de la fiche de rentabilité.
+//
+// createProductAdSpendAction n'est PAS une fonction injectable comme
+// performTransitionForContext/performReassignDriverForContext (elle construit
+// son propre client admin en interne et lit la boutique active via
+// getRequestStoreId(), qui dépend de next/headers) — aucune action de ce
+// fichier n'est appelée directement par les tests existants de ce dépôt
+// (cf. tests/rls/purchases.rls.test.ts, commentaire ligne ~345 : les tests
+// reproduisent l'opération DB équivalente plutôt que d'invoquer l'action).
+// On suit donc ici cette même convention : on reproduit exactement la requête
+// de garde ajoutée par le correctif (SELECT id FROM purchase_lot_line WHERE
+// product_id=… AND purchase_lot_id=… AND merchant_account_id=… AND shop_id=…)
+// et on prouve qu'elle distingue bien le cas légitime du cas orphelin.
+//
+// ⚠️ CE TEST N'A PAS PU ÊTRE EXÉCUTÉ dans cette tâche : aucun stack Supabase
+// local n'était disponible dans cet environnement d'exécution (règle du
+// projet : ne jamais lancer `supabase start`/`db push` sans preuve explicite
+// du porteur). Il est écrit pour tourner via `pnpm test:rls` sur un stack
+// local avec les migrations jusqu'à 0145 appliquées (0146 n'est pas requise
+// par ce test précis, mais n'est de toute façon pas encore poussée en prod
+// à la date de cette tâche — cf. attestation en tête de CLAUDE.md).
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('createProductAdSpendAction — dépense publicitaire orpheline refusée (correctif F2)', () => {
+  skipIfNoServiceRole(
+    'produit RÉELLEMENT reçu dans le lot → la garde applicative trouve la purchase_lot_line',
+    async () => {
+      const { admin, email, merchantAccountId, shopId, userId } =
+        await createOwnerFixture('adspend-line-match');
+      const owner = await signIn(email);
+      const productId = await createProduct(admin, merchantAccountId, shopId);
+      const { lotId } = await receiveLot(
+        admin,
+        owner,
+        merchantAccountId,
+        shopId,
+        userId,
+        productId,
+        10,
+        100_000,
+      );
+
+      // Requête identique à la garde ajoutée dans createProductAdSpendAction.
+      const { data: line } = await admin
+        .from('purchase_lot_line')
+        .select('id')
+        .eq('product_id', productId)
+        .eq('purchase_lot_id', lotId)
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
+        .maybeSingle();
+
+      expect(line).not.toBeNull();
+    },
+  );
+
+  skipIfNoServiceRole(
+    'produit et lot valides individuellement mais SANS ligne commune → la garde applicative ne trouve rien (dépense orpheline à refuser)',
+    async () => {
+      const { admin, email, merchantAccountId, shopId, userId } =
+        await createOwnerFixture('adspend-orphan');
+      const owner = await signIn(email);
+
+      // Deux produits distincts, chacun reçu dans SON PROPRE lot — aucun des
+      // deux n'a de purchase_lot_line pointant vers le lot de l'autre.
+      const productA = await createProduct(admin, merchantAccountId, shopId);
+      const productB = await createProduct(admin, merchantAccountId, shopId);
+      const { lotId: lotA } = await receiveLot(
+        admin,
+        owner,
+        merchantAccountId,
+        shopId,
+        userId,
+        productA,
+        10,
+        100_000,
+      );
+      await receiveLot(admin, owner, merchantAccountId, shopId, userId, productB, 5, 50_000);
+
+      // productA existe (même compte/boutique) ; lotA existe (même
+      // compte/boutique) — les deux gardes tenant/boutique de l'action
+      // passeraient. Mais productB n'a JAMAIS été reçu dans lotA : c'est le
+      // cas orphelin que le correctif doit intercepter.
+      const { data: product } = await admin
+        .from('product')
+        .select('id')
+        .eq('id', productB)
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
+        .maybeSingle();
+      expect(product).not.toBeNull();
+
+      const { data: lot } = await admin
+        .from('purchase_lot')
+        .select('id')
+        .eq('id', lotA)
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
+        .maybeSingle();
+      expect(lot).not.toBeNull();
+
+      // La garde de relation (ajoutée par le correctif) ne trouve rien pour
+      // (productB, lotA) : c'est ce qui doit faire échouer
+      // createProductAdSpendAction avec « Ce produit n'appartient pas à cet
+      // arrivage. » plutôt que d'insérer une dépense orpheline.
+      const { data: line } = await admin
+        .from('purchase_lot_line')
+        .select('id')
+        .eq('product_id', productB)
+        .eq('purchase_lot_id', lotA)
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
+        .maybeSingle();
+
+      expect(line).toBeNull();
+    },
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // Preuve 10 : isolation des tables neuves. anon / tenant voisin / membre sans
 // accès à la boutique → 0 ligne ; contrôle positif → lecture légitime rendue.
 // ──────────────────────────────────────────────────────────────────────────
