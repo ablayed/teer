@@ -7,6 +7,7 @@ import {
   type LotProductLine,
   type LotProductProfitability,
   computeLotProductProfitability,
+  distributeByLargestRemainder,
   isAllocationMethodAvailable,
 } from '@/lib/finance/lot-profitability';
 
@@ -18,7 +19,12 @@ export type PurchaseLotProfitabilityRpcRow = {
   purchaseValueMinor: number;
   weightGrams: number | null;
   cashCollectedMinor: number;
-  adSpendMinor: number;
+};
+
+/** Total de publicité par PRODUIT (jamais par ligne) — la RPC n'agrège que. */
+export type PurchaseLotProductAdSpend = {
+  productId: string;
+  amountMinor: number;
 };
 
 export type PurchaseLotProfitabilityRpcResult = {
@@ -27,7 +33,50 @@ export type PurchaseLotProfitabilityRpcResult = {
   transportComplete: boolean;
   allocationMethod: AllocationMethod;
   lines: PurchaseLotProfitabilityRpcRow[];
+  productAdSpend: PurchaseLotProductAdSpend[];
 };
+
+/**
+ * Répartit la publicité totale de chaque produit entre ses lignes de CE lot,
+ * au prorata de `qtyReceived`, par la méthode du plus grand reste
+ * (`distributeByLargestRemainder`, seule implémentation du projet — cf.
+ * lib/finance/lot-profitability.ts). Un produit avec une seule ligne dans ce
+ * lot reçoit trivialement 100 % de sa publicité sur cette ligne : l'algorithme
+ * général le fait naturellement (poids unique = totalWeight, part = total),
+ * vérifié par test plutôt que spécial-casé.
+ *
+ * Poids tous nuls pour un produit (toutes ses lignes à qtyReceived=0) : repli
+ * sur des poids égaux (même principe que `allocateTransportCost`) pour que la
+ * publicité du produit reste répartie et que la somme des parts égale
+ * toujours exactement son total, plutôt que de la perdre silencieusement.
+ */
+function computeAdSpendByLine(
+  rows: PurchaseLotProfitabilityRpcRow[],
+  productAdSpend: PurchaseLotProductAdSpend[],
+): Map<string, number> {
+  const totalByProduct = new Map(productAdSpend.map((p) => [p.productId, p.amountMinor]));
+  const linesByProduct = new Map<string, PurchaseLotProfitabilityRpcRow[]>();
+  for (const row of rows) {
+    const list = linesByProduct.get(row.productId);
+    if (list) {
+      list.push(row);
+    } else {
+      linesByProduct.set(row.productId, [row]);
+    }
+  }
+
+  const result = new Map<string, number>();
+  for (const [productId, productLines] of linesByProduct) {
+    const total = totalByProduct.get(productId) ?? 0;
+    const weights = productLines.map((row) => row.qtyReceived);
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    const effectiveWeights = totalWeight > 0 ? weights : productLines.map(() => 1);
+    const shares = distributeByLargestRemainder(effectiveWeights, total);
+    productLines.forEach((row, index) => result.set(row.purchaseLotLineId, shares[index]));
+  }
+
+  return result;
+}
 
 export type PurchaseLotLineProfitability = LotProductProfitability & {
   purchaseLotLineId: string;
@@ -92,8 +141,11 @@ export function assemblePurchaseLotProfitability(
     };
   }
 
+  const adSpendByLine = computeAdSpendByLine(rpc.lines, rpc.productAdSpend);
+
   const lines: PurchaseLotLineProfitability[] = rpc.lines.map((row) => {
     const line = toLotProductLine(row);
+    const adSpendMinor = adSpendByLine.get(row.purchaseLotLineId) ?? 0;
     const profitability = computeLotProductProfitability({
       line,
       allLinesInLot: allLines,
@@ -101,7 +153,7 @@ export function assemblePurchaseLotProfitability(
       transportTotalMinor: rpc.transportTotalMinor,
       transportComplete: rpc.transportComplete,
       cashCollectedMinor: row.cashCollectedMinor,
-      adSpend: { valueMinor: row.adSpendMinor, complete: true },
+      adSpend: { valueMinor: adSpendMinor, complete: true },
     });
     return { ...profitability, productId: row.productId, purchaseLotLineId: row.purchaseLotLineId };
   });
@@ -110,7 +162,7 @@ export function assemblePurchaseLotProfitability(
   const totals: PurchaseLotProfitabilityTotals = {
     cashCollectedMinor: rpc.lines.reduce((s, r) => s + r.cashCollectedMinor, 0),
     costOfSoldMinor: lines.reduce((s, l) => s + l.costOfSoldMinor, 0),
-    adSpendMinor: rpc.lines.reduce((s, r) => s + r.adSpendMinor, 0),
+    adSpendMinor: rpc.productAdSpend.reduce((s, p) => s + p.amountMinor, 0),
     marginMinor: lines.reduce((s, l) => s + l.marginMinor, 0),
     marginPct: 0,
     complete: missingInputs.length === 0,
