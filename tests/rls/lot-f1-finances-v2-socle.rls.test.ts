@@ -821,11 +821,12 @@ describe('product_ad_spend — unicité external_ref dans son périmètre (preuv
 // d'erreur « Ce produit n'appartient pas à cet arrivage. » n'était en réalité
 // JAMAIS émis dans ce cas (seulement sur un mismatch shop_id structurellement
 // impossible, les deux requêtes filtrant déjà sur la même boutique active).
-// Une dépense orpheline gonflait alors totals.adSpendMinor (assemblage —
-// somme de TOUT rpc.productAdSpend, cf. lib/finance/lot-profitability-assembly.ts)
-// sans jamais être déduite de totals.marginMinor (qui ne répartit la publicité
-// que sur les purchase_lot_line RÉELLES du lot) — désaccord silencieux entre
-// les deux chiffres de tête de la fiche de rentabilité.
+// Une dépense orpheline, sans purchase_lot_line pour la porter, ne serait
+// jamais distribuée par computeAdSpendByLine (assemblage — cf.
+// lib/finance/lot-profitability-assembly.ts) : ni déduite de
+// totals.marginMinor, ni comptée dans totals.adSpendMinor (les deux dérivent
+// désormais de la même distribution par construction) — mais elle resterait
+// quand même en base, invisible, tant qu'aucune ligne ne la relie au lot.
 //
 // createProductAdSpendAction n'est PAS une fonction injectable comme
 // performTransitionForContext/performReassignDriverForContext (elle construit
@@ -836,16 +837,8 @@ describe('product_ad_spend — unicité external_ref dans son périmètre (preuv
 // reproduisent l'opération DB équivalente plutôt que d'invoquer l'action).
 // On suit donc ici cette même convention : on reproduit exactement la requête
 // de garde ajoutée par le correctif (SELECT id FROM purchase_lot_line WHERE
-// product_id=… AND purchase_lot_id=… AND merchant_account_id=… AND shop_id=…)
-// et on prouve qu'elle distingue bien le cas légitime du cas orphelin.
-//
-// ⚠️ CE TEST N'A PAS PU ÊTRE EXÉCUTÉ dans cette tâche : aucun stack Supabase
-// local n'était disponible dans cet environnement d'exécution (règle du
-// projet : ne jamais lancer `supabase start`/`db push` sans preuve explicite
-// du porteur). Il est écrit pour tourner via `pnpm test:rls` sur un stack
-// local avec les migrations jusqu'à 0145 appliquées (0146 n'est pas requise
-// par ce test précis, mais n'est de toute façon pas encore poussée en prod
-// à la date de cette tâche — cf. attestation en tête de CLAUDE.md).
+// product_id=… AND purchase_lot_id=… AND merchant_account_id=… AND shop_id=…
+// LIMIT 1) et on prouve qu'elle distingue bien le cas légitime du cas orphelin.
 // ──────────────────────────────────────────────────────────────────────────
 
 describe('createProductAdSpendAction — dépense publicitaire orpheline refusée (correctif F2)', () => {
@@ -875,6 +868,7 @@ describe('createProductAdSpendAction — dépense publicitaire orpheline refusé
         .eq('purchase_lot_id', lotId)
         .eq('merchant_account_id', merchantAccountId)
         .eq('shop_id', shopId)
+        .limit(1)
         .maybeSingle();
 
       expect(line).not.toBeNull();
@@ -937,6 +931,7 @@ describe('createProductAdSpendAction — dépense publicitaire orpheline refusé
         .eq('purchase_lot_id', lotA)
         .eq('merchant_account_id', merchantAccountId)
         .eq('shop_id', shopId)
+        .limit(1)
         .maybeSingle();
 
       expect(line).toBeNull();

@@ -162,7 +162,7 @@ export function assemblePurchaseLotProfitability(
   const totals: PurchaseLotProfitabilityTotals = {
     cashCollectedMinor: rpc.lines.reduce((s, r) => s + r.cashCollectedMinor, 0),
     costOfSoldMinor: lines.reduce((s, l) => s + l.costOfSoldMinor, 0),
-    adSpendMinor: rpc.productAdSpend.reduce((s, p) => s + p.amountMinor, 0),
+    adSpendMinor: [...adSpendByLine.values()].reduce((s, v) => s + v, 0),
     marginMinor: lines.reduce((s, l) => s + l.marginMinor, 0),
     marginPct: 0,
     complete: missingInputs.length === 0,

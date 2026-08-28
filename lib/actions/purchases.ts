@@ -638,7 +638,7 @@ export const createProductAdSpendAction = requireRole('owner')
 
     const { data: lot } = await admin
       .from('purchase_lot')
-      .select('id, shop_id')
+      .select('id')
       .eq('id', parsedInput.purchaseLotId)
       .eq('merchant_account_id', merchantAccountId)
       .eq('shop_id', shopId)
@@ -649,12 +649,19 @@ export const createProductAdSpendAction = requireRole('owner')
     // active — mais rien ne garantit encore qu'ils sont RÉELLEMENT liés : un
     // productId et un purchaseLotId valides mais sans rapport entre eux
     // passeraient les deux gardes précédentes. Sans cette troisième vérification,
-    // product_ad_spend accepterait une dépense « orpheline » : comptée dans
-    // totals.adSpendMinor (assemblage — somme de TOUT rpc.productAdSpend) mais
-    // jamais déduite de totals.marginMinor (qui ne répartit la publicité que sur
-    // les purchase_lot_line RÉELLES du lot) — les deux chiffres de tête
-    // divergeraient silencieusement. On confronte donc explicitement le couple
-    // (productId, purchaseLotId) à son parent autoritaire : une ligne d'arrivage.
+    // product_ad_spend accepterait une dépense « orpheline » : sans ligne
+    // d'arrivage réelle pour la porter, elle ne serait jamais distribuée par
+    // computeAdSpendByLine (assemblage), donc jamais déduite de
+    // totals.marginMinor ni comptée dans totals.adSpendMinor (les deux
+    // dérivent désormais de la même distribution par construction) — mais
+    // resterait quand même en base, invisible et non comptée nulle part tant
+    // qu'aucune ligne ne la relie à ce lot. On confronte donc explicitement
+    // le couple (productId, purchaseLotId) à son parent autoritaire : une
+    // ligne d'arrivage.
+    // .limit(1).maybeSingle() (jamais .maybeSingle() seul) : deux lignes du
+    // même produit dans le même lot sont un cas légitime du domaine (cf.
+    // toLotProductLine / lib/finance/lot-profitability-assembly.ts) — on ne
+    // veut ici que l'existence d'AU MOINS une ligne, jamais l'unicité.
     const { data: line } = await admin
       .from('purchase_lot_line')
       .select('id')
@@ -662,6 +669,7 @@ export const createProductAdSpendAction = requireRole('owner')
       .eq('purchase_lot_id', parsedInput.purchaseLotId)
       .eq('merchant_account_id', merchantAccountId)
       .eq('shop_id', shopId)
+      .limit(1)
       .maybeSingle();
     if (!line) {
       return { ok: false as const, message: "Ce produit n'appartient pas à cet arrivage." };

@@ -164,4 +164,41 @@ describe('assemblePurchaseLotProfitability — publicité multi-lignes du même 
     const adSpendA = 100_000 - lineA.costOfSoldMinor - lineA.marginMinor;
     expect(adSpendA).toBe(1_000);
   });
+
+  it('publicité orpheline (produit sans ligne dans CE lot) : exclue de totals.adSpendMinor, jamais gonflée depuis rpc.productAdSpend', () => {
+    const result = assemblePurchaseLotProfitability({
+      purchaseLotId: 'lot-orphan',
+      transportTotalMinor: 0,
+      transportComplete: true,
+      allocationMethod: 'quantity',
+      lines: [
+        {
+          purchaseLotLineId: 'line-a',
+          productId: 'p1',
+          qtyReceived: 5,
+          qtySold: 5,
+          purchaseValueMinor: 50_000,
+          weightGrams: null,
+          cashCollectedMinor: 100_000,
+        },
+      ],
+      // p2 n'a AUCUNE ligne dans ce lot (product_ad_spend orphelin — insert
+      // direct sous RLS, ou ligne supprimée après coup). computeAdSpendByLine
+      // n'a rien à qui la distribuer : elle disparaît du calcul plutôt que de
+      // gonfler totals.adSpendMinor sans jamais être déduite de marginMinor.
+      productAdSpend: [
+        { productId: 'p1', amountMinor: 1_000 },
+        { productId: 'p2', amountMinor: 66_700 },
+      ],
+    });
+
+    if (!result.ok || !result.allocationMethodAvailable) throw new Error('unexpected shape');
+    const lineA = result.lines[0];
+    const adSpendA = 100_000 - lineA.costOfSoldMinor - lineA.marginMinor;
+    expect(adSpendA).toBe(1_000);
+    // Le total ne reflète QUE la part réellement distribuée (line-a) — jamais
+    // la somme brute rpc.productAdSpend (1_000 + 66_700 = 67_700), qui
+    // inclurait à tort le montant orphelin de p2.
+    expect(result.totals.adSpendMinor).toBe(1_000);
+  });
 });
