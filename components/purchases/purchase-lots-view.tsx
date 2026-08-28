@@ -251,9 +251,20 @@ function LotCard({
                 amountMinor={profitability.totals.marginMinor}
                 labels={{ gain: 'Marge', loss: 'Marge', neutral: 'Marge nulle' }}
               />
-              <span className="text-sm text-muted-foreground">
-                {(profitability.totals.marginPct * 100).toFixed(1)} %
-              </span>
+              {/* `cashCollectedMinor === 0` n'est pas « marge de 0 % » mais « rien
+                  à mesurer encore » (cf. lot-profitability.ts, computeMargin.marginPct,
+                  et la garde équivalente dans purchase-lot-detail-panel.tsx) — un
+                  simple tiret plutôt qu'un pourcentage confiant mais faux, dès cette
+                  carte liste vue avant le panneau détail. */}
+              {profitability.totals.cashCollectedMinor === 0 ? (
+                <span className="text-sm text-muted-foreground">
+                  — <span className="text-xs">(pas encore de CA encaissé)</span>
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  {(profitability.totals.marginPct * 100).toFixed(1)} %
+                </span>
+              )}
               <span className="text-sm text-muted-foreground">
                 {profitability.totals.qtySold} / {profitability.totals.qtyReceived} vendus
               </span>

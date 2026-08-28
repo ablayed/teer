@@ -518,10 +518,6 @@ function WeightEditorRow({
   const initialValue = line.weightGrams != null ? String(line.weightGrams) : '';
   const [value, setValue] = useState(initialValue);
   const [validationError, setValidationError] = useState<string | null>(null);
-  // Dernière valeur texte réellement soumise (enregistrée ou en cours
-  // d'enregistrement) — sert à rendre `handleSave` idempotent sur une valeur
-  // inchangée (cf. garde double-soumission ci-dessous), jamais à piloter l'affichage.
-  const lastSubmittedRef = useRef(initialValue);
   // Poids associé à la dernière soumission — capturé au moment du `submit`,
   // relu par l'effet `synced` ci-dessous (la saisie peut avoir changé entre
   // temps, `pendingWeightRef` ne bouge pas avec elle).
@@ -552,10 +548,15 @@ function WeightEditorRow({
 
   // Validation à la sortie du champ, jamais soumission : le poids ne s'enregistre
   // que sur un clic explicite sur le bouton (exigence F2 — pas d'autosave sur
-  // blur). Un blur avec valeur invalide ou inchangée ne fait donc RIEN d'autre
-  // qu'annoncer l'état de validation ; ça évite aussi le double-envoi qui
-  // existait quand le clic sur le bouton (qui blur d'abord le champ) déclenchait
-  // handleSave deux fois pour un seul geste utilisateur.
+  // blur). Un blur ne fait donc RIEN d'autre qu'annoncer l'état de validation —
+  // `handleBlur` n'appelle jamais `submit`/`handleSave`, donc il n'existe plus de
+  // scénario de double-soumission bouton+blur à garder contre : `handleSave` n'est
+  // invoqué que par le clic explicite sur le bouton, et `disabled={weightAction.state
+  // === 'saving'}` sur ce bouton suffit à empêcher un double-clic accidentel pendant
+  // une soumission en vol. Une garde par égalité de valeur avait précédemment été
+  // ajoutée ici mais rendait « Réessayer » inopérant (elle comparait à la valeur
+  // qu'on vient d'assigner avant l'échec) — retirée plutôt que réparée, faute de
+  // scénario réel à couvrir.
   function handleBlur() {
     const parsed = parseWeightInput(value);
     setValidationError(
@@ -570,13 +571,6 @@ function WeightEditorRow({
       return;
     }
     setValidationError(null);
-    if (value === lastSubmittedRef.current) {
-      // Valeur inchangée depuis le dernier enregistrement — pas de mutation à
-      // rejouer (évite le double-envoi bouton+blur et le tab-through sans
-      // modification).
-      return;
-    }
-    lastSubmittedRef.current = value;
     pendingWeightRef.current = parsed;
     await weightAction.submit({ lotId: lot.id, lineId: line.id, weightGrams: parsed });
   }
