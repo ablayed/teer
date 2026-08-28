@@ -41,22 +41,33 @@ async function getCurrentMember() {
 }
 
 const marginRows: ExplanationCardRow[] = [
-  { sentence: 'Tu as encaissé', sign: 'add', state: { kind: 'confirmed', amountMinor: 408_000 } },
   {
-    sentence: 'Les articles vendus t’ont coûté',
+    sentence: 'Vous avez encaissé',
+    sign: 'add',
+    state: { kind: 'confirmed', amountMinor: 408_000 },
+  },
+  {
+    sentence: 'Les articles vendus vous ont coûté',
     sign: 'subtract',
     state: { kind: 'confirmed', amountMinor: 251_940 },
   },
   {
-    sentence: 'La publicité t’a coûté',
+    sentence: 'La publicité vous a coûté',
     sign: 'subtract',
     state: { kind: 'confirmed', amountMinor: 66_700 },
   },
 ];
 
+// Ligne manquante de démonstration : le transport d'un arrivage pas encore connu à la réception
+// (mécanisme de ligne manquante conservé — voir CLAUDE.md, Lot U1-F-bis : le « coût de reprise
+// d'un colis refusé » a été retiré, hors modèle du marchand).
 const marginRowsWithGap: ExplanationCardRow[] = [
   ...marginRows,
-  { sentence: 'Coût de reprise d’un colis refusé', sign: 'subtract', state: { kind: 'missing' } },
+  {
+    sentence: 'Le transport de l’arrivage vous a coûté',
+    sign: 'subtract',
+    state: { kind: 'missing' },
+  },
 ];
 
 export default async function FinanceFoundationsDemoPage() {
@@ -175,7 +186,7 @@ export default async function FinanceFoundationsDemoPage() {
                 label="Marge"
                 rows={marginRows}
                 scope={{ kind: 'flow', periodLabel: '30 derniers jours' }}
-                totalSentence="Il te reste"
+                totalSentence="Il vous reste"
               />
             </div>
             <div>
@@ -184,7 +195,7 @@ export default async function FinanceFoundationsDemoPage() {
                 label="Marge"
                 rows={marginRowsWithGap}
                 scope={{ kind: 'flow', periodLabel: '30 derniers jours' }}
-                totalSentence="Il te reste"
+                totalSentence="Il vous reste"
               />
             </div>
           </div>
