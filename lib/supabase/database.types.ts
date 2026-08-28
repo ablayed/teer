@@ -1779,6 +1779,90 @@ export type Database = {
           },
         ];
       };
+      product_ad_spend: {
+        Row: {
+          amount_minor: number;
+          created_at: string;
+          created_by: string;
+          external_ref: string | null;
+          id: string;
+          merchant_account_id: string;
+          product_id: string;
+          purchase_lot_id: string | null;
+          shop_id: string;
+          source: string;
+          spent_at: string;
+          window_end: string | null;
+          window_start: string | null;
+        };
+        Insert: {
+          amount_minor: number;
+          created_at?: string;
+          created_by: string;
+          external_ref?: string | null;
+          id?: string;
+          merchant_account_id: string;
+          product_id: string;
+          purchase_lot_id?: string | null;
+          shop_id: string;
+          source?: string;
+          spent_at: string;
+          window_end?: string | null;
+          window_start?: string | null;
+        };
+        Update: {
+          amount_minor?: number;
+          created_at?: string;
+          created_by?: string;
+          external_ref?: string | null;
+          id?: string;
+          merchant_account_id?: string;
+          product_id?: string;
+          purchase_lot_id?: string | null;
+          shop_id?: string;
+          source?: string;
+          spent_at?: string;
+          window_end?: string | null;
+          window_start?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'product_ad_spend_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_ad_spend_product_id_fkey';
+            columns: ['product_id'];
+            isOneToOne: false;
+            referencedRelation: 'product';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_ad_spend_purchase_lot_id_fkey';
+            columns: ['purchase_lot_id'];
+            isOneToOne: false;
+            referencedRelation: 'purchase_lot';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_ad_spend_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'product_ad_spend_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
       product_bundle_component: {
         Row: {
           bundle_product_id: string;
@@ -2004,6 +2088,81 @@ export type Database = {
           },
         ];
       };
+      purchase_lot_cost_correction: {
+        Row: {
+          corrected_at: string;
+          corrected_by: string;
+          field: string;
+          id: string;
+          merchant_account_id: string;
+          new_value: number;
+          previous_value: number;
+          purchase_lot_id: string;
+          purchase_lot_line_id: string | null;
+          shop_id: string;
+        };
+        Insert: {
+          corrected_at?: string;
+          corrected_by: string;
+          field: string;
+          id?: string;
+          merchant_account_id: string;
+          new_value: number;
+          previous_value: number;
+          purchase_lot_id: string;
+          purchase_lot_line_id?: string | null;
+          shop_id: string;
+        };
+        Update: {
+          corrected_at?: string;
+          corrected_by?: string;
+          field?: string;
+          id?: string;
+          merchant_account_id?: string;
+          new_value?: number;
+          previous_value?: number;
+          purchase_lot_id?: string;
+          purchase_lot_line_id?: string | null;
+          shop_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'purchase_lot_cost_correction_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_cost_correction_purchase_lot_id_fkey';
+            columns: ['purchase_lot_id'];
+            isOneToOne: false;
+            referencedRelation: 'purchase_lot';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_cost_correction_purchase_lot_line_id_fkey';
+            columns: ['purchase_lot_line_id'];
+            isOneToOne: false;
+            referencedRelation: 'purchase_lot_line';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_cost_correction_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_cost_correction_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
       purchase_lot_line: {
         Row: {
           allocated_fees: number | null;
@@ -2019,6 +2178,7 @@ export type Database = {
           qty: number;
           shop_id: string;
           unit_purchase_price: number | null;
+          weight_grams: number | null;
         };
         Insert: {
           allocated_fees?: number | null;
@@ -2034,6 +2194,7 @@ export type Database = {
           qty: number;
           shop_id?: string;
           unit_purchase_price?: number | null;
+          weight_grams?: number | null;
         };
         Update: {
           allocated_fees?: number | null;
@@ -2049,6 +2210,7 @@ export type Database = {
           qty?: number;
           shop_id?: string;
           unit_purchase_price?: number | null;
+          weight_grams?: number | null;
         };
         Relationships: [
           {
@@ -2081,6 +2243,98 @@ export type Database = {
           },
           {
             foreignKeyName: 'purchase_lot_line_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
+      purchase_lot_line_allocation: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          id: string;
+          merchant_account_id: string;
+          order_id: string;
+          order_line_id: string;
+          purchase_lot_line_id: string;
+          qty: number;
+          reason: string;
+          recognized_transition_id: string | null;
+          shop_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          id?: string;
+          merchant_account_id: string;
+          order_id: string;
+          order_line_id: string;
+          purchase_lot_line_id: string;
+          qty: number;
+          reason: string;
+          recognized_transition_id?: string | null;
+          shop_id: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          merchant_account_id?: string;
+          order_id?: string;
+          order_line_id?: string;
+          purchase_lot_line_id?: string;
+          qty?: number;
+          reason?: string;
+          recognized_transition_id?: string | null;
+          shop_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'purchase_lot_line_allocation_merchant_account_id_fkey';
+            columns: ['merchant_account_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_account';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_allocation_order_id_fkey';
+            columns: ['order_id'];
+            isOneToOne: false;
+            referencedRelation: 'orders';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_allocation_order_line_id_fkey';
+            columns: ['order_line_id'];
+            isOneToOne: false;
+            referencedRelation: 'order_line';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_allocation_purchase_lot_line_id_fkey';
+            columns: ['purchase_lot_line_id'];
+            isOneToOne: false;
+            referencedRelation: 'purchase_lot_line';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_allocation_recognized_transition_id_fkey';
+            columns: ['recognized_transition_id'];
+            isOneToOne: false;
+            referencedRelation: 'order_state_transition';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_allocation_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'purchase_lot_line_allocation_shop_tenant_fk';
             columns: ['merchant_account_id', 'shop_id'];
             isOneToOne: false;
             referencedRelation: 'shop';
@@ -3161,6 +3415,17 @@ export type Database = {
           storage_bucket: string;
           storage_path: string;
         }[];
+      };
+      correct_purchase_lot_cost: {
+        Args: {
+          p_actor_id: string;
+          p_field: string;
+          p_merchant_account_id: string;
+          p_new_value: number;
+          p_purchase_lot_id: string;
+          p_purchase_lot_line_id: string;
+        };
+        Returns: undefined;
       };
       current_member_role: { Args: { p_account: string }; Returns: string };
       current_shop_role: { Args: { p_shop_id: string }; Returns: string };
