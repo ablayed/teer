@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import 'fake-indexeddb/auto';
+
 /**
  * Phase F — Lot F2 : `ProductAdSpendForm` doit TOUJOURS créer une ligne
  * produit+arrivage+période+montant — jamais un arrivage optionnel ou choisi par défaut
@@ -20,7 +22,7 @@
  */
 
 import { ProductAdSpendForm } from '@/components/purchases/product-ad-spend-form';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/actions/purchases', () => ({
@@ -96,5 +98,48 @@ describe('ProductAdSpendForm — aucun arrivage candidat (produit sans arrivage 
     expect(screen.getByTestId('ad-spend-no-lot')).toBeTruthy();
     expect(screen.queryByTestId('ad-spend-lot-select')).toBeNull();
     expect((screen.getByTestId('ad-spend-submit') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('ProductAdSpendForm — hors ligne (état "queued"), régression Finding 1', () => {
+  it('reste ouvert et affiche le libellé "en attente de synchronisation" sans appeler ' +
+    'onDone tant que la mutation n’est pas réellement "synced"', async () => {
+    const onLineDescriptor = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', {
+      configurable: true,
+      value: false,
+    });
+    const onDone = vi.fn();
+
+    try {
+      render(
+        <ProductAdSpendForm
+          lockedPurchaseLotId="lot-1"
+          lockedPurchaseLotLabel="Fournisseur Wax Import — reçu le 2026-07-28"
+          onDone={onDone}
+          productId="prod-1"
+        />,
+      );
+
+      const amountInput = screen.getByPlaceholderText('0');
+      fireEvent.change(amountInput, { target: { value: '5000' } });
+      fireEvent.blur(amountInput);
+      fireEvent.click(screen.getByTestId('ad-spend-submit'));
+
+      // `queued` (posé dans la file IndexedDB durable, PAS encore confirmé par le
+      // serveur) : le libellé mandaté doit être VISIBLE, et le formulaire doit
+      // rester ouvert — `onDone` ne doit surtout pas avoir été appelé sur ce seul
+      // état, sans quoi ce libellé serait inatteignable en pratique (Finding 1).
+      await waitFor(() => {
+        expect(screen.getByTestId('ad-spend-submit').textContent).toBe(
+          "Enregistré sur l'appareil — en attente de synchronisation",
+        );
+      });
+      expect(onDone).not.toHaveBeenCalled();
+    } finally {
+      if (onLineDescriptor) {
+        Object.defineProperty(window.navigator, 'onLine', onLineDescriptor);
+      }
+    }
   });
 });

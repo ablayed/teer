@@ -76,13 +76,14 @@ export function ProductAdSpendForm({
   onDoneRef.current = onDone;
 
   // La notification du parent ne se déclenche QUE sur un vrai règlement observé via
-  // l'état du hook (synced) ou une mise en file durable (queued) — jamais juste après
-  // l'await de `handleSubmit`, dont la closure resterait sur l'état capturé au moment
-  // du rendu (bug de closure figée déjà écarté dans WeightEditorRow,
+  // l'état du hook — `synced`, jamais `queued` (même règle que `WeightEditorRow`,
   // purchase-lot-detail-panel.tsx : ce composant suit le même `useEffect` plutôt que
-  // de relire `queued.state` juste après l'await).
+  // de relire `queued.state` juste après l'await, pour éviter le bug de closure figée
+  // déjà écarté là-bas). `queued` signifie seulement « posé dans la file IndexedDB
+  // durable », pas confirmé par le serveur — le formulaire doit rester ouvert et
+  // afficher le libellé « en attente de synchronisation » jusqu'au règlement réel.
   useEffect(() => {
-    if (queued.state === 'synced' || queued.state === 'queued') {
+    if (queued.state === 'synced') {
       onDoneRef.current();
     }
   }, [queued.state]);

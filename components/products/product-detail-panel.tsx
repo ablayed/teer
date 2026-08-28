@@ -290,7 +290,7 @@ export function ProductDetailPanel({
             ) : showAdSpendForm ? (
               <div className="space-y-2 rounded-lg border border-border p-3">
                 <ProductAdSpendForm
-                  candidateLots={candidateLots ?? []}
+                  candidateLots={candidateLots ?? undefined}
                   onDone={() => {
                     setShowAdSpendForm(false);
                     setAdSpendMessage('Dépense publicitaire enregistrée.');
