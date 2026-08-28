@@ -306,6 +306,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
       {detailProduct && canManage ? (
         <ProductDetailPanel
           allProducts={products}
+          currentRole={currentRole}
           key={detailProduct.id}
           onClose={() => setDetailProductId(null)}
           product={detailProduct}

@@ -707,3 +707,74 @@ export const createProductAdSpendAction = requireRole('owner')
     revalidatePath('/produits');
     return { ok: true as const, alreadyRecorded: false as const };
   });
+
+// ── AD SPEND — résolution des arrivages candidats depuis la fiche produit (Lot F2) ──
+
+export type ProductAdSpendCandidateLot = { id: string; label: string };
+
+const candidateLotsSchema = z.object({ productId: z.string().uuid() });
+
+// Ouverte depuis la fiche produit (contexte lot inconnu, contrairement à la Fiche
+// arrivage qui connaît déjà son lot) : résout les arrivages RECUS dont ce produit est
+// réellement une ligne — jamais un choix par défaut silencieux si plusieurs candidats
+// existent (règle F2 non négociable, cf. task-6-brief.md). Deux requêtes simples
+// (lignes puis lots) plutôt qu'un embed PostgREST `purchase_lot!inner(...)` avec
+// filtre pointé sur la table imbriquée : aucun appel de ce fichier n'utilise cette
+// syntaxe ailleurs et elle n'a jamais été vérifiée contre ce schéma (migration 0146
+// non poussée, pas de stack pour la tester en direct) — on reste sur le pattern
+// éprouvé de `getPurchaseLotPageData` ci-dessus (.in('purchase_lot_id', lotIds)).
+export const getProductAdSpendCandidateLotsAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.get_ad_spend_candidate_lots', section: 'purchases' })
+  .inputSchema(candidateLotsSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // Le produit confronté à son parent autoritaire (compte + boutique active)
+    // AVANT toute lecture dérivée — motif récurrent du projet.
+    const { data: product } = await admin
+      .from('product')
+      .select('id')
+      .eq('id', parsedInput.productId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+    if (!product) return { ok: false as const, message: 'Produit introuvable.' };
+
+    const { data: lineRows, error: lineErr } = await admin
+      .from('purchase_lot_line')
+      .select('purchase_lot_id')
+      .eq('product_id', parsedInput.productId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
+
+    if (lineErr) return { ok: false as const, message: lineErr.message };
+
+    // Un même lot peut porter deux lignes du même produit (cas légitime du domaine,
+    // cf. commentaire dans createProductAdSpendAction ci-dessus) — dédupliqué ici :
+    // l'arrivage n'apparaît qu'une fois dans le select, jamais en double.
+    const lotIds = Array.from(new Set((lineRows ?? []).map((r) => r.purchase_lot_id)));
+    if (lotIds.length === 0)
+      return { ok: true as const, candidateLots: [] as ProductAdSpendCandidateLot[] };
+
+    const { data: lots, error: lotErr } = await admin
+      .from('purchase_lot')
+      .select('id, supplier_name, received_at')
+      .in('id', lotIds)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .eq('status', 'received')
+      .order('received_at', { ascending: false });
+
+    if (lotErr) return { ok: false as const, message: lotErr.message };
+
+    const candidateLots: ProductAdSpendCandidateLot[] = (lots ?? []).map((l) => ({
+      id: l.id,
+      label: `${l.supplier_name} — ${l.received_at ?? ''}`,
+    }));
+
+    return { ok: true as const, candidateLots };
+  });

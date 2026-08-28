@@ -1,5 +1,6 @@
 'use client';
 
+import { ProductAdSpendForm } from '@/components/purchases/product-ad-spend-form';
 import { Amount } from '@/components/ui/amount';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import { type ExplanationCardRow, computeExplanationTotal } from '@/components/ui/explanation-card';
@@ -117,6 +118,9 @@ export function PurchaseLotDetailPanel({
   const [currentLot, setCurrentLot] = useState(lot);
   const [currentProfitability, setCurrentProfitability] =
     useState<PurchaseLotProfitabilitySummary>(profitability);
+  // Un seul formulaire de dépense publicitaire ouvert à la fois (« un enregistrement
+  // à la fois ») — clé = purchaseLotLineId de la ligne dont le bouton a été cliqué.
+  const [adSpendOpenFor, setAdSpendOpenFor] = useState<string | null>(null);
 
   const refreshProfitability = useCallback(async () => {
     const next = await getPurchaseLotProfitability(lot.id);
@@ -322,44 +326,82 @@ export function PurchaseLotDetailPanel({
           <div className="space-y-2">
             {lines.map((line) => {
               const meta = lineMetaById.get(line.purchaseLotLineId);
+              const isAdSpendOpen = adSpendOpenFor === line.purchaseLotLineId;
               return (
-                <ListCard
-                  key={line.purchaseLotLineId}
-                  title={meta?.productTitle ?? line.productId}
-                  primaryValue={<Amount amountMinor={line.allocatedTransportMinor} />}
-                  secondary={[
-                    {
-                      label: 'Coût de revient rendu',
-                      value: (
-                        <ValueAmount
-                          state={
-                            transportEstimated
-                              ? {
-                                  kind: 'estimated',
-                                  amountMinor: line.landedUnitCostMinor,
-                                  label: missingInputLabel('transport_total'),
-                                }
-                              : { kind: 'confirmed', amountMinor: line.landedUnitCostMinor }
-                          }
-                        />
-                      ),
-                    },
-                    {
-                      label: 'Coût publicitaire / vente',
-                      // `null` ici n'est PAS « pas encore saisi » (ce serait le
-                      // guard `ValueAmount`/`missing` ci-dessus) : c'est un
-                      // ratio non défini (0 vente sur cette ligne, 0/0) — rien
-                      // à nommer comme manquant, juste rien à diviser. D'où un
-                      // tiret simple plutôt que le composant de garde.
-                      value:
-                        line.adSpendPerUnitMinor == null ? (
-                          <span className="text-muted">—</span>
-                        ) : (
-                          <Amount amountMinor={line.adSpendPerUnitMinor} />
+                <div key={line.purchaseLotLineId} className="space-y-2">
+                  <ListCard
+                    title={meta?.productTitle ?? line.productId}
+                    primaryValue={<Amount amountMinor={line.allocatedTransportMinor} />}
+                    secondary={[
+                      {
+                        label: 'Coût de revient rendu',
+                        value: (
+                          <ValueAmount
+                            state={
+                              transportEstimated
+                                ? {
+                                    kind: 'estimated',
+                                    amountMinor: line.landedUnitCostMinor,
+                                    label: missingInputLabel('transport_total'),
+                                  }
+                                : { kind: 'confirmed', amountMinor: line.landedUnitCostMinor }
+                            }
+                          />
                         ),
-                    },
-                  ]}
-                />
+                      },
+                      {
+                        label: 'Coût publicitaire / vente',
+                        // `null` ici n'est PAS « pas encore saisi » (ce serait le
+                        // guard `ValueAmount`/`missing` ci-dessus) : c'est un
+                        // ratio non défini (0 vente sur cette ligne, 0/0) — rien
+                        // à nommer comme manquant, juste rien à diviser. D'où un
+                        // tiret simple plutôt que le composant de garde.
+                        value:
+                          line.adSpendPerUnitMinor == null ? (
+                            <span className="text-muted">—</span>
+                          ) : (
+                            <Amount amountMinor={line.adSpendPerUnitMinor} />
+                          ),
+                      },
+                    ]}
+                  />
+                  {/* Rentabilité déjà ouverte au niveau 2 de divulgation : un
+                      formulaire inline (jamais un 3ᵉ `DetailPanel` imbriqué, cf.
+                      commentaire de `MarginBreakdown` ci-dessus sur les tiroirs
+                      vaul frères non imbriqués dans le DOM). Un seul ouvert à la
+                      fois, piloté par `adSpendOpenFor`. */}
+                  {isAdSpendOpen ? (
+                    <div className="rounded-lg border border-border bg-surface-1 p-3">
+                      <ProductAdSpendForm
+                        productId={line.productId}
+                        productLabel={meta?.productTitle}
+                        lockedPurchaseLotId={currentLot.id}
+                        lockedPurchaseLotLabel={`${currentLot.supplierName} — reçu le ${
+                          currentLot.receivedAt ?? currentLot.orderedAt
+                        }`}
+                        onDone={() => {
+                          setAdSpendOpenFor(null);
+                          void refreshProfitability();
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAdSpendOpenFor(null)}
+                        className="mt-2 min-h-11 text-xs font-medium text-muted underline hover:text-text"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAdSpendOpenFor(line.purchaseLotLineId)}
+                      className="inline-flex min-h-11 items-center rounded-md border border-border bg-surface px-3 text-xs font-medium text-text hover:bg-canvas"
+                    >
+                      + Ajouter une dépense publicitaire
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
