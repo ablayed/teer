@@ -148,14 +148,14 @@ export default async function FinanceFoundationsDemoPage() {
         <section className="mt-10 space-y-4">
           <h2 className="text-lg font-semibold text-text">Portée temporelle</h2>
           <div className="flex flex-wrap items-start gap-4">
-            <div className="w-[220px]">
+            <div className="min-w-[220px]">
               <ScopedMetricCard
                 label="Argent chez le livreur"
                 scope={{ kind: 'balance', asOfLabel: '27 août 2026' }}
                 value={<Amount amountMinor={1_539_116} />}
               />
             </div>
-            <div className="w-[220px]">
+            <div className="min-w-[220px]">
               <ScopedMetricCard
                 label="CA encaissé"
                 scope={{ kind: 'flow', periodLabel: '30 derniers jours' }}
