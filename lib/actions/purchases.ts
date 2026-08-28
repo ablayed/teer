@@ -3,7 +3,10 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { resolveProductInShop } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
-import { isAllocationMethodAvailable } from '@/lib/finance/lot-profitability';
+import {
+  type AllocationMethod,
+  isAllocationMethodAvailable,
+} from '@/lib/finance/lot-profitability';
 import {
   type PurchaseLotProfitabilityRpcResult,
   type PurchaseLotProfitabilitySummary,
@@ -343,6 +346,7 @@ export type PurchaseLotLineData = {
   allocatedFees: number | null;
   landedTotalValue: number | null;
   landedUnitCost: number | null;
+  weightGrams: number | null;
   preview: {
     lineValue: number;
     allocatedFees: number;
@@ -361,6 +365,7 @@ export type PurchaseLotData = {
   eta: string;
   transportTotal: number;
   receivedAt: string | null;
+  allocationMethod: AllocationMethod;
   lines: PurchaseLotLineData[];
 };
 
@@ -453,6 +458,7 @@ export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLo
         allocatedFees: l.allocated_fees,
         landedTotalValue: l.landed_total_value,
         landedUnitCost: l.landed_unit_cost,
+        weightGrams: l.weight_grams,
         preview: previewAlloc ? previewAlloc[i] : null,
       };
     });
@@ -467,6 +473,7 @@ export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLo
       eta,
       transportTotal,
       receivedAt: lot.received_at,
+      allocationMethod: lot.allocation_method as AllocationMethod,
       lines,
     };
   });
