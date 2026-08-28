@@ -48,6 +48,21 @@ describe('mutation-queue', () => {
     unsubscribe();
   });
 
+  it('flush avec un executor qui throw laisse la mutation en file avec lastError', async () => {
+    const record = await enqueueMutation('set_weight', { lineId: 'l1', weightGrams: 500 });
+    await flushMutationQueue({
+      set_weight: async () => {
+        throw new Error('network down');
+      },
+    });
+
+    const remaining = await listQueuedMutations();
+    const found = remaining.find((m) => m.id === record.id);
+    expect(found).toBeDefined();
+    expect(found?.attempts).toBe(1);
+    expect(found?.lastError).toBe('network down');
+  });
+
   it('id explicite (idempotence) : enqueue avec le même id ne crée pas deux entrées', async () => {
     const fixedId = 'fixed-uuid-1';
     await enqueueMutation('create_ad_spend', { amountMinor: 1000 }, fixedId);
