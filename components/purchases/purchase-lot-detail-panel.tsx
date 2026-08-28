@@ -2,13 +2,14 @@
 
 import { Amount } from '@/components/ui/amount';
 import { DetailPanel } from '@/components/ui/detail-panel';
-import { ExplanationCard, type ExplanationCardRow } from '@/components/ui/explanation-card';
+import { type ExplanationCardRow, computeExplanationTotal } from '@/components/ui/explanation-card';
 import { GainLoss } from '@/components/ui/gain-loss';
 import { ListCard } from '@/components/ui/list-card';
 import { ScopedMetricCard } from '@/components/ui/scoped-metric-card';
 import { type MoneyValueState, ValueAmount } from '@/components/ui/value-state';
 import type { PurchaseLotData, PurchaseLotLineData } from '@/lib/actions/purchases';
 import {
+  getPurchaseLotProfitability,
   setPurchaseLotAllocationMethodAction,
   setPurchaseLotLineWeightAction,
 } from '@/lib/actions/purchases';
@@ -17,8 +18,7 @@ import type { PurchaseLotProfitabilitySummary } from '@/lib/finance/lot-profitab
 import { type QueuedActionState, useQueuedAction } from '@/lib/offline/use-queued-action';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const METHOD_LABELS: Record<AllocationMethod, string> = {
   value: 'À la valeur',
@@ -40,6 +40,13 @@ function missingInputLabel(key: string): string {
   return MISSING_INPUT_LABELS[key] ?? key;
 }
 
+// La marge % n'a de sens qu'une fois qu'il existe un CA encaissé au dénominateur —
+// `cashCollectedMinor === 0` n'est pas « marge de 0 % » mais « rien à mesurer
+// encore » (cf. lib/finance/lot-profitability.ts, computeMargin.marginPct).
+// Distinct de MISSING_INPUT_LABELS : ce n'est pas un coût qui manque, c'est
+// l'absence totale de la donnée amont (le CA) dont la marge % dérive.
+const MARGIN_PCT_MISSING_LABEL = 'Pas encore de CA encaissé sur cet arrivage';
+
 function todayLabel(): string {
   return new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
@@ -47,6 +54,45 @@ function todayLabel(): string {
 function periodLabel(lot: PurchaseLotData): string {
   const date = lot.receivedAt ?? lot.orderedAt;
   return `l'arrivage reçu le ${date}`;
+}
+
+/**
+ * Rendu direct des lignes de calcul de la marge, SANS le bouton de divulgation
+ * ni le second `DetailPanel` d'`ExplanationCard` (components/ui/explanation-card.tsx).
+ * Imbriquer un `DetailPanel` (Drawer vaul sur mobile) dans un autre `DetailPanel`
+ * n'utilise pas le mécanisme `Drawer.NestedRoot` de vaul — deux `Drawer.Root`
+ * indépendants portent chacun leur propre verrou de scroll (`usePositionFixed`)
+ * et leur propre calque modal Radix, qui `aria-hide` ses frères DOM (les deux
+ * tiroirs sont portés dans <body>, donc frères, pas imbriqués dans le DOM réel)
+ * — l'un des deux tiroirs se retrouve caché des lecteurs d'écran/hors du piège de
+ * focus. On est déjà au niveau 2 de la divulgation ici (panneau détail de
+ * l'arrivage) : la ligne de calcul de la marge s'affiche donc directement,
+ * jamais derrière un 3ᵉ niveau de tiroir.
+ */
+function MarginBreakdown({
+  rows,
+  totalSentence,
+}: {
+  rows: ExplanationCardRow[];
+  totalSentence: string;
+}) {
+  const total = computeExplanationTotal(rows);
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+      {rows.map((row) => (
+        <div className="flex items-baseline justify-between gap-4" key={row.sentence}>
+          <span className="text-sm text-text">{row.sentence}</span>
+          <ValueAmount className="shrink-0" state={row.state} />
+        </div>
+      ))}
+      <div className="border-t border-border pt-3">
+        <div className="flex items-baseline justify-between gap-4">
+          <span className="text-sm font-semibold text-text">{totalSentence}</span>
+          <ValueAmount className="shrink-0 text-base font-semibold" state={total} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PurchaseLotDetailPanel({
@@ -60,12 +106,53 @@ export function PurchaseLotDetailPanel({
   open: boolean;
   onClose: () => void;
 }) {
-  if (!profitability.ok) {
+  // État local (Paradigm B) : après une écriture réussie (méthode/poids), on relit
+  // la rentabilité FRAÎCHE côté serveur (`getPurchaseLotProfitability`, même fonction
+  // que le RSC) et on l'injecte ici — jamais de `router.refresh()`, dont le
+  // re-render RSC à travers ce composant client est racey en build de prod (cf.
+  // CLAUDE.md, driver-cash-panel.tsx pour le même motif). `currentLot` suit les
+  // mêmes mises à jour optimistes (méthode/poids choisis) car `lot.lines[].weightGrams`
+  // et `lot.allocationMethod` pilotent l'affichage de `AllocationSection`
+  // indépendamment de `profitability`.
+  const [currentLot, setCurrentLot] = useState(lot);
+  const [currentProfitability, setCurrentProfitability] =
+    useState<PurchaseLotProfitabilitySummary>(profitability);
+
+  const refreshProfitability = useCallback(async () => {
+    const next = await getPurchaseLotProfitability(lot.id);
+    setCurrentProfitability(next);
+  }, [lot.id]);
+
+  const handleMethodChanged = useCallback(
+    (method: AllocationMethod) => {
+      setCurrentLot((prev) => ({ ...prev, allocationMethod: method }));
+      void refreshProfitability();
+    },
+    [refreshProfitability],
+  );
+
+  const handleWeightSaved = useCallback(
+    (lineId: string, weightGrams: number | null) => {
+      setCurrentLot((prev) => ({
+        ...prev,
+        lines: prev.lines.map((l) => (l.id === lineId ? { ...l, weightGrams } : l)),
+      }));
+      void refreshProfitability();
+    },
+    [refreshProfitability],
+  );
+
+  if (!currentProfitability.ok) {
     return (
-      <DetailPanel closeLabel="Fermer" open={open} title={lot.supplierName} onClose={onClose}>
+      <DetailPanel
+        closeLabel="Fermer"
+        open={open}
+        title={currentLot.supplierName}
+        onClose={onClose}
+      >
         <div className="space-y-3 p-4">
           <p className="text-sm text-muted">
-            {profitability.reason === 'not_found'
+            {currentProfitability.reason === 'not_found'
               ? "Arrivage introuvable. La rentabilité n'a pas pu être calculée."
               : 'Rentabilité indisponible pour le moment. Réessayez plus tard.'}
           </p>
@@ -73,26 +160,41 @@ export function PurchaseLotDetailPanel({
               la répartition du transport — les deux gestes sont indépendants
               (la RPC de lecture peut être en panne pendant que les écritures
               restent disponibles). */}
-          <AllocationSection lot={lot} currentMethod={lot.allocationMethod} />
+          <AllocationSection
+            lot={currentLot}
+            currentMethod={currentLot.allocationMethod}
+            onMethodChanged={handleMethodChanged}
+            onWeightSaved={handleWeightSaved}
+          />
         </div>
       </DetailPanel>
     );
   }
 
-  if (!profitability.allocationMethodAvailable) {
+  if (!currentProfitability.allocationMethodAvailable) {
     return (
-      <DetailPanel closeLabel="Fermer" open={open} title={lot.supplierName} onClose={onClose}>
+      <DetailPanel
+        closeLabel="Fermer"
+        open={open}
+        title={currentLot.supplierName}
+        onClose={onClose}
+      >
         <div className="space-y-3 p-4">
           <p className="text-sm text-warning">
             Répartition au poids indisponible : au moins une ligne n'a pas de poids renseigné.
           </p>
-          <AllocationSection lot={lot} currentMethod={profitability.allocationMethod} />
+          <AllocationSection
+            lot={currentLot}
+            currentMethod={currentProfitability.allocationMethod}
+            onMethodChanged={handleMethodChanged}
+            onWeightSaved={handleWeightSaved}
+          />
         </div>
       </DetailPanel>
     );
   }
 
-  const { totals, lines } = profitability;
+  const { totals, lines } = currentProfitability;
   const transportEstimated = totals.missingInputs.includes('transport_total');
   const adSpendEstimated = totals.missingInputs.includes('ad_spend');
 
@@ -122,13 +224,15 @@ export function PurchaseLotDetailPanel({
     { sentence: 'La publicité vous a coûté', sign: 'subtract', state: adSpendState },
   ];
 
-  const lineMetaById = new Map(lot.lines.map((l) => [l.id, l]));
+  const lineMetaById = new Map(currentLot.lines.map((l) => [l.id, l]));
+
+  const marginPctMissing = totals.cashCollectedMinor === 0;
 
   return (
     <DetailPanel
       closeLabel="Fermer"
       open={open}
-      title={`Rentabilité — ${lot.supplierName}`}
+      title={`Rentabilité — ${currentLot.supplierName}`}
       onClose={onClose}
     >
       <div className="space-y-4 p-4">
@@ -136,12 +240,13 @@ export function PurchaseLotDetailPanel({
           amountMinor={totals.marginMinor}
           labels={{ gain: 'Marge', loss: 'Marge', neutral: 'Marge nulle' }}
         />
-        <ExplanationCard
-          label="Marge"
-          rows={marginRows}
-          scope={{ kind: 'flow', periodLabel: periodLabel(lot) }}
-          totalSentence="Marge de l'arrivage"
-        />
+        <div className="space-y-2">
+          <div>
+            <p className="text-sm font-medium text-muted">Marge</p>
+            <p className="text-xs text-muted">Sur {periodLabel(currentLot)}</p>
+          </div>
+          <MarginBreakdown rows={marginRows} totalSentence="Marge de l'arrivage" />
+        </div>
         {!totals.complete && (
           <p className="text-xs text-warning">
             Marge provisoire — en attente de :{' '}
@@ -152,26 +257,33 @@ export function PurchaseLotDetailPanel({
         <div className="grid grid-cols-2 gap-3">
           <ScopedMetricCard
             label="CA encaissé"
-            scope={{ kind: 'flow', periodLabel: periodLabel(lot) }}
+            scope={{ kind: 'flow', periodLabel: periodLabel(currentLot) }}
             value={<Amount amountMinor={totals.cashCollectedMinor} />}
           />
           <ScopedMetricCard
             label="Coût de revient des vendus"
-            scope={{ kind: 'flow', periodLabel: periodLabel(lot) }}
+            scope={{ kind: 'flow', periodLabel: periodLabel(currentLot) }}
             value={<ValueAmount className="text-2xl font-semibold" state={costOfSoldState} />}
           />
           <ScopedMetricCard
             label="Dépenses publicitaires"
-            scope={{ kind: 'flow', periodLabel: periodLabel(lot) }}
+            scope={{ kind: 'flow', periodLabel: periodLabel(currentLot) }}
             value={<ValueAmount className="text-2xl font-semibold" state={adSpendState} />}
           />
           <ScopedMetricCard
             label="Marge %"
-            scope={{ kind: 'flow', periodLabel: periodLabel(lot) }}
+            scope={{ kind: 'flow', periodLabel: periodLabel(currentLot) }}
             value={
-              <span className={cn('text-2xl font-semibold', !totals.complete && 'text-warning')}>
-                {(totals.marginPct * 100).toFixed(1)} %
-              </span>
+              marginPctMissing ? (
+                <ValueAmount
+                  className="text-2xl font-semibold"
+                  state={{ kind: 'missing', label: MARGIN_PCT_MISSING_LABEL }}
+                />
+              ) : (
+                <span className={cn('text-2xl font-semibold', !totals.complete && 'text-warning')}>
+                  {(totals.marginPct * 100).toFixed(1)} %
+                </span>
+              )
             }
           />
         </div>
@@ -201,7 +313,12 @@ export function PurchaseLotDetailPanel({
 
         <section className="space-y-2">
           <p className="text-sm font-medium text-text">Répartition par produit</p>
-          <AllocationSection lot={lot} currentMethod={profitability.allocationMethod} />
+          <AllocationSection
+            lot={currentLot}
+            currentMethod={currentProfitability.allocationMethod}
+            onMethodChanged={handleMethodChanged}
+            onWeightSaved={handleWeightSaved}
+          />
           <div className="space-y-2">
             {lines.map((line) => {
               const meta = lineMetaById.get(line.purchaseLotLineId);
@@ -257,14 +374,18 @@ export function PurchaseLotDetailPanel({
 function AllocationSection({
   lot,
   currentMethod,
+  onMethodChanged,
+  onWeightSaved,
 }: {
   lot: PurchaseLotData;
   currentMethod: AllocationMethod;
+  onMethodChanged: (method: AllocationMethod) => void;
+  onWeightSaved: (lineId: string, weightGrams: number | null) => void;
 }) {
   return (
     <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
-      <MethodSelector lot={lot} currentMethod={currentMethod} />
-      <WeightEditor lot={lot} />
+      <MethodSelector lot={lot} currentMethod={currentMethod} onMethodChanged={onMethodChanged} />
+      <WeightEditor lot={lot} onWeightSaved={onWeightSaved} />
     </div>
   );
 }
@@ -272,11 +393,12 @@ function AllocationSection({
 function MethodSelector({
   lot,
   currentMethod,
+  onMethodChanged,
 }: {
   lot: PurchaseLotData;
   currentMethod: AllocationMethod;
+  onMethodChanged: (method: AllocationMethod) => void;
 }) {
-  const router = useRouter();
   const setMethod = useAction(setPurchaseLotAllocationMethodAction);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -296,11 +418,11 @@ function MethodSelector({
       setFeedback(res?.data?.message ?? 'Erreur.');
       return;
     }
-    // `revalidatePath` (côté serveur, dans l'action) invalide le cache RSC mais
-    // ne force pas ce client à le refetch tant qu'aucune navigation ne se
-    // produit — sans ce refresh, le bouton sélectionné resterait visuellement
-    // sur l'ancienne méthode malgré une écriture réussie (constaté en vérification manuelle).
-    router.refresh();
+    // Paradigm B : le parent relit la rentabilité fraîche côté serveur et met à
+    // jour son état local — jamais de `router.refresh()` (Router Cache racey en
+    // build de prod, cf. CLAUDE.md). La méthode elle-même est connue ici sans
+    // relecture (c'est la valeur qu'on vient d'écrire).
+    onMethodChanged(method);
   }
 
   return (
@@ -345,13 +467,19 @@ function MethodSelector({
   );
 }
 
-function WeightEditor({ lot }: { lot: PurchaseLotData }) {
+function WeightEditor({
+  lot,
+  onWeightSaved,
+}: {
+  lot: PurchaseLotData;
+  onWeightSaved: (lineId: string, weightGrams: number | null) => void;
+}) {
   return (
     <div className="space-y-2 border-t border-border pt-2">
       <p className="text-xs font-medium text-muted">Poids par ligne (grammes)</p>
       <div className="space-y-2">
         {lot.lines.map((line) => (
-          <WeightEditorRow key={line.id} lot={lot} line={line} />
+          <WeightEditorRow key={line.id} lot={lot} line={line} onWeightSaved={onWeightSaved} />
         ))}
       </div>
     </div>
@@ -361,14 +489,46 @@ function WeightEditor({ lot }: { lot: PurchaseLotData }) {
 const WEIGHT_BUTTON_LABEL: Record<QueuedActionState, string> = {
   idle: 'Enregistrer',
   saving: 'Enregistrement…',
-  queued: 'En attente de connexion',
+  queued: "Enregistré sur l'appareil — en attente de synchronisation",
   synced: 'Enregistré',
   error: 'Réessayer',
 };
 
-function WeightEditorRow({ lot, line }: { lot: PurchaseLotData; line: PurchaseLotLineData }) {
-  const router = useRouter();
-  const [value, setValue] = useState(line.weightGrams != null ? String(line.weightGrams) : '');
+// Nombre entier positif ou vide (poids non renseigné) — même règle de validation
+// que handleSave, mais séparée pour piloter l'état visuel au blur sans
+// déclencher d'enregistrement (cf. commentaire sur handleBlur ci-dessous).
+// `undefined` = invalide, `null` = vide (poids effacé), `number` = valeur saisie.
+function parseWeightInput(raw: string): number | null | undefined {
+  if (raw.trim() === '') {
+    return null;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return !Number.isFinite(parsed) || parsed < 0 ? undefined : parsed;
+}
+
+function WeightEditorRow({
+  lot,
+  line,
+  onWeightSaved,
+}: {
+  lot: PurchaseLotData;
+  line: PurchaseLotLineData;
+  onWeightSaved: (lineId: string, weightGrams: number | null) => void;
+}) {
+  const initialValue = line.weightGrams != null ? String(line.weightGrams) : '';
+  const [value, setValue] = useState(initialValue);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  // Dernière valeur texte réellement soumise (enregistrée ou en cours
+  // d'enregistrement) — sert à rendre `handleSave` idempotent sur une valeur
+  // inchangée (cf. garde double-soumission ci-dessous), jamais à piloter l'affichage.
+  const lastSubmittedRef = useRef(initialValue);
+  // Poids associé à la dernière soumission — capturé au moment du `submit`,
+  // relu par l'effet `synced` ci-dessous (la saisie peut avoir changé entre
+  // temps, `pendingWeightRef` ne bouge pas avec elle).
+  const pendingWeightRef = useRef<number | null>(line.weightGrams);
+  const onWeightSavedRef = useRef(onWeightSaved);
+  onWeightSavedRef.current = onWeightSaved;
+
   const weightAction = useQueuedAction(
     'set_purchase_lot_line_weight',
     async (input: { lotId: string; lineId: string; weightGrams: number | null }) => {
@@ -380,21 +540,44 @@ function WeightEditorRow({ lot, line }: { lot: PurchaseLotData; line: PurchaseLo
     },
   );
 
-  // Un `synced` réel (mutation réglée, jamais juste « tentative envoyée ») doit
-  // rafraîchir les données serveur affichées ailleurs dans le panneau (ex. la
-  // disponibilité de la méthode « au poids ») — `revalidatePath` côté serveur
-  // n'entraîne pas seul un refetch client sans navigation.
+  // Un `synced` réel (mutation réglée, jamais juste « tentative envoyée ») met à
+  // jour l'état du parent (Paradigm B) — jamais `router.refresh()`, qui
+  // n'entraîne pas de refetch client sans navigation et est racey en build de
+  // prod (cf. CLAUDE.md, driver-cash-panel.tsx pour le même motif).
   useEffect(() => {
     if (weightAction.state === 'synced') {
-      router.refresh();
+      onWeightSavedRef.current(line.id, pendingWeightRef.current);
     }
-  }, [weightAction.state, router]);
+  }, [weightAction.state, line.id]);
+
+  // Validation à la sortie du champ, jamais soumission : le poids ne s'enregistre
+  // que sur un clic explicite sur le bouton (exigence F2 — pas d'autosave sur
+  // blur). Un blur avec valeur invalide ou inchangée ne fait donc RIEN d'autre
+  // qu'annoncer l'état de validation ; ça évite aussi le double-envoi qui
+  // existait quand le clic sur le bouton (qui blur d'abord le champ) déclenchait
+  // handleSave deux fois pour un seul geste utilisateur.
+  function handleBlur() {
+    const parsed = parseWeightInput(value);
+    setValidationError(
+      parsed === undefined ? 'Poids invalide : entier positif ou champ vide attendu.' : null,
+    );
+  }
 
   async function handleSave() {
-    const parsed = value.trim() === '' ? null : Number.parseInt(value, 10);
-    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
+    const parsed = parseWeightInput(value);
+    if (parsed === undefined) {
+      setValidationError('Poids invalide : entier positif ou champ vide attendu.');
       return;
     }
+    setValidationError(null);
+    if (value === lastSubmittedRef.current) {
+      // Valeur inchangée depuis le dernier enregistrement — pas de mutation à
+      // rejouer (évite le double-envoi bouton+blur et le tab-through sans
+      // modification).
+      return;
+    }
+    lastSubmittedRef.current = value;
+    pendingWeightRef.current = parsed;
     await weightAction.submit({ lotId: lot.id, lineId: line.id, weightGrams: parsed });
   }
 
@@ -410,7 +593,7 @@ function WeightEditorRow({ lot, line }: { lot: PurchaseLotData; line: PurchaseLo
           min={0}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onBlur={handleSave}
+          onBlur={handleBlur}
           className="min-h-11 w-28 min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-sm tabular-nums"
         />
         <button
@@ -422,6 +605,11 @@ function WeightEditorRow({ lot, line }: { lot: PurchaseLotData; line: PurchaseLo
           {WEIGHT_BUTTON_LABEL[weightAction.state]}
         </button>
       </div>
+      {validationError && (
+        <p className="text-xs text-danger" role="alert">
+          {validationError}
+        </p>
+      )}
       {weightAction.state === 'error' && weightAction.errorMessage && (
         <p className="text-xs text-danger" role="alert">
           {weightAction.errorMessage}
