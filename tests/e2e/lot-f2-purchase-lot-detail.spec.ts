@@ -448,16 +448,14 @@ for (const viewport of [
         await signIn(page, fixture.email, '/produits?tab=achats');
         await openLotProfitabilityPanel(page, 'Fournisseur F2 E2E');
 
-        // Contrôle de référence exact (89 360 F / 21,9 %) : le texte réel affiché
-        // par le composant (`(marginPct*100).toFixed(1)`) n'est PAS localisé
-        // (point décimal anglais, pas la virgule française du chiffre attesté
-        // dans CLAUDE.md/la spec) — on calcule donc le libellé exact attendu
-        // avec la MÊME formule que le composant plutôt que de coder en dur
-        // "21,9" ou "21.9" au hasard. Constat à noter dans le rapport Task 8,
-        // pas un bug à corriger dans ce lot (tests uniquement).
+        // Contrôle de référence exact (89 360 F / 21,9 %) : le composant formate
+        // désormais le pourcentage en fr-FR (`formatPercentFr`, virgule décimale) —
+        // corrigé (revue finale, ce n'était PAS localisé auparavant, point anglais).
+        // On calcule le libellé exact attendu avec la MÊME formule que le
+        // composant plutôt que de coder en dur "21,9" à la main.
         const marginMinor = 89_360;
         const cashCollectedMinor = 408_000;
-        const marginPctLabel = `${((marginMinor / cashCollectedMinor) * 100).toFixed(1)} %`;
+        const marginPctLabel = `${((marginMinor / cashCollectedMinor) * 100).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
 
         const bodyText = await page.locator('body').innerText();
         expect(bodyText).toContain(formatMoney(marginMinor));
@@ -517,10 +515,17 @@ test.describe('Lot F2 — fiche arrivage (412px)', () => {
       await signIn(page, fixture.email, '/produits?tab=achats');
       await openLotProfitabilityPanel(page, 'Fournisseur F2 Provisoire');
 
-      await expect(page.getByText(/Marge provisoire — en attente de/)).toBeVisible();
-      await expect(page.locator('[data-testid="value-state-estimated"]').first()).toBeVisible();
-      await expect(page.locator('[data-testid="value-state-missing"]').first()).toBeVisible();
-      await expect(page.getByText('Pas encore de CA encaissé sur cet arrivage')).toBeVisible();
+      // Scopé au panneau détail (aria-label = son titre, posé par vaul/Radix sur
+      // mobile et le `<dialog aria-label>` sur desktop) : depuis le correctif Lot F2
+      // qui réutilise `ValueAmount`/`MARGIN_PCT_MISSING_LABEL` dans la carte LISTE
+      // (purchase-lots-view.tsx) pour rester cohérent avec ce panneau détail, le
+      // même libellé apparaît maintenant DEUX fois sur cet écran (carte + panneau)
+      // — un `getByText` non scopé casse en "strict mode violation".
+      const panel = page.getByLabel('Rentabilité — Fournisseur F2 Provisoire');
+      await expect(panel.getByText(/Marge provisoire — en attente de/)).toBeVisible();
+      await expect(panel.locator('[data-testid="value-state-estimated"]').first()).toBeVisible();
+      await expect(panel.locator('[data-testid="value-state-missing"]').first()).toBeVisible();
+      await expect(panel.getByText('Pas encore de CA encaissé sur cet arrivage')).toBeVisible();
 
       await noOverflowAssertions(page, 412)();
     } finally {

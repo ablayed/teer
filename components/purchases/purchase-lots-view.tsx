@@ -1,7 +1,11 @@
 'use client';
 
-import { PurchaseLotDetailPanel } from '@/components/purchases/purchase-lot-detail-panel';
+import {
+  MARGIN_PCT_MISSING_LABEL,
+  PurchaseLotDetailPanel,
+} from '@/components/purchases/purchase-lot-detail-panel';
 import { GainLoss } from '@/components/ui/gain-loss';
+import { ValueAmount } from '@/components/ui/value-state';
 import { type ProductCatalogItem, createProductAction } from '@/lib/actions/products';
 import {
   type PurchaseLotData,
@@ -14,6 +18,7 @@ import {
 } from '@/lib/actions/purchases';
 import type { PurchaseLotProfitabilitySummary } from '@/lib/finance/lot-profitability-assembly';
 import { formatMoney } from '@/lib/format/fcfa';
+import { formatPercentFr } from '@/lib/format/percent';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -257,15 +262,16 @@ function LotCard({
                   simple tiret plutôt qu'un pourcentage confiant mais faux, dès cette
                   carte liste vue avant le panneau détail. */}
               {profitability.totals.cashCollectedMinor === 0 ? (
-                <span className="text-sm text-muted-foreground">
-                  — <span className="text-xs">(pas encore de CA encaissé)</span>
-                </span>
+                <ValueAmount
+                  className="text-sm"
+                  state={{ kind: 'missing', label: MARGIN_PCT_MISSING_LABEL }}
+                />
               ) : (
-                <span className="text-sm text-muted-foreground">
-                  {(profitability.totals.marginPct * 100).toFixed(1)} %
+                <span className="text-sm text-muted">
+                  {formatPercentFr(profitability.totals.marginPct)} %
                 </span>
               )}
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-muted">
                 {profitability.totals.qtySold} / {profitability.totals.qtyReceived} vendus
               </span>
               {!profitability.totals.complete && (
@@ -279,7 +285,7 @@ function LotCard({
             </p>
           )}
           {!profitability.ok && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted">
               {profitability.reason === 'not_found'
                 ? 'Rentabilité indisponible.'
                 : 'Rentabilité indisponible pour le moment.'}

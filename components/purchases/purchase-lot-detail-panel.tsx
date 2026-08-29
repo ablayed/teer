@@ -16,6 +16,7 @@ import {
 } from '@/lib/actions/purchases';
 import type { AllocationMethod } from '@/lib/finance/lot-profitability';
 import type { PurchaseLotProfitabilitySummary } from '@/lib/finance/lot-profitability-assembly';
+import { formatPercentFr } from '@/lib/format/percent';
 import { type QueuedActionState, useQueuedAction } from '@/lib/offline/use-queued-action';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
@@ -46,7 +47,10 @@ function missingInputLabel(key: string): string {
 // encore » (cf. lib/finance/lot-profitability.ts, computeMargin.marginPct).
 // Distinct de MISSING_INPUT_LABELS : ce n'est pas un coût qui manque, c'est
 // l'absence totale de la donnée amont (le CA) dont la marge % dérive.
-const MARGIN_PCT_MISSING_LABEL = 'Pas encore de CA encaissé sur cet arrivage';
+// Exporté pour que `purchase-lots-view.tsx` (carte liste) affiche EXACTEMENT le
+// même libellé que ce panneau détail pour le même état — cf. lexique
+// (docs/lexique-microcopie.md).
+export const MARGIN_PCT_MISSING_LABEL = 'Pas encore de CA encaissé sur cet arrivage';
 
 function todayLabel(): string {
   return new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -285,7 +289,7 @@ export function PurchaseLotDetailPanel({
                 />
               ) : (
                 <span className={cn('text-2xl font-semibold', !totals.complete && 'text-warning')}>
-                  {(totals.marginPct * 100).toFixed(1)} %
+                  {formatPercentFr(totals.marginPct)} %
                 </span>
               )
             }

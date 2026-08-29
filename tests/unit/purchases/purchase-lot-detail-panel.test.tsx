@@ -205,7 +205,9 @@ describe('PurchaseLotDetailPanel — branche succès (ok:true, allocationMethodA
     expect(screen.getByText('Coût de revient des vendus')).toBeTruthy();
     expect(screen.getByText('Dépenses publicitaires')).toBeTruthy();
     expect(screen.getByText('Marge %')).toBeTruthy();
-    expect(screen.getByText('43.9 %')).toBeTruthy();
+    // Localisé fr-FR (virgule décimale) — correctif revue finale, pas
+    // `toFixed(1)` (point anglais).
+    expect(screen.getByText('43,9 %')).toBeTruthy();
 
     // Invendu et avancement des ventes.
     expect(screen.getByText('Invendu')).toBeTruthy();
