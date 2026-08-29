@@ -12,17 +12,16 @@
 // contrôle de référence chiffré (89 360 F / 21,9 %, arrivage du 27 avril) plutôt
 // qu'un scénario simplifié — c'est la preuve n°1 exigée par la spec F2.
 //
-// GAP CONNU (voir aussi le rapport Task 8) : `initMutationQueueAutoFlush`
-// (lib/offline/mutation-queue.ts) n'est appelé nulle part dans l'app (grep sur
-// app/, components/, lib/ — zéro site d'appel hors sa propre définition, un
-// commentaire dans use-queued-action.ts, et le document de plan). Aucun listener
-// `online` n'est donc jamais posé en conditions réelles : le retour réseau seul
-// ne relance PAS le flush. Le test « file durable hors-ligne » ci-dessous
-// n'affirme donc PAS une reprise automatique (qui n'existe pas dans l'app
-// aujourd'hui) — il prouve la durabilité IndexedDB réelle (survit à un
-// `page.reload()`) et l'absence de double-application quand l'utilisateur relance
-// l'enregistrement après être revenu en ligne (le seul chemin de résolution
-// réellement câblé).
+// GAP CORRIGÉ (voir aussi le rapport Task 8) : `initMutationQueueAutoFlush`
+// (lib/offline/mutation-queue.ts) est désormais monté globalement via
+// `components/offline/mutation-queue-provider.tsx` (`app/(app)/layout.tsx`,
+// même convention que `AnalyticsProvider`). Un listener `online` est donc posé
+// pour toute session authentifiée, ET une tentative de flush immédiate a lieu
+// au montage (rattrape une mutation laissée par une session précédente, y
+// compris juste après un `page.reload()` en ligne). Le test « file durable
+// hors-ligne » ci-dessous prouve : la durabilité IndexedDB réelle (survit à un
+// `page.reload()`), PUIS la reprise automatique réelle (sans aucune ressaisie
+// utilisateur) dès que le réseau redevient disponible.
 
 import { formatMoney } from '@/lib/format/fcfa';
 import { type Page, expect, test } from '@playwright/test';
@@ -613,55 +612,51 @@ test.describe('Lot F2 — file durable hors-ligne', () => {
       await page.reload();
       await openLotProfitabilityPanel(page, 'Fournisseur F2 Offline');
 
-      const queuedAfterReload = await page.evaluate(
-        () =>
-          new Promise<number>((resolve, reject) => {
-            const request = indexedDB.open('teer-mutation-queue');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              const db = request.result;
-              const tx = db.transaction('mutations', 'readonly');
-              const countReq = tx.objectStore('mutations').count();
-              countReq.onsuccess = () => resolve(countReq.result);
-              countReq.onerror = () => reject(countReq.error);
-            };
-          }),
-      );
-      expect(queuedAfterReload).toBeGreaterThan(0);
+      // Reprise automatique réelle : `MutationQueueProvider` (monté globalement
+      // dans `app/(app)/layout.tsx`, cf. en-tête de fichier) tente un flush dès
+      // son montage — donc à CE reload, réseau désormais disponible — sans
+      // aucune ressaisie utilisateur. On ne fige pas le nombre exact d'entrées
+      // en file juste après le reload (le flush est une vraie requête réseau
+      // vers le serveur, sa durée n'est pas déterministe) : la preuve porte sur
+      // l'état final — le serveur reçoit la valeur posée PENDANT la coupure et
+      // la file se vide, ce qui n'est possible que si l'enregistrement a bien
+      // survécu au reload (durabilité IndexedDB) puis a été rejoué tout seul.
+      await expect
+        .poll(
+          async () => {
+            const { data } = await fixture.admin
+              .from('purchase_lot_line')
+              .select('weight_grams')
+              .eq('id', purchaseLotLineId)
+              .single();
+            return data?.weight_grams ?? null;
+          },
+          { timeout: 15_000, intervals: [200, 400, 800, 1500] },
+        )
+        .toBe(1500);
 
-      // Le composant réaffiche l'état repos (IndexedDB persiste, l'état React
-      // du composant non — gap documenté en tête de fichier) : l'entrée
-      // enregistrée reste vide côté UI puisque `weight_grams` n'a jamais été
-      // synchronisé côté serveur.
-      const weightInputAfterReload = page.locator(`#weight-${purchaseLotLineId}`);
-      await expect(weightInputAfterReload).toHaveValue('');
-
-      await context.setOffline(false);
-
-      // Seul chemin de résolution réellement câblé aujourd'hui : l'utilisateur
-      // relance l'enregistrement lui-même. `flushMutationQueue` (déclenché par
-      // ce nouveau `submit`) traite AUSSI l'entrée restée en file depuis avant
-      // le reload (même `kind`) — la valeur ré-appliquée est identique, donc
-      // idempotente en effet malgré deux enregistrements distincts en file.
-      const saveButtonAfterReload = weightInputAfterReload.locator(
-        'xpath=following-sibling::button[1]',
-      );
-      await weightInputAfterReload.click({ clickCount: 3 });
-      await weightInputAfterReload.pressSequentially('1500');
-      await expect(weightInputAfterReload).toHaveValue('1500');
-      await saveButtonAfterReload.click();
-      await expect(saveButtonAfterReload).toHaveText('Enregistré', { timeout: 15_000 });
-
-      // Valeur finale unique et cohérente avec la saisie -- pas de double
-      // application (l'écriture est une mise à jour de colonne, pas un append :
-      // deux applications de la MÊME valeur laissent un état identique à une
-      // seule).
-      const { data: finalRow } = await fixture.admin
-        .from('purchase_lot_line')
-        .select('weight_grams')
-        .eq('id', purchaseLotLineId)
-        .single();
-      expect(finalRow?.weight_grams).toBe(1500);
+      // Réglée (ok:true) -> supprimée de la file durable, jamais laissée en
+      // doublon derrière un second passage de flush (form-level ou global).
+      // `withStore('readwrite', delete)` (mutation-queue.ts) s'exécute APRÈS que
+      // le serveur ait confirmé l'écriture (poll ci-dessus) : une courte fenêtre
+      // sépare les deux, d'où un `expect.poll` ici aussi plutôt qu'une lecture
+      // ponctuelle qui pourrait courir plus vite que cette suppression.
+      const readQueuedCount = () =>
+        page.evaluate(
+          () =>
+            new Promise<number>((resolve, reject) => {
+              const request = indexedDB.open('teer-mutation-queue');
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => {
+                const db = request.result;
+                const tx = db.transaction('mutations', 'readonly');
+                const countReq = tx.objectStore('mutations').count();
+                countReq.onsuccess = () => resolve(countReq.result);
+                countReq.onerror = () => reject(countReq.error);
+              };
+            }),
+        );
+      await expect.poll(readQueuedCount, { timeout: 5_000, intervals: [100, 200, 400] }).toBe(0);
     } finally {
       await context.setOffline(false);
       await cleanupUsers(fixture.admin, fixture.userIds);

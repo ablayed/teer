@@ -1,6 +1,7 @@
 import { AnalyticsProvider } from '@/components/analytics-provider';
 import { AppShell } from '@/components/app-shell/app-shell';
 import { IdleTimeout } from '@/components/auth/idle-timeout';
+import { MutationQueueProvider } from '@/components/offline/mutation-queue-provider';
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
@@ -104,6 +105,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <NuqsAdapter>
         <AnalyticsProvider />
         <ServiceWorkerRegister />
+        <MutationQueueProvider />
         <IdleTimeout timeoutMs={idleTimeoutMs} warningMs={idleWarningMs} />
         <AppShell currentRole={currentStore.role} currentStore={currentStore} stores={stores}>
           {children}
