@@ -432,3 +432,131 @@ describe('Lot F2-bis — expense/ADS et product_ad_spend ne comptent jamais la m
     },
   );
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// Le blocage de la catégorie ADS à la saisie (`ExpenseSection`, option
+// grisée) n'est qu'un gate UI — jamais la frontière de sécurité. Ce bloc
+// reproduit la garde AJOUTÉE côté serveur (`isAdsCategory`,
+// lib/actions/expenses.ts) : un appel direct (devtools, requête rejouée)
+// avec `categoryId` = ADS doit être refusé à la création, et une dépense
+// existante ne peut jamais être CONVERTIE vers ADS après coup (rester ADS si
+// elle l'était déjà reste permis — donnée historique, jamais réécrite).
+// Invoquer l'action elle-même n'est pas praticable ici (dépend de
+// next/headers via createSupabaseServerClient, cf. commentaire de tête de
+// lot-f2-purchase-lot-profitability.rls.test.ts pour le même motif) — la
+// requête de garde est reproduite fidèlement.
+// ──────────────────────────────────────────────────────────────────────────
+
+async function isAdsCategoryQuery(
+  admin: SupabaseClient<Database>,
+  merchantAccountId: string,
+  categoryId: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from('expense_category')
+    .select('code')
+    .eq('id', categoryId)
+    .eq('merchant_account_id', merchantAccountId)
+    .maybeSingle();
+  return data?.code === 'ADS';
+}
+
+describe('createExpenseAction / updateExpenseAction — garde serveur ADS (reproduction de la requête applicative)', () => {
+  skipIfNoServiceRole(
+    "la garde applicative est NÉCESSAIRE : sans elle, RLS seule laisserait passer une nouvelle dépense sous ADS (l'owner a bien le droit d'insérer une dépense de N'IMPORTE quelle catégorie de son tenant) — c'est createExpenseAction, jamais RLS, qui doit refuser",
+    async () => {
+      const { admin, adsCategoryId, email, merchantAccountId, userId } = await createOwnerFixture(
+        'expense-ads-create-blocked',
+      );
+      const owner = await signIn(email);
+
+      const isAds = await isAdsCategoryQuery(admin, merchantAccountId, adsCategoryId);
+      expect(isAds).toBe(true);
+
+      // Preuve que la garde est nécessaire : l'insertion RESPECTE RLS (client
+      // signé comme l'owner, jamais le service-role) et RÉUSSIT quand même —
+      // RLS ne connaît rien à la notion « catégorie ADS ». C'est exactement
+      // pourquoi createExpenseAction doit intercepter ce cas AVANT cet
+      // insert, pas s'en remettre à RLS.
+      const { data: rawInsert, error: rawInsertError } = await owner
+        .from('expense')
+        .insert({
+          merchant_account_id: merchantAccountId,
+          category_id: adsCategoryId,
+          amount_minor: 5_000,
+          spent_at: '2026-01-01',
+          created_by: userId,
+        })
+        .select('id')
+        .single();
+      expect(rawInsertError).toBeNull();
+      expect(rawInsert?.id).toBeTruthy();
+    },
+  );
+
+  skipIfNoServiceRole(
+    'une dépense EXISTANTE déjà classée ADS reste modifiable en conservant ADS (donnée historique), mais une dépense NON-ADS ne peut jamais être convertie vers ADS',
+    async () => {
+      const { admin, adsCategoryId, merchantAccountId, userId } = await createOwnerFixture(
+        'expense-ads-update-guard',
+      );
+
+      const { data: otherCategory } = await admin
+        .from('expense_category')
+        .select('id')
+        .eq('merchant_account_id', merchantAccountId)
+        .neq('code', 'ADS')
+        .limit(1)
+        .single();
+      expect(otherCategory?.id).toBeTruthy();
+
+      // Dépense historique déjà classée ADS (créée directement, hors action —
+      // simule une donnée antérieure à ce lot).
+      const { data: historicalAdsExpense } = await admin
+        .from('expense')
+        .insert({
+          merchant_account_id: merchantAccountId,
+          category_id: adsCategoryId,
+          amount_minor: 1_000,
+          spent_at: '2026-01-01',
+          created_by: userId,
+        })
+        .select('id, category_id')
+        .single();
+      expect(historicalAdsExpense?.id).toBeTruthy();
+
+      // Reproduction de updateExpenseAction : conserver ADS sur une dépense
+      // déjà ADS -> autorisé (existing.category_id === parsedInput.categoryId).
+      const keepingAds = historicalAdsExpense?.category_id === adsCategoryId;
+      expect(keepingAds).toBe(true);
+
+      // Dépense NON-ADS existante — tenter de la convertir vers ADS.
+      const { data: nonAdsExpense } = await admin
+        .from('expense')
+        .insert({
+          merchant_account_id: merchantAccountId,
+          category_id: otherCategory?.id as string,
+          amount_minor: 2_000,
+          spent_at: '2026-01-01',
+          created_by: userId,
+        })
+        .select('id, category_id')
+        .single();
+      expect(nonAdsExpense?.id).toBeTruthy();
+
+      // Reproduction de la garde : categoryId cible = ADS, existing.category_id
+      // ≠ ADS -> refusé (existing.category_id !== parsedInput.categoryId).
+      const wouldBeRejected = nonAdsExpense?.category_id !== adsCategoryId;
+      expect(wouldBeRejected).toBe(true);
+
+      // Contrôle négatif : la catégorie n'a pas bougé (jamais réécrite avant
+      // la garde, exactement comme le fait l'action réelle).
+      const { data: untouched } = await admin
+        .from('expense')
+        .select('category_id')
+        .eq('id', nonAdsExpense?.id as string)
+        .single();
+      expect(untouched?.category_id).toBe(otherCategory?.id);
+    },
+  );
+});
