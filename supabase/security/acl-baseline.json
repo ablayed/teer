@@ -775,6 +775,23 @@
     {
       "aclIsDefault": false,
       "anonExec": false,
+      "args": "p_purchase_lot_id uuid",
+      "authenticatedExec": true,
+      "key": "public.get_purchase_lot_profitability(p_purchase_lot_id uuid)",
+      "name": "get_purchase_lot_profitability",
+      "owner": "postgres",
+      "parallelSafety": "unsafe",
+      "proaclSorted": "authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres",
+      "returnType": "jsonb",
+      "schema": "public",
+      "searchPathConfig": "search_path=\"\"",
+      "securityDefiner": false,
+      "serviceRoleExec": true,
+      "volatility": "stable"
+    },
+    {
+      "aclIsDefault": false,
+      "anonExec": false,
       "args": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
       "authenticatedExec": true,
       "key": "public.get_report_driver_cash_pending(p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid)",
