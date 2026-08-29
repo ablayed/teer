@@ -350,7 +350,20 @@ async function openLotProfitabilityPanel(page: Page, supplierName: string) {
   });
 }
 
-function noOverflowAssertions(page: Page, viewportWidth: number) {
+// Le contrat réel du produit sur un montant, établi par
+// tests/e2e/lot-u1f-money-no-truncation.spec.ts (ScopedMetricCard) : jamais de
+// `text-overflow: ellipsis` sur un ancêtre — PAS "jamais de dépassement du
+// viewport en pixels". `ScopedMetricCard` défile HORIZONTALEMENT à dessein
+// (`overflow-x-auto whitespace-nowrap`, voir son commentaire) quand la carte
+// est trop étroite pour un montant + une icône + un libellé d'état long
+// ("~0 F CFA Transport pas encore facturé") plutôt que de le tronquer — un
+// montant ainsi scrollable peut légitimement avoir une `boundingBox()` dont
+// `x + width` dépasse la largeur du viewport (position de LAYOUT réelle,
+// avant tout défilement), ce n'est pas un bug. Une version antérieure de ce
+// test vérifiait à tort cette limite en pixels : elle échouait en CI Linux
+// (fontes plus larges qu'en local Windows) sur des montants qui défilent
+// correctement — pas des montants perdus.
+function noOverflowAssertions(page: Page) {
   return async () => {
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
@@ -361,17 +374,28 @@ function noOverflowAssertions(page: Page, viewportWidth: number) {
     const amounts = page.locator('[data-testid="amount"]');
     const count = await amounts.count();
     expect(count).toBeGreaterThan(0);
-    for (let i = 0; i < count; i++) {
-      const el = amounts.nth(i);
-      const box = await el.boundingBox();
-      expect(box).not.toBeNull();
-      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewportWidth + 1);
-      const selfOverflow = await el.evaluate((node) => ({
-        scrollWidth: node.scrollWidth,
-        clientWidth: node.clientWidth,
-      }));
-      expect(selfOverflow.scrollWidth).toBeLessThanOrEqual(selfOverflow.clientWidth + 1);
-    }
+
+    const violations = await page.evaluate(() => {
+      const found: Array<{ text: string; ancestorTag: string; ancestorClass: string }> = [];
+      for (const amountEl of Array.from(document.querySelectorAll('[data-testid="amount"]'))) {
+        let node: Element | null = amountEl;
+        let depth = 0;
+        while (node && depth < 8) {
+          const style = getComputedStyle(node);
+          if (style.textOverflow === 'ellipsis') {
+            found.push({
+              text: amountEl.textContent ?? '',
+              ancestorTag: node.tagName,
+              ancestorClass: node.className.toString(),
+            });
+          }
+          node = node.parentElement;
+          depth += 1;
+        }
+      }
+      return found;
+    });
+    expect(violations).toEqual([]);
   };
 }
 
@@ -461,7 +485,7 @@ for (const viewport of [
         expect(bodyText).toContain(formatMoney(marginMinor));
         expect(bodyText).toContain(marginPctLabel);
 
-        await noOverflowAssertions(page, viewport.width)();
+        await noOverflowAssertions(page)();
       } finally {
         await cleanupUsers(fixture.admin, fixture.userIds);
       }
@@ -527,7 +551,7 @@ test.describe('Lot F2 — fiche arrivage (412px)', () => {
       await expect(panel.locator('[data-testid="value-state-missing"]').first()).toBeVisible();
       await expect(panel.getByText('Pas encore de CA encaissé sur cet arrivage')).toBeVisible();
 
-      await noOverflowAssertions(page, 412)();
+      await noOverflowAssertions(page)();
     } finally {
       await cleanupUsers(fixture.admin, fixture.userIds);
     }
