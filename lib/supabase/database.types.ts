@@ -4,7 +4,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '14.17';
+    PostgrestVersion: '14.5';
   };
   graphql_public: {
     Tables: {
@@ -3658,6 +3658,10 @@ export type Database = {
           count: number;
           view_id: string;
         }[];
+      };
+      get_purchase_lot_profitability: {
+        Args: { p_purchase_lot_id: string };
+        Returns: Json;
       };
       get_report_driver_cash_pending: {
         Args: {

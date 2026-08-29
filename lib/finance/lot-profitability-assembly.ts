@@ -10,31 +10,45 @@ import {
   distributeByLargestRemainder,
   isAllocationMethodAvailable,
 } from '@/lib/finance/lot-profitability';
+import { z } from 'zod';
 
-export type PurchaseLotProfitabilityRpcRow = {
-  purchaseLotLineId: string;
-  productId: string;
-  qtyReceived: number;
-  qtySold: number;
-  purchaseValueMinor: number;
-  weightGrams: number | null;
-  cashCollectedMinor: number;
-};
+// La RPC déclare `returns jsonb` (0146) : `database.types.ts` la type donc en
+// `Json` générique, jamais en la forme réelle qu'elle renvoie — un cast
+// affirmerait cette forme sans la vérifier (silencieux si la RPC change de
+// structure un jour). Ce schéma zod EST le contrat lisible de ce que la RPC
+// rend ; les types TS s'en déduisent (`z.infer`), jamais l'inverse.
+export const purchaseLotProfitabilityRpcRowSchema = z.object({
+  purchaseLotLineId: z.string(),
+  productId: z.string(),
+  qtyReceived: z.number(),
+  qtySold: z.number(),
+  purchaseValueMinor: z.number(),
+  weightGrams: z.number().nullable(),
+  cashCollectedMinor: z.number(),
+});
+
+export type PurchaseLotProfitabilityRpcRow = z.infer<typeof purchaseLotProfitabilityRpcRowSchema>;
 
 /** Total de publicité par PRODUIT (jamais par ligne) — la RPC n'agrège que. */
-export type PurchaseLotProductAdSpend = {
-  productId: string;
-  amountMinor: number;
-};
+export const purchaseLotProductAdSpendSchema = z.object({
+  productId: z.string(),
+  amountMinor: z.number(),
+});
 
-export type PurchaseLotProfitabilityRpcResult = {
-  purchaseLotId: string;
-  transportTotalMinor: number;
-  transportComplete: boolean;
-  allocationMethod: AllocationMethod;
-  lines: PurchaseLotProfitabilityRpcRow[];
-  productAdSpend: PurchaseLotProductAdSpend[];
-};
+export type PurchaseLotProductAdSpend = z.infer<typeof purchaseLotProductAdSpendSchema>;
+
+export const purchaseLotProfitabilityRpcResultSchema = z.object({
+  purchaseLotId: z.string(),
+  transportTotalMinor: z.number(),
+  transportComplete: z.boolean(),
+  allocationMethod: z.enum(['value', 'quantity', 'weight']) satisfies z.ZodType<AllocationMethod>,
+  lines: z.array(purchaseLotProfitabilityRpcRowSchema),
+  productAdSpend: z.array(purchaseLotProductAdSpendSchema),
+});
+
+export type PurchaseLotProfitabilityRpcResult = z.infer<
+  typeof purchaseLotProfitabilityRpcResultSchema
+>;
 
 /**
  * Répartit la publicité totale de chaque produit entre ses lignes de CE lot,

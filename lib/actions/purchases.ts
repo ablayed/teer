@@ -8,9 +8,9 @@ import {
   isAllocationMethodAvailable,
 } from '@/lib/finance/lot-profitability';
 import {
-  type PurchaseLotProfitabilityRpcResult,
   type PurchaseLotProfitabilitySummary,
   assemblePurchaseLotProfitability,
+  purchaseLotProfitabilityRpcResultSchema,
 } from '@/lib/finance/lot-profitability-assembly';
 import { computeEta, formatEtaDate } from '@/lib/purchases/eta';
 import { allocateFees } from '@/lib/purchases/fee-allocation';
@@ -21,6 +21,16 @@ import * as Sentry from '@sentry/nextjs';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+
+// `createSupabaseServerClient()` (@supabase/ssr) returns `SupabaseClient<Database,
+// SchemaName, Schema>` with 3 explicit generics computed by createServerClient's own
+// generic defaults — this breaks `.rpc()`'s Args inference (resolves to `undefined`)
+// even for pre-existing, working RPCs. Same cast-to-simpler-type workaround already
+// used throughout the codebase (lib/dashboard/context.ts, lib/actions/orders.ts).
+type SupabaseServerClient = SupabaseClient<Database>;
+function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
+  return client as SupabaseServerClient;
+}
 
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -42,22 +52,6 @@ function receivePurchaseLotRpc(client: { rpc: SupabaseClient<Database>['rpc'] })
       p_lines: Json;
     },
   ) => Promise<{ data: null; error: { message: string } | null }>;
-}
-
-// get_purchase_lot_profitability est SECURITY INVOKER, sans garde de rôle : les
-// policies RLS existantes (owner-only sur purchase_lot/purchase_lot_line)
-// s'appliquent sous l'identité de l'appelant. Appelée via le client
-// authentifié — RLS est le SEUL gate de cette lecture, jamais l'admin.
-// Cast temporaire : database.types.ts ne connaît pas encore cette fonction
-// (migration 0146 non poussée) — à retirer une fois le type régénéré.
-function getPurchaseLotProfitabilityRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
-  return client.rpc.bind(client) as unknown as (
-    fn: 'get_purchase_lot_profitability',
-    args: { p_purchase_lot_id: string },
-  ) => Promise<{
-    data: PurchaseLotProfitabilityRpcResult | null;
-    error: { message: string } | null;
-  }>;
 }
 
 // Lot C : modèle simplifié — un seul frais « Transport », un seul « délai estimé »,
@@ -496,23 +490,38 @@ export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLo
 export async function getPurchaseLotProfitability(
   lotId: string,
 ): Promise<PurchaseLotProfitabilitySummary> {
-  const supabase = await createSupabaseServerClient();
-  const call = getPurchaseLotProfitabilityRpc(supabase);
-  const { data, error } = await call('get_purchase_lot_profitability', {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const { data, error } = await supabase.rpc('get_purchase_lot_profitability', {
     p_purchase_lot_id: lotId,
   });
 
   if (error) {
-    // Une vraie erreur RPC (permission, timeout, PGRST202 tant que 0146 n'est
-    // pas déployée) n'est PAS « lot introuvable » — CLAUDE.md (toMetricLoadState)
-    // interdit de faire retomber une panne d'action financière sur 0/liste vide.
+    // Une vraie erreur RPC (permission, timeout) n'est PAS « lot introuvable »
+    // — CLAUDE.md (toMetricLoadState) interdit de faire retomber une panne
+    // d'action financière sur 0/liste vide.
     Sentry.captureException(new Error('get_purchase_lot_profitability_rpc_failed'), {
       tags: { module: 'purchases.get_purchase_lot_profitability' },
       extra: { lotId, message: error.message },
     });
     return { ok: false, reason: 'error' };
   }
-  return assemblePurchaseLotProfitability(data);
+  if (data === null) {
+    return assemblePurchaseLotProfitability(null);
+  }
+
+  // La RPC déclare `returns jsonb` : `data` n'est typé qu'en `Json` générique.
+  // Un cast affirmerait la forme réelle sans la vérifier — un parse zod à la
+  // frontière la vérifie franchement, à l'endroit exact, plutôt que de
+  // laisser l'écran afficher n'importe quoi le jour où la RPC change de forme.
+  const parsed = purchaseLotProfitabilityRpcResultSchema.safeParse(data);
+  if (!parsed.success) {
+    Sentry.captureException(new Error('get_purchase_lot_profitability_rpc_shape_invalid'), {
+      tags: { module: 'purchases.get_purchase_lot_profitability' },
+      extra: { lotId, issues: parsed.error.issues },
+    });
+    return { ok: false, reason: 'error' };
+  }
+  return assemblePurchaseLotProfitability(parsed.data);
 }
 
 const allocationMethodSchema = z.object({
