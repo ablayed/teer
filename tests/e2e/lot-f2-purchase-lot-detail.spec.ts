@@ -559,6 +559,10 @@ test.describe('Lot F2 — fiche arrivage (412px)', () => {
 // de page normal (dont le `reload` lui-même).
 // ──────────────────────────────────────────────────────────────────────────
 test.describe('Lot F2 — file durable hors-ligne', () => {
+  // Ce describe observe le réseau via page.route — le service worker (prod builds
+  // uniquement) rendrait les requêtes invisibles à ce mécanisme (cf. CLAUDE.md).
+  test.use({ serviceWorkers: 'block' });
+
   test('coupure réseau après clic Enregistrer -> file -> survit à un reload réellement hors-ligne -> synchronisée sans doublon au retour réseau', async ({
     page,
     context,
