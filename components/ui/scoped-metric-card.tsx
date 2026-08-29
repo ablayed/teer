@@ -41,7 +41,11 @@ export function ScopedMetricCard({ label, value, scope, delta, className }: Scop
   return (
     <div
       className={cn(
-        '@container/scoped-stat rounded-lg border border-border bg-surface p-3 @min-[10rem]/scoped-stat:p-4',
+        // `min-w-0` : sans lui, un grid/flex item garde `min-width: auto` par défaut — le
+        // contenu intrinsèque (un montant large) peut alors élargir toute la colonne de la
+        // grille au lieu de déclencher le défilement horizontal interne voulu sur la valeur
+        // (`overflow-x-auto` ci-dessous), débordant le viewport sur mobile étroit (412/390px).
+        '@container/scoped-stat min-w-0 rounded-lg border border-border bg-surface p-3 @min-[10rem]/scoped-stat:p-4',
         className,
       )}
     >

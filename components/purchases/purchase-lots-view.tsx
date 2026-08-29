@@ -1,5 +1,11 @@
 'use client';
 
+import {
+  MARGIN_PCT_MISSING_LABEL,
+  PurchaseLotDetailPanel,
+} from '@/components/purchases/purchase-lot-detail-panel';
+import { GainLoss } from '@/components/ui/gain-loss';
+import { ValueAmount } from '@/components/ui/value-state';
 import { type ProductCatalogItem, createProductAction } from '@/lib/actions/products';
 import {
   type PurchaseLotData,
@@ -10,7 +16,9 @@ import {
   receiveLotAction,
   removePurchaseLotLineAction,
 } from '@/lib/actions/purchases';
+import type { PurchaseLotProfitabilitySummary } from '@/lib/finance/lot-profitability-assembly';
 import { formatMoney } from '@/lib/format/fcfa';
+import { formatPercentFr } from '@/lib/format/percent';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -137,7 +145,15 @@ function CostDetail({
 
 // ── Lot card ──────────────────────────────────────────────────────────────────
 
-function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCatalogItem[] }) {
+function LotCard({
+  lot,
+  products,
+  profitability,
+}: {
+  lot: PurchaseLotData;
+  products: ProductCatalogItem[];
+  profitability?: PurchaseLotProfitabilitySummary;
+}) {
   const router = useRouter();
   const transit = useAction(markLotInTransitAction);
   const receive = useAction(receiveLotAction);
@@ -147,6 +163,7 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showAddLine, setShowAddLine] = useState(false);
   const [newLine, setNewLine] = useState({ productId: '', qty: '', purchasePriceTotal: '' });
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const isExecuting =
     transit.isExecuting || receive.isExecuting || addLine.isExecuting || removeLine.isExecuting;
@@ -230,6 +247,59 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
         </span>
         {lot.receivedAt && <span>Reçu le {lot.receivedAt}</span>}
       </div>
+
+      {lot.status === 'received' && profitability && (
+        <div className="flex flex-wrap items-center gap-4 border-t border-border pt-3">
+          {profitability.ok && profitability.allocationMethodAvailable && (
+            <>
+              <GainLoss
+                amountMinor={profitability.totals.marginMinor}
+                labels={{ gain: 'Marge', loss: 'Marge', neutral: 'Marge nulle' }}
+              />
+              {/* `cashCollectedMinor === 0` n'est pas « marge de 0 % » mais « rien
+                  à mesurer encore » (cf. lot-profitability.ts, computeMargin.marginPct,
+                  et la garde équivalente dans purchase-lot-detail-panel.tsx) — un
+                  simple tiret plutôt qu'un pourcentage confiant mais faux, dès cette
+                  carte liste vue avant le panneau détail. */}
+              {profitability.totals.cashCollectedMinor === 0 ? (
+                <ValueAmount
+                  className="text-sm"
+                  state={{ kind: 'missing', label: MARGIN_PCT_MISSING_LABEL }}
+                />
+              ) : (
+                <span className="text-sm text-muted">
+                  {formatPercentFr(profitability.totals.marginPct)} %
+                </span>
+              )}
+              <span className="text-sm text-muted">
+                {profitability.totals.qtySold} / {profitability.totals.qtyReceived} vendus
+              </span>
+              {!profitability.totals.complete && (
+                <span className="text-xs text-warning">Marge provisoire</span>
+              )}
+            </>
+          )}
+          {profitability.ok && !profitability.allocationMethodAvailable && (
+            <p className="text-xs text-warning">
+              Répartition au poids indisponible : au moins une ligne n'a pas de poids renseigné.
+            </p>
+          )}
+          {!profitability.ok && (
+            <p className="text-xs text-muted">
+              {profitability.reason === 'not_found'
+                ? 'Rentabilité indisponible.'
+                : 'Rentabilité indisponible pour le moment.'}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => setDetailOpen(true)}
+            className="ml-auto min-h-11 rounded-md border border-border px-3 text-sm font-medium text-text hover:bg-canvas"
+          >
+            Voir la rentabilité
+          </button>
+        </div>
+      )}
 
       {lot.lines.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border">
@@ -389,6 +459,23 @@ function LotCard({ lot, products }: { lot: PurchaseLotData; products: ProductCat
       )}
 
       {feedback && <Alert {...feedback} />}
+
+      {/* Démonté quand fermé (jamais mounted+aria-hidden) : `DetailPanel` sur
+          desktop garde son contenu dans le DOM même fermé (translaté hors écran)
+          sans `inert` ni gestion du tabindex — un panneau monté par arrivage reçu
+          laisserait un champ de poids, un bouton « Enregistrer », les 3 boutons
+          de méthode et le bouton « + Ajouter une dépense publicitaire » de CHAQUE
+          arrivage focusables dans l'ordre de tabulation, en violation ARIA
+          (contenu focalisable sous un ancêtre aria-hidden). Même pattern que
+          `products-catalog.tsx` (`{detailProduct && canManage ? <ProductDetailPanel .../> : null}`). */}
+      {lot.status === 'received' && profitability && detailOpen ? (
+        <PurchaseLotDetailPanel
+          lot={lot}
+          profitability={profitability}
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -720,7 +807,12 @@ function CreateLotForm({
 export function PurchaseLotsView({
   lots,
   products,
-}: { lots: PurchaseLotData[]; products: ProductCatalogItem[] }) {
+  profitabilityByLotId,
+}: {
+  lots: PurchaseLotData[];
+  products: ProductCatalogItem[];
+  profitabilityByLotId?: Record<string, PurchaseLotProfitabilitySummary>;
+}) {
   const [showCreate, setShowCreate] = useState(false);
 
   return (
@@ -749,7 +841,12 @@ export function PurchaseLotsView({
       )}
 
       {lots.map((lot) => (
-        <LotCard key={lot.id} lot={lot} products={products} />
+        <LotCard
+          key={lot.id}
+          lot={lot}
+          products={products}
+          profitability={profitabilityByLotId?.[lot.id]}
+        />
       ))}
     </div>
   );

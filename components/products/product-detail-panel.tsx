@@ -1,11 +1,16 @@
 'use client';
 
+import {
+  type ProductAdSpendCandidateLot,
+  ProductAdSpendForm,
+} from '@/components/purchases/product-ad-spend-form';
 import { DetailPanel } from '@/components/ui/detail-panel';
 import {
   type ProductsPageItem,
   getBundleCompositionAction,
   saveBundleConfigurationAction,
 } from '@/lib/actions/products';
+import { getProductAdSpendCandidateLotsAction } from '@/lib/actions/purchases';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -37,18 +42,46 @@ function newLine(): ComponentLine {
 export function ProductDetailPanel({
   product,
   allProducts,
+  currentRole,
   onClose,
 }: {
   product: ProductsPageItem;
   allProducts: ProductsPageItem[];
+  currentRole: 'agent' | 'manager' | 'owner';
   onClose: () => void;
 }) {
   const router = useRouter();
   const load = useAction(getBundleCompositionAction);
   const save = useAction(saveBundleConfigurationAction);
+  const isOwner = currentRole === 'owner';
   const [isBundle, setIsBundle] = useState(product.isBundle);
   const [lines, setLines] = useState<ComponentLine[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+
+  // Dépense publicitaire (Lot F2) — entrée owner-only, jamais rendue pour manager/agent
+  // (le mécanisme lui-même : `canManage` au niveau appelant, products-catalog.tsx, ne
+  // couvre QUE owner+manager, pas owner seul — cette section pose sa propre garde
+  // owner-only ici, même mécanisme que le masquage de `unit_cost` pour l'agent dans
+  // products-catalog.tsx, appliqué au cran de rôle immédiatement supérieur).
+  const adSpendCandidates = useAction(getProductAdSpendCandidateLotsAction);
+  const [showAdSpendForm, setShowAdSpendForm] = useState(false);
+  const [adSpendMessage, setAdSpendMessage] = useState<string | null>(null);
+
+  // Résolution des arrivages candidats dès l'ouverture du panneau (owner uniquement) —
+  // jamais au clic sur « Ajouter une dépense publicitaire », pour pouvoir afficher
+  // immédiatement le cas « aucun arrivage reçu » sans attente perceptible au clic.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mêmes raisons que l'effet ci-dessus (product.id uniquement)
+  useEffect(() => {
+    setShowAdSpendForm(false);
+    setAdSpendMessage(null);
+    if (isOwner) {
+      adSpendCandidates.execute({ productId: product.id });
+    }
+  }, [product.id, isOwner]);
+
+  const candidateLotsResult = adSpendCandidates.result.data;
+  const candidateLots: ProductAdSpendCandidateLot[] | null =
+    candidateLotsResult?.ok === true ? candidateLotsResult.candidateLots : null;
 
   // Re-init volontaire sur product.id uniquement — product.isBundle/load.execute changent
   // aussi quand la liste parente se rafraîchit après sauvegarde, ce qui ne doit PAS
@@ -245,6 +278,65 @@ export function ProductDetailPanel({
             {save.isExecuting ? 'Enregistrement…' : 'Enregistrer'}
           </button>
         </section>
+
+        {/* Ce gate `isOwner` est de l'UX seulement (masquer l'entrée pour un rôle qui
+            ne l'utilisera pas) — la VRAIE frontière de sécurité est `requireRole('owner')`
+            côté serveur sur les actions de dépense publicitaire elles-mêmes
+            (`lib/actions/purchases.ts`). Un contournement client (devtools, requête
+            directe) est rejeté serveur quel que soit l'état de ce booléen. */}
+        {isOwner ? (
+          <section aria-labelledby="product-ad-spend-heading" className="space-y-4">
+            <h2 className="text-sm font-semibold text-muted" id="product-ad-spend-heading">
+              Dépenses publicitaires
+            </h2>
+
+            {adSpendCandidates.isExecuting ? (
+              <p className="text-sm text-muted">Recherche de l'arrivage concerné…</p>
+            ) : showAdSpendForm ? (
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <ProductAdSpendForm
+                  candidateLots={candidateLots ?? undefined}
+                  onDone={() => {
+                    setShowAdSpendForm(false);
+                    setAdSpendMessage('Dépense publicitaire enregistrée.');
+                  }}
+                  productId={product.id}
+                  productLabel={product.title}
+                />
+                <button
+                  className="min-h-11 text-xs font-medium text-muted underline hover:text-text"
+                  onClick={() => setShowAdSpendForm(false)}
+                  type="button"
+                >
+                  Annuler
+                </button>
+              </div>
+            ) : (
+              <button
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas disabled:opacity-60"
+                disabled={candidateLots == null}
+                onClick={() => {
+                  setAdSpendMessage(null);
+                  setShowAdSpendForm(true);
+                }}
+                type="button"
+              >
+                <Plus aria-hidden="true" className="size-4" />
+                Ajouter une dépense publicitaire
+              </button>
+            )}
+
+            {candidateLotsResult != null && candidateLotsResult.ok === false ? (
+              <p className="text-sm text-danger" role="alert">
+                Impossible de trouver l'arrivage de ce produit pour le moment.
+              </p>
+            ) : null}
+
+            {adSpendMessage ? (
+              <output className="block text-sm text-muted">{adSpendMessage}</output>
+            ) : null}
+          </section>
+        ) : null}
       </div>
     </DetailPanel>
   );

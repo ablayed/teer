@@ -114,22 +114,46 @@ export function allocateTransportCost(
   // répartition déterministe dont la somme égale le total.
   const effectiveWeights = totalWeight > 0 ? weights : lines.map(() => 1);
 
-  return allocateByLargestRemainder(
-    lines.map((line) => line.productId),
-    effectiveWeights,
-    transportTotalMinor,
-  );
+  const shares = distributeByLargestRemainder(effectiveWeights, transportTotalMinor);
+
+  return lines.map((line, index) => ({
+    productId: line.productId,
+    allocatedTransportMinor: shares[index],
+  }));
 }
 
-function allocateByLargestRemainder(
-  productIds: string[],
-  weights: number[],
-  total: number,
-): TransportAllocationResult[] {
+/**
+ * Répartit `total` (entier, >= 0) entre `weights.length` parts au prorata de
+ * `weights` (poids >= 0, pas nécessairement entiers) par la méthode du plus
+ * grand reste (Hamilton) : plancher entier par part, puis le reliquat
+ * (toujours < weights.length) distribué une unité à la fois aux plus grands
+ * restes, index d'origine croissant en cas d'égalité. La somme des parts
+ * renvoyées égale TOUJOURS exactement `total`.
+ *
+ * SEULE implémentation du plus grand reste du domaine Finances v2 /
+ * lot-profitability — `allocateTransportCost` (répartition du transport) et
+ * la proratisation de la publicité par ligne (lib/finance/
+ * lot-profitability-assembly.ts, Lot F2) l'appellent toutes les deux plutôt
+ * que de réimplémenter la technique une seconde fois (une réimplémentation en
+ * SQL a divergé une fois : `sum(bigint)` renvoie `numeric`, cassant la
+ * troncature entière — cf. migration 0146).
+ *
+ * NB : `lib/purchases/fee-allocation.ts` définit une fonction de même nom
+ * (`distributeByLargestRemainder`) mais distincte — signature bigint, et
+ * repli poids-tous-nuls différent (parts égales ici, zéros partout là-bas).
+ * C'est une implémentation séparée pour la répartition des frais d'achat,
+ * volontairement non fusionnée avec celle-ci (sémantiques différentes pour
+ * le cas poids nul) — ne pas les confondre ni tenter de les unifier.
+ *
+ * Poids tous nuls (totalWeight=0) : renvoie des zéros partout — c'est
+ * l'appelant qui décide d'un repli (ex. poids égaux) avant d'appeler cette
+ * fonction si une répartition non nulle est requise malgré des poids nuls.
+ */
+export function distributeByLargestRemainder(weights: number[], total: number): number[] {
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
 
   if (totalWeight === 0) {
-    return productIds.map((productId) => ({ productId, allocatedTransportMinor: 0 }));
+    return weights.map(() => 0);
   }
 
   const floors: number[] = [];
@@ -159,10 +183,7 @@ function allocateByLargestRemainder(
     leftover -= 1;
   }
 
-  return productIds.map((productId, index) => ({
-    productId,
-    allocatedTransportMinor: floors[index],
-  }));
+  return floors;
 }
 
 /** Arrondi déterministe au plus proche entier (moitié vers le haut), sur des opérandes >= 0. */

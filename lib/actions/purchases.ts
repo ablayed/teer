@@ -3,14 +3,34 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { resolveProductInShop } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
+import {
+  type AllocationMethod,
+  isAllocationMethodAvailable,
+} from '@/lib/finance/lot-profitability';
+import {
+  type PurchaseLotProfitabilitySummary,
+  assemblePurchaseLotProfitability,
+  purchaseLotProfitabilityRpcResultSchema,
+} from '@/lib/finance/lot-profitability-assembly';
 import { computeEta, formatEtaDate } from '@/lib/purchases/eta';
 import { allocateFees } from '@/lib/purchases/fee-allocation';
 import type { Database, Json } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestStoreId } from '@/lib/workspace/store';
+import * as Sentry from '@sentry/nextjs';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+
+// `createSupabaseServerClient()` (@supabase/ssr) returns `SupabaseClient<Database,
+// SchemaName, Schema>` with 3 explicit generics computed by createServerClient's own
+// generic defaults — this breaks `.rpc()`'s Args inference (resolves to `undefined`)
+// even for pre-existing, working RPCs. Same cast-to-simpler-type workaround already
+// used throughout the codebase (lib/dashboard/context.ts, lib/actions/orders.ts).
+type SupabaseServerClient = SupabaseClient<Database>;
+function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
+  return client as SupabaseServerClient;
+}
 
 function createSupabaseAdminClient() {
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -320,6 +340,7 @@ export type PurchaseLotLineData = {
   allocatedFees: number | null;
   landedTotalValue: number | null;
   landedUnitCost: number | null;
+  weightGrams: number | null;
   preview: {
     lineValue: number;
     allocatedFees: number;
@@ -338,6 +359,7 @@ export type PurchaseLotData = {
   eta: string;
   transportTotal: number;
   receivedAt: string | null;
+  allocationMethod: AllocationMethod;
   lines: PurchaseLotLineData[];
 };
 
@@ -430,6 +452,7 @@ export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLo
         allocatedFees: l.allocated_fees,
         landedTotalValue: l.landed_total_value,
         landedUnitCost: l.landed_unit_cost,
+        weightGrams: l.weight_grams,
         preview: previewAlloc ? previewAlloc[i] : null,
       };
     });
@@ -444,9 +467,347 @@ export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLo
       eta,
       transportTotal,
       receivedAt: lot.received_at,
+      allocationMethod: lot.allocation_method as AllocationMethod,
       lines,
     };
   });
 
   return { ok: true, lots: result };
 }
+
+// ── PROFITABILITY (Lot F2) ───────────────────────────────────────────────────
+
+// Intentionnellement appelable depuis un COMPOSANT CLIENT (pas seulement le
+// RSC) — `purchase-lot-detail-panel.tsx`'s `refreshProfitability()` l'appelle
+// directement après chaque écriture réussie (méthode/poids/dépense pub) pour
+// relire la rentabilité fraîche côté serveur (Paradigm B, cf. CLAUDE.md :
+// jamais de `router.refresh()` pour ce genre de lecture post-mutation). C'est
+// sûr précisément parce que cette fonction utilise `createSupabaseServerClient()`
+// (respecte RLS, sous l'identité de l'appelant) — contrairement aux autres
+// fonctions de ce fichier qui passent par `createSupabaseAdminClient()` pour
+// leurs écritures ; ne jamais faire suivre ce même chemin admin à une fonction
+// appelée depuis le client.
+export async function getPurchaseLotProfitability(
+  lotId: string,
+): Promise<PurchaseLotProfitabilitySummary> {
+  const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+  const { data, error } = await supabase.rpc('get_purchase_lot_profitability', {
+    p_purchase_lot_id: lotId,
+  });
+
+  if (error) {
+    // Une vraie erreur RPC (permission, timeout) n'est PAS « lot introuvable »
+    // — CLAUDE.md (toMetricLoadState) interdit de faire retomber une panne
+    // d'action financière sur 0/liste vide.
+    Sentry.captureException(new Error('get_purchase_lot_profitability_rpc_failed'), {
+      tags: { module: 'purchases.get_purchase_lot_profitability' },
+      extra: { lotId, message: error.message },
+    });
+    return { ok: false, reason: 'error' };
+  }
+  if (data === null) {
+    return assemblePurchaseLotProfitability(null);
+  }
+
+  // La RPC déclare `returns jsonb` : `data` n'est typé qu'en `Json` générique.
+  // Un cast affirmerait la forme réelle sans la vérifier — un parse zod à la
+  // frontière la vérifie franchement, à l'endroit exact, plutôt que de
+  // laisser l'écran afficher n'importe quoi le jour où la RPC change de forme.
+  const parsed = purchaseLotProfitabilityRpcResultSchema.safeParse(data);
+  if (!parsed.success) {
+    Sentry.captureException(new Error('get_purchase_lot_profitability_rpc_shape_invalid'), {
+      tags: { module: 'purchases.get_purchase_lot_profitability' },
+      extra: { lotId, issues: parsed.error.issues },
+    });
+    return { ok: false, reason: 'error' };
+  }
+  return assemblePurchaseLotProfitability(parsed.data);
+}
+
+const allocationMethodSchema = z.object({
+  lotId: z.string().uuid(),
+  method: z.enum(['value', 'quantity', 'weight']),
+});
+
+export const setPurchaseLotAllocationMethodAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.set_allocation_method', section: 'purchases' })
+  .inputSchema(allocationMethodSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    // Boutique ACTIVE explicite — un owner multi-boutiques du même tenant ne
+    // doit jamais pouvoir écrire sur un lot d'une autre boutique que celle où
+    // il agit (finding revue : le service-role bypass RLS, le seul filtre
+    // merchant_account_id ne suffit pas). Échec fermé si non résolue.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // lotId confronté à son parent autoritaire (compte marchand + boutique
+    // active) AVANT toute écriture — motif récurrent du projet (0134/0135,
+    // cross-tenant webhooks). Un lot d'une autre boutique du même tenant doit
+    // échouer en « Lot introuvable », jamais en un update qui touche 0 ligne
+    // silencieusement.
+    const { data: lot } = await admin
+      .from('purchase_lot')
+      .select('id')
+      .eq('id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+
+    if (!lot) return { ok: false as const, message: 'Lot introuvable.' };
+
+    const { data: lines, error: lineErr } = await admin
+      .from('purchase_lot_line')
+      .select('weight_grams')
+      .eq('purchase_lot_id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
+
+    if (lineErr) return { ok: false as const, message: lineErr.message };
+
+    if (parsedInput.method === 'weight') {
+      const availability = isAllocationMethodAvailable(
+        (lines ?? []).map((l) => ({ weightGrams: l.weight_grams })),
+        'weight',
+      );
+      if (!availability.available) {
+        return {
+          ok: false as const,
+          message:
+            'Poids manquant sur au moins une ligne : la répartition au poids est indisponible.',
+        };
+      }
+    }
+
+    const { error } = await admin
+      .from('purchase_lot')
+      .update({ allocation_method: parsedInput.method })
+      .eq('id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
+
+    if (error) return { ok: false as const, message: error.message };
+    revalidatePath('/produits');
+    return { ok: true as const };
+  });
+
+const setWeightSchema = z.object({
+  lotId: z.string().uuid(),
+  lineId: z.string().uuid(),
+  weightGrams: z.number().int().min(0).nullable(),
+});
+
+export const setPurchaseLotLineWeightAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.set_line_weight', section: 'purchases' })
+  .inputSchema(setWeightSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    // Boutique ACTIVE explicite — même garde que setPurchaseLotAllocationMethodAction
+    // (finding revue : le service-role bypass RLS, seul merchant_account_id ne
+    // suffit pas à empêcher une écriture cross-boutique du même tenant).
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // lineId ET lotId confrontés à leur parent autoritaire (compte marchand +
+    // boutique active) dans la même clause .eq() que l'écriture — jamais un
+    // identifiant reçu du client transmis sans être vérifié contre son parent.
+    //
+    // `.select('id')` + vérification du tableau retourné : PostgREST NE renvoie
+    // AUCUNE erreur quand un `.update()` matche zéro ligne (ex. lineId d'une
+    // autre boutique après un changement de boutique active) — sans ce garde,
+    // l'action renverrait `{ok: true}` sur une écriture qui n'a rien touché.
+    // Combiné à la file de mutations offline (qui supprime l'enregistrement en
+    // file dès que l'exécuteur renvoie `{ok: true}`), un faux succès ici perdrait
+    // silencieusement et définitivement l'édition du marchand. Voir
+    // setPurchaseLotAllocationMethodAction ci-dessus pour le même principe
+    // appliqué en pré-vérification plutôt qu'en post-vérification.
+    const { data: updated, error } = await admin
+      .from('purchase_lot_line')
+      .update({ weight_grams: parsedInput.weightGrams })
+      .eq('id', parsedInput.lineId)
+      .eq('purchase_lot_id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .select('id');
+
+    if (error) return { ok: false as const, message: error.message };
+    if (!updated || updated.length === 0) {
+      return { ok: false as const, message: 'Ligne introuvable.' };
+    }
+    revalidatePath('/produits');
+    return { ok: true as const };
+  });
+
+const createAdSpendSchema = z.object({
+  productId: z.string().uuid(),
+  purchaseLotId: z.string().uuid(), // jamais optionnel dans CETTE action — règle non négociable du prompt F2
+  amountMinor: z.number().int().min(0),
+  spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  clientRequestId: z.string().uuid(), // idempotence — écrit dans external_ref
+});
+
+const AD_SPEND_UNIQUE_EXTERNAL_REF_VIOLATION = '23505';
+
+export const createProductAdSpendAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.create_ad_spend', section: 'purchases' })
+  .inputSchema(createAdSpendSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    // Boutique ACTIVE explicite — même garde que les deux actions ci-dessus :
+    // le service-role bypass RLS, seul merchant_account_id ne suffit pas à
+    // empêcher une écriture cross-boutique du même tenant.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // Le produit ET le lot doivent être confrontés à leur parent autoritaire
+    // (compte + boutique active) AVANT toute écriture — motif récurrent du projet.
+    const { data: product } = await admin
+      .from('product')
+      .select('id, shop_id')
+      .eq('id', parsedInput.productId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+    if (!product) return { ok: false as const, message: 'Produit introuvable.' };
+
+    const { data: lot } = await admin
+      .from('purchase_lot')
+      .select('id')
+      .eq('id', parsedInput.purchaseLotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+    if (!lot) return { ok: false as const, message: 'Arrivage introuvable.' };
+
+    // Le produit ET le lot appartiennent chacun (vérifié ci-dessus) à la boutique
+    // active — mais rien ne garantit encore qu'ils sont RÉELLEMENT liés : un
+    // productId et un purchaseLotId valides mais sans rapport entre eux
+    // passeraient les deux gardes précédentes. Sans cette troisième vérification,
+    // product_ad_spend accepterait une dépense « orpheline » : sans ligne
+    // d'arrivage réelle pour la porter, elle ne serait jamais distribuée par
+    // computeAdSpendByLine (assemblage), donc jamais déduite de
+    // totals.marginMinor ni comptée dans totals.adSpendMinor (les deux
+    // dérivent désormais de la même distribution par construction) — mais
+    // resterait quand même en base, invisible et non comptée nulle part tant
+    // qu'aucune ligne ne la relie à ce lot. On confronte donc explicitement
+    // le couple (productId, purchaseLotId) à son parent autoritaire : une
+    // ligne d'arrivage.
+    // .limit(1).maybeSingle() (jamais .maybeSingle() seul) : deux lignes du
+    // même produit dans le même lot sont un cas légitime du domaine (cf.
+    // toLotProductLine / lib/finance/lot-profitability-assembly.ts) — on ne
+    // veut ici que l'existence d'AU MOINS une ligne, jamais l'unicité.
+    const { data: line } = await admin
+      .from('purchase_lot_line')
+      .select('id')
+      .eq('product_id', parsedInput.productId)
+      .eq('purchase_lot_id', parsedInput.purchaseLotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .limit(1)
+      .maybeSingle();
+    if (!line) {
+      return { ok: false as const, message: "Ce produit n'appartient pas à cet arrivage." };
+    }
+
+    const { error } = await admin.from('product_ad_spend').insert({
+      merchant_account_id: merchantAccountId,
+      shop_id: product.shop_id,
+      product_id: parsedInput.productId,
+      purchase_lot_id: parsedInput.purchaseLotId,
+      amount_minor: parsedInput.amountMinor,
+      spent_at: parsedInput.spentAt,
+      source: 'manuel',
+      external_ref: parsedInput.clientRequestId,
+      created_by: ctx.user.id,
+    });
+
+    if (error) {
+      // Renvoi de la même mutation (offline queue) : le doublon est REFUSÉ par
+      // l'index unique (merchant_account_id, shop_id, external_ref) — traité
+      // comme un succès idempotent, jamais comme une erreur.
+      if (error.code === AD_SPEND_UNIQUE_EXTERNAL_REF_VIOLATION) {
+        return { ok: true as const, alreadyRecorded: true as const };
+      }
+      return { ok: false as const, message: error.message };
+    }
+
+    revalidatePath('/produits');
+    return { ok: true as const, alreadyRecorded: false as const };
+  });
+
+// ── AD SPEND — résolution des arrivages candidats depuis la fiche produit (Lot F2) ──
+
+export type ProductAdSpendCandidateLot = { id: string; label: string };
+
+const candidateLotsSchema = z.object({ productId: z.string().uuid() });
+
+// Ouverte depuis la fiche produit (contexte lot inconnu, contrairement à la Fiche
+// arrivage qui connaît déjà son lot) : résout les arrivages RECUS dont ce produit est
+// réellement une ligne — jamais un choix par défaut silencieux si plusieurs candidats
+// existent (règle F2 non négociable, cf. task-6-brief.md). Deux requêtes simples
+// (lignes puis lots) plutôt qu'un embed PostgREST `purchase_lot!inner(...)` avec
+// filtre pointé sur la table imbriquée : aucun appel de ce fichier n'utilise cette
+// syntaxe ailleurs et elle n'a jamais été vérifiée contre ce schéma (migration 0146
+// non poussée, pas de stack pour la tester en direct) — on reste sur le pattern
+// éprouvé de `getPurchaseLotPageData` ci-dessus (.in('purchase_lot_id', lotIds)).
+export const getProductAdSpendCandidateLotsAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.get_ad_spend_candidate_lots', section: 'purchases' })
+  .inputSchema(candidateLotsSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // Le produit confronté à son parent autoritaire (compte + boutique active)
+    // AVANT toute lecture dérivée — motif récurrent du projet.
+    const { data: product } = await admin
+      .from('product')
+      .select('id')
+      .eq('id', parsedInput.productId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+    if (!product) return { ok: false as const, message: 'Produit introuvable.' };
+
+    const { data: lineRows, error: lineErr } = await admin
+      .from('purchase_lot_line')
+      .select('purchase_lot_id')
+      .eq('product_id', parsedInput.productId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
+
+    if (lineErr) return { ok: false as const, message: lineErr.message };
+
+    // Un même lot peut porter deux lignes du même produit (cas légitime du domaine,
+    // cf. commentaire dans createProductAdSpendAction ci-dessus) — dédupliqué ici :
+    // l'arrivage n'apparaît qu'une fois dans le select, jamais en double.
+    const lotIds = Array.from(new Set((lineRows ?? []).map((r) => r.purchase_lot_id)));
+    if (lotIds.length === 0)
+      return { ok: true as const, candidateLots: [] as ProductAdSpendCandidateLot[] };
+
+    const { data: lots, error: lotErr } = await admin
+      .from('purchase_lot')
+      .select('id, supplier_name, received_at')
+      .in('id', lotIds)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .eq('status', 'received')
+      .order('received_at', { ascending: false });
+
+    if (lotErr) return { ok: false as const, message: lotErr.message };
+
+    const candidateLots: ProductAdSpendCandidateLot[] = (lots ?? []).map((l) => ({
+      id: l.id,
+      label: `${l.supplier_name} — ${l.received_at ?? ''}`,
+    }));
+
+    return { ok: true as const, candidateLots };
+  });

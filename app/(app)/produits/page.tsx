@@ -1,7 +1,7 @@
 import { ProductsPageLoader } from '@/components/products/products-page-loader';
 import { PurchaseLotsView } from '@/components/purchases/purchase-lots-view';
 import { getProductCatalogPageData, getProductsPageData } from '@/lib/actions/products';
-import { getPurchaseLotPageData } from '@/lib/actions/purchases';
+import { getPurchaseLotPageData, getPurchaseLotProfitability } from '@/lib/actions/purchases';
 import { getRequestStoreId } from '@/lib/workspace/store';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -27,6 +27,20 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
 
     const isOwner = catalogResult.ok && catalogResult.currentRole === 'owner';
 
+    // Rentabilité chargée uniquement pour les lots reçus (F2) : un lot pas
+    // encore reçu n'a ni CA encaissé ni coût de revient figé, la RPC n'a rien
+    // d'utile à calculer avant réception. Passée depuis la page (server) plutôt
+    // qu'appelée depuis le client — évite d'ouvrir une nouvelle surface RPC
+    // client-callable pour une lecture déjà disponible côté serveur.
+    const profitabilityEntries = purchaseResult.ok
+      ? await Promise.all(
+          purchaseResult.lots
+            .filter((lot) => lot.status === 'received')
+            .map(async (lot) => [lot.id, await getPurchaseLotProfitability(lot.id)] as const),
+        )
+      : [];
+    const profitabilityByLotId = Object.fromEntries(profitabilityEntries);
+
     return (
       <main className="space-y-8" id="main">
         <h1 className="font-display text-4xl md:text-5xl">{nav('produits')}</h1>
@@ -43,6 +57,7 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
           <PurchaseLotsView
             lots={purchaseResult.lots}
             products={catalogResult.ok ? catalogResult.products : []}
+            profitabilityByLotId={profitabilityByLotId}
           />
         )}
       </main>
