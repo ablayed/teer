@@ -913,12 +913,17 @@
     "restricted": "Accès réservé au propriétaire.",
     "disclaimer": "Vue de gestion — indicateurs de pilotage non certifiés. Consultez un expert-comptable OHADA avant tout usage fiscal.",
     "natureGlobal": "Vue comptable — la marge est calculée sur le coût d'achat officiel (CUMP figé), sans répartir la publicité ni la livraison par produit. La Vue par produit, elle, est une vue de pilotage (prix d'achat + pub + livraison) : c'est pourquoi les deux marges peuvent différer.",
+    "natureArrivages": "Marge par arrivage — sur le coût de revient rendu (prix d'achat + transport alloué + publicité de l'arrivage). Distincte de la marge brute de la Vue globale (coût d'achat officiel, sans transport ni publicité) et de la marge de la Vue par produit (coûts moyennés sur la période, pas par arrivage) : les trois peuvent différer, chacune répond à une question différente. Cette vue liste et renvoie vers la fiche de l'arrivage pour tout geste — transport, méthode de répartition, poids, dépense publicitaire s'y saisissent, jamais ici.",
     "empty": "Aucune donnée financière pour cette période.",
     "tabs": {
       "ariaLabel": "Choisir la vue finances",
       "global": "Vue globale",
       "products": "Vue par produit",
-      "drivers": "Vue par livreur"
+      "drivers": "Vue par livreur",
+      "arrivages": "Arrivages"
+    },
+    "arrivages": {
+      "empty": "Aucun arrivage reçu. Recevez un arrivage depuis Produits > Achats fournisseur pour voir sa marge ici."
     },
     "shops": {
       "label": "Boutique",
@@ -1081,7 +1086,10 @@
       "deleteSuccess": "Dépense supprimée.",
       "error": "Une erreur est survenue, réessayez.",
       "empty": "Aucune dépense sur cette période.",
-      "total": "Total dépenses"
+      "total": "Total dépenses",
+      "categoryAdsDisabled": "Publicité (se saisit depuis l'arrivage)",
+      "categoryAdsHint": "La publicité se saisit désormais depuis la fiche de l'arrivage concerné (Produits > Achats fournisseur), pour rester rattachée à un produit et un arrivage précis.",
+      "categoryAdsCta": "Saisir une dépense publicitaire depuis un arrivage"
     },
     "products": {
       "title": "Vue par produit",

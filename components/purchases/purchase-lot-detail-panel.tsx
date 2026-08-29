@@ -38,7 +38,11 @@ const MISSING_INPUT_LABELS: Record<string, string> = {
   ad_spend: 'Publicité pas encore saisie',
 };
 
-function missingInputLabel(key: string): string {
+// Exporté pour que la vue arrivages de Finances (Lot F2-bis, elle ne fait que
+// lister — jamais saisir) réutilise verbatim le même libellé qu'ici, plutôt
+// que de dupliquer `MISSING_INPUT_LABELS` avec un risque de dérive de
+// formulation entre les deux écrans.
+export function missingInputLabel(key: string): string {
   return MISSING_INPUT_LABELS[key] ?? key;
 }
 
@@ -130,6 +134,21 @@ export function PurchaseLotDetailPanel({
     const next = await getPurchaseLotProfitability(lot.id);
     setCurrentProfitability(next);
   }, [lot.id]);
+
+  // Le transport (Lot F2-bis) se corrige depuis `LotCard`, un ANCÊTRE de ce
+  // panneau — jamais depuis ici. `lot` (prop) change alors de valeur sans que
+  // ce composant démonte/remonte : sans cet effet, `currentLot`/
+  // `currentProfitability` resteraient figés sur l'ancien transport jusqu'à la
+  // prochaine action interne (méthode/poids/pub). La ref évite de redéclencher
+  // ce refetch au montage (où `currentLot`/`currentProfitability` viennent déjà
+  // d'être initialisés depuis les mêmes props, une relecture serait redondante).
+  const lastKnownTransportTotalRef = useRef(lot.transportTotal);
+  useEffect(() => {
+    if (lastKnownTransportTotalRef.current === lot.transportTotal) return;
+    lastKnownTransportTotalRef.current = lot.transportTotal;
+    setCurrentLot(lot);
+    void refreshProfitability();
+  }, [lot, refreshProfitability]);
 
   const handleMethodChanged = useCallback(
     (method: AllocationMethod) => {

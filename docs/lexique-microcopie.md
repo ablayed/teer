@@ -37,5 +37,17 @@ entrées ci-dessous existent précisément pour qu'une notion déjà tranchée n
 Le retrait du « coût de reprise d'un colis refusé » ne retire **pas** le mécanisme de ligne
 manquante de `ExplanationCard` (`components/ui/explanation-card.tsx`) — il reste nécessaire pour
 d'autres coûts réellement pas encore connus au moment de l'affichage (ex. transport d'un
-arrivage pas encore facturé, publicité pas encore saisie). Seule la ligne de démonstration
-« coût de reprise » a disparu de `app/(app)/dev/finance-foundations/page.tsx`.
+arrivage pas encore facturé, publicité pas encore saisie). Ce mécanisme est visible sur un écran
+réel dans `purchase-lot-detail-panel.tsx` (« Marge provisoire — en attente de : … », formulation
+figée ci-dessus).
+
+## Page de démonstration retirée (Lot F2-bis)
+
+`app/(app)/dev/finance-foundations/page.tsx` (données 100 % fictives, hors navigation réelle) a
+été supprimée une fois les écrans réels équivalents en place : la Fiche arrivage
+(`purchase-lot-detail-panel.tsx`) et la vue arrivages de Finances (`app/(app)/finances/page.tsx`).
+Les gardes qui s'appuyaient sur elle ont été reportées sur ces écrans réels :
+- Absence de troncature monétaire (`[data-testid="amount"]`, aucun ancêtre `text-overflow: ellipsis`) : `tests/e2e/lot-f2-purchase-lot-detail.spec.ts`.
+- Chiffres tabulaires (`Amount`, `tabular-nums`) : `tests/e2e/lot-u1f-tabular-nums.spec.ts`, désormais sur la Fiche arrivage.
+- Contrat de fermeture de `DetailPanel` (croix/Échap/clic extérieur/focus, desktop et mobile) : `tests/e2e/detail-panel-close-contract.spec.ts`, désormais sur `ProductDetailPanel` (`/produits`).
+- Vouvoiement sans exception : `tests/unit/ui/no-tutoiement-finance-components.test.ts`, liste mise à jour vers les écrans réels.

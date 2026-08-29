@@ -18,6 +18,9 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
   const q = typeof params.q === 'string' ? params.q : '';
   const rawTab = typeof params.tab === 'string' ? params.tab : '';
   const tab: Tab = rawTab === 'stock' ? 'stock' : rawTab === 'achats' ? 'achats' : 'catalogue';
+  // Renvoi depuis Finances (vue arrivages, Lot F2-bis) : ouvre directement la
+  // fiche rentabilité de CET arrivage — Finances liste et renvoie, jamais ne saisit.
+  const openLotId = typeof params.lot === 'string' ? params.lot : undefined;
 
   if (tab === 'achats') {
     const [catalogResult, purchaseResult] = await Promise.all([
@@ -55,6 +58,7 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
           </div>
         ) : (
           <PurchaseLotsView
+            autoOpenLotId={openLotId}
             lots={purchaseResult.lots}
             products={catalogResult.ok ? catalogResult.products : []}
             profitabilityByLotId={profitabilityByLotId}

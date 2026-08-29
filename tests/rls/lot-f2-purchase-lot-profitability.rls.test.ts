@@ -1010,3 +1010,153 @@ describe('setPurchaseLotAllocationMethodAction / setPurchaseLotLineWeightAction 
     },
   );
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// Lot F2-bis — correctPurchaseLotTransportAction (lib/actions/purchases.ts).
+// `correct_purchase_lot_cost` (0145) ne vérifie que merchant_account_id,
+// JAMAIS shop_id (cf. son propre commentaire de tête) — un owner
+// multi-boutiques du même tenant pourrait sinon corriger le transport d'un
+// lot d'une autre de ses boutiques. La garde ajoutée par l'action (confronter
+// lotId à son parent autoritaire compte+boutique ACTIVE avant tout appel RPC)
+// est reproduite ici, même convention que setPurchaseLotAllocationMethodAction
+// ci-dessus (invoquer l'action elle-même n'est pas praticable hors contexte
+// de requête).
+// ──────────────────────────────────────────────────────────────────────────
+
+type CorrectTransportArgs = {
+  p_merchant_account_id: string;
+  p_purchase_lot_id: string;
+  p_purchase_lot_line_id: string | null;
+  p_field: 'purchase_price_total' | 'transport_total';
+  p_new_value: number;
+  p_actor_id: string;
+};
+
+function correctTransportRpc(client: SupabaseClient<Database>) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'correct_purchase_lot_cost',
+    args: CorrectTransportArgs,
+  ) => Promise<{ data: null; error: { message: string } | null }>;
+}
+
+describe('correctPurchaseLotTransportAction — garde tenant/boutique + fermeture de la marge provisoire', () => {
+  skipIfNoServiceRole(
+    "un lot d'une autre boutique du même tenant est invisible à la garde (correctPurchaseLotTransportAction traiterait ceci comme « Lot introuvable », sans jamais appeler la RPC)",
+    async () => {
+      const { admin, email, merchantAccountId, shopId, userId } = await createOwnerFixture(
+        'correct-transport-cross-shop',
+      );
+      const owner = await signIn(email);
+      const shopB = await createShop(
+        admin,
+        merchantAccountId,
+        `f2-correct-transport-shopB-${Date.now()}.internal`,
+      );
+      const productB = await createProduct(admin, merchantAccountId, shopB);
+      const { lotId: lotIdB } = await receiveLot(
+        admin,
+        owner,
+        merchantAccountId,
+        shopB,
+        userId,
+        productB,
+        5,
+        50_000,
+        0,
+      );
+
+      // Requête identique à la garde de correctPurchaseLotTransportAction :
+      // shopId = boutique ACTIVE (shopA), lot réellement dans shopB.
+      const found = await admin
+        .from('purchase_lot')
+        .select('id')
+        .eq('id', lotIdB)
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
+        .maybeSingle();
+
+      expect(found.data).toBeNull();
+    },
+  );
+
+  skipIfNoServiceRole(
+    'contrôle positif : la correction ferme réellement la marge provisoire (transport NULL -> valeur connue), vérifié avant/après sur la RPC de rentabilité',
+    async () => {
+      const { admin, email, merchantAccountId, shopId, userId } = await createOwnerFixture(
+        'correct-transport-closes-provisional',
+      );
+      const owner = await signIn(email);
+      const productId = await createProduct(admin, merchantAccountId, shopId);
+      const { lotId } = await receiveLot(
+        admin,
+        owner,
+        merchantAccountId,
+        shopId,
+        userId,
+        productId,
+        10,
+        100_000,
+        0,
+      );
+      // Transport « jamais facturé » posé APRÈS réception (receiveLot exige un
+      // nombre) — reproduit l'état réel visé par ce lot : un transport connu
+      // à zéro par défaut, jamais corrigé, donc jamais NULL avant ce lot.
+      await admin.from('purchase_lot').update({ transport_total: null }).eq('id', lotId);
+
+      // AVANT : marge provisoire, transport nommé comme entrée manquante.
+      const before = await profitabilityRpc(owner)('get_purchase_lot_profitability', {
+        p_purchase_lot_id: lotId,
+      });
+      const assembledBefore = assemblePurchaseLotProfitability(before.data);
+      if (!assembledBefore.ok || !assembledBefore.allocationMethodAvailable) {
+        throw new Error('unexpected profitability shape (before)');
+      }
+      expect(assembledBefore.totals.complete).toBe(false);
+      expect(assembledBefore.totals.missingInputs).toContain('transport_total');
+
+      // Même garde que l'action (confrontée à son parent autoritaire) puis
+      // même appel RPC — reproduction fidèle, invoquer l'action elle-même
+      // n'étant pas praticable hors contexte de requête (cf. commentaire de
+      // tête du fichier).
+      const { data: lot } = await admin
+        .from('purchase_lot')
+        .select('id')
+        .eq('id', lotId)
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
+        .maybeSingle();
+      expect(lot).not.toBeNull();
+
+      const correction = await correctTransportRpc(owner)('correct_purchase_lot_cost', {
+        p_merchant_account_id: merchantAccountId,
+        p_purchase_lot_id: lotId,
+        p_purchase_lot_line_id: null,
+        p_field: 'transport_total',
+        p_new_value: 15_000,
+        p_actor_id: userId,
+      });
+      expect(correction.error).toBeNull();
+
+      // APRÈS : relit la même RPC — la marge provisoire a disparu.
+      const after = await profitabilityRpc(owner)('get_purchase_lot_profitability', {
+        p_purchase_lot_id: lotId,
+      });
+      const assembledAfter = assemblePurchaseLotProfitability(after.data);
+      if (!assembledAfter.ok || !assembledAfter.allocationMethodAvailable) {
+        throw new Error('unexpected profitability shape (after)');
+      }
+      expect(assembledAfter.totals.complete).toBe(true);
+      expect(assembledAfter.totals.missingInputs).toEqual([]);
+
+      // Piste d'audit posée par la même transaction que la correction (0145).
+      const { data: auditRow } = await admin
+        .from('purchase_lot_cost_correction')
+        .select('field, previous_value, new_value')
+        .eq('purchase_lot_id', lotId)
+        .eq('field', 'transport_total')
+        .single();
+      expect(auditRow?.previous_value).toBe(0);
+      expect(auditRow?.new_value).toBe(15_000);
+    },
+  );
+});
