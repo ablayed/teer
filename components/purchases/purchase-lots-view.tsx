@@ -454,14 +454,22 @@ function LotCard({
 
       {feedback && <Alert {...feedback} />}
 
-      {lot.status === 'received' && profitability && (
+      {/* Démonté quand fermé (jamais mounted+aria-hidden) : `DetailPanel` sur
+          desktop garde son contenu dans le DOM même fermé (translaté hors écran)
+          sans `inert` ni gestion du tabindex — un panneau monté par arrivage reçu
+          laisserait un champ de poids, un bouton « Enregistrer », les 3 boutons
+          de méthode et le bouton « + Ajouter une dépense publicitaire » de CHAQUE
+          arrivage focusables dans l'ordre de tabulation, en violation ARIA
+          (contenu focalisable sous un ancêtre aria-hidden). Même pattern que
+          `products-catalog.tsx` (`{detailProduct && canManage ? <ProductDetailPanel .../> : null}`). */}
+      {lot.status === 'received' && profitability && detailOpen ? (
         <PurchaseLotDetailPanel
           lot={lot}
           profitability={profitability}
           open={detailOpen}
           onClose={() => setDetailOpen(false)}
         />
-      )}
+      ) : null}
     </div>
   );
 }
