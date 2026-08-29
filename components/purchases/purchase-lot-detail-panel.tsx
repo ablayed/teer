@@ -614,7 +614,20 @@ function WeightEditorRow({
     }
     setValidationError(null);
     pendingWeightRef.current = parsed;
-    await weightAction.submit({ lotId: lot.id, lineId: line.id, weightGrams: parsed });
+    // Clé d'idempotence DÉTERMINISTE par ligne (jamais un id aléatoire par clic) :
+    // `listQueuedMutations()` lit IndexedDB par ORDRE DE CLÉ, pas d'insertion — sans
+    // ceci, deux clics successifs sur « Enregistrer » pour la MÊME ligne (ex. 500
+    // puis correction à 600) créeraient deux enregistrements distincts dont l'ordre
+    // d'application au retour réseau n'est pas garanti suivre l'ordre de saisie,
+    // risquant de faire gagner la valeur la plus ancienne. Avec cette clé stable,
+    // le second submit écrase le premier enregistrement en file (même id) — seule
+    // la DERNIÈRE valeur saisie par le marchand est jamais appliquée. Corollaire :
+    // un clic sur « Réessayer » après échec réutilise aussi cet id, donc relance la
+    // même mutation plutôt que d'en empiler une nouvelle en permanence.
+    await weightAction.submit(
+      { lotId: lot.id, lineId: line.id, weightGrams: parsed },
+      `set_purchase_lot_line_weight:${line.id}`,
+    );
   }
 
   return (

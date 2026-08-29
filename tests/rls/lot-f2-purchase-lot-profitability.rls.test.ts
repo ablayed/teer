@@ -948,4 +948,65 @@ describe('setPurchaseLotAllocationMethodAction / setPurchaseLotLineWeightAction 
       expect(found.data?.id).toBe(lotId);
     },
   );
+
+  // Reproduction directe de la requête CORRIGÉE de setPurchaseLotLineWeightAction
+  // (lib/actions/purchases.ts) — invoquer l'action elle-même n'est pas praticable
+  // ici (dépend de `next/headers`/`getRequestStoreId()`, indisponibles hors
+  // contexte de requête ; convention déjà acceptée pour les deux autres actions
+  // ci-dessus). Avant le correctif, `.update(...)` sans `.select()` renvoyait
+  // `error: null` même sur un update qui ne touchait AUCUNE ligne — l'action
+  // renvoyait alors `{ok: true}` à tort. Ce test prouve que la requête corrigée
+  // (`.select('id')` + vérification du tableau retourné) distingue bien
+  // maintenant « update appliqué » de « update qui n'a rien trouvé ».
+  skipIfNoServiceRole(
+    "un lineId d'une autre boutique du même tenant ne matche AUCUNE ligne — la requête corrigée (.select('id')) le distingue d'un succès, contrairement à l'ancienne (error: null)",
+    async () => {
+      const { admin, email, merchantAccountId, shopId, userId } =
+        await createOwnerFixture('setweight-zero-row-fix');
+      const owner = await signIn(email);
+      const shopB = await createShop(
+        admin,
+        merchantAccountId,
+        `f2-setweight-zerorow-shopB-${Date.now()}.internal`,
+      );
+      const productB = await createProduct(admin, merchantAccountId, shopB);
+      const { lotId: lotIdB, purchaseLotLineId: lineIdB } = await receiveLot(
+        admin,
+        owner,
+        merchantAccountId,
+        shopB,
+        userId,
+        productB,
+        5,
+        50_000,
+        0,
+      );
+
+      // Requête EXACTE de la version corrigée de setPurchaseLotLineWeightAction :
+      // shopId = boutique ACTIVE (shopA), ligne/lot réellement dans shopB.
+      const { data: updated, error } = await admin
+        .from('purchase_lot_line')
+        .update({ weight_grams: 1_200 })
+        .eq('id', lineIdB)
+        .eq('purchase_lot_id', lotIdB)
+        .eq('merchant_account_id', merchantAccountId)
+        .eq('shop_id', shopId)
+        .select('id');
+
+      // Le comportement PostgREST historique (ce que le bug exploitait) : aucune
+      // erreur même quand rien n'a été touché.
+      expect(error).toBeNull();
+      // C'est le tableau vide — jamais `error` — qui doit signaler l'échec :
+      // exactement la vérification ajoutée par le correctif.
+      expect(updated).toEqual([]);
+
+      // Contrôle négatif : le poids de la ligne de shopB n'a pas bougé.
+      const { data: untouched } = await admin
+        .from('purchase_lot_line')
+        .select('weight_grams')
+        .eq('id', lineIdB)
+        .single();
+      expect(untouched?.weight_grams).toBeNull();
+    },
+  );
 });

@@ -8,10 +8,39 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(async () => {
-  const all = await listQueuedMutations();
-  await flushMutationQueue(
-    Object.fromEntries(all.map((m) => [m.kind, async () => ({ ok: true })])),
-  );
+  // Ne PAS utiliser flushMutationQueue ici pour nettoyer : un enregistrement
+  // `parked` (test du plafond de tentatives) est délibérément ignoré par
+  // flushMutationQueue, donc ce nettoyage ne l'atteindrait jamais et le
+  // laisserait fuiter vers le test suivant. On vide directement l'object
+  // store IndexedDB (fake-indexeddb), sans passer par le comportement métier
+  // testé. (`indexedDB.deleteDatabase` a été essayé mais reste bloqué
+  // indéfiniment sous fake-indexeddb tant que des connexions ouvertes par
+  // mutation-queue.ts — jamais fermées, cf. `openDb` — n'ont pas reçu de
+  // `versionchange` traité ; `store.clear()` sur une connexion neuve évite
+  // ce blocage.)
+  await new Promise<void>((resolve, reject) => {
+    const openReq = indexedDB.open('teer-mutation-queue', 1);
+    openReq.onupgradeneeded = () => {
+      const db = openReq.result;
+      if (!db.objectStoreNames.contains('mutations')) {
+        db.createObjectStore('mutations', { keyPath: 'id' });
+      }
+    };
+    openReq.onsuccess = () => {
+      const db = openReq.result;
+      const tx = db.transaction('mutations', 'readwrite');
+      tx.objectStore('mutations').clear();
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error);
+      };
+    };
+    openReq.onerror = () => reject(openReq.error);
+  });
 });
 
 describe('mutation-queue', () => {
@@ -70,5 +99,32 @@ describe('mutation-queue', () => {
 
     const all = await listQueuedMutations();
     expect(all.filter((m) => m.id === fixedId)).toHaveLength(1);
+  });
+
+  it('un enregistrement qui échoue toujours est parqué après le plafond de tentatives, jamais supprimé', async () => {
+    const record = await enqueueMutation('set_weight', { lineId: 'l1', weightGrams: 500 });
+    const alwaysFailingExecutor = { set_weight: async () => ({ ok: false }) };
+
+    // 10 flushes en échec consécutifs — au-delà du plafond (MAX_ATTEMPTS_BEFORE_PARKING = 10).
+    for (let i = 0; i < 10; i++) {
+      await flushMutationQueue(alwaysFailingExecutor);
+    }
+
+    const afterTenFailures = (await listQueuedMutations()).find((m) => m.id === record.id);
+    expect(afterTenFailures).toBeDefined();
+    expect(afterTenFailures?.attempts).toBe(10);
+    expect(afterTenFailures?.parked).toBe(true);
+
+    // Un exécuteur qui compte ses appels prouve que le rejeu automatique s'est
+    // bien arrêté : un enregistrement parqué est ignoré par flushMutationQueue,
+    // jamais rejoué, même si un exécuteur qui réussirait est fourni ensuite.
+    const callCount = vi.fn(async () => ({ ok: true }));
+    await flushMutationQueue({ set_weight: callCount });
+    expect(callCount).not.toHaveBeenCalled();
+
+    // Toujours présent en base — jamais supprimé silencieusement.
+    const stillPresent = (await listQueuedMutations()).find((m) => m.id === record.id);
+    expect(stillPresent).toBeDefined();
+    expect(stillPresent?.parked).toBe(true);
   });
 });

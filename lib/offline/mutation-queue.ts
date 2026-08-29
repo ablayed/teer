@@ -11,6 +11,17 @@ const DB_VERSION = 1;
 
 export type QueuedMutationStatus = 'queued' | 'synced';
 
+// Plafond de tentatives avant qu'un enregistrement ne soit « parqué » (retiré du
+// rejeu automatique, mais conservé — jamais supprimé silencieusement). 10 est
+// généreux pour ce qui est un flush GLOBAL déclenché à chaque navigation ET
+// chaque retour réseau (`MutationQueueProvider`) : un échec transitoire (backend
+// indisponible quelques minutes) se résorbe largement avant ce seuil, alors
+// qu'un échec structurel (lot supprimé, rôle rétrogradé, doublon pré-fix 2a/2b)
+// ne se résorbera jamais tout seul — continuer à le rejouer indéfiniment ne fait
+// que consommer un aller-retour réseau à chaque page vue, pour toujours, sans
+// qu'aucune UI n'existe pour vider la file (cf. CLAUDE.md, Lot F2 finding).
+const MAX_ATTEMPTS_BEFORE_PARKING = 10;
+
 export type QueuedMutation<TInput = unknown> = {
   id: string;
   kind: string;
@@ -18,6 +29,10 @@ export type QueuedMutation<TInput = unknown> = {
   createdAt: string;
   attempts: number;
   lastError?: string;
+  // Un enregistrement parqué a atteint MAX_ATTEMPTS_BEFORE_PARKING échecs :
+  // `flushMutationQueue` ne le rejoue plus automatiquement, mais NE LE SUPPRIME
+  // PAS — il reste inspectable (IndexedDB) pour une investigation manuelle.
+  parked?: boolean;
 };
 
 function openDb(): Promise<IDBDatabase> {
@@ -90,11 +105,30 @@ function notifySettled(id: string) {
   settledListeners.delete(id);
 }
 
+// Best-effort : ne doit jamais faire échouer l'appelant si Sentry n'est pas
+// disponible (script bloqué, offline) — même motif que le catch silencieux de
+// `initMutationQueueAutoFlush` ci-dessous.
+function reportParkedMutation(record: QueuedMutation): void {
+  void import('@sentry/nextjs')
+    .then((Sentry) => {
+      Sentry.captureException(new Error('mutation_queue_record_parked'), {
+        tags: { module: 'offline.mutation-queue', kind: record.kind },
+        extra: { id: record.id, attempts: record.attempts, lastError: record.lastError },
+      });
+    })
+    .catch(() => {});
+}
+
 export async function flushMutationQueue(
   executors: Record<string, (input: unknown) => Promise<{ ok: boolean }>>,
 ): Promise<void> {
   const all = await listQueuedMutations();
   for (const record of all) {
+    // Parqué lors d'un flush précédent (plafond de tentatives atteint) : on ne
+    // le rejoue plus automatiquement — il reste en base pour investigation
+    // manuelle, jamais supprimé silencieusement (cf. commentaire sur `parked`).
+    if (record.parked) continue;
+
     const executor = executors[record.kind];
     if (!executor) continue;
 
@@ -104,18 +138,25 @@ export async function flushMutationQueue(
         await withStore('readwrite', (store) => store.delete(record.id));
         notifySettled(record.id);
       } else {
+        const attempts = record.attempts + 1;
+        const parked = attempts >= MAX_ATTEMPTS_BEFORE_PARKING;
         await withStore('readwrite', (store) =>
-          store.put({ ...record, attempts: record.attempts + 1, lastError: 'rejected' }),
+          store.put({ ...record, attempts, lastError: 'rejected', parked }),
         );
+        if (parked) reportParkedMutation({ ...record, attempts, parked });
       }
     } catch (err) {
+      const attempts = record.attempts + 1;
+      const parked = attempts >= MAX_ATTEMPTS_BEFORE_PARKING;
       await withStore('readwrite', (store) =>
         store.put({
           ...record,
-          attempts: record.attempts + 1,
+          attempts,
           lastError: err instanceof Error ? err.message : 'unknown_error',
+          parked,
         }),
       );
+      if (parked) reportParkedMutation({ ...record, attempts, parked });
     }
   }
 }
@@ -123,10 +164,17 @@ export async function flushMutationQueue(
 export function initMutationQueueAutoFlush(
   executors: Record<string, (input: unknown) => Promise<{ ok: boolean }>>,
 ): () => void {
+  // `.catch(() => {})` best-effort : si `indexedDB.open` échoue (site data bloqué,
+  // navigateur durci en confidentialité, certaines webviews embarquées), ce flush
+  // tourne désormais sur CHAQUE page authentifiée ET chaque retour réseau pour
+  // TOUS les utilisateurs (depuis le branchement de MutationQueueProvider à la
+  // racine) — sans ce catch, un rejet non observé ici peut produire du bruit
+  // (avertissement unhandled-rejection / Sentry) à cette fréquence plutôt que
+  // seulement à la soumission d'un formulaire (portée initiale, plus étroite).
   const handleOnline = () => {
-    void flushMutationQueue(executors);
+    void flushMutationQueue(executors).catch(() => {});
   };
   window.addEventListener('online', handleOnline);
-  void flushMutationQueue(executors); // rattrape les mutations laissées par une session précédente
+  void flushMutationQueue(executors).catch(() => {}); // rattrape les mutations laissées par une session précédente
   return () => window.removeEventListener('online', handleOnline);
 }

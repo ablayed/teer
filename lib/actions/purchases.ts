@@ -606,15 +606,29 @@ export const setPurchaseLotLineWeightAction = requireRole('owner')
     // lineId ET lotId confrontés à leur parent autoritaire (compte marchand +
     // boutique active) dans la même clause .eq() que l'écriture — jamais un
     // identifiant reçu du client transmis sans être vérifié contre son parent.
-    const { error } = await admin
+    //
+    // `.select('id')` + vérification du tableau retourné : PostgREST NE renvoie
+    // AUCUNE erreur quand un `.update()` matche zéro ligne (ex. lineId d'une
+    // autre boutique après un changement de boutique active) — sans ce garde,
+    // l'action renverrait `{ok: true}` sur une écriture qui n'a rien touché.
+    // Combiné à la file de mutations offline (qui supprime l'enregistrement en
+    // file dès que l'exécuteur renvoie `{ok: true}`), un faux succès ici perdrait
+    // silencieusement et définitivement l'édition du marchand. Voir
+    // setPurchaseLotAllocationMethodAction ci-dessus pour le même principe
+    // appliqué en pré-vérification plutôt qu'en post-vérification.
+    const { data: updated, error } = await admin
       .from('purchase_lot_line')
       .update({ weight_grams: parsedInput.weightGrams })
       .eq('id', parsedInput.lineId)
       .eq('purchase_lot_id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId)
-      .eq('shop_id', shopId);
+      .eq('shop_id', shopId)
+      .select('id');
 
     if (error) return { ok: false as const, message: error.message };
+    if (!updated || updated.length === 0) {
+      return { ok: false as const, message: 'Ligne introuvable.' };
+    }
     revalidatePath('/produits');
     return { ok: true as const };
   });
