@@ -130,12 +130,20 @@ export function allocateTransportCost(
  * restes, index d'origine croissant en cas d'égalité. La somme des parts
  * renvoyées égale TOUJOURS exactement `total`.
  *
- * SEULE implémentation du plus grand reste du projet — `allocateTransportCost`
- * (répartition du transport) et la proratisation de la publicité par ligne
- * (lib/finance/lot-profitability-assembly.ts, Lot F2) l'appellent toutes les
- * deux plutôt que de réimplémenter la technique une seconde fois (une
- * réimplémentation en SQL a divergé une fois : `sum(bigint)` renvoie
- * `numeric`, cassant la troncature entière — cf. migration 0146).
+ * SEULE implémentation du plus grand reste du domaine Finances v2 /
+ * lot-profitability — `allocateTransportCost` (répartition du transport) et
+ * la proratisation de la publicité par ligne (lib/finance/
+ * lot-profitability-assembly.ts, Lot F2) l'appellent toutes les deux plutôt
+ * que de réimplémenter la technique une seconde fois (une réimplémentation en
+ * SQL a divergé une fois : `sum(bigint)` renvoie `numeric`, cassant la
+ * troncature entière — cf. migration 0146).
+ *
+ * NB : `lib/purchases/fee-allocation.ts` définit une fonction de même nom
+ * (`distributeByLargestRemainder`) mais distincte — signature bigint, et
+ * repli poids-tous-nuls différent (parts égales ici, zéros partout là-bas).
+ * C'est une implémentation séparée pour la répartition des frais d'achat,
+ * volontairement non fusionnée avec celle-ci (sémantiques différentes pour
+ * le cas poids nul) — ne pas les confondre ni tenter de les unifier.
  *
  * Poids tous nuls (totalWeight=0) : renvoie des zéros partout — c'est
  * l'appelant qui décide d'un repli (ex. poids égaux) avant d'appeler cette

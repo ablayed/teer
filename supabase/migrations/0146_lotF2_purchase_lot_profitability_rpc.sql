@@ -79,6 +79,14 @@ as $$
   -- CA imputé par ligne de lot : part au prorata des unités allouées à cette
   -- ligne sur le total_amount (déjà net des frais de livraison) de chaque
   -- commande où elle apparaît, arrondi commande par commande avant somme.
+  -- NB arrondi : ce `round()` est indépendant par (ligne, commande) — borné
+  -- à ±1-2F par rapport à la part exacte de chaque commande, mais PAS
+  -- garanti sum-exact au niveau d'une commande (contrairement à la garantie
+  -- sum-exacte du plus grand reste utilisée ailleurs dans ce même lot —
+  -- `distributeByLargestRemainder` côté TS). Ne pas confondre les deux
+  -- garanties : une distribution par plus grand reste ici agrégerait toutes
+  -- les lignes de lot d'une commande ensemble, ce que cette CTE ne fait pas
+  -- (elle raisonne ligne par ligne, commande par commande).
   line_cash as (
     select ao.purchase_lot_line_id,
            sum(round(ao.qty::numeric * o.total_amount / nullif(omq.matched_qty, 0)))::bigint
@@ -95,10 +103,13 @@ as $$
   -- au prorata de qty_received par ligne (méthode du plus grand reste,
   -- identique en esprit à allocateTransportCost) est faite côté TS
   -- (lib/finance/lot-profitability-assembly.ts), en réutilisant le SEUL
-  -- moteur de répartition du plus grand reste du projet (lib/finance/
-  -- lot-profitability.ts). Une répartition en SQL ici aurait dupliqué cette
-  -- logique et déjà divergé une fois : `sum(bigint)` renvoie `numeric`, ce
-  -- qui rend la division non tronquante et casse l'invariant entier.
+  -- moteur de répartition du plus grand reste du domaine Finances v2 /
+  -- lot-profitability (lib/finance/lot-profitability.ts — distinct de la
+  -- fonction homonyme bigint de lib/purchases/fee-allocation.ts, qui a une
+  -- sémantique poids-nul différente et n'est pas concernée ici). Une
+  -- répartition en SQL ici aurait dupliqué cette logique et déjà divergé une
+  -- fois : `sum(bigint)` renvoie `numeric`, ce qui rend la division non
+  -- tronquante et casse l'invariant entier.
   ad_spend as (
     select product_id, sum(amount_minor) as amount_minor
       from public.product_ad_spend

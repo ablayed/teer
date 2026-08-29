@@ -483,6 +483,16 @@ export async function getPurchaseLotPageData(shopId: string): Promise<PurchaseLo
 
 // ── PROFITABILITY (Lot F2) ───────────────────────────────────────────────────
 
+// Intentionnellement appelable depuis un COMPOSANT CLIENT (pas seulement le
+// RSC) — `purchase-lot-detail-panel.tsx`'s `refreshProfitability()` l'appelle
+// directement après chaque écriture réussie (méthode/poids/dépense pub) pour
+// relire la rentabilité fraîche côté serveur (Paradigm B, cf. CLAUDE.md :
+// jamais de `router.refresh()` pour ce genre de lecture post-mutation). C'est
+// sûr précisément parce que cette fonction utilise `createSupabaseServerClient()`
+// (respecte RLS, sous l'identité de l'appelant) — contrairement aux autres
+// fonctions de ce fichier qui passent par `createSupabaseAdminClient()` pour
+// leurs écritures ; ne jamais faire suivre ce même chemin admin à une fonction
+// appelée depuis le client.
 export async function getPurchaseLotProfitability(
   lotId: string,
 ): Promise<PurchaseLotProfitabilitySummary> {

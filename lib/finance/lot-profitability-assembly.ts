@@ -39,9 +39,12 @@ export type PurchaseLotProfitabilityRpcResult = {
 /**
  * Répartit la publicité totale de chaque produit entre ses lignes de CE lot,
  * au prorata de `qtyReceived`, par la méthode du plus grand reste
- * (`distributeByLargestRemainder`, seule implémentation du projet — cf.
- * lib/finance/lot-profitability.ts). Un produit avec une seule ligne dans ce
- * lot reçoit trivialement 100 % de sa publicité sur cette ligne : l'algorithme
+ * (`distributeByLargestRemainder`, seule implémentation du domaine Finances
+ * v2 / lot-profitability — cf. lib/finance/lot-profitability.ts ; distincte
+ * de la fonction homonyme bigint de lib/purchases/fee-allocation.ts, qui a
+ * une sémantique poids-nul différente et ne doit pas être fusionnée). Un
+ * produit avec une seule ligne dans ce lot reçoit trivialement 100 % de sa
+ * publicité sur cette ligne : l'algorithme
  * général le fait naturellement (poids unique = totalWeight, part = total),
  * vérifié par test plutôt que spécial-casé.
  *

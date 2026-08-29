@@ -279,6 +279,11 @@ export function ProductDetailPanel({
           </button>
         </section>
 
+        {/* Ce gate `isOwner` est de l'UX seulement (masquer l'entrée pour un rôle qui
+            ne l'utilisera pas) — la VRAIE frontière de sécurité est `requireRole('owner')`
+            côté serveur sur les actions de dépense publicitaire elles-mêmes
+            (`lib/actions/purchases.ts`). Un contournement client (devtools, requête
+            directe) est rejeté serveur quel que soit l'état de ce booléen. */}
         {isOwner ? (
           <section aria-labelledby="product-ad-spend-heading" className="space-y-4">
             <h2 className="text-sm font-semibold text-muted" id="product-ad-spend-heading">
