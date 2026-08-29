@@ -7,7 +7,17 @@ import {
 } from '@/lib/actions/expenses';
 import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useCallback, useState, useTransition } from 'react';
+
+// Catégorie de dépense « Publicité » (code `ADS`, cf. lib/finance/product-cost.ts) —
+// désormais désactivée à la SAISIE ici (Lot F2-bis) : une dépense pub saisie
+// depuis ce formulaire générique et une autre saisie depuis la fiche arrivage
+// (`product_ad_spend`, table distincte) ne se réconcilient nulle part — double
+// comptage silencieux possible si les deux existaient côte à côte. Reste
+// SÉLECTIONNABLE en édition d'une dépense déjà existante sous ce code (donnée
+// historique, jamais réécrite silencieusement par ce changement).
+const ADS_CATEGORY_CODE = 'ADS';
 
 type Category = {
   id: string;
@@ -31,6 +41,7 @@ type Props = {
   categories: Category[];
   currentPeriodFrom: string;
   currentPeriodTo: string;
+  storeId: string;
 };
 
 type FormState = {
@@ -43,18 +54,30 @@ function ExpenseForm({
   initialValues,
   onCancel,
   onSaved,
+  storeId,
 }: {
   categories: Category[];
   initialValues?: Expense;
   onCancel: () => void;
   onSaved: () => void;
+  storeId: string;
 }) {
   const t = useTranslations('finance.expense');
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const adsCategory = categories.find((c) => c.code === ADS_CATEGORY_CODE);
+  // Une dépense déjà enregistrée sous ADS (donnée historique) garde son
+  // option sélectionnable en édition — jamais réassignée silencieusement à
+  // une autre catégorie par ce changement. Une NOUVELLE dépense ne peut en
+  // revanche jamais démarrer sur ADS par défaut : le premier candidat qui
+  // n'est pas ADS est choisi à sa place.
+  const editingAds = initialValues?.category_id === adsCategory?.id;
   const [categoryId, setCategoryId] = useState(
-    initialValues?.category_id ?? categories[0]?.id ?? '',
+    initialValues?.category_id ??
+      categories.find((c) => c.code !== ADS_CATEGORY_CODE)?.id ??
+      categories[0]?.id ??
+      '',
   );
   const [freeText, setFreeText] = useState(initialValues?.free_text_category ?? '');
   const [amount, setAmount] = useState(initialValues ? String(initialValues.amount_minor) : '');
@@ -111,12 +134,26 @@ function ExpenseForm({
           onChange={(e) => setCategoryId(e.target.value)}
           value={categoryId}
         >
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.label_fr}
-            </option>
-          ))}
+          {categories.map((cat) => {
+            const isAds = cat.code === ADS_CATEGORY_CODE;
+            return (
+              <option disabled={isAds && !editingAds} key={cat.id} value={cat.id}>
+                {isAds ? t('categoryAdsDisabled') : cat.label_fr}
+              </option>
+            );
+          })}
         </select>
+        {adsCategory && !editingAds ? (
+          <p className="text-xs text-muted">
+            {t('categoryAdsHint')}{' '}
+            <Link
+              className="font-medium text-accent underline"
+              href={`/s/${storeId}/produits?tab=achats`}
+            >
+              {t('categoryAdsCta')}
+            </Link>
+          </p>
+        ) : null}
       </div>
 
       {showFreeText ? (
@@ -207,6 +244,7 @@ export function ExpenseSection({
   categories,
   currentPeriodFrom,
   currentPeriodTo,
+  storeId,
 }: Props) {
   const t = useTranslations('finance.expense');
   const [formState, setFormState] = useState<FormState | null>(null);
@@ -272,6 +310,7 @@ export function ExpenseSection({
             initialValues={formState.mode === 'edit' ? formState.expense : undefined}
             onCancel={() => setFormState(null)}
             onSaved={() => handleSaved(formState.mode === 'edit')}
+            storeId={storeId}
           />
         </div>
       ) : null}

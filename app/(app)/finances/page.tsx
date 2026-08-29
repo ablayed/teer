@@ -8,11 +8,22 @@ import { ReportDownloadButton } from '@/components/finance/ReportDownloadButton'
 import { FinancePeriodPersistence } from '@/components/finance/finance-period-persistence';
 import { FinanceTabSkeleton } from '@/components/finance/finance-tab-skeleton';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
+import {
+  MARGIN_PCT_MISSING_LABEL,
+  missingInputLabel,
+} from '@/components/purchases/purchase-lot-detail-panel';
 import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { DefinitionCard } from '@/components/ui/definition-card';
+import { GainLoss } from '@/components/ui/gain-loss';
+import { ValueAmount } from '@/components/ui/value-state';
 import { listExpenseCategoriesAction, listExpensesAction } from '@/lib/actions/expenses';
 import { getFinanceChartsAction, getFinanceReportAction } from '@/lib/actions/profit';
+import {
+  type PurchaseLotData,
+  getPurchaseLotPageData,
+  getPurchaseLotProfitability,
+} from '@/lib/actions/purchases';
 import { fetchFinanceDriverCostReport } from '@/lib/finance/driver-cost';
 import { buildDriverSettlements } from '@/lib/finance/driver-settlements';
 import {
@@ -20,10 +31,12 @@ import {
   type SettlementForMargin,
   estimatedMarginMinor,
 } from '@/lib/finance/fees';
+import type { PurchaseLotProfitabilitySummary } from '@/lib/finance/lot-profitability-assembly';
 import { fetchFinanceProductCostReport } from '@/lib/finance/product-cost';
 import { isProfitCoverageIncomplete } from '@/lib/finance/profit';
 import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { formatMoney } from '@/lib/format/fcfa';
+import { formatPercentFr } from '@/lib/format/percent';
 import type { ActivePeriod } from '@/lib/periods/date-range';
 import { PERIOD_PRESETS, resolvePeriodRange, toDateInput } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
@@ -40,7 +53,7 @@ import { Suspense } from 'react';
 type FinanceKpiRow = Database['public']['Functions']['finance_kpis']['Returns'][number];
 type CashAgingRow = Database['public']['Functions']['cash_aging']['Returns'][number];
 
-type FinanceTab = 'global' | 'produits' | 'livreurs';
+type FinanceTab = 'global' | 'produits' | 'livreurs' | 'arrivages';
 
 type FinancesPageProps = {
   searchParams: Promise<{
@@ -82,7 +95,7 @@ function periodRange({
 }
 
 function normalizeFinanceTab(value: string | undefined): FinanceTab {
-  return value === 'produits' || value === 'livreurs' ? value : 'global';
+  return value === 'produits' || value === 'livreurs' || value === 'arrivages' ? value : 'global';
 }
 
 function buildFinanceHref(params: {
@@ -228,6 +241,13 @@ async function FinanceTabBar({
       >
         {t('tabs.drivers')}
       </Link>
+      <Link
+        aria-current={activeTab === 'arrivages' ? 'page' : undefined}
+        className={tabClass(activeTab === 'arrivages')}
+        href={buildFinanceHref({ ...periodParams, shop, storeId, tab: 'arrivages' })}
+      >
+        {t('tabs.arrivages')}
+      </Link>
     </nav>
   );
 }
@@ -364,6 +384,7 @@ async function GlobalTabContent({
         currentPeriodFrom={toDateInput(from)}
         currentPeriodTo={toDateInput(to)}
         expenses={expenses}
+        storeId={storeId}
       />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -561,6 +582,146 @@ async function DriverTabContent({
   );
 }
 
+// ── Vue arrivages (Lot F2-bis) ───────────────────────────────────────────────
+//
+// Finances LISTE et AGRÈGE, Produits SAISIT et DÉTAILLE — aucun champ de
+// saisie ici (ni transport, ni méthode de répartition, ni poids, ni dépense
+// publicitaire) : cette carte renvoie vers la Fiche arrivage sous Produits
+// pour tout geste. Réutilise exclusivement les composants livrés en U1-F/F2
+// (`GainLoss`, `ValueAmount`) — aucun nouveau composant financier.
+function ArrivageCard({
+  lot,
+  profitability,
+  storeId,
+}: {
+  lot: PurchaseLotData;
+  profitability: PurchaseLotProfitabilitySummary;
+  storeId: string;
+}) {
+  const detailHref = `/s/${storeId}/produits?tab=achats&lot=${lot.id}`;
+
+  if (!profitability.ok) {
+    return (
+      <article className="rounded-lg border border-border bg-surface p-4 shadow-1">
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-medium text-text">{lot.supplierName}</p>
+          <Link className="text-sm font-medium text-accent underline" href={detailHref}>
+            Voir la fiche
+          </Link>
+        </div>
+        <p className="mt-2 text-sm text-muted">
+          {profitability.reason === 'not_found'
+            ? 'Arrivage introuvable.'
+            : 'Rentabilité indisponible pour le moment.'}
+        </p>
+      </article>
+    );
+  }
+
+  if (!profitability.allocationMethodAvailable) {
+    return (
+      <article className="rounded-lg border border-border bg-surface p-4 shadow-1">
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-medium text-text">{lot.supplierName}</p>
+          <Link className="text-sm font-medium text-accent underline" href={detailHref}>
+            Voir la fiche
+          </Link>
+        </div>
+        <p className="mt-2 text-sm text-warning">
+          Répartition au poids indisponible : au moins une ligne n'a pas de poids renseigné.
+        </p>
+      </article>
+    );
+  }
+
+  const { totals } = profitability;
+  const marginPctMissing = totals.cashCollectedMinor === 0;
+
+  return (
+    <article className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-text">{lot.supplierName}</p>
+          <p className="text-xs text-muted">
+            Reçu le {lot.receivedAt ?? lot.orderedAt}
+            {lot.reference ? ` · ${lot.reference}` : ''}
+          </p>
+        </div>
+        <Link className="text-sm font-medium text-accent underline" href={detailHref}>
+          Voir la fiche
+        </Link>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <GainLoss
+          amountMinor={totals.marginMinor}
+          labels={{ gain: 'Marge', loss: 'Marge', neutral: 'Marge nulle' }}
+        />
+        {marginPctMissing ? (
+          <ValueAmount state={{ kind: 'missing', label: MARGIN_PCT_MISSING_LABEL }} />
+        ) : (
+          <span className="text-sm text-muted">{formatPercentFr(totals.marginPct)} %</span>
+        )}
+        <span className="text-sm text-muted">
+          {totals.qtySold} / {totals.qtyReceived} vendus
+        </span>
+      </div>
+
+      {!totals.complete && (
+        <p className="text-xs text-warning">
+          Marge provisoire — en attente de :{' '}
+          {totals.missingInputs.map(missingInputLabel).join(', ')}.
+        </p>
+      )}
+    </article>
+  );
+}
+
+async function ArrivagesTabContent({ storeId }: { storeId: string }) {
+  const t = await getTranslations('finance');
+  const purchaseResult = await getPurchaseLotPageData(storeId);
+
+  if (!purchaseResult.ok) {
+    return (
+      <div className="rounded-lg border border-danger/30 bg-surface p-6 text-sm text-danger shadow-1">
+        {purchaseResult.message}
+      </div>
+    );
+  }
+
+  // Rentabilité chargée uniquement pour les lots REÇUS (même garde que la page
+  // Produits) : un lot pas encore reçu n'a ni CA encaissé ni coût de revient
+  // figé, rien d'utile à agréger avant réception.
+  const receivedLots = purchaseResult.lots.filter((lot) => lot.status === 'received');
+  const profitabilityEntries = await Promise.all(
+    receivedLots.map(async (lot) => [lot.id, await getPurchaseLotProfitability(lot.id)] as const),
+  );
+  const profitabilityByLotId = Object.fromEntries(profitabilityEntries);
+
+  return (
+    <div className="space-y-4">
+      <p className="rounded-lg border border-border bg-surface p-3 text-xs text-muted shadow-1">
+        {t('natureArrivages')}
+      </p>
+
+      {receivedLots.length === 0 ? (
+        <p className="rounded-lg border border-border bg-surface p-6 text-sm text-muted-foreground shadow-1">
+          {t('arrivages.empty')}
+        </p>
+      ) : (
+        receivedLots.map((lot) => (
+          <ArrivageCard
+            key={lot.id}
+            lot={lot}
+            profitability={profitabilityByLotId[lot.id]}
+            storeId={storeId}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
 export default async function FinancesPage({ searchParams }: FinancesPageProps) {
   const nav = await getTranslations('nav');
   const t = await getTranslations('finance');
@@ -614,22 +775,30 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
               to={toDateInput(to)}
             />
           ) : null}
-          <ShopFilterSelector
-            allLabel={t('shops.all')}
-            ariaLabel={t('shops.ariaLabel')}
-            label={t('shops.label')}
-            pathname={`/s/${storeId}/finances`}
-            searchParams={{
-              from: params.from,
-              period: params.period,
-              shop: params.shop,
-              tab: params.tab,
-              to: params.to,
-            }}
-            selectedShopId={selectedShopId}
-            shops={shops}
-          />
-          <PeriodPicker />
+          {/* Boutique/période : sans effet sur la vue arrivages (toujours la
+              boutique active, pas de fenêtre temporelle — un arrivage reçu
+              reste dans la liste jusqu'à épuisement de son stock, pas jusqu'à
+              la fin d'une période). Masqués plutôt que visibles-mais-inertes. */}
+          {activeTab !== 'arrivages' ? (
+            <>
+              <ShopFilterSelector
+                allLabel={t('shops.all')}
+                ariaLabel={t('shops.ariaLabel')}
+                label={t('shops.label')}
+                pathname={`/s/${storeId}/finances`}
+                searchParams={{
+                  from: params.from,
+                  period: params.period,
+                  shop: params.shop,
+                  tab: params.tab,
+                  to: params.to,
+                }}
+                selectedShopId={selectedShopId}
+                shops={shops}
+              />
+              <PeriodPicker />
+            </>
+          ) : null}
         </div>
       </header>
 
@@ -664,7 +833,7 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
             storeId={storeId}
             to={to}
           />
-        ) : (
+        ) : activeTab === 'livreurs' ? (
           <DriverTabContent
             from={from}
             isShopFiltered={selectedShopId !== null}
@@ -674,6 +843,8 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
             supabase={supabase}
             to={to}
           />
+        ) : (
+          <ArrivagesTabContent storeId={storeId} />
         )}
       </Suspense>
     </main>

@@ -642,6 +642,84 @@ export const setPurchaseLotLineWeightAction = requireRole('owner')
     return { ok: true as const };
   });
 
+// ── CORRECT TRANSPORT (Lot F2-bis) ───────────────────────────────────────────
+
+// `correct_purchase_lot_cost` (0145) est déjà entièrement testée côté RLS
+// (tests/rls/lot-f1-finances-v2-socle.rls.test.ts : rôle owner-only NULL-safe,
+// cross-tenant refusé, piste d'audit écrite dans la même transaction, qty/
+// landed_unit_cost/CUMP jamais touchés). Cette action ne fait qu'exposer le
+// champ `transport_total` (jamais `purchase_price_total`, hors périmètre de
+// ce lot) via le seul chemin d'écriture qui trace la correction — jamais un
+// `.update()` brut à côté, qui laisserait deux chemins de correction pour un
+// seul tracé d'audit.
+function correctPurchaseLotCostRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as (
+    fn: 'correct_purchase_lot_cost',
+    args: {
+      p_merchant_account_id: string;
+      p_purchase_lot_id: string;
+      p_purchase_lot_line_id: string | null;
+      p_field: string;
+      p_new_value: number;
+      p_actor_id: string;
+    },
+  ) => Promise<{ data: null; error: { message: string } | null }>;
+}
+
+const correctTransportSchema = z.object({
+  lotId: z.string().uuid(),
+  newTransportTotal: z.number().int().min(0),
+});
+
+export const correctPurchaseLotTransportAction = requireRole('owner')
+  .metadata({ actionName: 'purchases.correct_transport', section: 'purchases' })
+  .inputSchema(correctTransportSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const { merchantAccountId } = ctx.member;
+    const admin = createSupabaseAdminClient();
+
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
+    // lotId confronté à son parent autoritaire (compte + boutique active) AVANT
+    // tout appel RPC : `correct_purchase_lot_cost` ne vérifie que
+    // merchant_account_id (0145), jamais shop_id — un owner multi-boutiques du
+    // même tenant ne doit pas pouvoir corriger un lot d'une autre boutique que
+    // celle où il agit (même motif récurrent que les actions ci-dessus : un
+    // identifiant reçu du client confronté à son parent avant toute écriture).
+    const { data: lot } = await admin
+      .from('purchase_lot')
+      .select('id')
+      .eq('id', parsedInput.lotId)
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .maybeSingle();
+    if (!lot) return { ok: false as const, message: 'Lot introuvable.' };
+
+    // Via le client authentifié (owner), jamais le service-role : la RPC est
+    // SECURITY DEFINER avec une garde de rôle NULL-safe sur `current_member_role`,
+    // qui ne résout qu'un appelant réellement authentifié (même raisonnement que
+    // receivePurchaseLotRpc ci-dessus).
+    const correct = correctPurchaseLotCostRpc(ctx.supabase);
+    const { error } = await correct('correct_purchase_lot_cost', {
+      p_merchant_account_id: merchantAccountId,
+      p_purchase_lot_id: parsedInput.lotId,
+      p_purchase_lot_line_id: null,
+      p_field: 'transport_total',
+      p_new_value: parsedInput.newTransportTotal,
+      p_actor_id: ctx.user.id,
+    });
+
+    if (error) return { ok: false as const, message: error.message };
+
+    revalidatePath('/produits');
+    revalidatePath('/finances');
+    // Valeur connue ici sans relecture (c'est celle qu'on vient d'écrire) — même
+    // raisonnement que `handleMethodChanged`/`handleWeightSaved` côté client
+    // (Paradigm B, cf. purchase-lot-detail-panel.tsx).
+    return { ok: true as const, newTransportTotal: parsedInput.newTransportTotal };
+  });
+
 const createAdSpendSchema = z.object({
   productId: z.string().uuid(),
   purchaseLotId: z.string().uuid(), // jamais optionnel dans CETTE action — règle non négociable du prompt F2

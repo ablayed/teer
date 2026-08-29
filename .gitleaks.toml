@@ -13,4 +13,5 @@ paths = [
   '''tests/unit/shopify-crypto\.test\.ts''',
   '''tests/unit/security/s1d1-environment\.test\.ts''',
   '''tests/unit/security/s1d3-access-incident\.test\.ts''',
+  '''tests/rls/lot-f2bis-ad-spend-separation\.rls\.test\.ts''',
 ]

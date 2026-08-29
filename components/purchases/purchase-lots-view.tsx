@@ -11,6 +11,7 @@ import {
   type PurchaseLotData,
   type PurchaseLotLineData,
   addPurchaseLotLineAction,
+  correctPurchaseLotTransportAction,
   createPurchaseLotAction,
   markLotInTransitAction,
   receiveLotAction,
@@ -22,7 +23,7 @@ import { formatPercentFr } from '@/lib/format/percent';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -143,16 +144,108 @@ function CostDetail({
   );
 }
 
+// ── Transport correction (Lot F2-bis) ───────────────────────────────────────
+//
+// Le transport ne se saisissait qu'à la création du lot (`CreateLotForm`),
+// sans champ d'édition ensuite — or il n'est souvent pas connu à ce moment,
+// c'est la raison d'être de la marge provisoire. Corrigeable ici avant COMME
+// après réception (jamais restreint au statut *reçu*, contrairement à la
+// méthode de répartition et au poids ci-dessous, qui restent une restriction
+// distincte et non traitée par ce lot). Passe par `correct_purchase_lot_cost`
+// (0145, RPC dédiée, piste d'audit) — jamais un `.update()` brut à côté.
+function TransportCorrector({
+  lotId,
+  transportTotal,
+  onCorrected,
+}: {
+  lotId: string;
+  transportTotal: number;
+  onCorrected: (newTransportTotal: number) => void;
+}) {
+  const correctTransport = useAction(correctPurchaseLotTransportAction);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(transportTotal));
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  function startEditing() {
+    setValue(String(transportTotal));
+    setFeedback(null);
+    setEditing(true);
+  }
+
+  async function submit() {
+    const next = Number.parseInt(value, 10);
+    if (!Number.isFinite(next) || next < 0) {
+      setFeedback('Montant invalide.');
+      return;
+    }
+    const res = await correctTransport.executeAsync({ lotId, newTransportTotal: next });
+    if (res?.data?.ok) {
+      onCorrected(res.data.newTransportTotal);
+      setEditing(false);
+    } else {
+      setFeedback(res?.data?.message ?? 'Erreur.');
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={startEditing}
+        className="ml-1.5 min-h-6 rounded-md border border-border px-1.5 text-[11px] font-medium text-muted hover:bg-canvas hover:text-text"
+      >
+        Corriger
+      </button>
+    );
+  }
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <input
+        aria-label="Corriger le transport (F CFA)"
+        className="min-h-8 w-28 min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-xs tabular-nums"
+        min={0}
+        onChange={(e) => setValue(e.target.value)}
+        type="number"
+        value={value}
+      />
+      <button
+        type="button"
+        onClick={submit}
+        disabled={correctTransport.isExecuting}
+        className="min-h-8 rounded-md border border-border px-2 text-xs font-medium text-text hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {correctTransport.isExecuting ? 'Enregistrement…' : 'Enregistrer'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="min-h-8 text-xs font-medium text-muted underline hover:text-text"
+      >
+        Annuler
+      </button>
+      {feedback && (
+        <span className="text-xs text-danger" role="alert">
+          {feedback}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── Lot card ──────────────────────────────────────────────────────────────────
 
 function LotCard({
   lot,
   products,
   profitability,
+  autoOpenLotId,
 }: {
   lot: PurchaseLotData;
   products: ProductCatalogItem[];
   profitability?: PurchaseLotProfitabilitySummary;
+  autoOpenLotId?: string;
 }) {
   const router = useRouter();
   const transit = useAction(markLotInTransitAction);
@@ -164,6 +257,23 @@ function LotCard({
   const [showAddLine, setShowAddLine] = useState(false);
   const [newLine, setNewLine] = useState({ productId: '', qty: '', purchasePriceTotal: '' });
   const [detailOpen, setDetailOpen] = useState(false);
+  // Paradigm B (valeur connue sans relecture, cf. purchase-lot-detail-panel.tsx) :
+  // aucun `router.refresh()` derrière la correction de transport, jamais
+  // réconcilié depuis `lot` — n'importe pas tant que la carte reste montée.
+  const [transportOverride, setTransportOverride] = useState<number | null>(null);
+  const effectiveTransportTotal = transportOverride ?? lot.transportTotal;
+  const effectiveLot: PurchaseLotData =
+    transportOverride === null ? lot : { ...lot, transportTotal: transportOverride };
+
+  // Renvoi depuis Finances (vue arrivages, Lot F2-bis) : `?lot={id}` ouvre
+  // directement la fiche rentabilité de CET arrivage, jamais un défilement
+  // manuel dans la liste — Finances ne fait que lister et renvoyer, jamais
+  // saisir (aucun doublon avec cette fiche).
+  useEffect(() => {
+    if (autoOpenLotId === lot.id && lot.status === 'received' && profitability) {
+      setDetailOpen(true);
+    }
+  }, [autoOpenLotId, lot.id, lot.status, profitability]);
 
   const isExecuting =
     transit.isExecuting || receive.isExecuting || addLine.isExecuting || removeLine.isExecuting;
@@ -242,8 +352,13 @@ function LotCard({
         <span>
           Transport :{' '}
           <span className="font-mono tabular-nums font-medium text-foreground">
-            {formatMoney(lot.transportTotal)}
+            {formatMoney(effectiveTransportTotal)}
           </span>
+          <TransportCorrector
+            lotId={lot.id}
+            onCorrected={setTransportOverride}
+            transportTotal={effectiveTransportTotal}
+          />
         </span>
         {lot.receivedAt && <span>Reçu le {lot.receivedAt}</span>}
       </div>
@@ -470,7 +585,7 @@ function LotCard({
           `products-catalog.tsx` (`{detailProduct && canManage ? <ProductDetailPanel .../> : null}`). */}
       {lot.status === 'received' && profitability && detailOpen ? (
         <PurchaseLotDetailPanel
-          lot={lot}
+          lot={effectiveLot}
           profitability={profitability}
           open={detailOpen}
           onClose={() => setDetailOpen(false)}
@@ -808,10 +923,14 @@ export function PurchaseLotsView({
   lots,
   products,
   profitabilityByLotId,
+  autoOpenLotId,
 }: {
   lots: PurchaseLotData[];
   products: ProductCatalogItem[];
   profitabilityByLotId?: Record<string, PurchaseLotProfitabilitySummary>;
+  // Renvoi depuis Finances (vue arrivages) — ouvre directement la fiche de CET
+  // arrivage plutôt que de laisser le marchand le rechercher dans la liste.
+  autoOpenLotId?: string;
 }) {
   const [showCreate, setShowCreate] = useState(false);
 
@@ -842,6 +961,7 @@ export function PurchaseLotsView({
 
       {lots.map((lot) => (
         <LotCard
+          autoOpenLotId={autoOpenLotId}
           key={lot.id}
           lot={lot}
           products={products}

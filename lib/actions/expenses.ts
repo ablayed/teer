@@ -21,6 +21,27 @@ const expensePayloadSchema = z.object({
   note: z.string().max(500).nullish(),
 });
 
+// Lot F2-bis : la catégorie `ADS` est désactivée à la saisie dans l'UI
+// (`ExpenseSection`, option grisée) pour éviter le double comptage avec
+// `product_ad_spend` (saisie par arrivage) — mais un gate UI seul n'est
+// jamais la frontière de sécurité (même principe que le gate `isOwner` de
+// `ProductAdSpendForm`, cf. son commentaire). Un appel serveur direct
+// (devtools, requête rejouée) avec `categoryId` = ADS doit être refusé ici,
+// pas seulement caché côté client.
+async function isAdsCategory(
+  admin: ReturnType<typeof createAdmin>,
+  merchantAccountId: string,
+  categoryId: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from('expense_category')
+    .select('code')
+    .eq('id', categoryId)
+    .eq('merchant_account_id', merchantAccountId)
+    .maybeSingle();
+  return data?.code === 'ADS';
+}
+
 export const listExpenseCategoriesAction = requireRole('owner')
   .metadata({ actionName: 'expenses.categories.list', section: 'finance' })
   .inputSchema(z.object({}))
@@ -58,6 +79,13 @@ export const createExpenseAction = requireRole('owner')
   .inputSchema(expensePayloadSchema)
   .action(async ({ ctx, parsedInput }) => {
     const admin = createAdmin();
+
+    // Jamais de NOUVELLE dépense sous ADS — la saisie publicitaire passe
+    // désormais exclusivement par l'arrivage (`product_ad_spend`).
+    if (await isAdsCategory(admin, ctx.member.merchantAccountId, parsedInput.categoryId)) {
+      return { ok: false as const, errorCode: 'ads_category_disabled' as const };
+    }
+
     const { data, error } = await admin
       .from('expense')
       .insert({
@@ -81,6 +109,22 @@ export const updateExpenseAction = requireRole('owner')
   .inputSchema(expensePayloadSchema.extend({ id: z.string().uuid() }))
   .action(async ({ ctx, parsedInput }) => {
     const admin = createAdmin();
+
+    // Reste possible de conserver une dépense DÉJÀ classée ADS (donnée
+    // historique, jamais réécrite silencieusement) — jamais d'en convertir
+    // une nouvelle (ou une autre catégorie) vers ADS après coup.
+    if (await isAdsCategory(admin, ctx.member.merchantAccountId, parsedInput.categoryId)) {
+      const { data: existing } = await admin
+        .from('expense')
+        .select('category_id')
+        .eq('id', parsedInput.id)
+        .eq('merchant_account_id', ctx.member.merchantAccountId)
+        .maybeSingle();
+      if (!existing || existing.category_id !== parsedInput.categoryId) {
+        return { ok: false as const, errorCode: 'ads_category_disabled' as const };
+      }
+    }
+
     const { error } = await admin
       .from('expense')
       .update({

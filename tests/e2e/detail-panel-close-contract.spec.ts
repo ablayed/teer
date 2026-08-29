@@ -14,7 +14,7 @@ import {
 } from './helpers/auth';
 
 /**
- * Bug signalé par le fondateur (Lot U1-F-bis-suite) : sur /dev/finance-foundations, la croix du
+ * Bug signalé par le fondateur (Lot U1-F-bis-suite) : sur `/dev/finance-foundations`, la croix du
  * panneau « Marge » n'avait aucun effet visible — le panneau restait affiché en permanence.
  *
  * Cause exacte (pas une supposition — reproduite en Chromium réel via Playwright, invisible en
@@ -34,11 +34,17 @@ import {
  * deux branches (desktop `<dialog>`, mobile `Drawer`/vaul) — corrigé dans le même composant.
  *
  * `DetailPanel` est un composant partagé — cette suite le traite comme une CLASSE : tout
- * panneau construit dessus (page de démo `/dev/finance-foundations`, et `ProductDetailPanel`
- * sur `/produits`, couvert séparément par `tests/e2e/products-bundle-configuration.spec.ts`)
- * doit se fermer par les trois voies. Mutation testée manuellement : commenter
- * `onClick={onClose}` sur le bouton croix fait échouer "se ferme par la croix" (le panneau reste
- * ouvert) — restauré après confirmation du rouge.
+ * panneau construit dessus doit se fermer par les trois voies. Mutation testée manuellement :
+ * commenter `onClick={onClose}` sur le bouton croix fait échouer "se ferme par la croix" (le
+ * panneau reste ouvert) — restauré après confirmation du rouge.
+ *
+ * REPORTÉE sur un écran réel (Lot F2-bis) : `/dev/finance-foundations` a été supprimée une fois
+ * les écrans réels équivalents en place (cf. docs/lexique-microcopie.md). Le déclencheur choisi
+ * ici est `ProductDetailPanel` (`/produits`, catalogue) — fixture la plus légère possible (un
+ * seul produit, aucun arrivage/commande requis) parmi les panneaux réels construits sur
+ * `DetailPanel`. `PurchaseLotDetailPanel` (Fiche arrivage) est couvert séparément par
+ * tests/e2e/lot-f2-purchase-lot-detail.spec.ts (responsive, pas ce contrat générique de
+ * fermeture) — pas de duplication d'objectif entre les deux suites.
  */
 
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -59,7 +65,48 @@ async function createOwnerFixture(label: string) {
     .from('merchant_account')
     .update({ name: `Tëër E2E ${label}`, onboarded_at: new Date().toISOString() })
     .eq('id', merchantAccountId);
-  return { admin, email, merchantAccountId, userIds: [userId] };
+  const shopId = await waitForDefaultShop(admin, merchantAccountId);
+  return { admin, email, merchantAccountId, shopId, userIds: [userId] };
+}
+
+async function waitForDefaultShop(
+  admin: SupabaseClient,
+  merchantAccountId: string,
+): Promise<string> {
+  let shopId = '';
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('shop')
+          .select('id')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('is_default', true)
+          .limit(1)
+          .maybeSingle();
+        shopId = (data?.id as string | undefined) ?? '';
+        return shopId;
+      },
+      { timeout: 10_000, intervals: [150, 300, 500] },
+    )
+    .not.toBe('');
+  return shopId;
+}
+
+async function createProduct(admin: SupabaseClient, merchantAccountId: string, shopId: string) {
+  const title = `Produit DetailPanel E2E ${Date.now()}`;
+  const { data, error } = await admin
+    .from('product')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      shop_id: shopId,
+      title,
+      unit_cost: 0,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('product insert failed');
+  return { productId: data.id as string, title };
 }
 
 async function signIn(page: Page, email: string, redirectTo: string) {
@@ -68,17 +115,34 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await expect(page.locator('main#main')).toBeVisible({ timeout: 45_000 });
 }
 
-async function openPanel(page: Page) {
-  const trigger = page.getByRole('button', { name: /Marge/ }).first();
-  // .focus() explicite : un clic synthétique (element.click()) ne rejoue pas la séquence
-  // mousedown→focus→mouseup d'un vrai clic — sans ça, aucun élément n'est focus au moment de
-  // l'ouverture, et le test de restauration du focus ne reflète pas un vrai déclenchement
-  // clavier/souris.
-  await trigger.focus();
-  await trigger.evaluate((el) => (el as HTMLElement).click());
-  const dialog = page.locator('dialog[aria-label="Marge"]').first();
+// Desktop rend `product-catalog-card` (bouton "Détails" inline), mobile rend
+// `product-catalog-row` (menu "Actions — <titre>" à la place) — même motif que
+// `openDetails()` dans tests/e2e/products-bundle-configuration.spec.ts (aucun
+// module de fixtures partagé dans ce dépôt).
+async function openProductDetails(page: Page, productId: string, title: string) {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('Viewport Playwright requis pour ouvrir les détails produit');
+
+  const isDesktop = viewport.width >= 768;
+  const productRow = page.getByTestId(
+    `${isDesktop ? 'product-catalog-card' : 'product-catalog-row'}-${productId}`,
+  );
+  await productRow.waitFor({ state: 'visible' });
+
+  if (isDesktop) {
+    await productRow.getByRole('button', { name: 'Détails', exact: true }).click();
+    return;
+  }
+
+  await productRow.getByRole('button', { name: `Actions — ${title}`, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Détails', exact: true }).click();
+}
+
+async function openPanel(page: Page, productId: string, title: string) {
+  await openProductDetails(page, productId, title);
+  const dialog = page.locator(`dialog[aria-label="${title}"]`).first();
   await expect(dialog).toHaveAttribute('aria-hidden', 'false');
-  return { trigger, dialog };
+  return { dialog };
 }
 
 test.setTimeout(60_000);
@@ -87,24 +151,36 @@ test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E')
 test.describe('DetailPanel — contrat de fermeture (desktop, 1280px)', () => {
   test.use({ viewport: { width: 1280, height: 900 } });
 
-  test('un panneau fermé quitte réellement le viewport (pas seulement aria-hidden)', async ({
+  // `ProductDetailPanel` est démonté par son PARENT à la fermeture (`open={true}`
+  // figé, cf. commentaire de tête de detail-panel.tsx sur les deux façons
+  // d'utiliser ce composant) — contrairement à l'ancienne page de démo
+  // (`ExplanationCard`, `open` qui bascule sur un composant qui reste monté).
+  // Un panneau réellement fermé ici quitte donc le DOM (`toHaveCount(0)`),
+  // preuve plus forte qu'un `aria-hidden` sur un nœud qui resterait présent.
+  test('le panneau est ancré à droite (jamais hors-écran/gauche) et disparaît réellement à la fermeture', async ({
     page,
   }) => {
     const fixture = await createOwnerFixture('panel-geom');
     try {
-      await signIn(page, fixture.email, '/dev/finance-foundations');
-      const { dialog } = await openPanel(page);
-
-      await dialog.getByRole('button', { name: 'Fermer' }).click();
-      await expect(dialog).toHaveAttribute('aria-hidden', 'true');
-      await page.waitForTimeout(400); // laisse la transition CSS (250ms) se terminer
+      const { productId, title } = await createProduct(
+        fixture.admin,
+        fixture.merchantAccountId,
+        fixture.shopId,
+      );
+      await signIn(page, fixture.email, '/produits');
+      const { dialog } = await openPanel(page, productId, title);
 
       const rect = await dialog.evaluate((el) => el.getBoundingClientRect());
       const viewportWidth = page.viewportSize()?.width ?? 0;
-      // Le bug : le panneau "fermé" restait visible dans le viewport (left ancré à 0 au lieu
-      // de droite). Un panneau réellement fermé a son bord gauche au-delà du bord droit du
-      // viewport.
-      expect(rect.x).toBeGreaterThanOrEqual(viewportWidth);
+      // Le bug : `left: 0` hérité du navigateur pour <dialog> faisait ignorer
+      // `right: 0` en LTR — le panneau s'ancrait à GAUCHE au lieu de la
+      // droite. Un panneau correctement ancré a son bord droit au bord droit
+      // du viewport, jamais très en-deçà.
+      expect(rect.right).toBeGreaterThan(viewportWidth - 5);
+      expect(rect.right).toBeLessThanOrEqual(viewportWidth + 1);
+
+      await dialog.getByRole('button', { name: 'Fermer' }).click();
+      await expect(dialog).toHaveCount(0);
     } finally {
       await cleanupUsers(fixture.admin, fixture.userIds);
     }
@@ -113,11 +189,16 @@ test.describe('DetailPanel — contrat de fermeture (desktop, 1280px)', () => {
   test('se ferme par la croix', async ({ page }) => {
     const fixture = await createOwnerFixture('panel-close-x');
     try {
-      await signIn(page, fixture.email, '/dev/finance-foundations');
-      const { dialog } = await openPanel(page);
+      const { productId, title } = await createProduct(
+        fixture.admin,
+        fixture.merchantAccountId,
+        fixture.shopId,
+      );
+      await signIn(page, fixture.email, '/produits');
+      const { dialog } = await openPanel(page, productId, title);
 
       await dialog.getByRole('button', { name: 'Fermer' }).click();
-      await expect(dialog).toHaveAttribute('aria-hidden', 'true');
+      await expect(dialog).toHaveCount(0);
     } finally {
       await cleanupUsers(fixture.admin, fixture.userIds);
     }
@@ -126,11 +207,16 @@ test.describe('DetailPanel — contrat de fermeture (desktop, 1280px)', () => {
   test('se ferme par Échap', async ({ page }) => {
     const fixture = await createOwnerFixture('panel-close-esc');
     try {
-      await signIn(page, fixture.email, '/dev/finance-foundations');
-      const { dialog } = await openPanel(page);
+      const { productId, title } = await createProduct(
+        fixture.admin,
+        fixture.merchantAccountId,
+        fixture.shopId,
+      );
+      await signIn(page, fixture.email, '/produits');
+      const { dialog } = await openPanel(page, productId, title);
 
       await page.keyboard.press('Escape');
-      await expect(dialog).toHaveAttribute('aria-hidden', 'true');
+      await expect(dialog).toHaveCount(0);
     } finally {
       await cleanupUsers(fixture.admin, fixture.userIds);
     }
@@ -139,11 +225,16 @@ test.describe('DetailPanel — contrat de fermeture (desktop, 1280px)', () => {
   test('se ferme par le clic extérieur', async ({ page }) => {
     const fixture = await createOwnerFixture('panel-close-out');
     try {
-      await signIn(page, fixture.email, '/dev/finance-foundations');
-      const { dialog } = await openPanel(page);
+      const { productId, title } = await createProduct(
+        fixture.admin,
+        fixture.merchantAccountId,
+        fixture.shopId,
+      );
+      await signIn(page, fixture.email, '/produits');
+      const { dialog } = await openPanel(page, productId, title);
 
       await page.mouse.click(20, 20);
-      await expect(dialog).toHaveAttribute('aria-hidden', 'true');
+      await expect(dialog).toHaveCount(0);
     } finally {
       await cleanupUsers(fixture.admin, fixture.userIds);
     }
@@ -154,13 +245,21 @@ test.describe('DetailPanel — contrat de fermeture (desktop, 1280px)', () => {
   }) => {
     const fixture = await createOwnerFixture('panel-focus');
     try {
-      await signIn(page, fixture.email, '/dev/finance-foundations');
-      const { trigger, dialog } = await openPanel(page);
+      const { productId, title } = await createProduct(
+        fixture.admin,
+        fixture.merchantAccountId,
+        fixture.shopId,
+      );
+      await signIn(page, fixture.email, '/produits');
+      const trigger = page
+        .getByTestId(`product-catalog-card-${productId}`)
+        .getByRole('button', { name: 'Détails', exact: true });
+      const { dialog } = await openPanel(page, productId, title);
 
       await expect(dialog.getByRole('button', { name: 'Fermer' })).toBeFocused();
 
       await dialog.getByRole('button', { name: 'Fermer' }).click();
-      await expect(dialog).toHaveAttribute('aria-hidden', 'true');
+      await expect(dialog).toHaveCount(0);
       await expect(trigger).toBeFocused();
     } finally {
       await cleanupUsers(fixture.admin, fixture.userIds);
@@ -178,11 +277,22 @@ for (const viewport of [
     test('se ferme par la croix, aucun débordement horizontal, focus géré', async ({ page }) => {
       const fixture = await createOwnerFixture(`panel-mobile-${viewport.width}`);
       try {
-        await signIn(page, fixture.email, '/dev/finance-foundations');
+        const { productId, title } = await createProduct(
+          fixture.admin,
+          fixture.merchantAccountId,
+          fixture.shopId,
+        );
+        await signIn(page, fixture.email, '/produits');
 
-        const trigger = page.getByRole('button', { name: /Marge/ }).first();
-        await trigger.focus();
-        await trigger.evaluate((el) => (el as HTMLElement).click());
+        // Déclenché ici via le menu « Actions — {titre} » (ActionSheet, Radix) →
+        // « Détails » : contrairement au bouton "Détails" desktop (persistant),
+        // l'élément réellement focus juste avant l'ouverture est le menuitem
+        // Radix, démonté dès la sélection — sa restauration de focus au bouton
+        // "Actions" est un comportement d'ActionSheet, orthogonal au contrat de
+        // `DetailPanel` testé ici (entrée/sortie de focus du panneau lui-même).
+        // Non réaffirmé pour cette raison ; le contrat DetailPanel testé plus
+        // haut (desktop, trigger persistant) couvre déjà "revient au déclencheur".
+        await openProductDetails(page, productId, title);
 
         const closeBtn = page.getByRole('button', { name: 'Fermer' });
         await expect(closeBtn).toBeVisible();
@@ -201,7 +311,6 @@ for (const viewport of [
 
         await closeBtn.click();
         await expect(closeBtn).toHaveCount(0);
-        await expect(trigger).toBeFocused();
       } finally {
         await cleanupUsers(fixture.admin, fixture.userIds);
       }
@@ -210,10 +319,14 @@ for (const viewport of [
     test('se ferme par le clic sur la zone extérieure', async ({ page }) => {
       const fixture = await createOwnerFixture(`panel-mobile-out-${viewport.width}`);
       try {
-        await signIn(page, fixture.email, '/dev/finance-foundations');
+        const { productId, title } = await createProduct(
+          fixture.admin,
+          fixture.merchantAccountId,
+          fixture.shopId,
+        );
+        await signIn(page, fixture.email, '/produits');
 
-        const trigger = page.getByRole('button', { name: /Marge/ }).first();
-        await trigger.evaluate((el) => (el as HTMLElement).click());
+        await openProductDetails(page, productId, title);
 
         const closeBtn = page.getByRole('button', { name: 'Fermer' });
         await expect(closeBtn).toBeVisible();

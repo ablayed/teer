@@ -582,6 +582,76 @@ test.describe('Lot F2 — fiche arrivage (412px)', () => {
       await cleanupUsers(fixture.admin, fixture.userIds);
     }
   });
+
+  // Lot F2-bis — le transport ne se saisissait qu'à la création du lot, sans
+  // champ d'édition ensuite : une marge provisoire sur transport manquant
+  // (état ci-dessus : `transport_total` NULL, `transportComplete: false`) ne
+  // pouvait alors JAMAIS être complétée. Preuve avant/après réelle que la
+  // correction (`correct_purchase_lot_cost`, RPC 0145) ferme ce défaut.
+  test('la correction du transport fait disparaître la marge provisoire (avant/après réel)', async ({
+    page,
+  }) => {
+    const fixture = await createOwnerFixture('lotf2-transport-correction');
+    const owner = await signInSupabaseJs(fixture.email);
+    try {
+      const productId = await createProduct(
+        fixture.admin,
+        fixture.merchantAccountId,
+        fixture.shopId,
+      );
+
+      await receiveLot(
+        fixture.admin,
+        owner,
+        fixture.merchantAccountId,
+        fixture.shopId,
+        fixture.userId,
+        productId,
+        'Fournisseur F2 Correction Transport',
+        10,
+        100_000,
+        null, // transport_total jamais facturé -> transportComplete=false -> marge provisoire
+      );
+
+      await signIn(page, fixture.email, '/produits?tab=achats');
+      await openLotProfitabilityPanel(page, 'Fournisseur F2 Correction Transport');
+
+      const panelTitle = 'Rentabilité — Fournisseur F2 Correction Transport';
+      const panel = page.getByLabel(panelTitle);
+      // AVANT : marge provisoire, transport nommé comme entrée manquante.
+      await expect(panel.getByText(/Marge provisoire — en attente de/)).toBeVisible();
+      await expect(panel.getByText('Transport pas encore facturé').first()).toBeVisible();
+
+      // Ferme le panneau avant de corriger : la correction se fait depuis la
+      // carte liste (jamais depuis ce panneau — le transport se corrige au
+      // niveau du lot, pas de la rentabilité), et le tiroir mobile (vaul)
+      // intercepte les clics sur la liste sous-jacente tant qu'il est ouvert.
+      // Clic extérieur (zone scrim) plutôt que la croix : Playwright ne
+      // parvient pas à stabiliser un clic réel sur le bouton `Fermer` du
+      // tiroir mobile (vaul) sur ce panneau — le clic extérieur est la voie
+      // de fermeture déjà éprouvée ailleurs sur mobile (cf. ProductDetailPanel
+      // ci-dessus) et n'est jamais lui-même sous ce doute de stabilité.
+      await page.mouse.click(10, 10);
+      await expect(panel).toHaveCount(0);
+
+      await page.getByRole('button', { name: 'Corriger' }).click();
+      await page.getByLabel('Corriger le transport (F CFA)').fill('15000');
+      await page.getByRole('button', { name: 'Enregistrer' }).click();
+      // La correction a bien été acceptée AVANT de renaviguer (une navigation
+      // complète réinitialiserait tout état client, masquant un échec ici).
+      await expect(page.getByText('Transport : 15 000 F CFA')).toBeVisible({
+        timeout: 10_000,
+      });
+
+      // APRÈS : rouvre la fiche rentabilité et relit — la marge provisoire a disparu.
+      await openLotProfitabilityPanel(page, 'Fournisseur F2 Correction Transport');
+      const panelAfter = page.getByLabel(panelTitle);
+      await expect(panelAfter.getByText(/Marge provisoire — en attente de/)).toHaveCount(0);
+      await expect(panelAfter.getByText('Transport pas encore facturé')).toHaveCount(0);
+    } finally {
+      await cleanupUsers(fixture.admin, fixture.userIds);
+    }
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────

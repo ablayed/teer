@@ -23,12 +23,16 @@ const FINANCE_COMPONENT_FILES = [
   'components/ui/explanation-card.tsx',
   'components/ui/list-card.tsx',
   'components/ui/insufficient-data-state.tsx',
-  join('app', '(app)', 'dev', 'finance-foundations', 'page.tsx'),
   // Lot F2 — rentabilité par arrivage : mêmes primitives, même registre.
   join('components', 'purchases', 'purchase-lot-detail-panel.tsx'),
   join('components', 'purchases', 'product-ad-spend-form.tsx'),
   join('components', 'purchases', 'purchase-lots-view.tsx'),
   join('components', 'products', 'product-detail-panel.tsx'),
+  // Lot F2-bis — vue arrivages de Finances et désactivation de la saisie ADS
+  // dans les dépenses génériques : écrans réels qui ont remplacé la page de
+  // démonstration `/dev/finance-foundations` (retirée, cf. docs/lexique-microcopie.md).
+  join('app', '(app)', 'finances', 'page.tsx'),
+  join('components', 'finance', 'ExpenseSection.tsx'),
 ];
 
 const WORD = String.raw`[\p{L}\p{N}_]`;
