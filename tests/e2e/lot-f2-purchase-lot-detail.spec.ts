@@ -336,9 +336,18 @@ async function insertAdSpend(
 /** Ouvre la Fiche arrivage ("Voir la rentabilité") depuis /produits?tab=achats. */
 async function openLotProfitabilityPanel(page: Page, supplierName: string) {
   await page.goto('/produits?tab=achats');
-  await expect(page.getByText(supplierName)).toBeVisible({ timeout: 15_000 });
+  // `exact: true` est nécessaire ici : un `getByText` non-exact matche à la fois
+  // ce nom de fournisseur sur la carte de la liste ET le titre du panneau
+  // "Rentabilité — {supplierName}" (le panneau reste monté dans le DOM, juste
+  // masqué, avant tout clic) -> violation "strict mode" intermittente (~1 run/3
+  // sur stack froide, reproduite via --repeat-each). L'intention ici est bien de
+  // cibler la carte de la liste (attendre qu'elle soit rendue avant de cliquer),
+  // jamais "n'importe quel élément contenant ce nom".
+  await expect(page.getByText(supplierName, { exact: true })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Voir la rentabilité' }).click();
-  await expect(page.getByText(`Rentabilité — ${supplierName}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(`Rentabilité — ${supplierName}`, { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
 }
 
 function noOverflowAssertions(page: Page, viewportWidth: number) {
@@ -522,15 +531,35 @@ test.describe('Lot F2 — fiche arrivage (412px)', () => {
 
 // ──────────────────────────────────────────────────────────────────────────
 // Proof 5 (spec F2) — file durable hors-ligne (poids de ligne).
-// Voir le GAP documenté en tête de fichier : `initMutationQueueAutoFlush`
-// n'est jamais câblé dans l'app -> aucune reprise automatique sur l'évènement
-// 'online'. Ce test prouve donc : (1) la mutation survit à un `page.reload()`
-// (durabilité IndexedDB réelle) ; (2) un nouvel enregistrement après le retour
-// réseau (seul chemin de résolution câblé aujourd'hui : l'utilisateur relance
-// lui-même) applique la valeur une seule fois, sans double-application.
+// `initMutationQueueAutoFlush` (lib/offline/mutation-queue.ts) est câblé
+// globalement depuis `MutationQueueProvider` (cf. en-tête de fichier) : un
+// listener `online` est posé pour toute session authentifiée, et une
+// tentative de flush a lieu dès le montage. Ce test prouve donc, dans cet
+// ordre : (1) la mutation entre en file SANS aucune tentative réseau tant que
+// le navigateur se croit hors-ligne (`navigator.onLine === false`,
+// court-circuit dans `useQueuedAction.submit`) ; (2) l'enregistrement survit
+// à un VRAI `page.reload()` alors que la mutation est TOUJOURS en attente
+// (jamais déjà vidée par un flush qui aurait réussi avant le reload) ; (3) la
+// reprise automatique réelle applique la valeur une seule fois dès que le
+// réseau redevient disponible, sans aucune ressaisie utilisateur.
+//
+// `context.setOffline(true)` seul ne peut pas prouver (2) : Playwright bloque
+// alors TOUT le trafic, y compris la requête de `page.reload()` lui-même —
+// remettre le réseau en ligne avant de recharger laisserait le listener
+// `online` (posé par `MutationQueueProvider`, toujours monté à ce moment)
+// vider la file AVANT le reload, ce qui prouverait seulement qu'un formulaire
+// encore monté survit à un aller-retour réseau, jamais qu'un `reload` réel
+// préserve une mutation encore en attente. On isole donc précisément la
+// requête réseau du serveur-action de sauvegarde du poids via `page.route`
+// (même convention que `orders-hydration-crash-mitigation.spec.ts`, qui cible
+// `**/api/orders/search**` ; ici la mutation est un Server Action Next.js —
+// POST vers l'URL de la page courante, identifié par l'en-tête `next-action`,
+// pas par un chemin distinct) : on la bloque tant qu'on n'a pas fini de
+// vérifier la survie post-reload, en laissant passer toute navigation/chargement
+// de page normal (dont le `reload` lui-même).
 // ──────────────────────────────────────────────────────────────────────────
 test.describe('Lot F2 — file durable hors-ligne', () => {
-  test('coupure réseau après clic Enregistrer -> file -> survit au reload -> synchronisée sans doublon au retour réseau', async ({
+  test('coupure réseau après clic Enregistrer -> file -> survit à un reload réellement hors-ligne -> synchronisée sans doublon au retour réseau', async ({
     page,
     context,
   }) => {
@@ -562,6 +591,27 @@ test.describe('Lot F2 — file durable hors-ligne', () => {
       await expect(weightInput).toBeVisible({ timeout: 10_000 });
       const saveButton = weightInput.locator('xpath=following-sibling::button[1]');
 
+      const readQueuedCount = () =>
+        page.evaluate(
+          () =>
+            new Promise<number>((resolve, reject) => {
+              const request = indexedDB.open('teer-mutation-queue');
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => {
+                const db = request.result;
+                const tx = db.transaction('mutations', 'readonly');
+                const countReq = tx.objectStore('mutations').count();
+                countReq.onsuccess = () => resolve(countReq.result);
+                countReq.onerror = () => reject(countReq.error);
+              };
+            }),
+        );
+
+      // 1. Coupure réseau réelle au moment de la soumission : `navigator.onLine`
+      // passe à `false`, donc `useQueuedAction.submit` prend le chemin
+      // "enqueue puis retour immédiat" sans jamais tenter le réseau (cf.
+      // mutation-queue-provider.tsx / use-queued-action.ts) — c'est bien l'état
+      // "queued" (et son libellé) qui est prouvé ici, pas un état "error" déguisé.
       await context.setOffline(true);
 
       await weightInput.click({ clickCount: 3 });
@@ -584,43 +634,58 @@ test.describe('Lot F2 — file durable hors-ligne', () => {
       expect(stillNull?.weight_grams).toBeNull();
 
       // Durabilité IndexedDB : au moins un enregistrement en file avant le reload.
-      const queuedBefore = await page.evaluate(
-        () =>
-          new Promise<number>((resolve, reject) => {
-            const request = indexedDB.open('teer-mutation-queue');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              const db = request.result;
-              const tx = db.transaction('mutations', 'readonly');
-              const countReq = tx.objectStore('mutations').count();
-              countReq.onsuccess = () => resolve(countReq.result);
-              countReq.onerror = () => reject(countReq.error);
-            };
-          }),
-      );
+      const queuedBefore = await readQueuedCount();
       expect(queuedBefore).toBeGreaterThan(0);
 
-      // `page.reload()` est lui-même une requête réseau (recharger la page depuis
-      // le serveur Next local) : impossible à faire aboutir avec
-      // `context.setOffline(true)` encore actif (Playwright bloque TOUT, y
-      // compris localhost) — remettre le réseau AVANT le reload est une
-      // nécessité technique du navigateur, pas un relâchement de la preuve. La
-      // preuve de durabilité porte sur ce qui suit : la mutation posée PENDANT
-      // la coupure est toujours dans IndexedDB après un reload complet (nouveau
-      // cycle de vie React, state du composant reparti de zéro).
+      // 2. On bloque désormais SEULEMENT la requête réseau du Server Action de
+      // sauvegarde du poids (identifiée par l'en-tête `next-action` posé par
+      // Next.js sur tout appel direct à une fonction 'use server' — jamais un
+      // chemin dédié comme pour une route API classique), puis on repasse le
+      // navigateur en ligne : le `reload` a besoin d'un réseau fonctionnel pour
+      // aboutir, mais le blocage ciblé empêche toute tentative de flush
+      // (montage de `MutationQueueProvider`, écouteur `online`) de vider la
+      // file avant qu'on ait pu vérifier la survie post-reload.
+      let blockWeightMutation = true;
+      await page.route('**/*', async (route) => {
+        const req = route.request();
+        if (blockWeightMutation && req.method() === 'POST' && req.headers()['next-action']) {
+          await route.abort('failed');
+          return;
+        }
+        await route.continue();
+      });
+
       await context.setOffline(false);
       await page.reload();
       await openLotProfitabilityPanel(page, 'Fournisseur F2 Offline');
 
-      // Reprise automatique réelle : `MutationQueueProvider` (monté globalement
-      // dans `app/(app)/layout.tsx`, cf. en-tête de fichier) tente un flush dès
-      // son montage — donc à CE reload, réseau désormais disponible — sans
-      // aucune ressaisie utilisateur. On ne fige pas le nombre exact d'entrées
-      // en file juste après le reload (le flush est une vraie requête réseau
-      // vers le serveur, sa durée n'est pas déterministe) : la preuve porte sur
-      // l'état final — le serveur reçoit la valeur posée PENDANT la coupure et
-      // la file se vide, ce qui n'est possible que si l'enregistrement a bien
-      // survécu au reload (durabilité IndexedDB) puis a été rejoué tout seul.
+      // Preuve de survie réelle à un reload : la tentative de flush posée par
+      // `MutationQueueProvider` au montage (juste après ce reload) a échoué
+      // (route bloquée) -> la mutation posée pendant la coupure est encore là,
+      // et le serveur ne l'a toujours pas reçue. Sans ce blocage ciblé, rien ne
+      // permettrait de distinguer "le reload a préservé la mutation" de "la
+      // mutation avait déjà été vidée avant même que le reload ne parte".
+      const queuedAfterReload = await readQueuedCount();
+      expect(queuedAfterReload).toBeGreaterThan(0);
+      const { data: stillNullAfterReload } = await fixture.admin
+        .from('purchase_lot_line')
+        .select('weight_grams')
+        .eq('id', purchaseLotLineId)
+        .single();
+      expect(stillNullAfterReload?.weight_grams).toBeNull();
+
+      // 3. On lève le blocage puis on déclenche un aller-retour réseau bref
+      // (offline -> online) pour faire réagir le VRAI écouteur `online` posé
+      // par `MutationQueueProvider` — sans jamais resoumettre le formulaire
+      // nous-mêmes, ce qui serait une preuve différente (ressaisie manuelle,
+      // pas reprise automatique).
+      blockWeightMutation = false;
+      await context.setOffline(true);
+      await context.setOffline(false);
+
+      // Reprise automatique réelle : le serveur reçoit la valeur posée PENDANT
+      // la coupure originale, ce qui n'est possible que si l'enregistrement a
+      // bien survécu au reload (prouvé ci-dessus) puis a été rejoué tout seul.
       await expect
         .poll(
           async () => {
@@ -641,23 +706,9 @@ test.describe('Lot F2 — file durable hors-ligne', () => {
       // le serveur ait confirmé l'écriture (poll ci-dessus) : une courte fenêtre
       // sépare les deux, d'où un `expect.poll` ici aussi plutôt qu'une lecture
       // ponctuelle qui pourrait courir plus vite que cette suppression.
-      const readQueuedCount = () =>
-        page.evaluate(
-          () =>
-            new Promise<number>((resolve, reject) => {
-              const request = indexedDB.open('teer-mutation-queue');
-              request.onerror = () => reject(request.error);
-              request.onsuccess = () => {
-                const db = request.result;
-                const tx = db.transaction('mutations', 'readonly');
-                const countReq = tx.objectStore('mutations').count();
-                countReq.onsuccess = () => resolve(countReq.result);
-                countReq.onerror = () => reject(countReq.error);
-              };
-            }),
-        );
       await expect.poll(readQueuedCount, { timeout: 5_000, intervals: [100, 200, 400] }).toBe(0);
     } finally {
+      await page.unroute('**/*');
       await context.setOffline(false);
       await cleanupUsers(fixture.admin, fixture.userIds);
     }

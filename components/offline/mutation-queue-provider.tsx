@@ -37,9 +37,18 @@ import { useEffect } from 'react';
  * écriture serveur grâce à l'idempotence portée par l'appelant : `set_weight`
  * est un upsert de valeur absolue (rejouer la même valeur est sans effet) et
  * `create_ad_spend` est dédupliqué par `clientRequestId` → `external_ref`
- * (contrainte unique, la deuxième tentative échoue proprement en 23505 plutôt
- * que de créer une deuxième dépense). La fenêtre de course existe mais est
- * neutralisée en amont, au niveau métier — pas ici.
+ * (contrainte unique). L'INVARIANT réel exigé ici n'est PAS "la tentative en
+ * double échoue" mais l'inverse : `createProductAdSpendAction`
+ * (lib/actions/purchases.ts) intercepte le `23505` sur cette contrainte et le
+ * convertit en SUCCÈS (`{ ok: true, alreadyRecorded: true }`), jamais en échec.
+ * C'est cette conversion qui neutralise la course : puisque `flushMutationQueue`
+ * ne supprime l'enregistrement QUE sur `{ok:true}`, un exécuteur qui renverrait
+ * `ok:false` sur ce `23505` laisserait le racer perdant `store.put` un
+ * enregistrement que le racer gagnant vient de `store.delete` — une entrée de
+ * file zombie, rejouée indéfiniment sans jamais pouvoir réussir (la même
+ * tentative refera toujours 23505). Tout futur exécuteur ajouté à ce provider
+ * doit respecter la même règle : renvoyer `ok:true` quand il rejoue une
+ * mutation déjà appliquée, pas seulement "échouer proprement".
  */
 export function MutationQueueProvider() {
   useEffect(() => {
