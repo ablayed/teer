@@ -113,6 +113,21 @@ async function createDriver(admin: AdminClient, merchantAccountId: string, shopI
   return data.id;
 }
 
+async function createShop(admin: AdminClient, merchantAccountId: string, domain: string) {
+  const { data, error } = await admin
+    .from('shop')
+    .insert({
+      access_token_encrypted: 'enc',
+      merchant_account_id: merchantAccountId,
+      scopes: 'read_orders',
+      shop_domain: domain,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw error ?? new Error('shop insert failed');
+  return data.id as string;
+}
+
 async function createProduct(admin: AdminClient, merchantAccountId: string, shopId: string) {
   const { data } = await admin
     .from('product')
@@ -736,6 +751,124 @@ describe('correct_purchase_lot_cost — correction de coût sans effet sur les q
 
     expect(error).not.toBeNull();
   });
+
+  // Lot S1 : correct_purchase_lot_cost (0145) ne confrontait que
+  // merchant_account_id, jamais shop_id — un owner multi-boutiques du même
+  // tenant pouvait corriger un arrivage d'une boutique à laquelle il n'a plus
+  // accès. Fermé par 0147 (current_shop_role(v_lot.shop_id) = 'owner').
+  skipIfNoServiceRole(
+    "refuse un lot d'une autre boutique du même tenant (0147, current_shop_role PAR BOUTIQUE, pas au niveau du compte)",
+    async () => {
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('correct-cost-cross-shop');
+      const owner = await signIn(email);
+
+      const shopB = await createShop(
+        admin,
+        merchantAccountId,
+        `f1-cross-shop-${Date.now()}.internal`,
+      );
+      const productB = await createProduct(admin, merchantAccountId, shopB);
+      const { lotId: lotIdB } = await receiveLot(
+        admin,
+        owner,
+        merchantAccountId,
+        shopB,
+        userId,
+        productB,
+        10,
+        100_000,
+      );
+
+      // seed_shop_memberships (0126) donne automatiquement à cet owner un
+      // shop_member(role='owner') pour shopB aussi (owner de compte = owner de
+      // toutes ses boutiques par défaut) — on retire explicitement cet accès
+      // pour reproduire un accès boutique restreint après coup (scénario
+      // réaliste, CLAUDE.md section Workspace), seul moyen de prouver que la
+      // garde est bien scopée par boutique et non par compte.
+      await admin.from('shop_member').delete().eq('shop_id', shopB).eq('user_id', userId);
+
+      const { error: unknownLotError } = await correctCostRpc(owner)('correct_purchase_lot_cost', {
+        p_merchant_account_id: merchantAccountId,
+        p_purchase_lot_id: '00000000-0000-0000-0000-000000000000',
+        p_purchase_lot_line_id: null,
+        p_field: 'transport_total',
+        p_new_value: 1,
+        p_actor_id: userId,
+      });
+
+      const { error: otherShopError } = await correctCostRpc(owner)('correct_purchase_lot_cost', {
+        p_merchant_account_id: merchantAccountId,
+        p_purchase_lot_id: lotIdB,
+        p_purchase_lot_line_id: null,
+        p_field: 'transport_total',
+        p_new_value: 99_999,
+        p_actor_id: userId,
+      });
+
+      expect(unknownLotError).not.toBeNull();
+      expect(otherShopError).not.toBeNull();
+      // Message générique et IDENTIQUE dans les deux cas — un lot inexistant et
+      // un lot d'une boutique hors de portée doivent être indistinguables de
+      // l'extérieur (même discipline que les 6 causes de refus de l'endpoint
+      // webhook opaque, CLAUDE.md).
+      expect(unknownLotError?.message).toMatch(/not found or not accessible/);
+      expect(otherShopError?.message).toMatch(/not found or not accessible/);
+
+      // Le transport de shopB n'a pas bougé.
+      const { data: lotAfter } = await admin
+        .from('purchase_lot')
+        .select('transport_total')
+        .eq('id', lotIdB)
+        .single();
+      expect(lotAfter?.transport_total).not.toBe(99_999);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'le chemin légitime reste ouvert : owner corrige le transport de sa propre boutique après le durcissement 0147',
+    async () => {
+      const { admin, email, merchantAccountId, shopId, userId } =
+        await createOwnerFixture('correct-cost-legit');
+      const owner = await signIn(email);
+      const productId = await createProduct(admin, merchantAccountId, shopId);
+      const { lotId } = await receiveLot(
+        admin,
+        owner,
+        merchantAccountId,
+        shopId,
+        userId,
+        productId,
+        10,
+        100_000,
+      );
+
+      const { error } = await correctCostRpc(owner)('correct_purchase_lot_cost', {
+        p_merchant_account_id: merchantAccountId,
+        p_purchase_lot_id: lotId,
+        p_purchase_lot_line_id: null,
+        p_field: 'transport_total',
+        p_new_value: 12_345,
+        p_actor_id: userId,
+      });
+      expect(error).toBeNull();
+
+      const { data: lotAfter } = await admin
+        .from('purchase_lot')
+        .select('transport_total')
+        .eq('id', lotId)
+        .single();
+      expect(lotAfter?.transport_total).toBe(12_345);
+
+      const { data: correction } = await admin
+        .from('purchase_lot_cost_correction')
+        .select('field, previous_value, new_value')
+        .eq('purchase_lot_id', lotId)
+        .eq('field', 'transport_total')
+        .maybeSingle();
+      expect(correction?.new_value).toBe(12_345);
+    },
+  );
 });
 
 // ──────────────────────────────────────────────────────────────────────────
