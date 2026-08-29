@@ -105,6 +105,32 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await expect(page.locator('main#main')).toBeVisible({ timeout: 45_000 });
 }
 
+// Responsive : desktop rend product-catalog-card (bouton "Détails" inline),
+// mobile rend product-catalog-row (menu "Actions — <titre>" à la place). Même
+// motif que openDetails() dans tests/e2e/products-bundle-configuration.spec.ts
+// (aucun module de fixtures partagé dans ce dépôt — cf. commentaire de tête).
+// Absent ici avant correctif : timeout de 90s sur iphone-14/pixel-7 en CI
+// (jamais chromium, qui rend toujours la carte desktop), le bouton "Détails"
+// visé étant caché à l'accessibilité sur mobile.
+async function openProductDetails(page: Page, productId: string, title: string) {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('Viewport Playwright requis pour ouvrir les détails produit');
+
+  const isDesktop = viewport.width >= 768;
+  const productRow = page.getByTestId(
+    `${isDesktop ? 'product-catalog-card' : 'product-catalog-row'}-${productId}`,
+  );
+  await productRow.waitFor({ state: 'visible' });
+
+  if (isDesktop) {
+    await productRow.getByRole('button', { name: 'Détails', exact: true }).click();
+    return;
+  }
+
+  await productRow.getByRole('button', { name: `Actions — ${title}`, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Détails', exact: true }).click();
+}
+
 async function createProduct(admin: AdminClient, merchantAccountId: string, shopId: string) {
   const { data, error } = await admin
     .from('product')
@@ -804,12 +830,7 @@ test.describe('Lot F2 — dépense publicitaire exige un arrivage explicite', ()
         .single();
       const productTitle = product?.title as string;
 
-      // Titre unique par test (suffixé par Date.now() dans createProduct) : la
-      // carte `<article>` correspondante est donc identifiable sans ambiguïté.
-      await page
-        .locator('article', { hasText: productTitle })
-        .getByRole('button', { name: 'Détails' })
-        .click();
+      await openProductDetails(page, productId, productTitle);
 
       await expect(page.getByText('Dépenses publicitaires')).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText("Recherche de l'arrivage concerné…")).toHaveCount(0, {
