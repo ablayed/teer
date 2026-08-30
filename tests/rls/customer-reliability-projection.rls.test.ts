@@ -824,7 +824,13 @@ describe('0132 — invalidation par événement', () => {
 
     expect((await projectionRow(t.admin, customerId))?.delivered_count).toBe(0);
 
-    const rpc = t.admin.rpc.bind(t.admin) as unknown as (
+    // 0148 — transition_order confronte désormais p_actor à auth.uid() : le
+    // service-role (t.admin) n'a pas de session, auth.uid() y est nul, l'appel
+    // serait refusé (forbidden). Le VRAI chemin de production passe toujours
+    // par une session utilisateur (lib/actions/transitions.ts) — router ce test
+    // par `session` (déjà signée pour t.email ci-dessus) le rend fidèle à ce
+    // qu'il annonce tester, plutôt qu'un raccourci que 0148 a révélé.
+    const rpc = session.rpc.bind(session) as unknown as (
       fn: 'transition_order',
       args: Record<string, unknown>,
     ) => Promise<{ error: { message: string } | null }>;
