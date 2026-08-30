@@ -387,3 +387,12 @@ git status --short                                        # arbre final : migrat
 ```
 
 Note de transparence : le premier passage du script de reproduction a échoué deux fois sur des contraintes `NOT NULL` de `purchase_lot` (`supplier_name`, `ordered_at`) avant de réussir — chaque échec laissait 2 utilisateurs de test orphelins (créés avant l'échec, jamais nettoyés puisque le script s'arrêtait avant d'atteindre le bloc de cleanup). Détecté par la vérification par requête directe (pas par confiance dans la sortie console), et nettoyé par un script dédié avant de continuer — cf. ligne ci-dessus.
+
+## §8 — Dettes consignées, non ouvertes dans ce lot
+
+Deux fonctions identifiées comme candidates au même motif que `transition_order`/`0148` (un identifiant d'acteur reçu du client, jamais confronté à `auth.uid()`), signalées pour mémoire — aucune des deux n'est touchée par 0148, aucune n'est ouverte ici :
+
+- **`reassign_order_driver`** — repérée par deux diagnostics distincts pour deux motifs distincts (à réconcilier avant tout travail dessus, ne pas supposer qu'un seul correctif couvre les deux).
+- **`receive_purchase_lot`** — même motif d'acteur falsifiable que celui fermé par 0148 sur `transition_order`.
+
+À rouvrir comme lot dédié, avec son propre S2-D (falsifiabilité/impact/appelants) avant tout correctif — ne pas réutiliser le diagnostic S2-D de `transition_order` par analogie.
