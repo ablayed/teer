@@ -30,6 +30,12 @@ const supabaseUrl =
   '';
 const serviceRoleKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? localEnv.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const anonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+  process.env.SUPABASE_ANON_KEY ??
+  localEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+  localEnv.SUPABASE_ANON_KEY ??
+  '';
 const hasSupabaseAdmin = Boolean(supabaseUrl && serviceRoleKey);
 const password = 'Mot-de-passe-e2e-2026!';
 
@@ -42,6 +48,20 @@ function adminClient(): AdminClient {
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+// 0148 — transition_order confronte désormais p_actor à auth.uid() : le
+// service-role n'a pas de session, auth.uid() y est nul. Un appel RPC direct
+// hors interface doit passer par une session utilisateur réelle, comme
+// lib/actions/transitions.ts le fait toujours en production.
+async function signInClient(email: string): Promise<AdminClient> {
+  assertLocalSupabase(supabaseUrl);
+  const client = createClient(supabaseUrl, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return client;
 }
 
 function e2eEmail(label: string): string {
@@ -706,7 +726,11 @@ test('0116 : une commande invalidée disparaît du CA de /finances', async ({ pa
     // Avant : la commande est bien comptée.
     await expect(caValue).toHaveText(/^20\s*000\s*F/, { timeout: 15_000 });
 
-    const invalidated = await fixture.admin.rpc('transition_order', {
+    // 0148 — p_actor doit désormais correspondre à auth.uid() : appel via une
+    // session réelle de fixture.email, jamais via fixture.admin (service-role,
+    // auth.uid() nul, refusé depuis 0148).
+    const ownerClient = await signInClient(fixture.email);
+    const invalidated = await ownerClient.rpc('transition_order', {
       p_actor: fixture.userId,
       p_order_id: orderId,
       p_order_state: 'open',
