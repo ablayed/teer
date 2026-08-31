@@ -1,6 +1,7 @@
 'use client';
 
-import type { DashboardRevenuePoint } from '@/lib/actions/dashboard';
+import type { DashboardRevenue30d } from '@/lib/actions/dashboard';
+import type { MetricLoadState } from '@/lib/dashboard/metric-load-state';
 import { formatFCFA } from '@/lib/format/fcfa';
 import {
   Area,
@@ -14,8 +15,9 @@ import {
 
 type RevenueChartInnerProps = {
   currency: string | null;
-  data: DashboardRevenuePoint[];
   emptyLabel: string;
+  errorLabel: string;
+  state: MetricLoadState<DashboardRevenue30d>;
   title: string;
 };
 
@@ -64,9 +66,12 @@ function RevenueTooltip({
   );
 }
 
-export default function RevenueChartInner({ data, emptyLabel, title }: RevenueChartInnerProps) {
-  const hasRevenue = data.some((point) => point.value > 0);
-
+export default function RevenueChartInner({
+  emptyLabel,
+  errorLabel,
+  state,
+  title,
+}: RevenueChartInnerProps) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1 md:p-6">
       <div className="mb-5 flex items-center justify-between gap-3">
@@ -74,10 +79,10 @@ export default function RevenueChartInner({ data, emptyLabel, title }: RevenueCh
         <span className="font-mono text-xs text-muted tabular-nums">30 j</span>
       </div>
 
-      {hasRevenue ? (
+      {state.status === 'ready' ? (
         <div className="h-[260px] w-full">
           <ResponsiveContainer height="100%" width="100%">
-            <AreaChart data={data} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
+            <AreaChart data={state.data.points} margin={{ bottom: 0, left: 0, right: 8, top: 8 }}>
               <defs>
                 <linearGradient id="revenueGradient" x1="0" x2="0" y1="0" y2="1">
                   <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.18} />
@@ -119,6 +124,10 @@ export default function RevenueChartInner({ data, emptyLabel, title }: RevenueCh
               />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
+      ) : state.status === 'error' ? (
+        <div className="flex min-h-[220px] items-center justify-center rounded-md border border-dashed border-danger/30 bg-danger-subtle px-4 text-center text-sm text-danger">
+          {errorLabel}
         </div>
       ) : (
         <div className="flex min-h-[220px] items-center justify-center rounded-md border border-dashed border-border bg-canvas px-4 text-center text-sm text-muted">

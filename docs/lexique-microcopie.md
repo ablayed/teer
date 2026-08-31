@@ -32,6 +32,12 @@ entrées ci-dessous existent précisément pour qu'une notion déjà tranchée n
 | Arrivage | Un lot d'achat fournisseur (`purchase_lot`) une fois reçu — le terme marchand pour ce que le code nomme `purchase_lot`/« lot ». Utilisé dans toute l'UI adressée au marchand (jamais « lot » seul, qui reste un terme de code). |
 | Coût de revient rendu | Le coût unitaire atterri d'une ligne d'arrivage (`landedUnitCost`/`landed_unit_cost`) : prix d'achat + part de transport alloué, ramené à l'unité. Distinct du « prix d'achat » brut (avant transport) et du « coût de revient des vendus » (agrégat sur les seules unités vendues de l'arrivage, cf. `totals.costOfSoldMinor`). |
 
+## Dette lexique — à statuer en U1
+
+| Chaîne | Statut | Raison |
+|---|---|---|
+| « Données indisponibles » | **Dette, pas encore une formulation figée.** Utilisée depuis Lot TB-P0 sur 8 blocs du Tableau (`tableau.dataUnavailable` dans `messages/fr.json`, réutilisant verbatim le texte déjà présent à `tableau.kpi.unavailable`) pour tout état d'erreur RPC. Aucune entrée de ce lexique ne la couvrait avant TB-P0 ; ce lot ne tranche volontairement rien (registre déjà conforme — vouvoiement non concerné, pas de pronom), il documente seulement l'usage. À examiner en U1 : est-ce la bonne formulation pour tout écran futur affichant une erreur de chargement (au-delà du Tableau), ou faut-il distinguer erreur réseau / erreur serveur / droit insuffisant sous des libellés différents ? |
+
 ## Mécanismes conservés (à ne pas confondre avec les notions interdites)
 
 Le retrait du « coût de reprise d'un colis refusé » ne retire **pas** le mécanisme de ligne

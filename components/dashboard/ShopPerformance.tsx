@@ -1,5 +1,6 @@
 import { Card } from '@/components/ui/card';
 import type { DashboardShopPerformance } from '@/lib/actions/dashboard';
+import type { MetricLoadState } from '@/lib/dashboard/metric-load-state';
 import { cn } from '@/lib/utils';
 import { formatDashboardCount, formatDashboardMoney } from './dashboard-format';
 
@@ -7,8 +8,9 @@ type ShopPerformanceProps = {
   currency: string | null;
   connectedLabel: string;
   emptyLabel: string;
-  items: DashboardShopPerformance[];
+  errorLabel: string;
   ordersLabel: string;
+  state: MetricLoadState<DashboardShopPerformance[]>;
   subtitle?: string;
   title: string;
   warningLabel: string;
@@ -18,8 +20,9 @@ export function ShopPerformance({
   connectedLabel,
   currency,
   emptyLabel,
-  items,
+  errorLabel,
   ordersLabel,
+  state,
   subtitle,
   title,
   warningLabel,
@@ -30,13 +33,13 @@ export function ShopPerformance({
         <h2 className="text-[15px] font-semibold text-text">{title}</h2>
         {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
       </div>
-      {items.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border bg-canvas p-4 text-sm text-muted">
-          {emptyLabel}
+      {state.status === 'error' ? (
+        <p className="rounded-md border border-dashed border-danger/20 bg-danger-subtle p-4 text-sm font-medium text-danger">
+          {errorLabel}
         </p>
-      ) : (
+      ) : state.status === 'ready' ? (
         <div className="space-y-4">
-          {items.map((shop) => (
+          {state.data.map((shop) => (
             <div className="space-y-2" key={shop.id}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -61,6 +64,10 @@ export function ShopPerformance({
             </div>
           ))}
         </div>
+      ) : (
+        <p className="rounded-md border border-dashed border-border bg-canvas p-4 text-sm text-muted">
+          {emptyLabel}
+        </p>
       )}
     </Card>
   );

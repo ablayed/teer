@@ -190,7 +190,6 @@ export function KPICard({
         'flex flex-col justify-between gap-4',
         toneStyles[cardTone],
       )}
-      title={error ? errorLabel : undefined}
     >
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -204,14 +203,18 @@ export function KPICard({
             className="dashboard-shimmer h-10 w-32 rounded-sm md:h-11"
             data-testid="kpi-value-skeleton"
           />
+        ) : error ? (
+          <p className="rounded-md border border-dashed border-danger/30 bg-danger-subtle p-3 text-sm font-medium text-danger">
+            {errorLabel}
+          </p>
         ) : (
           <div className="w-full overflow-hidden">
             <output
-              aria-label={`${label}: ${error ? 'Indisponible' : formattedValue}`}
+              aria-label={`${label}: ${formattedValue}`}
               className="block whitespace-nowrap font-mono text-[clamp(1.5rem,4cqw,2.25rem)] leading-none text-text tabular-nums @max-[13rem]:text-[clamp(1rem,6cqw,1.5rem)]"
               ref={outputRef}
             >
-              {error ? '—' : formattedValue}
+              {formattedValue}
             </output>
           </div>
         )}

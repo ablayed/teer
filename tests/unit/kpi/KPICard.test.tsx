@@ -65,6 +65,19 @@ describe('KPICard', () => {
     expect(within(container).getByText('↑')).toBeTruthy();
   });
 
+  it('TB-P0 : affiche l’indisponibilité en texte visible, jamais seulement au survol/title', () => {
+    render(
+      <KPICard error errorLabel="Données indisponibles" label="À appeler" unit="count" value={0} />,
+    );
+
+    // Le libellé est un texte de la page, lisible sans survol ni interaction — pas un `title`
+    // de tooltip (invisible sur mobile) ni un simple tiret « — ».
+    expect(screen.getByText('Données indisponibles')).toBeTruthy();
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.queryByText('0')).toBeNull();
+    expect(screen.queryByTestId('kpi-value-skeleton')).toBeNull();
+  });
+
   it('ne présente aucune violation axe serious ou critical', async () => {
     const { container } = render(
       <KPICard currency="XOF" label="CA collecté" value={182500} unit="currency" />,
