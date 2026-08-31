@@ -6,8 +6,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 // /commandes (lib/actions/orders.ts:fetchOrdersPageData) quand aucune recherche texte n'est
 // active. Contrat : reproduire exactement matchesOrderSavedView + orderMatchesPeriod
 // (lib/domain/order-saved-views.ts) — en particulier a-appeler sur `created_at` (pas
-// orderQueueDate), et en-livraison/annulees-retours en AND composé (état courant ET existence
-// d'une transition qualifiante dans la fenêtre, dédupliquée par commande).
+// orderQueueDate).
+//
+// TB-CPT (migration 0149) — en-livraison/annulees-retours exigeaient un AND composé (état
+// courant ET transition qualifiante dans la fenêtre) : une commande dans l'état visé depuis
+// plus de 7 jours n'était jamais comptée alors qu'elle reste bien dans l'état — mesuré en
+// production (24→4, 130→9 selon la vue). Corrigé : état courant SEUL, aligné sur
+// matchesOrderSavedView, quelle que soit l'ancienneté de la transition (ou son absence).
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -279,17 +284,36 @@ describe('get_order_view_counts (Lot 6, 0088)', () => {
   );
 
   skipIfNoServiceRole(
-    'en-livraison : AND composé — état courant seul ou transition seule ne suffisent pas',
+    'TB-CPT en-livraison : état courant seul — une transition vieille de 20 jours (hors fenêtre 7j) compte quand même',
     async () => {
       const { admin, email, merchantAccountId, userId } =
-        await createOwnerFixture('en-livraison-and');
-      const from = new Date(Date.now() - 10 * 86_400_000);
-      const to = new Date(Date.now() + 86_400_000);
-      const inWindow = new Date(Date.now() - 5 * 86_400_000).toISOString();
+        await createOwnerFixture('en-livraison-state-only');
+      // Fenêtre 7j classique du Tableau : la transition ci-dessous est délibérément hors fenêtre.
+      const from = new Date(Date.now() - 7 * 86_400_000);
+      const to = new Date();
+      const staleTransition = new Date(Date.now() - 20 * 86_400_000).toISOString();
+      const recentTransition = new Date(Date.now() - 2 * 86_400_000).toISOString();
 
-      // État courant OK mais AUCUNE transition dans la fenêtre → exclu.
+      // Rouge avant / vert après : état courant OK, transition vieille de 20 jours (hors
+      // fenêtre p_from/p_to) — comptait 0 avant ce lot, doit compter 1 après.
+      const staleId = await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
+        dimensions: {
+          callState: 'validated',
+          deliveryState: 'out_for_delivery',
+          orderState: 'open',
+        },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: staleTransition,
+        orderId: staleId,
+        toStatus: 'EN_LIVRAISON',
+      });
+
+      // État courant OK, AUCUNE transition en base — doit aussi compter (matchesOrderSavedView
+      // n'a jamais exigé de transition, seulement l'état courant).
       await insertOrder(admin, merchantAccountId, {
-        createdAt: inWindow,
+        createdAt: staleTransition,
         dimensions: {
           callState: 'validated',
           deliveryState: 'out_for_delivery',
@@ -297,37 +321,31 @@ describe('get_order_view_counts (Lot 6, 0088)', () => {
         },
       });
 
-      // Transition qualifiante dans la fenêtre mais état courant a changé depuis (livrée) →
-      // exclu (le AND exige les deux conditions simultanément).
+      // Contrôle positif : transition récente, dans la fenêtre — reste comptée (un test qui ne
+      // vérifie que le cas ancien serait vert même si le compteur retournait 0 ou n'importe quoi).
+      const recentId = await insertOrder(admin, merchantAccountId, {
+        createdAt: recentTransition,
+        dimensions: {
+          callState: 'validated',
+          deliveryState: 'out_for_delivery',
+          orderState: 'open',
+        },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: recentTransition,
+        orderId: recentId,
+        toStatus: 'EN_LIVRAISON',
+      });
+
+      // Transition qualifiante mais état courant a changé depuis (livrée) → exclu : l'état
+      // courant reste la condition, seule la fenêtre de transition disparaît.
       const deliveredId = await insertOrder(admin, merchantAccountId, {
-        createdAt: inWindow,
+        createdAt: staleTransition,
         dimensions: { callState: 'validated', deliveryState: 'delivered', orderState: 'completed' },
       });
       await insertTransition(admin, merchantAccountId, userId, {
-        createdAt: inWindow,
+        createdAt: staleTransition,
         orderId: deliveredId,
-        toStatus: 'EN_LIVRAISON',
-      });
-
-      // Les deux conditions réunies → inclus.
-      const qualifyingId = await insertOrder(admin, merchantAccountId, {
-        createdAt: inWindow,
-        dimensions: {
-          callState: 'validated',
-          deliveryState: 'out_for_delivery',
-          orderState: 'open',
-        },
-      });
-      await insertTransition(admin, merchantAccountId, userId, {
-        createdAt: inWindow,
-        orderId: qualifyingId,
-        toStatus: 'EN_LIVRAISON',
-      });
-      // 2e transition vers le même statut dans la fenêtre (réassignation) : ne doit PAS
-      // compter deux fois (déduplication par commande).
-      await insertTransition(admin, merchantAccountId, userId, {
-        createdAt: inWindow,
-        orderId: qualifyingId,
         toStatus: 'EN_LIVRAISON',
       });
 
@@ -339,7 +357,77 @@ describe('get_order_view_counts (Lot 6, 0088)', () => {
       });
       if (error) throw error;
 
-      expect(countFor(data, 'en-livraison')).toBe(1);
+      expect(countFor(data, 'en-livraison')).toBe(3);
+    },
+  );
+
+  skipIfNoServiceRole(
+    'TB-CPT annulees-retours : état courant seul — une transition vieille de 20 jours compte quand même',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture(
+        'annulees-retours-state-only',
+      );
+      const from = new Date(Date.now() - 7 * 86_400_000);
+      const to = new Date();
+      const staleTransition = new Date(Date.now() - 20 * 86_400_000).toISOString();
+      const recentTransition = new Date(Date.now() - 2 * 86_400_000).toISOString();
+
+      // Rouge avant / vert après.
+      const staleCancelled = await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
+        dimensions: {
+          callState: 'validated',
+          deliveryState: 'unassigned',
+          orderState: 'cancelled',
+        },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: staleTransition,
+        orderId: staleCancelled,
+        toStatus: 'ANNULEE',
+      });
+
+      // `returned` (pas seulement `cancelled`) compte aussi, sans transition en base.
+      await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
+        dimensions: { callState: 'validated', deliveryState: 'unassigned', orderState: 'returned' },
+      });
+
+      // Contrôle positif.
+      const recentRefused = await insertOrder(admin, merchantAccountId, {
+        createdAt: recentTransition,
+        dimensions: {
+          callState: 'validated',
+          deliveryState: 'unassigned',
+          orderState: 'cancelled',
+        },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: recentTransition,
+        orderId: recentRefused,
+        toStatus: 'REFUSEE',
+      });
+
+      // État courant changé depuis (revenu open) → exclu.
+      const reopened = await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
+        dimensions: { callState: 'to_call', deliveryState: 'unassigned', orderState: 'open' },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: staleTransition,
+        orderId: reopened,
+        toStatus: 'ANNULEE',
+      });
+
+      const client = await signIn(email);
+      const { data, error } = await client.rpc('get_order_view_counts', {
+        p_from: from.toISOString(),
+        p_merchant_id: merchantAccountId,
+        p_to: to.toISOString(),
+      });
+      if (error) throw error;
+
+      expect(countFor(data, 'annulees-retours')).toBe(3);
     },
   );
 

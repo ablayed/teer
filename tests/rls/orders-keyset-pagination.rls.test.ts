@@ -8,7 +8,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 // (matchesOrderSavedView/orderMatchesPeriod), le tri sur les colonnes générées sort_at/
 // next_action_at (migration 0044), et le keyset tuple (sort, id) sans doublon ni trou entre
 // pages. a-appeler filtre sur `created_at` mais trie/paginate sur `sort_at` (champs différents,
-// piège identifié en PHASE A) ; en-livraison/annulees-retours restent AND composé état+transition.
+// piège identifié en PHASE A).
+//
+// TB-CPT (migration 0149) — en-livraison/annulees-retours exigeaient un AND composé état+
+// transition dans la fenêtre : cette RPC sert la liste RÉELLEMENT rendue au clic depuis le
+// Tableau (chemin sans recherche, majoritaire), et portait le même gabarit que le compteur
+// get_order_view_counts (0088) — son propre commentaire disait explicitement l'avoir répliqué
+// pour ne pas diverger. Corrigé en lock-step avec 0088/0081 : état courant SEUL.
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -423,27 +429,19 @@ describe('list_orders_keyset (Lot 7, 0089)', () => {
   });
 
   skipIfNoServiceRole(
-    'en-livraison : AND composé état+transition, dédupliqué, exclut résiduel',
+    'TB-CPT en-livraison : état courant seul — une transition vieille de 20 jours (hors fenêtre 7j) apparaît quand même dans la liste',
     async () => {
-      const { admin, email, merchantAccountId, userId } = await createOwnerFixture('en-livraison');
-      const from = new Date(Date.now() - 10 * 86_400_000).toISOString();
-      const to = new Date(Date.now() + 86_400_000).toISOString();
-      const inWindow = new Date(Date.now() - 5 * 86_400_000).toISOString();
+      const { admin, email, merchantAccountId, userId } =
+        await createOwnerFixture('en-livraison-state-only');
+      const from = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      const to = new Date().toISOString();
+      const staleTransition = new Date(Date.now() - 20 * 86_400_000).toISOString();
+      const recentTransition = new Date(Date.now() - 2 * 86_400_000).toISOString();
 
-      // État courant OK, aucune transition dans la fenêtre → exclu.
-      await insertOrder(admin, merchantAccountId, {
-        createdAt: inWindow,
-        dimensions: {
-          callState: 'validated',
-          deliveryState: 'out_for_delivery',
-          orderState: 'open',
-        },
-      });
-
-      // Les deux conditions réunies, avec 2 transitions vers le même statut (réassignation) :
-      // doit apparaître une seule fois.
-      const qualifying = await insertOrder(admin, merchantAccountId, {
-        createdAt: inWindow,
+      // Rouge avant / vert après : état courant OK, transition hors fenêtre p_from/p_to —
+      // absente de la page avant ce lot, doit apparaître après.
+      const stale = await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
         dimensions: {
           callState: 'validated',
           deliveryState: 'out_for_delivery',
@@ -451,13 +449,35 @@ describe('list_orders_keyset (Lot 7, 0089)', () => {
         },
       });
       await insertTransition(admin, merchantAccountId, userId, {
-        createdAt: inWindow,
-        orderId: qualifying.id,
+        createdAt: staleTransition,
+        orderId: stale.id,
         toStatus: 'EN_LIVRAISON',
       });
+
+      // Contrôle positif : transition récente, dans la fenêtre — reste dans la page.
+      const recent = await insertOrder(admin, merchantAccountId, {
+        createdAt: recentTransition,
+        dimensions: {
+          callState: 'validated',
+          deliveryState: 'out_for_delivery',
+          orderState: 'open',
+        },
+      });
       await insertTransition(admin, merchantAccountId, userId, {
-        createdAt: inWindow,
-        orderId: qualifying.id,
+        createdAt: recentTransition,
+        orderId: recent.id,
+        toStatus: 'EN_LIVRAISON',
+      });
+
+      // Transition qualifiante mais état courant a changé depuis (livrée) → exclu : l'état
+      // courant reste la condition, seule la fenêtre de transition disparaît.
+      const delivered = await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
+        dimensions: { callState: 'validated', deliveryState: 'delivered', orderState: 'completed' },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: staleTransition,
+        orderId: delivered.id,
         toStatus: 'EN_LIVRAISON',
       });
 
@@ -469,7 +489,67 @@ describe('list_orders_keyset (Lot 7, 0089)', () => {
         view: 'en-livraison',
       });
 
-      expect(page.map((row) => row.id)).toEqual([qualifying.id]);
+      expect(new Set(page.map((row) => row.id))).toEqual(new Set([stale.id, recent.id]));
+    },
+  );
+
+  skipIfNoServiceRole(
+    'TB-CPT annulees-retours : état courant seul — une transition vieille de 20 jours apparaît quand même dans la liste',
+    async () => {
+      const { admin, email, merchantAccountId, userId } = await createOwnerFixture(
+        'annulees-retours-state-only',
+      );
+      const from = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      const to = new Date().toISOString();
+      const staleTransition = new Date(Date.now() - 20 * 86_400_000).toISOString();
+      const recentTransition = new Date(Date.now() - 2 * 86_400_000).toISOString();
+
+      // Rouge avant / vert après.
+      const stale = await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
+        dimensions: { callState: 'validated', deliveryState: 'unassigned', orderState: 'returned' },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: staleTransition,
+        orderId: stale.id,
+        toStatus: 'REFUSEE',
+      });
+
+      // Contrôle positif.
+      const recent = await insertOrder(admin, merchantAccountId, {
+        createdAt: recentTransition,
+        dimensions: {
+          callState: 'validated',
+          deliveryState: 'unassigned',
+          orderState: 'cancelled',
+        },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: recentTransition,
+        orderId: recent.id,
+        toStatus: 'ANNULEE',
+      });
+
+      // État courant revenu open depuis → exclu.
+      const reopened = await insertOrder(admin, merchantAccountId, {
+        createdAt: staleTransition,
+        dimensions: { callState: 'to_call', deliveryState: 'unassigned', orderState: 'open' },
+      });
+      await insertTransition(admin, merchantAccountId, userId, {
+        createdAt: staleTransition,
+        orderId: reopened.id,
+        toStatus: 'ANNULEE',
+      });
+
+      const client = await signIn(email);
+      const page = await fetchPage(client, {
+        from,
+        merchantAccountId,
+        to,
+        view: 'annulees-retours',
+      });
+
+      expect(new Set(page.map((row) => row.id))).toEqual(new Set([stale.id, recent.id]));
     },
   );
 
