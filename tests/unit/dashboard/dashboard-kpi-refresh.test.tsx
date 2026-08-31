@@ -59,26 +59,26 @@ afterEach(() => {
 });
 
 describe('DashboardKpiRefresh — TB-P0', () => {
-  it('erreur au chargement initial : les cartes affichent l’indisponibilité, jamais 0', () => {
+  it('erreur au chargement initial : les cartes affichent l’indisponibilité en texte visible, jamais 0', () => {
     renderStrip({ initialError: true, initialKpi: null });
 
-    // KPICard rend « — » en cas d'erreur et porte le libellé d'indisponibilité en title.
-    expect(screen.getAllByTitle('Données indisponibles').length).toBeGreaterThan(0);
+    // Texte de page, lisible sans survol — pas un `title` de tooltip (invisible sur mobile).
+    expect(screen.getAllByText('Données indisponibles').length).toBeGreaterThan(0);
     expect(screen.queryByText('0')).toBeNull();
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(screen.queryByText('—')).toBeNull();
   });
 
   it('zéro réel : affiche bien 0, sans aucune mention d’indisponibilité (contrôle positif)', () => {
     renderStrip({ initialError: false, initialKpi: kpiZero });
 
-    expect(screen.queryByTitle('Données indisponibles')).toBeNull();
+    expect(screen.queryByText('Données indisponibles')).toBeNull();
     expect(screen.getByText('0')).toBeTruthy();
   });
 
   it('données réelles non nulles : affiche les valeurs, sans indisponibilité', () => {
     renderStrip({ initialError: false, initialKpi: kpiNonZero });
 
-    expect(screen.queryByTitle('Données indisponibles')).toBeNull();
+    expect(screen.queryByText('Données indisponibles')).toBeNull();
     expect(screen.getByText('6')).toBeTruthy();
   });
 });
