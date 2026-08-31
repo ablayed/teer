@@ -1,6 +1,7 @@
 'use client';
 
-import type { DashboardRevenuePoint } from '@/lib/actions/dashboard';
+import type { DashboardRevenue30d } from '@/lib/actions/dashboard';
+import type { MetricLoadState } from '@/lib/dashboard/metric-load-state';
 import dynamic from 'next/dynamic';
 
 const RevenueChartInner = dynamic(() => import('@/components/dashboard/RevenueChartInner'), {
@@ -15,8 +16,9 @@ const RevenueChartInner = dynamic(() => import('@/components/dashboard/RevenueCh
 
 type RevenueChartProps = {
   currency: string | null;
-  data: DashboardRevenuePoint[];
   emptyLabel: string;
+  errorLabel: string;
+  state: MetricLoadState<DashboardRevenue30d>;
   title: string;
 };
 

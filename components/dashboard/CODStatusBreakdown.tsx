@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import type { DashboardCodBreakdownItem } from '@/lib/actions/dashboard';
+import type { MetricLoadState } from '@/lib/dashboard/metric-load-state';
 import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { cn } from '@/lib/utils';
 import { formatDashboardCount } from './dashboard-format';
@@ -8,7 +9,8 @@ import { formatDashboardCount } from './dashboard-format';
 type CODStatusBreakdownProps = {
   definition?: string;
   emptyLabel: string;
-  items: DashboardCodBreakdownItem[];
+  errorLabel: string;
+  state: MetricLoadState<DashboardCodBreakdownItem[]>;
   subtitle?: string;
   title: string;
 };
@@ -27,10 +29,12 @@ const segmentStyles: Record<OrderStatus, string> = {
 export function CODStatusBreakdown({
   definition,
   emptyLabel,
-  items,
+  errorLabel,
+  state,
   subtitle,
   title,
 }: CODStatusBreakdownProps) {
+  const items = state.status === 'ready' || state.status === 'empty' ? state.data : [];
   const total = items.reduce((sum, item) => sum + item.count, 0);
 
   return (
@@ -42,7 +46,11 @@ export function CODStatusBreakdown({
         </div>
         {definition ? <DefinitionToggle definition={definition} /> : null}
       </div>
-      {total === 0 ? (
+      {state.status === 'error' ? (
+        <p className="rounded-md border border-dashed border-danger/20 bg-danger-subtle p-4 text-sm font-medium text-danger">
+          {errorLabel}
+        </p>
+      ) : total === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-canvas p-4 text-sm text-muted">
           {emptyLabel}
         </p>

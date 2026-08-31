@@ -388,6 +388,7 @@
     "title": "Tableau",
     "greeting": "Bonjour {name}",
     "subtitle": "{count, plural, =0 {Tout est à jour.} one {# commande en attente d'appel (7 derniers jours).} other {# commandes en attente d'appel (7 derniers jours).}}",
+    "dataUnavailable": "Données indisponibles",
     "shops": {
       "label": "Boutique",
       "ariaLabel": "Filtrer le tableau par boutique",

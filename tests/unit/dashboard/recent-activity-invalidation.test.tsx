@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const labels = {
   emptyLabel: 'Aucune transition récente.',
+  errorLabel: 'Données indisponibles',
   initialLabel: 'Initial',
   orderFallbackLabel: 'Commande',
   title: 'Activité récente',
@@ -68,7 +69,12 @@ afterEach(() => {
 
 describe('0116 — « Activité récente » après une invalidation', () => {
   it("n'affiche aucune entrée « Livrée → À appeler » et rend les autres transitions intactes", () => {
-    render(<RecentActivity items={transitionsAfterInvalidation} {...labels} />);
+    render(
+      <RecentActivity
+        state={{ data: transitionsAfterInvalidation, status: 'ready' }}
+        {...labels}
+      />,
+    );
 
     const list = screen.getByRole('list');
     // Une entrée par transition remontée : 3 lignes pour 3 transitions, pas 4.
@@ -84,13 +90,20 @@ describe('0116 — « Activité récente » après une invalidation', () => {
   });
 
   it('rend exactement une entrée de moins que si la ligne était posée — aucune ligne vide, aucun trou', () => {
-    const { unmount } = render(<RecentActivity items={withInvalidationRow} {...labels} />);
+    const { unmount } = render(
+      <RecentActivity state={{ data: withInvalidationRow, status: 'ready' }} {...labels} />,
+    );
     const withRow = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(withRow).toHaveLength(4);
     expect(screen.getByText('#2921 · Livrée → À appeler')).toBeTruthy();
     unmount();
 
-    render(<RecentActivity items={transitionsAfterInvalidation} {...labels} />);
+    render(
+      <RecentActivity
+        state={{ data: transitionsAfterInvalidation, status: 'ready' }}
+        {...labels}
+      />,
+    );
     const withoutRow = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(withoutRow).toHaveLength(3);
     // Chaque <li> restant porte un libellé complet (« X → Y ») et une date : la suppression
@@ -102,8 +115,16 @@ describe('0116 — « Activité récente » après une invalidation', () => {
   });
 
   it("affiche son état vide normal quand il ne reste aucune transition — pas d'erreur de rendu", () => {
-    render(<RecentActivity items={[]} {...labels} />);
+    render(<RecentActivity state={{ data: [], status: 'empty' }} {...labels} />);
     expect(screen.getByText(labels.emptyLabel)).toBeTruthy();
+    expect(screen.queryByRole('list')).toBeNull();
+  });
+
+  it('TB-P0 : distingue une erreur RPC d’un résultat vide — jamais un repli silencieux sur []', () => {
+    render(<RecentActivity state={{ errorCode: 'query_error', status: 'error' }} {...labels} />);
+    // L'indisponibilité est un TEXTE visible, jamais seulement une teinte ou un état vide muet.
+    expect(screen.getByText(labels.errorLabel)).toBeTruthy();
+    expect(screen.queryByText(labels.emptyLabel)).toBeNull();
     expect(screen.queryByRole('list')).toBeNull();
   });
 });

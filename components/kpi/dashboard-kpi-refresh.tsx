@@ -7,6 +7,7 @@ import { useAction } from 'next-safe-action/hooks';
 import React, { useEffect, useState } from 'react';
 
 type DashboardKpiRefreshProps = {
+  initialError: boolean;
   initialKpi: DashboardKpi | null;
   initialUpdatedAt: string;
   shopId?: string | null;
@@ -23,6 +24,7 @@ function formatRefreshTime(value: string): string {
 }
 
 export function DashboardKpiRefresh({
+  initialError,
   initialKpi,
   initialUpdatedAt,
   shopId = null,
@@ -32,7 +34,10 @@ export function DashboardKpiRefresh({
   const [kpi, setKpi] = useState<DashboardKpi | null>(initialKpi);
   const [updatedAt, setUpdatedAt] = useState(initialUpdatedAt);
   const isLoading = kpiAction.isExecuting && !kpi;
-  const hasError = kpiAction.result.data?.ok === false;
+  // Le chargement initial (serveur) peut échouer sans qu'aucun refresh client n'ait encore
+  // eu lieu — kpiAction.result.data reste alors undefined. Ne jamais retomber sur `false`
+  // (= "pas d'erreur") dans ce cas : ce serait exactement le repli silencieux que ce lot ferme.
+  const hasError = kpiAction.result.data ? kpiAction.result.data.ok === false : initialError;
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {

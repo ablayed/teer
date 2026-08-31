@@ -15,6 +15,7 @@ import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { Card } from '@/components/ui/card';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import {
+  type DashboardRevenue30d,
   getCodBreakdown,
   getDashboardCashCollectedByProduct,
   getDashboardCashCollectedTotal,
@@ -74,18 +75,26 @@ const loadDashboardKpi = cache(getDashboardKpi);
 
 async function CallQueueSubtitle({ shopId }: { shopId: string | null }) {
   const [t, kpiResult] = await Promise.all([getTranslations('tableau'), loadDashboardKpi(shopId)]);
-  const callQueueCount = kpiResult.ok ? kpiResult.data.a_appeler_count : 0;
+  const state = toMetricLoadState(kpiResult, () => false);
+  logMetricLoadError('dashboard_kpi_subtitle', state);
 
-  return <p className="text-muted">{t('subtitle', { count: callQueueCount })}</p>;
+  if (state.status !== 'ready' && state.status !== 'empty') {
+    return <p className="text-muted">{t('dataUnavailable')}</p>;
+  }
+
+  return <p className="text-muted">{t('subtitle', { count: state.data.a_appeler_count })}</p>;
 }
 
 async function KpiStrip({ shopId }: { shopId: string | null }) {
   const kpiResult = await loadDashboardKpi(shopId);
-  const kpi = kpiResult.ok ? kpiResult.data : null;
+  const state = toMetricLoadState(kpiResult, () => false);
+  logMetricLoadError('dashboard_kpi_strip', state);
+  const isReady = state.status === 'ready' || state.status === 'empty';
 
   return (
     <DashboardKpiRefresh
-      initialKpi={kpi}
+      initialError={!isReady}
+      initialKpi={isReady ? state.data : null}
       initialUpdatedAt={new Date().toISOString()}
       shopId={shopId}
     />
@@ -96,13 +105,26 @@ async function KpiStrip({ shopId }: { shopId: string | null }) {
 // liste-cible /commandes?vue=<id>&period=7j&shop=<actif> (cf. getPriorityCounts) — compteur
 // dashboard = nombre affiché au clic, pas juste un `period=7j` cosmétique dans l'URL.
 async function ExceptionsSection({ shopId }: { shopId: string | null }) {
-  const [t, countsResult] = await Promise.all([
+  const [t, tRoot, countsResult] = await Promise.all([
     getTranslations('tableau.blocks.exceptions'),
+    getTranslations('tableau'),
     getPriorityCounts(shopId),
   ]);
-  const counts = countsResult.ok
-    ? countsResult.data
-    : { aAppeler: 0, aRappeler: 0, annuleesRetours: 0, enLivraison: 0 };
+  const state = toMetricLoadState(countsResult, () => false);
+  logMetricLoadError('priority_counts', state);
+
+  if (state.status !== 'ready' && state.status !== 'empty') {
+    return (
+      <OrderExceptionsGrid
+        errorLabel={tRoot('dataUnavailable')}
+        groupTitles={[t('groups.urgences'), t('groups.livraison'), t('groups.annulations')]}
+        status="error"
+        title={t('title')}
+      />
+    );
+  }
+
+  const counts = state.data;
   const hrefFor = (viewId: Parameters<typeof buildOrderViewHref>[0]) =>
     buildOrderViewHref(viewId, { period: '7j', shopId });
 
@@ -146,7 +168,7 @@ async function ExceptionsSection({ shopId }: { shopId: string | null }) {
     },
   ];
 
-  return <OrderExceptionsGrid cards={exceptionCards} title={t('title')} />;
+  return <OrderExceptionsGrid cards={exceptionCards} status="ready" title={t('title')} />;
 }
 
 function isCashCollectedEmpty(data: { caMinor: number }): boolean {
@@ -409,20 +431,30 @@ async function CashByProductPeriodMetric({
   );
 }
 
+function isRevenueEmpty(data: DashboardRevenue30d): boolean {
+  return !data.points.some((point) => point.value > 0);
+}
+
 async function RevenueSection({ shopId }: { shopId: string | null }) {
   const [t, revenueResult, kpiResult] = await Promise.all([
     getTranslations('tableau'),
     getRevenue30d(shopId),
     loadDashboardKpi(shopId),
   ]);
-  const revenue = revenueResult.ok ? revenueResult.data : null;
+  const state = toMetricLoadState(revenueResult, isRevenueEmpty);
+  logMetricLoadError('revenue_30d', state);
   const kpi = kpiResult.ok ? kpiResult.data : null;
+  const currency =
+    state.status === 'ready' || state.status === 'empty'
+      ? (state.data.currency ?? kpi?.currency ?? null)
+      : (kpi?.currency ?? null);
 
   return (
     <RevenueChart
-      currency={revenue?.currency ?? kpi?.currency ?? null}
-      data={revenue?.points ?? []}
+      currency={currency}
       emptyLabel={t('revenue.empty')}
+      errorLabel={t('dataUnavailable')}
+      state={state}
       title={t('revenue.title')}
     />
   );
@@ -440,14 +472,16 @@ async function TopProductsSection({
     getTopProducts({ from: period.from, shopId, to: period.to }),
     loadDashboardKpi(shopId),
   ]);
-  const topProducts = topProductsResult.ok ? topProductsResult.data : [];
+  const state = toMetricLoadState(topProductsResult, (items) => items.length === 0);
+  logMetricLoadError('top_products', state);
   const kpi = kpiResult.ok ? kpiResult.data : null;
 
   return (
     <TopProducts
       currency={kpi?.currency ?? null}
       emptyLabel={t('blocks.topProducts.empty')}
-      items={topProducts}
+      errorLabel={t('dataUnavailable')}
+      state={state}
       subtitle={t('blocks.topProducts.subtitle')}
       title={t('blocks.topProducts.title')}
       unitsLabel={t('blocks.topProducts.units')}
@@ -467,7 +501,8 @@ async function ShopPerformanceSection({
     getShopPerformance({ from: period.from, shopId, to: period.to }),
     loadDashboardKpi(shopId),
   ]);
-  const shopPerformance = shopPerformanceResult.ok ? shopPerformanceResult.data : [];
+  const state = toMetricLoadState(shopPerformanceResult, (items) => items.length === 0);
+  logMetricLoadError('shop_performance', state);
   const kpi = kpiResult.ok ? kpiResult.data : null;
 
   return (
@@ -475,8 +510,9 @@ async function ShopPerformanceSection({
       connectedLabel={t('blocks.shopPerformance.connected')}
       currency={kpi?.currency ?? null}
       emptyLabel={t('blocks.shopPerformance.empty')}
-      items={shopPerformance}
+      errorLabel={t('dataUnavailable')}
       ordersLabel={t('blocks.shopPerformance.orders')}
+      state={state}
       subtitle={t('blocks.shopPerformance.subtitle')}
       title={t('blocks.shopPerformance.title')}
       warningLabel={t('blocks.shopPerformance.warning')}
@@ -495,13 +531,18 @@ async function CodBreakdownSection({
     getTranslations('tableau'),
     getCodBreakdown({ from: period.from, shopId, to: period.to }),
   ]);
-  const codBreakdown = codBreakdownResult.ok ? codBreakdownResult.data : [];
+  const state = toMetricLoadState(
+    codBreakdownResult,
+    (items) => items.reduce((sum, item) => sum + item.count, 0) === 0,
+  );
+  logMetricLoadError('cod_breakdown', state);
 
   return (
     <CODStatusBreakdown
       definition={t('blocks.codBreakdown.definition')}
       emptyLabel={t('blocks.codBreakdown.empty')}
-      items={codBreakdown}
+      errorLabel={t('dataUnavailable')}
+      state={state}
       subtitle={t('blocks.codBreakdown.subtitle')}
       title={t('blocks.codBreakdown.title')}
     />
@@ -513,14 +554,16 @@ async function RecentActivitySection({ shopId }: { shopId: string | null }) {
     getTranslations('tableau'),
     getRecentActivity(shopId),
   ]);
-  const recentActivity = recentActivityResult.ok ? recentActivityResult.data : [];
+  const state = toMetricLoadState(recentActivityResult, (items) => items.length === 0);
+  logMetricLoadError('recent_activity', state);
 
   return (
     <RecentActivity
       emptyLabel={t('blocks.recentActivity.empty')}
+      errorLabel={t('dataUnavailable')}
       initialLabel={t('blocks.recentActivity.initial')}
-      items={recentActivity}
       orderFallbackLabel={t('blocks.recentActivity.orderFallback')}
+      state={state}
       title={t('blocks.recentActivity.title')}
     />
   );
