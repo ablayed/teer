@@ -549,21 +549,29 @@ function orderRowTitle(page: Page, name: string) {
 // primaire). S'il n'existe pas — cible = action primaire, deja un bouton direct —
 // ne bloque pas dessus : `menuItem` ci-dessus la retrouvera sans avoir rien ouvert.
 //
-// PIEGE (trouve en CI mobile, pas reproduit en reasoning statique) : sur mobile, le
-// Drawer Vaul du dropdown "Actions" pose aria-hidden sur le RESTE de la page pendant
-// qu'il est ouvert (comportement standard Vaul/Radix). Si la cible est DEJA le bouton
-// primaire (donc visible AVANT toute ouverture), ouvrir "Actions" quand meme le rend
-// introuvable par role une fois le menu ouvert. `openActionsMenu` doit donc etre
-// name-aware et ne RIEN ouvrir quand la cible est deja un bouton direct visible.
+// PIEGE REEL (confirme par error-context.md en CI mobile, pas par le reasoning
+// statique initial) : sur mobile, le Drawer Vaul du dropdown "Actions" pose un
+// backdrop plein ecran QUI COUVRE le reste de la page pendant qu'il est ouvert — le
+// bouton primaire reste present et "visible" au sens ARIA, mais physiquement recouvert
+// (Playwright retente le clic indefiniment, jamais d'erreur explicite, juste un
+// timeout muet). Deuxieme piege qui a fait echouer un premier correctif : un simple
+// `direct.isVisible()` NON-ATTENDANT, appele juste apres la navigation, retombe
+// systematiquement a `false` (rien n'est encore rendu) — il faut ATTENDRE que l'un
+// des deux etats (bouton direct OU trigger "Actions") apparaisse avant de decider.
 async function openActionsMenu(page: Page, name?: string) {
+  const trigger = page.getByRole('button', { name: 'Actions' }).first();
+
   if (name) {
     const direct = page.getByRole('button', { name, exact: true });
+    await Promise.race([
+      direct.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+      trigger.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+    ]);
     if (await direct.isVisible().catch(() => false)) {
       return;
     }
   }
 
-  const trigger = page.getByRole('button', { name: 'Actions' }).first();
   try {
     await trigger.waitFor({ state: 'visible', timeout: 2_000 });
     await trigger.click();
@@ -622,13 +630,16 @@ async function openOrderDetailSheet(page: Page, orderId: string, customerName: s
 }
 
 // >=768 (chromium) : dialog modal desktop, ferme par "Fermer". <768 (pixel-7,
-// iphone-14) : page dediee pleine largeur, fermee par le lien "Retour" — aucun
-// role="dialog" ne se monte sur ce chemin (OrderSideSheet rend OrderDetailPanel
-// mode="page" directement, voir components/orders/order-side-sheet.tsx).
+// iphone-14) : page dediee pleine largeur, fermee par "Retour" — aucun role="dialog"
+// ne se monte sur ce chemin (OrderSideSheet rend OrderDetailPanel mode="page"
+// directement, voir components/orders/order-side-sheet.tsx). Ici la navigation est
+// DOUCE (clic depuis la liste, pas hard-nav) : "Retour" est un <button onClick=
+// {router.back()}> (role="button"), PAS un <Link> — order-detail-panel.tsx ne rend
+// un <Link> que pour l'entree hard-nav directe (onClose absent).
 function detailCloseControl(page: Page) {
   const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
   return isMobile
-    ? page.getByRole('link', { name: 'Retour', exact: true })
+    ? page.getByRole('button', { name: 'Retour', exact: true })
     : page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true });
 }
 

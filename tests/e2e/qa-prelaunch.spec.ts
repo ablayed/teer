@@ -415,19 +415,26 @@ function menuItem(page: Page, name: string) {
     .or(page.getByRole('button', { name, exact: true }));
 }
 
-// PIEGE (trouve en CI mobile) : le Drawer Vaul du dropdown "Actions" pose aria-hidden
-// sur le RESTE de la page pendant qu'il est ouvert. Si `name` est DEJA le bouton
-// primaire (visible avant toute ouverture), ouvrir "Actions" quand meme le rend
-// introuvable par role une fois le menu ouvert — d'où le check direct-d'abord.
+// PIEGE REEL (confirme par error-context.md en CI mobile) : le Drawer Vaul du
+// dropdown "Actions" pose un backdrop plein ecran qui COUVRE le reste de la page
+// pendant qu'il est ouvert — le bouton primaire reste "visible" au sens ARIA mais
+// physiquement recouvert (Playwright retente le clic indefiniment, timeout muet).
+// Un `direct.isVisible()` NON-ATTENDANT juste apres navigation retombe
+// systematiquement a `false` (rien n'est encore rendu) — attendre l'un des deux
+// etats (bouton direct OU trigger "Actions") avant de decider.
 async function openActionsMenu(page: Page, name?: string) {
+  const trigger = page.getByRole('button', { name: 'Actions' }).first();
+
   if (name) {
     const direct = page.getByRole('button', { name, exact: true });
+    await Promise.race([
+      direct.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+      trigger.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+    ]);
     if (await direct.isVisible().catch(() => false)) {
       return;
     }
   }
-
-  const trigger = page.getByRole('button', { name: 'Actions' }).first();
 
   const hasTrigger = await trigger
     .waitFor({ state: 'visible', timeout: 3_000 })
