@@ -47,6 +47,19 @@ arrivage pas encore facturé, publicité pas encore saisie). Ce mécanisme est v
 réel dans `purchase-lot-detail-panel.tsx` (« Marge provisoire — en attente de : … », formulation
 figée ci-dessus).
 
+## Écart vs solde (Lot CASH-01)
+
+**« Écart » et « solde non remis » ne sont pas synonymes.** Un écart, c'est `attendu − reçu`
+*après une remise* ; sans remise, il n'y a pas d'écart — seulement un solde (ce que le livreur
+détient encore, en attente d'être remis). La carte « Cash chez le livreur (live) »
+(`driver-cash-panel.tsx`) affichait un solde non nul en permanence comme « Écart non résolu »
+en rouge (`text-danger`) : un marchand qui le voit tous les jours apprend à l'ignorer, et ne
+verra pas un vrai écart le jour où il apparaît. **La bannière est retirée** (Lot CASH-01,
+2026-09-01) — le solde reste visible via la carte elle-même, sans alarme de couleur. Le seul
+endroit où le mot « écart »/« reste » peut légitimement apparaître est le récapitulatif de
+confirmation d'un versement (`driver-remittance-form.tsx`, « Reste après la remise »), où il
+compare une vraie action en cours (attendu vs. saisi) — jamais comme état permanent d'une carte.
+
 ## Page de démonstration retirée (Lot F2-bis)
 
 `app/(app)/dev/finance-foundations/page.tsx` (données 100 % fictives, hors navigation réelle) a
