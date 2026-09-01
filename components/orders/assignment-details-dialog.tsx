@@ -326,6 +326,7 @@ export function AssignmentDetailsDialog({
             <div className="space-y-2">
               <Label htmlFor={`${fieldId}-total`}>Total</Label>
               <Input
+                className="h-12"
                 id={`${fieldId}-total`}
                 inputMode="numeric"
                 min={1}
@@ -343,6 +344,7 @@ export function AssignmentDetailsDialog({
             <div className="space-y-2">
               <Label htmlFor={`${fieldId}-fee`}>Frais de livraison</Label>
               <Input
+                className="h-12"
                 id={`${fieldId}-fee`}
                 inputMode="numeric"
                 min={0}
@@ -357,6 +359,7 @@ export function AssignmentDetailsDialog({
               <div className="space-y-2">
                 <Label htmlFor={`${fieldId}-date`}>Date de livraison</Label>
                 <Input
+                  className="h-12"
                   id={`${fieldId}-date`}
                   onChange={(event) => setDate(event.target.value)}
                   type="date"
@@ -366,6 +369,7 @@ export function AssignmentDetailsDialog({
               <div className="space-y-2">
                 <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
                 <Input
+                  className="h-12"
                   id={`${fieldId}-time`}
                   onChange={(event) => setTime(normalizeHourInput(event.target.value))}
                   step={3600}
@@ -401,10 +405,18 @@ export function AssignmentDetailsDialog({
         ) : null}
 
         <div className="flex justify-end gap-2">
-          <Button disabled={isExecuting} onClick={onClose} size="sm" type="button" variant="ghost">
+          <Button
+            className="min-h-12"
+            disabled={isExecuting}
+            onClick={onClose}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
             Annuler
           </Button>
           <Button
+            className="min-h-12"
             disabled={!canConfirm}
             onClick={handleConfirm}
             size="sm"

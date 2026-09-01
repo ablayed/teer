@@ -144,7 +144,7 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
 
         <DrawerFooter className="flex-row gap-2">
           <button
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1ebe5d] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 text-sm font-semibold text-white hover:bg-[#1ebe5d] disabled:cursor-not-allowed disabled:opacity-50"
             disabled={recordShare.status === 'executing'}
             onClick={() => void handleShare()}
             type="button"
@@ -154,7 +154,7 @@ export function WhatsappComposeSheet({ order, template, trigger, open, onOpenCha
           </button>
           <DrawerClose asChild>
             <button
-              className="rounded-lg border border-border px-4 py-3 text-sm font-medium text-text hover:bg-canvas"
+              className="min-h-12 rounded-lg border border-border px-4 text-sm font-medium text-text hover:bg-canvas"
               type="button"
             >
               Annuler

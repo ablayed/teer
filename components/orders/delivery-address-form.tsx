@@ -171,7 +171,7 @@ export function DeliveryAddressForm({
         <label className="grid gap-1.5 text-sm font-medium text-text">
           {t('fields.quartierCommune')}
           <input
-            className="min-h-11 rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 outline-none transition placeholder:text-muted focus:border-accent"
+            className="min-h-12 rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 outline-none transition placeholder:text-muted focus:border-accent"
             onChange={(event) => setQuartierCommune(event.target.value)}
             required
             type="text"
@@ -182,7 +182,7 @@ export function DeliveryAddressForm({
         <label className="grid gap-1.5 text-sm font-medium text-text">
           {t('fields.ville')}
           <input
-            className="min-h-11 rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 outline-none transition placeholder:text-muted focus:border-accent"
+            className="min-h-12 rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 outline-none transition placeholder:text-muted focus:border-accent"
             onChange={(event) => setVille(event.target.value)}
             type="text"
             value={ville}
@@ -192,7 +192,7 @@ export function DeliveryAddressForm({
         <label className="grid gap-1.5 text-sm font-medium text-text">
           {t('fields.repere')}
           <input
-            className="min-h-11 rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 outline-none transition placeholder:text-muted focus:border-accent"
+            className="min-h-12 rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 outline-none transition placeholder:text-muted focus:border-accent"
             onChange={(event) => setRepere(event.target.value)}
             placeholder={t('placeholders.repere')}
             type="text"
@@ -211,7 +211,7 @@ export function DeliveryAddressForm({
 
         <label className="grid gap-1.5 text-sm font-medium text-text">
           {t('fields.telephonePrincipal')}
-          <span className="flex min-h-11 overflow-hidden rounded-lg border border-border bg-surface shadow-1 focus-within:border-accent">
+          <span className="flex min-h-12 overflow-hidden rounded-lg border border-border bg-surface shadow-1 focus-within:border-accent">
             <span className="inline-flex items-center border-border border-r bg-canvas px-3 font-mono text-sm text-muted">
               +221
             </span>
@@ -229,7 +229,7 @@ export function DeliveryAddressForm({
 
         <label className="grid gap-1.5 text-sm font-medium text-text">
           {t('fields.telephoneAlternatif')}
-          <span className="flex min-h-11 overflow-hidden rounded-lg border border-border bg-surface shadow-1 focus-within:border-accent">
+          <span className="flex min-h-12 overflow-hidden rounded-lg border border-border bg-surface shadow-1 focus-within:border-accent">
             <span className="inline-flex items-center border-border border-r bg-canvas px-3 font-mono text-sm text-muted">
               +221
             </span>
@@ -246,7 +246,7 @@ export function DeliveryAddressForm({
         </label>
 
         <button
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text shadow-1 transition hover:bg-canvas disabled:opacity-50"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text shadow-1 transition hover:bg-canvas disabled:opacity-50"
           disabled={gpsLoading}
           onClick={fillGps}
           type="button"
@@ -279,7 +279,7 @@ export function DeliveryAddressForm({
       ) : null}
 
       <button
-        className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover disabled:opacity-50"
+        className="inline-flex min-h-12 w-full items-center justify-center rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover disabled:opacity-50"
         disabled={saveAddress.isExecuting}
         onClick={submit}
         type="button"

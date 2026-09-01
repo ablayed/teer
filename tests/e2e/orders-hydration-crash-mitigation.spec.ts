@@ -271,6 +271,15 @@ test.describe('Mitigation crash /commandes (hydratation #418) — prefetch désa
     await firstRowLink.scrollIntoViewIfNeeded();
     await firstRowLink.click();
     await expect(page).toHaveURL(new RegExp(`${orderHref}$`), { timeout: 15_000 });
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
+    // UX-COD-01 §4 — sous `md` (pixel-7/iphone-14), le détail s'ouvre désormais en page
+    // dédiée (lien "Retour"), pas en dialog modal — voir order-side-sheet.tsx.
+    const viewportWidth = page.viewportSize()?.width ?? 1280;
+    if (viewportWidth >= 768) {
+      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
+    } else {
+      await expect(page.getByRole('link', { name: 'Retour', exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+    }
   });
 });

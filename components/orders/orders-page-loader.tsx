@@ -348,7 +348,7 @@ export function OrdersPageLoader({
       {!localSearchAhead && hasMore && nextCursor ? (
         <div className="flex justify-center pt-2">
           <button
-            className="rounded-lg border border-border bg-surface px-6 py-3 text-sm font-medium text-text hover:bg-canvas disabled:opacity-60"
+            className="min-h-12 rounded-lg border border-border bg-surface px-6 text-sm font-medium text-text hover:bg-canvas disabled:opacity-60"
             disabled={isLoadingMore || isTransitionPending}
             onClick={handleLoadMore}
             type="button"

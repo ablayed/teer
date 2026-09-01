@@ -528,21 +528,38 @@ async function typeControlledNumber(input: Locator, value: string) {
   await expect(input).toHaveValue(value);
 }
 
-// Les actions de commande vivent desormais dans un dropdown unique « Actions »
-// (liste + detail). Les entrees sont des role="menuitem".
+// Liste (mode compact, inchange) : les actions vivent dans un dropdown unique
+// « Actions », entrees role="menuitem". Detail (UX-COD-01 §3) : la PREMIERE action
+// legale (deja ordonnee par transitionMenuOrder) est promue en bouton direct — son
+// propre libelle, jamais "Actions" — le reste reste dans le dropdown "Actions"
+// (absent s'il n'y a qu'une seule action legale). `menuItem` matche donc les DEUX
+// formes : un role="menuitem" (dropdown ouvert) OU un role="button" direct (action
+// primaire deja visible, rien a ouvrir).
 function menuItem(page: Page, name: string) {
-  return page.getByRole('menuitem', { name, exact: true });
+  return page
+    .getByRole('menuitem', { name, exact: true })
+    .or(page.getByRole('button', { name, exact: true }));
 }
 
 function orderRowTitle(page: Page, name: string) {
   return page.locator('[data-testid="order-row-title"]:visible', { hasText: name }).first();
 }
 
+// Ouvre le dropdown "Actions" SI il existe (reste des actions legales au-dela de la
+// primaire). S'il n'existe pas — cible = action primaire, deja un bouton direct —
+// ne bloque pas dessus : `menuItem` ci-dessus la retrouvera sans avoir rien ouvert.
 async function openActionsMenu(page: Page) {
-  await page.getByRole('button', { name: 'Actions' }).first().click();
+  const trigger = page.getByRole('button', { name: 'Actions' }).first();
+  try {
+    await trigger.waitFor({ state: 'visible', timeout: 2_000 });
+    await trigger.click();
+  } catch {
+    // Pas de dropdown "Actions" visible : action ciblee = primaire, deja directe.
+  }
 }
 
-// Detail (page mode) : ouvre le dropdown puis clique l'entree d'action.
+// Detail (page/sheet) : ouvre le dropdown si necessaire puis clique l'entree d'action
+// (ou le bouton direct de l'action primaire — voir openActionsMenu/menuItem ci-dessus).
 async function runDetailMenuAction(page: Page, name: string) {
   await openActionsMenu(page);
   await menuItem(page, name).click();
@@ -555,11 +572,14 @@ async function runRowMenuAction(page: Page, rowText: string, name: string) {
   await menuItem(page, name).click();
 }
 
+// UX-COD-01 §4 — sous `md` (pixel-7/iphone-14), le detail est desormais une page
+// dediee (lien "Retour"), pas un dialog modal : les deux mecanismes de fermeture
+// divergent structurellement selon le viewport. `openOrderDetailSheet` reste
+// viewport-agnostique (elle attend seulement le heading) ; `detailCloseControl`
+// (ci-dessous) porte la difference pour l'unique test qui verifie la fermeture.
 async function openOrderDetailSheet(page: Page, orderId: string, customerName: string) {
   const listUrl = page.url();
-  const detailDialog = page.getByRole('dialog');
-  const detailHeading = detailDialog.getByRole('heading', { name: customerName, exact: true });
-  const closeButton = detailDialog.getByRole('button', { name: 'Fermer', exact: true });
+  const detailHeading = page.getByRole('heading', { name: customerName, exact: true });
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     if (attempt > 1) {
@@ -575,8 +595,8 @@ async function openOrderDetailSheet(page: Page, orderId: string, customerName: s
 
     try {
       await expect(detailHeading).toBeVisible({ timeout: 15_000 });
-      await expect(closeButton).toBeVisible({ timeout: 15_000 });
-      return detailDialog;
+      await expect(detailCloseControl(page)).toBeVisible({ timeout: 15_000 });
+      return;
     } catch (error) {
       if (attempt === 2) {
         throw error;
@@ -585,6 +605,17 @@ async function openOrderDetailSheet(page: Page, orderId: string, customerName: s
   }
 
   throw new Error('Order detail sheet did not open');
+}
+
+// >=768 (chromium) : dialog modal desktop, ferme par "Fermer". <768 (pixel-7,
+// iphone-14) : page dediee pleine largeur, fermee par le lien "Retour" — aucun
+// role="dialog" ne se monte sur ce chemin (OrderSideSheet rend OrderDetailPanel
+// mode="page" directement, voir components/orders/order-side-sheet.tsx).
+function detailCloseControl(page: Page) {
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+  return isMobile
+    ? page.getByRole('link', { name: 'Retour', exact: true })
+    : page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true });
 }
 
 function savedViewButton(page: Page, label: string) {
@@ -1952,13 +1983,14 @@ test.describe('detail sheet preserve search and view', () => {
       await expect(page).toHaveURL(preservedViewUrl);
       await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
 
-      const detailDialog = await openOrderDetailSheet(page, orderId, 'Client Detail Preserve');
+      await openOrderDetailSheet(page, orderId, 'Client Detail Preserve');
 
       // Geste central : fermer le détail (router.back) → retour dans la vue filtrée AVEC la
       // recherche (vérifié manuellement : .../commandes?q=client+detail+preserve&vue=confirmee).
-      await detailDialog.getByRole('button', { name: 'Fermer', exact: true }).click();
+      // "Fermer" (dialog, >=768) ou "Retour" (page dédiée, <768) selon le viewport —
+      // voir detailCloseControl (UX-COD-01 §4).
+      await detailCloseControl(page).click();
       await expect(page).toHaveURL(preservedViewUrl, { timeout: 20_000 });
-      await expect(detailDialog).toHaveCount(0);
       await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole('heading', { name: 'Client Detail Preserve' })).toHaveCount(0);
     } finally {

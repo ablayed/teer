@@ -91,7 +91,7 @@ export function OrderNoteEditor({ initialNote, orderId }: OrderNoteEditorProps) 
       ) : null}
 
       <Button
-        className="min-h-11 w-full"
+        className="min-h-12 w-full"
         disabled={!dirty || tooLong || save.isExecuting}
         onClick={handleSave}
         type="button"

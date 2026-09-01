@@ -405,12 +405,28 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await landOnTarget(page, redirectTo);
 }
 
+// UX-COD-01 §3 — la premiere action legale (deja ordonnee par transitionMenuOrder)
+// est desormais un bouton direct (son propre libelle) ; le dropdown "Actions" ne
+// reste que pour les actions secondaires (absent s'il n'y en a aucune). `menuItem`
+// matche donc les deux formes.
 function menuItem(page: Page, name: string) {
-  return page.getByRole('menuitem', { name, exact: true });
+  return page
+    .getByRole('menuitem', { name, exact: true })
+    .or(page.getByRole('button', { name, exact: true }));
 }
 
 async function openActionsMenu(page: Page) {
   const trigger = page.getByRole('button', { name: 'Actions' }).first();
+
+  const hasTrigger = await trigger
+    .waitFor({ state: 'visible', timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!hasTrigger) {
+    // Pas de dropdown "Actions" : seule action legale = primaire, deja un bouton
+    // direct — `menuItem` ci-dessus la retrouvera sans rien ouvrir.
+    return;
+  }
 
   // Le premier clic peut atterrir AVANT l'hydratation React : le bouton existe
   // déjà dans le HTML SSR mais son `onClick` n'est pas encore attaché, donc le
