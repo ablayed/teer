@@ -415,7 +415,18 @@ function menuItem(page: Page, name: string) {
     .or(page.getByRole('button', { name, exact: true }));
 }
 
-async function openActionsMenu(page: Page) {
+// PIEGE (trouve en CI mobile) : le Drawer Vaul du dropdown "Actions" pose aria-hidden
+// sur le RESTE de la page pendant qu'il est ouvert. Si `name` est DEJA le bouton
+// primaire (visible avant toute ouverture), ouvrir "Actions" quand meme le rend
+// introuvable par role une fois le menu ouvert — d'où le check direct-d'abord.
+async function openActionsMenu(page: Page, name?: string) {
+  if (name) {
+    const direct = page.getByRole('button', { name, exact: true });
+    if (await direct.isVisible().catch(() => false)) {
+      return;
+    }
+  }
+
   const trigger = page.getByRole('button', { name: 'Actions' }).first();
 
   const hasTrigger = await trigger
@@ -441,7 +452,7 @@ async function openActionsMenu(page: Page) {
 }
 
 async function runDetailMenuAction(page: Page, name: string) {
-  await openActionsMenu(page);
+  await openActionsMenu(page, name);
   await menuItem(page, name).click();
 }
 
@@ -487,7 +498,7 @@ test('Lot D - marquer retournée via UI (sans remise) restaure le stock, aucune 
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
     // Seule action légale sur une commande livrée : « Marquer retournée ».
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Marquer retournée');
     await expect(menuItem(page, 'Marquer retournée')).toBeVisible();
     await menuItem(page, 'Marquer retournée').click();
 
@@ -814,9 +825,11 @@ test('En cours de livraison : le menu affiche Reprogrammer (pas Refuser), Annule
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
 
     await signIn(page, fixture.email, `/commandes/${orderId}`);
-    await openActionsMenu(page);
-    await expect(menuItem(page, 'Refuser')).toHaveCount(0);
+    // « Reprogrammer » est la PREMIÈRE (primaire, bouton direct) — vérifiée AVANT
+    // d'ouvrir "Actions" (« Annuler la commande », secondaire) : voir openActionsMenu.
     await expect(menuItem(page, 'Reprogrammer')).toBeVisible({ timeout: 15_000 });
+    await openActionsMenu(page, 'Annuler la commande');
+    await expect(menuItem(page, 'Refuser')).toHaveCount(0);
     await expect(menuItem(page, 'Annuler la commande')).toBeVisible();
 
     // Annuler reste fonctionnel, comportement inchangé (RTO/cancellation intacts).

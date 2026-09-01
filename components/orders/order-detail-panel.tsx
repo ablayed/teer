@@ -307,7 +307,24 @@ export function OrderDetailPanel({
             >
               <X aria-hidden="true" className="size-5" />
             </button>
+          ) : onClose ? (
+            // UX-COD-01 §4 — mode="page" rendu par OrderSideSheet sous `md` (navigation
+            // douce depuis la liste, pas une entrée directe/hard-nav) : `onClose` est
+            // fourni et vaut `router.back()`, pas un Link vers un pathname tronqué. Un
+            // <Link href={pathname sans le dernier segment}> perdrait la recherche/vue
+            // actives (ex. ?q=...&vue=confirmee) — seul l'historique les restaure.
+            <button
+              className="inline-flex min-h-12 shrink-0 items-center gap-2 rounded-lg px-3 font-medium text-muted hover:bg-canvas hover:text-text"
+              onClick={onClose}
+              type="button"
+            >
+              <ArrowLeft aria-hidden="true" className="size-4" />
+              Retour
+            </button>
           ) : (
+            // Entrée directe (route /commandes/[id] hors interception — lien partagé,
+            // favori, rechargement) : pas d'historique de navigation applicative fiable,
+            // Link générique vers la liste.
             <Link
               className="inline-flex min-h-12 shrink-0 items-center gap-2 rounded-lg px-3 font-medium text-muted hover:bg-canvas hover:text-text"
               href={pathname.replace(/\/[^/]+$/, '') || '/commandes'}

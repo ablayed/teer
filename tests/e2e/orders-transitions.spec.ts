@@ -548,7 +548,21 @@ function orderRowTitle(page: Page, name: string) {
 // Ouvre le dropdown "Actions" SI il existe (reste des actions legales au-dela de la
 // primaire). S'il n'existe pas — cible = action primaire, deja un bouton direct —
 // ne bloque pas dessus : `menuItem` ci-dessus la retrouvera sans avoir rien ouvert.
-async function openActionsMenu(page: Page) {
+//
+// PIEGE (trouve en CI mobile, pas reproduit en reasoning statique) : sur mobile, le
+// Drawer Vaul du dropdown "Actions" pose aria-hidden sur le RESTE de la page pendant
+// qu'il est ouvert (comportement standard Vaul/Radix). Si la cible est DEJA le bouton
+// primaire (donc visible AVANT toute ouverture), ouvrir "Actions" quand meme le rend
+// introuvable par role une fois le menu ouvert. `openActionsMenu` doit donc etre
+// name-aware et ne RIEN ouvrir quand la cible est deja un bouton direct visible.
+async function openActionsMenu(page: Page, name?: string) {
+  if (name) {
+    const direct = page.getByRole('button', { name, exact: true });
+    if (await direct.isVisible().catch(() => false)) {
+      return;
+    }
+  }
+
   const trigger = page.getByRole('button', { name: 'Actions' }).first();
   try {
     await trigger.waitFor({ state: 'visible', timeout: 2_000 });
@@ -561,7 +575,7 @@ async function openActionsMenu(page: Page) {
 // Detail (page/sheet) : ouvre le dropdown si necessaire puis clique l'entree d'action
 // (ou le bouton direct de l'action primaire — voir openActionsMenu/menuItem ci-dessus).
 async function runDetailMenuAction(page: Page, name: string) {
-  await openActionsMenu(page);
+  await openActionsMenu(page, name);
   await menuItem(page, name).click();
 }
 
@@ -654,7 +668,7 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
     await page.reload();
     await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Assigner');
     await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
 
     // Assigner ouvre un dialog imposant le choix d'un livreur actif.
@@ -687,7 +701,7 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
 
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
     await page.reload();
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Marquer livree');
     await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 
     await menuItem(page, 'Marquer livree').click();
@@ -1433,9 +1447,13 @@ test('un agent ne voit que les actions legales sur une commande a appeler', asyn
   try {
     await signIn(page, agent.email, `/commandes/${orderId}`);
 
-    await openActionsMenu(page);
-    // Un agent sur A_APPELER : Programmer + À rappeler sont légales.
+    // Un agent sur A_APPELER : Programmer + À rappeler sont légales. « Programmer »
+    // est la PREMIÈRE (primaire, bouton direct) — vérifiée AVANT d'ouvrir "Actions" :
+    // sur mobile, le Drawer Vaul pose aria-hidden sur le reste de la page pendant
+    // qu'il est ouvert, ce qui masquerait ce bouton par role s'il était encore ouvert.
     await expect(menuItem(page, 'Programmer la livraison')).toBeVisible();
+
+    await openActionsMenu(page, 'À rappeler');
     await expect(menuItem(page, 'À rappeler')).toBeVisible();
     await expect(menuItem(page, 'Journaliser un appel')).toHaveCount(0);
     await expect(menuItem(page, 'Confirmer')).toHaveCount(0);
@@ -1543,7 +1561,7 @@ test("Lot B - deconfirmer n'est pas propose apres dispatch", async ({ page }) =>
     // PLUS le popup d'assignation (autoOpenAssignment retiré du détail — l'overlay
     // interceptait les clics, p.ex. « Changer le livreur »). On accède donc directement
     // au menu, sans popup à fermer.
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Marquer livree');
     await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
     await expect(menuItem(page, 'Livrer')).toHaveCount(0);
     await expect(menuItem(page, 'Marquer livree')).toBeVisible();
@@ -2147,7 +2165,7 @@ test('Lot 3 - Déprogrammer ramène une commande Programmée vers À appeler', a
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Déprogrammer');
     // Le libellé reflète le contexte "scheduled" — jamais "Déconfirmer" ici.
     await expect(menuItem(page, 'Déprogrammer')).toBeVisible({ timeout: 15_000 });
     await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
@@ -2598,9 +2616,11 @@ test('0116 - invalider une commande livrée la ramène dans « À appeler » et 
     await expect(page.getByRole('button', { name: 'Actions' }).first()).toBeVisible({
       timeout: 15_000,
     });
-    await openActionsMenu(page);
-    await expect(menuItem(page, 'Invalider')).toBeVisible({ timeout: 15_000 });
+    // « Marquer retournée » est la PREMIÈRE (primaire, bouton direct) — vérifiée AVANT
+    // d'ouvrir "Actions" (« Invalider », secondaire) : voir openActionsMenu ci-dessus.
     await expect(menuItem(page, 'Marquer retournée')).toBeVisible();
+    await openActionsMenu(page, 'Invalider');
+    await expect(menuItem(page, 'Invalider')).toBeVisible({ timeout: 15_000 });
     await menuItem(page, 'Invalider').click();
     await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
 

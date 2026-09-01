@@ -84,6 +84,7 @@ export function OrderSideSheet({ canEditAmounts, drivers, order }: OrderSideShee
           canEditAmounts={canEditAmounts}
           drivers={drivers}
           mode="page"
+          onClose={close}
           order={order}
         />
       </main>
