@@ -990,6 +990,7 @@ test('XOF scale 0: 50 000 F CFA ne dérive jamais de la saisie à la remise', as
     await versementInput.pressSequentially(String(amount));
     await expect(versementInput).toHaveValue(String(amount));
     await versementBtn.click();
+    await page.getByRole('button', { name: 'Confirmer le versement' }).click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
     });

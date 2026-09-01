@@ -2,7 +2,6 @@
 
 import { DriverRemittanceForm } from '@/components/drivers/driver-remittance-form';
 import { SettlementHistoryTable } from '@/components/drivers/settlement-history';
-import { usePeriodParams } from '@/components/period-picker/use-period-params';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import {
   type DriverCashData,
@@ -11,26 +10,19 @@ import {
   getDriverSettlementHistory,
 } from '@/lib/actions/drivers';
 import { derivePeriodCashOnHand } from '@/lib/drivers/cash-consolidation';
+import { formatDateAbsolute, formatDateTime } from '@/lib/format/date';
 import { formatMoney } from '@/lib/format/fcfa';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
-// Même défaut que resolvePeriodRange dans app/(app)/livreurs/page.tsx:92 — le
-// bouton reset ramène le PeriodPicker déjà monté (drivers-workspace.tsx) à ce
-// preset, purement client (usePeriodParams().selectPreset), aucune écriture serveur.
-const DEFAULT_PERIOD_PRESET = '30j';
-
-function statCard(label: string, value: string, accent?: boolean) {
+function statCard(label: string, value: string, scope: string) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
       <p className="text-[13px] font-medium text-muted">{label}</p>
-      <p
-        className={`mt-2 font-mono text-2xl font-semibold tabular-nums ${accent ? 'text-accent' : ''}`}
-      >
-        {value}
-      </p>
+      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="mt-1 text-xs text-muted">{scope}</p>
     </section>
   );
 }
@@ -43,26 +35,32 @@ function statCard(label: string, value: string, accent?: boolean) {
 // sibling direct. Le bouton reset va donc dans la rangée du bas, à côté du
 // DefinitionToggle, jamais à côté du label.
 function cashCardWithDefinition({
-  accent,
   action,
   definition,
+  emphasize,
   label,
+  scope,
   value,
 }: {
-  accent?: boolean;
   action?: React.ReactNode;
   definition: string;
+  // Remplace l'ancien flag `accent` (texte orange, --accent:#ee8243) : la carte
+  // "live" reste la carte dominante de l'écran par la TAILLE, jamais la couleur
+  // — "le solde ne doit pas être orange parce qu'il est important" (CASH-01).
+  emphasize?: boolean;
   label: string;
+  scope: string;
   value: string;
 }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
       <p className="text-[13px] font-medium text-muted">{label}</p>
       <p
-        className={`mt-2 font-mono text-2xl font-semibold tabular-nums ${accent ? 'text-accent' : ''}`}
+        className={`mt-2 font-mono font-semibold tabular-nums ${emphasize ? 'text-3xl' : 'text-2xl'}`}
       >
         {value}
       </p>
+      <p className="mt-1 text-xs text-muted">{scope}</p>
       {/* `flex-wrap` : une action au libellé long (« Enregistrer un versement »)
           déborde sinon de la carte et se retrouve SOUS la carte voisine de la
           grille, qui intercepte alors le clic. On n'ajoute que le retour à la
@@ -99,7 +97,15 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
   const [prefill, setPrefill] = useState<{ amountMinor: number; nonce: number } | null>(null);
   const [, startTransition] = useTransition();
   const searchParams = useSearchParams();
-  const { selectPreset } = usePeriodParams();
+
+  const periodRange = resolvePeriodRange({
+    allowedPresets: PERIOD_PRESETS,
+    defaultPreset: '30j',
+    from: searchParams.get('from') ?? undefined,
+    period: searchParams.get('period') ?? undefined,
+    to: searchParams.get('to') ?? undefined,
+  });
+  const periodScope = `${formatDateAbsolute(periodRange.from)} – ${formatDateAbsolute(periodRange.to)}`;
 
   // Après une remise : relit la conso cash ET l'historique des versements FRAIS
   // côté serveur (même source que le RSC) → aucun drift, pas de router.refresh().
@@ -107,14 +113,7 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
   // scopés à la période, cf. getDriverCashConsolidation) — même résolution que
   // le RSC, à partir des mêmes searchParams (period/from/to écrits par nuqs).
   const refreshCash = () => {
-    const { from, to } = resolvePeriodRange({
-      allowedPresets: PERIOD_PRESETS,
-      defaultPreset: '30j',
-      from: searchParams.get('from') ?? undefined,
-      period: searchParams.get('period') ?? undefined,
-      to: searchParams.get('to') ?? undefined,
-    });
-    const period = { from: from.toISOString(), to: to.toISOString() };
+    const period = { from: periodRange.from.toISOString(), to: periodRange.to.toISOString() };
 
     startTransition(async () => {
       const [nextCash, nextHistory] = await Promise.all([
@@ -131,6 +130,7 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
   }
 
   const c = cash.consolidation;
+  const asOfScope = `au ${formatDateTime(cash.asOfIso)}`;
   const periodCashOnHandMinor = derivePeriodCashOnHand({
     periodCollectedMinor: c.collectedMinor,
     periodCollectedDeliveryFeesMinor: c.collectedDeliveryFeesMinor,
@@ -140,10 +140,10 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statCard(t('collectedTotal'), formatMoney(c.collectedMinor, 'XOF'))}
-        {statCard(t('deliveryFees'), formatMoney(c.collectedDeliveryFeesMinor, 'XOF'))}
+        {statCard(t('collectedTotal'), formatMoney(c.collectedMinor, 'XOF'), periodScope)}
+        {statCard(t('deliveryFees'), formatMoney(c.collectedDeliveryFeesMinor, 'XOF'), periodScope)}
         {cashCardWithDefinition({
-          accent: true,
+          emphasize: true,
           // Partie 2 — raccourci de règlement. Ce bouton n'enregistre RIEN : il
           // propose au formulaire déjà monté ci-dessous le solde live affiché sur
           // cette carte, puis y amène le marchand. Le mécanisme de versement
@@ -166,32 +166,24 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
           ),
           definition: t('cashOnHandLiveDefinition'),
           label: t('cashOnHand'),
+          scope: asOfScope,
           value: formatMoney(c.cashOnHandMinor, 'XOF'),
         })}
         {cashCardWithDefinition({
-          accent: true,
-          action: (
-            <button
-              className="shrink-0 rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted hover:bg-canvas hover:text-text"
-              onClick={() => selectPreset(DEFAULT_PERIOD_PRESET)}
-              type="button"
-            >
-              {t('resetPeriod')}
-            </button>
-          ),
           definition: t('cashOnHandPeriodDefinition'),
           label: t('cashOnHandPeriod'),
+          scope: periodScope,
           value: formatMoney(periodCashOnHandMinor, 'XOF'),
         })}
       </div>
-      {c.discrepancyMinor > 0 && (
-        <p className="text-sm font-medium text-danger">
-          {t('discrepancy', { amount: formatMoney(c.discrepancyMinor, 'XOF') })}
-        </p>
-      )}
       <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
         <p className="mb-3 text-sm font-medium">{t('remittanceTitle')}</p>
-        <DriverRemittanceForm driverId={driverId} onSettled={refreshCash} prefill={prefill} />
+        <DriverRemittanceForm
+          driverId={driverId}
+          expectedMinor={c.cashOnHandMinor}
+          onSettled={refreshCash}
+          prefill={prefill}
+        />
       </div>
       <div className="space-y-2">
         <p className="text-sm font-medium">Historique des versements</p>

@@ -609,6 +609,8 @@ test('cash livreur: le raccourci de la carte live prérempli le versement avec l
     await expect(settlementInput).toHaveValue('5000');
 
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    await expect(page.getByText('Montant attendu :')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Confirmer le versement' }).click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({ timeout: 15_000 });
     await expect(statValue(page, messages.livreurs.cash.cashOnHand)).toContainText(
       /15\s*000\s*F\s*CFA/,
@@ -657,6 +659,7 @@ test('cash livreur: commande livrée affiche le collecté puis la remise globale
     await settlementInput.pressSequentially('12000');
     await expect(settlementInput).toHaveValue('12000');
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    await page.getByRole('button', { name: 'Confirmer le versement' }).click();
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
     });
@@ -859,7 +862,7 @@ test('cash livreur: cliquer un preset du PeriodPicker recharge réellement les c
   }
 });
 
-test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait disparaitre', async ({
+test('cash livreur: remise partielle laisse un solde, remise complète le ramène à zéro', async ({
   page,
 }) => {
   const fixture = await createOwnerFixture('ecart');
@@ -878,6 +881,7 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
     await settlementInput.pressSequentially(amount);
     await expect(settlementInput).toHaveValue(amount);
     await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    await page.getByRole('button', { name: 'Confirmer le versement' }).click();
     const grouped = String(expectedCashOnHandMinor).replace(/\B(?=(\d{3})+(?!\d))/g, '\\s*');
     await expect(page.getByText('Versement enregistré.')).toBeVisible({
       timeout: 15_000,
@@ -892,15 +896,11 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
     await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
     await expect(page.getByRole('heading', { name: 'Bilal Ecart' })).toBeVisible();
 
-    // Remise partielle 50 000 / 100 000 collectés → cash chez le livreur = 50 000,
-    // bandeau d'écart affiché.
+    // Remise partielle 50 000 / 100 000 collectés → cash chez le livreur = 50 000.
     await remit('50000', 50000);
-    await expect(page.getByText('Écart non résolu')).toBeVisible({ timeout: 15_000 });
 
-    // Remise du solde 50 000 → remis = collecté = 100 000 → cash chez le livreur = 0,
-    // l'écart disparaît.
+    // Remise du solde 50 000 → remis = collecté = 100 000 → cash chez le livreur = 0.
     await remit('50000', 0);
-    await expect(page.getByText('Écart non résolu')).toHaveCount(0, { timeout: 15_000 });
 
     // Le total remis couvre bien le collecté.
     const { data: allocations } = await fixture.admin
@@ -910,7 +910,7 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
     expect((allocations ?? []).reduce((s, a) => s + a.allocated_minor, 0)).toBe(100000);
 
     // Un settlement_shortfall figé (ROLLED_FORWARD) de la remise partielle subsiste
-    // en base : le bandeau ne s'efface que parce que l'écart est dérivé du live
+    // en base : le solde live retombe bien à zéro parce qu'il est dérivé en direct
     // (collecté − remis), pas de cette ligne figée.
     const { data: shortfalls } = await fixture.admin
       .from('settlement_shortfall')
@@ -918,6 +918,77 @@ test('ecart cash: remise partielle affiche le bandeau, remise du solde le fait d
       .eq('merchant_account_id', fixture.merchantAccountId)
       .eq('driver_id', driverId);
     expect((shortfalls ?? []).some((s) => s.resolution === 'ROLLED_FORWARD')).toBe(true);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('cash livreur: portee temporelle visible, pas de bandeau ecart, confirmation avant remise, aucun debordement', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('cash-cash01');
+  const driverId = await createDriver(fixture.admin, fixture.merchantAccountId, 'Ndeye Cash01');
+  await seedDeliveredCashOrder(fixture.admin, fixture.merchantAccountId, driverId, 30000);
+
+  try {
+    await signIn(page, fixture.email, `/livreurs?driver=${driverId}&period=30j`);
+    await expect(page.getByRole('heading', { name: 'Ndeye Cash01' })).toBeVisible();
+
+    // Noms de cartes arbitrés (plus d'ambiguïté "Cash total collecté" vs "(période)").
+    await expect(page.getByText('Collecté sur période', { exact: true })).toBeVisible();
+    await expect(page.getByText('Cash chez le livreur sur période', { exact: true })).toBeVisible();
+
+    // Portée visible sous CHAQUE montant, sans dépendre de "Définition".
+    const collectedCard = statValue(page, messages.livreurs.cash.collectedTotal).locator('..');
+    await expect(collectedCard.getByText(/–/)).toBeVisible();
+    const liveCard = statValue(page, messages.livreurs.cash.cashOnHand).locator('..');
+    await expect(liveCard.getByText(/^au /)).toBeVisible();
+
+    // Pas d'orange sur le solde live : le texte n'utilise pas --accent (#ee8243).
+    await expect(statValue(page, messages.livreurs.cash.cashOnHand)).not.toHaveCSS(
+      'color',
+      'rgb(238, 130, 67)',
+    );
+
+    // "Écart non résolu" n'existe plus nulle part sur l'écran.
+    await expect(page.getByText('Écart non résolu')).toHaveCount(0);
+
+    // Le bouton "Réinitialiser" (reset de période) a été retiré.
+    await expect(page.getByRole('button', { name: 'Réinitialiser' })).toHaveCount(0);
+
+    // Confirmation obligatoire : le premier clic ne soumet rien.
+    const settlementInput = page.getByPlaceholder('0');
+    await settlementInput.click({ clickCount: 3 });
+    await settlementInput.pressSequentially('10000');
+    await page.getByRole('button', { name: 'Enregistrer le versement' }).click();
+    // Le premier clic ne soumet rien : la RPC n'a pas fourni de succès visible,
+    // seul le récapitulatif de confirmation apparaît (le texte de succès existe
+    // ailleurs dans le bundle i18n RSC — toHaveCount(0) matcherait le <script>
+    // de payload, jamais un `.toBeVisible()`, donc on ne teste que le positif ici).
+    await expect(page.getByRole('button', { name: 'Confirmer le versement' })).toBeVisible();
+    await expect(page.getByText(/Montant attendu.*30\s*000\s*F\s*CFA/)).toBeVisible();
+    await expect(page.getByText(/Montant saisi.*10\s*000\s*F\s*CFA/)).toBeVisible();
+    await expect(page.getByText(/Reste après la remise.*20\s*000\s*F\s*CFA/)).toBeVisible();
+
+    // "Modifier" annule sans écrire : le formulaire redevient éditable, aucune ligne.
+    await page.getByRole('button', { name: 'Modifier' }).click();
+    await expect(page.getByRole('button', { name: 'Confirmer le versement' })).toHaveCount(0);
+    const { data: beforeConfirm } = await fixture.admin
+      .from('cash_settlement')
+      .select('id')
+      .eq('merchant_account_id', fixture.merchantAccountId)
+      .eq('driver_id', driverId);
+    expect(beforeConfirm ?? []).toHaveLength(0);
+
+    // Aucun débordement horizontal à 390 / 412 / 1280 px.
+    for (const width of [390, 412, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const overflow = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(overflow.scrollWidth, `width=${width}`).toBeLessThanOrEqual(overflow.clientWidth + 1);
+    }
   } finally {
     await cleanupUsers(fixture.admin, fixture.userIds);
   }
@@ -1043,7 +1114,7 @@ test('stock disponible: un engagement (order_assignment_commit) au-delà de la m
   }
 });
 
-test('cash livreur (période): diverge légitimement du live sur une commande hors fenêtre, puis le reset recharge la carte', async ({
+test('cash livreur (période): diverge légitimement du live sur une commande hors fenêtre', async ({
   page,
 }) => {
   const fixture = await createOwnerFixture('cash-period-card');
@@ -1072,20 +1143,6 @@ test('cash livreur (période): diverge légitimement du live sur une commande ho
     );
     await expect(statValue(page, messages.livreurs.cash.cashOnHandPeriod)).toContainText(
       /^0\s*F\s*CFA$/,
-      { timeout: 15_000 },
-    );
-
-    // Bouton reset (purement client, usePeriodParams().selectPreset) : ramène l'URL au
-    // preset par défaut (30j) — même mécanisme que recliquer ce preset dans le
-    // PeriodPicker déjà monté sur la page. La commande de 10 jours entre alors dans la
-    // fenêtre : la carte "(période)" rejoint la carte "(live)" (plus aucune commande hors
-    // fenêtre pour ce jeu de données), preuve que le reset recharge réellement la carte.
-    await page
-      .getByRole('button', { name: messages.livreurs.cash.resetPeriod, exact: true })
-      .click();
-    await expect(page).toHaveURL(/period=30j/);
-    await expect(statValue(page, messages.livreurs.cash.cashOnHandPeriod)).toContainText(
-      /18\s*000\s*F\s*CFA/,
       { timeout: 15_000 },
     );
   } finally {

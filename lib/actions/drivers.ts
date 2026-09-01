@@ -394,7 +394,17 @@ export async function getDriverAvailableStock(driverId: string): Promise<DriverA
 }
 
 export type DriverCashData =
-  | { ok: true; consolidation: DriverCashConsolidation; periodRemittedMinor: number }
+  | {
+      ok: true;
+      consolidation: DriverCashConsolidation;
+      periodRemittedMinor: number;
+      // Horodatage de lecture serveur du solde live (all-time, jamais périodable
+      // — cf. commentaire ci-dessous). Affiché sous la carte "Cash chez le
+      // livreur (live)" pour que sa portée (maintenant) ne se confonde jamais
+      // avec celle des cartes période (fenêtre choisie). Recalculé à chaque
+      // lecture, jamais persisté.
+      asOfIso: string;
+    }
   | { ok: false; message: string };
 
 const emptyDriverCashConsolidation: DriverCashConsolidation = {
@@ -440,7 +450,12 @@ export async function getDriverCashConsolidation(
   if (!row) {
     // Livreur sans commande assignée : mêmes zéros que l'ancien code (tableau
     // d'orders vide → deriveDriverCashConsolidation renvoyait déjà des zéros).
-    return { ok: true, consolidation: emptyDriverCashConsolidation, periodRemittedMinor: 0 };
+    return {
+      ok: true,
+      consolidation: emptyDriverCashConsolidation,
+      periodRemittedMinor: 0,
+      asOfIso: new Date().toISOString(),
+    };
   }
 
   return {
@@ -460,6 +475,7 @@ export async function getDriverCashConsolidation(
     // sélectionnée (settlement_allocation.created_at), distinct de remittedMinor
     // (all-time). Zéro si aucune période n'est fournie (garde SQL sur p_period_from/to).
     periodRemittedMinor: row.period_remitted_minor,
+    asOfIso: new Date().toISOString(),
   };
 }
 
