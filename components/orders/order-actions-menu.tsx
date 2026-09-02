@@ -349,6 +349,7 @@ export function OrderActionsMenu({
         <div className="flex items-center gap-2">
           <Button
             className="min-h-12 flex-1"
+            data-testid="primary-transition-action"
             disabled={transition.isExecuting}
             onClick={() => handleTransition(primaryTransition)}
             type="button"

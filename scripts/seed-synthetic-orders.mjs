@@ -218,6 +218,39 @@ async function main() {
   }
   const shopId = shop.id;
 
+  // La contrainte CHECK `orders_dispatch_requires_driver` (0057) exige
+  // assigned_driver_id NOT NULL dès que delivery_state est 'assigned' ou
+  // 'out_for_delivery' — le cas EN_LIVRAISON de ce jeu synthétique. Un livreur
+  // dédié à ce seed (rattaché à la boutique via driver_shop, 0133) est créé une
+  // seule fois, réutilisé pour tous les lots.
+  const { data: existingDriver } = await admin
+    .from('driver')
+    .select('id')
+    .eq('merchant_account_id', merchantAccountId)
+    .eq('full_name', 'Livreur Synthétique Seed')
+    .maybeSingle();
+
+  let driverId = existingDriver?.id;
+  if (!driverId) {
+    const { data: driver, error: driverError } = await admin
+      .from('driver')
+      .insert({
+        merchant_account_id: merchantAccountId,
+        full_name: 'Livreur Synthétique Seed',
+        phone: '+221770000999',
+        is_active: true,
+      })
+      .select('id')
+      .single();
+    if (driverError) throw driverError;
+    driverId = driver.id;
+
+    const { error: driverShopError } = await admin
+      .from('driver_shop')
+      .insert({ driver_id: driverId, merchant_account_id: merchantAccountId, shop_id: shopId });
+    if (driverShopError && !driverShopError.message.includes('duplicate')) throw driverShopError;
+  }
+
   const now = Date.now();
   const batchSize = 200;
   let created = 0;
@@ -232,7 +265,9 @@ async function main() {
         shop_id: shopId,
         full_name: `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)} Synth${idx}`,
         phone: `+2217${String(10000000 + idx).slice(0, 8)}`,
-        delivery_address: { address1: `Quartier synth ${idx}`, city: 'Dakar' },
+        // `customer` n'a pas de colonne `delivery_address` (confirmé par lecture directe du
+        // schéma local — seule `orders.shipping_address`, écrite plus bas, porte l'adresse
+        // affichée sur la fiche). Retiré : insert échouait avec PGRST204.
       };
     });
 
@@ -262,6 +297,11 @@ async function main() {
         delivery_state: dims.deliveryState,
         cash_state: dims.cashState,
         cancel_reason: dims.cancelReason,
+        // orders_dispatch_requires_driver (0057) : NOT NULL exigé dès que
+        // delivery_state est 'assigned'/'out_for_delivery' (seul EN_LIVRAISON ici).
+        assigned_driver_id: ['assigned', 'out_for_delivery'].includes(dims.deliveryState)
+          ? driverId
+          : null,
         total_amount: price,
         delivery_fee_minor: 1000,
         currency: 'XOF',
