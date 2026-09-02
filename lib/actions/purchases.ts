@@ -177,12 +177,21 @@ export const addPurchaseLotLineAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
+    // Boutique ACTIVE explicite — S3 : un owner multi-boutiques du même tenant
+    // ne doit pas pouvoir écrire sur un lot d'une autre boutique. Le lot est
+    // résolu par son parent autoritaire (compte + boutique active) : un lot
+    // hors boutique n'est jamais retourné, jamais comparé après coup — le refus
+    // qui en résulte est indistinguable d'un lot inexistant.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
     const { data: lot } = await admin
       .from('purchase_lot')
       .select('status, shop_id')
       .eq('id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId)
-      .single();
+      .eq('shop_id', shopId)
+      .maybeSingle();
 
     if (!lot) return { ok: false as const, message: 'Lot introuvable.' };
     if (lot.status === 'received') return { ok: false as const, message: 'Lot déjà reçu.' };
@@ -223,12 +232,17 @@ export const removePurchaseLotLineAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
+    // Boutique ACTIVE explicite — même garde que addPurchaseLotLineAction ci-dessus.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
     const { data: lot } = await admin
       .from('purchase_lot')
       .select('status')
       .eq('id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId)
-      .single();
+      .eq('shop_id', shopId)
+      .maybeSingle();
 
     if (!lot) return { ok: false as const, message: 'Lot introuvable.' };
     if (lot.status === 'received') return { ok: false as const, message: 'Lot déjà reçu.' };
@@ -238,7 +252,8 @@ export const removePurchaseLotLineAction = requireRole('owner')
       .delete()
       .eq('id', parsedInput.lineId)
       .eq('purchase_lot_id', parsedInput.lotId)
-      .eq('merchant_account_id', merchantAccountId);
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (error) return { ok: false as const, message: error.message };
     revalidatePath('/produits');
@@ -254,11 +269,16 @@ export const markLotInTransitAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
+    // Boutique ACTIVE explicite — même garde que les actions ci-dessus.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
     const { error } = await admin
       .from('purchase_lot')
       .update({ status: 'in_transit' })
       .eq('id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
       .eq('status', 'ordered');
 
     if (error) return { ok: false as const, message: error.message };
@@ -275,13 +295,22 @@ export const receiveLotAction = requireRole('owner')
     const { merchantAccountId } = ctx.member;
     const admin = createSupabaseAdminClient();
 
+    // Boutique ACTIVE explicite — même garde que les actions ci-dessus. Le
+    // guard TypeScript ferme la surface applicative ; la garde SQL de
+    // receive_purchase_lot reste au niveau compte (Livrable 2, migration
+    // séparée) — les deux coexistent, ce n'est pas une régression de l'une
+    // sur l'autre.
+    const shopId = await getRequestStoreId();
+    if (!shopId) return { ok: false as const, message: 'Boutique active introuvable.' };
+
     // Charger le lot + ses lignes.
     const { data: lot, error: lotErr } = await admin
       .from('purchase_lot')
       .select('*')
       .eq('id', parsedInput.lotId)
       .eq('merchant_account_id', merchantAccountId)
-      .single();
+      .eq('shop_id', shopId)
+      .maybeSingle();
 
     if (lotErr || !lot) return { ok: false as const, message: 'Lot introuvable.' };
     if (lot.status === 'received') return { ok: false as const, message: 'Lot déjà reçu.' };
@@ -290,7 +319,8 @@ export const receiveLotAction = requireRole('owner')
       .from('purchase_lot_line')
       .select('id, product_id, qty, purchase_price_total')
       .eq('purchase_lot_id', parsedInput.lotId)
-      .eq('merchant_account_id', merchantAccountId);
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId);
 
     if (lineErr || !lines || lines.length === 0) {
       return { ok: false as const, message: 'Aucune ligne sur ce lot.' };
