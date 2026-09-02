@@ -405,12 +405,46 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await landOnTarget(page, redirectTo);
 }
 
+// UX-COD-01 §3 — la premiere action legale (deja ordonnee par transitionMenuOrder)
+// est desormais un bouton direct (son propre libelle) ; le dropdown "Actions" ne
+// reste que pour les actions secondaires (absent s'il n'y en a aucune). `menuItem`
+// matche donc les deux formes.
 function menuItem(page: Page, name: string) {
-  return page.getByRole('menuitem', { name, exact: true });
+  return page
+    .getByRole('menuitem', { name, exact: true })
+    .or(page.getByRole('button', { name, exact: true }));
 }
 
-async function openActionsMenu(page: Page) {
+// PIEGE REEL (confirme par error-context.md en CI mobile) : le Drawer Vaul du
+// dropdown "Actions" pose un backdrop plein ecran qui COUVRE le reste de la page
+// pendant qu'il est ouvert — le bouton primaire reste "visible" au sens ARIA mais
+// physiquement recouvert (Playwright retente le clic indefiniment, timeout muet).
+// Un `direct.isVisible()` NON-ATTENDANT juste apres navigation retombe
+// systematiquement a `false` (rien n'est encore rendu) — attendre l'un des deux
+// etats (bouton direct OU trigger "Actions") avant de decider.
+async function openActionsMenu(page: Page, name?: string) {
   const trigger = page.getByRole('button', { name: 'Actions' }).first();
+
+  if (name) {
+    const direct = page.getByRole('button', { name, exact: true });
+    await Promise.race([
+      direct.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+      trigger.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+    ]);
+    if (await direct.isVisible().catch(() => false)) {
+      return;
+    }
+  }
+
+  const hasTrigger = await trigger
+    .waitFor({ state: 'visible', timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!hasTrigger) {
+    // Pas de dropdown "Actions" : seule action legale = primaire, deja un bouton
+    // direct — `menuItem` ci-dessus la retrouvera sans rien ouvrir.
+    return;
+  }
 
   // Le premier clic peut atterrir AVANT l'hydratation React : le bouton existe
   // déjà dans le HTML SSR mais son `onClick` n'est pas encore attaché, donc le
@@ -425,7 +459,7 @@ async function openActionsMenu(page: Page) {
 }
 
 async function runDetailMenuAction(page: Page, name: string) {
-  await openActionsMenu(page);
+  await openActionsMenu(page, name);
   await menuItem(page, name).click();
 }
 
@@ -471,7 +505,7 @@ test('Lot D - marquer retournée via UI (sans remise) restaure le stock, aucune 
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
     // Seule action légale sur une commande livrée : « Marquer retournée ».
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Marquer retournée');
     await expect(menuItem(page, 'Marquer retournée')).toBeVisible();
     await menuItem(page, 'Marquer retournée').click();
 
@@ -798,9 +832,11 @@ test('En cours de livraison : le menu affiche Reprogrammer (pas Refuser), Annule
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
 
     await signIn(page, fixture.email, `/commandes/${orderId}`);
-    await openActionsMenu(page);
-    await expect(menuItem(page, 'Refuser')).toHaveCount(0);
+    // « Reprogrammer » est la PREMIÈRE (primaire, bouton direct) — vérifiée AVANT
+    // d'ouvrir "Actions" (« Annuler la commande », secondaire) : voir openActionsMenu.
     await expect(menuItem(page, 'Reprogrammer')).toBeVisible({ timeout: 15_000 });
+    await openActionsMenu(page, 'Annuler la commande');
+    await expect(menuItem(page, 'Refuser')).toHaveCount(0);
     await expect(menuItem(page, 'Annuler la commande')).toBeVisible();
 
     // Annuler reste fonctionnel, comportement inchangé (RTO/cancellation intacts).

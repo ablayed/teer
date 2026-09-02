@@ -81,7 +81,7 @@ export function OrderDriverReassign({
         </p>
         {picking ? null : (
           <Button
-            className="min-h-10 border border-border bg-surface hover:border-accent/40 hover:bg-accent-subtle hover:text-text"
+            className="min-h-12 border border-border bg-surface hover:border-accent/40 hover:bg-accent-subtle hover:text-text"
             onClick={() => {
               setFeedback(null);
               setPicking(true);
@@ -105,7 +105,7 @@ export function OrderDriverReassign({
             <div className="space-y-2">
               <Label htmlFor={fieldId}>Nouveau livreur</Label>
               <select
-                className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent"
+                className="h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent"
                 id={fieldId}
                 onChange={(event) => setNextDriverId(event.target.value)}
                 value={nextDriverId}
@@ -122,6 +122,7 @@ export function OrderDriverReassign({
 
           <div className="flex justify-end gap-2">
             <Button
+              className="min-h-12"
               onClick={() => {
                 setPicking(false);
                 setNextDriverId('');
@@ -134,6 +135,7 @@ export function OrderDriverReassign({
               Annuler
             </Button>
             <Button
+              className="min-h-12"
               disabled={!nextDriverId || reassign.isExecuting}
               onClick={handleConfirm}
               size="sm"

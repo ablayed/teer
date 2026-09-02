@@ -93,6 +93,11 @@ async function KpiStrip({ shopId }: { shopId: string | null }) {
 
   return (
     <DashboardKpiRefresh
+      // `a_appeler_count` (get_dashboard_kpi, migration 0076) est borné aux 7 derniers jours,
+      // exactement comme la ligne « à appeler » d'ExceptionsSection (`hrefFor` ci-dessus) —
+      // même fenêtre de population. On réutilise le même `period=7j` pour ouvrir la population
+      // que ce compteur désigne réellement.
+      aAppelerHref={buildOrderViewHref('a-appeler', { period: '7j', shopId })}
       initialError={!isReady}
       initialKpi={isReady ? state.data : null}
       initialUpdatedAt={new Date().toISOString()}

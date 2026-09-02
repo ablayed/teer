@@ -54,7 +54,7 @@ export function OrderExceptionsGrid(props: OrderExceptionsGridProps) {
                 <div className="mt-4 space-y-3">
                   {card.rows.map((row) => (
                     <Link
-                      className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm hover:bg-canvas"
+                      className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm hover:bg-canvas"
                       href={row.href}
                       key={`${card.title}-${row.label}`}
                     >

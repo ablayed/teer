@@ -258,7 +258,7 @@ export function TransitionDialog({
             <div className="space-y-2">
               <Label htmlFor={fieldId}>Livreur</Label>
               <select
-                className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent"
+                className="h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent"
                 id={fieldId}
                 onChange={(event) => setDriverId(event.target.value)}
                 value={driverId}
@@ -279,7 +279,7 @@ export function TransitionDialog({
               <legend className="text-sm font-medium text-text">Raison(s) de l'annulation</legend>
               {cancelReasonValues.map((reason) => (
                 <label
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border px-3 text-sm text-text hover:bg-canvas"
+                  className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-border px-3 text-sm text-text hover:bg-canvas"
                   key={reason}
                 >
                   <input
@@ -297,6 +297,7 @@ export function TransitionDialog({
               <div className="space-y-2">
                 <Label htmlFor={`${fieldId}-note`}>Précision (optionnel)</Label>
                 <Input
+                  className="h-12"
                   id={`${fieldId}-note`}
                   maxLength={500}
                   onChange={(event) => setNote(event.target.value)}
@@ -327,6 +328,7 @@ export function TransitionDialog({
               <div className="space-y-2">
                 <Label htmlFor={`${fieldId}-delivered-date`}>Date de livraison réelle</Label>
                 <Input
+                  className="h-12"
                   data-testid="transition-delivered-date"
                   id={`${fieldId}-delivered-date`}
                   onChange={(event) => setDeliveredDate(event.target.value)}
@@ -337,6 +339,7 @@ export function TransitionDialog({
               <div className="space-y-2">
                 <Label htmlFor={`${fieldId}-delivered-time`}>Heure</Label>
                 <Input
+                  className="h-12"
                   data-testid="transition-delivered-time"
                   id={`${fieldId}-delivered-time`}
                   onChange={(event) => setDeliveredTime(normalizeHourInput(event.target.value))}
@@ -358,6 +361,7 @@ export function TransitionDialog({
               <div className="space-y-2">
                 <Label htmlFor={fieldId}>Date de livraison</Label>
                 <Input
+                  className="h-12"
                   id={fieldId}
                   onChange={(event) => setDate(event.target.value)}
                   type="date"
@@ -367,6 +371,7 @@ export function TransitionDialog({
               <div className="space-y-2">
                 <Label htmlFor={`${fieldId}-time`}>Heure de livraison</Label>
                 <Input
+                  className="h-12"
                   id={`${fieldId}-time`}
                   onChange={(event) => setTime(normalizeHourInput(event.target.value))}
                   step={3600}
@@ -379,10 +384,11 @@ export function TransitionDialog({
         )}
 
         <div className="flex justify-end gap-2">
-          <Button onClick={onCancel} size="sm" type="button" variant="ghost">
+          <Button className="min-h-12" onClick={onCancel} size="sm" type="button" variant="ghost">
             Fermer
           </Button>
           <Button
+            className="min-h-12"
             disabled={!canConfirm || isSubmitting}
             onClick={handleConfirm}
             size="sm"

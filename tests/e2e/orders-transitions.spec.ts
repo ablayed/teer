@@ -528,23 +528,62 @@ async function typeControlledNumber(input: Locator, value: string) {
   await expect(input).toHaveValue(value);
 }
 
-// Les actions de commande vivent desormais dans un dropdown unique « Actions »
-// (liste + detail). Les entrees sont des role="menuitem".
+// Liste (mode compact, inchange) : les actions vivent dans un dropdown unique
+// « Actions », entrees role="menuitem". Detail (UX-COD-01 §3) : la PREMIERE action
+// legale (deja ordonnee par transitionMenuOrder) est promue en bouton direct — son
+// propre libelle, jamais "Actions" — le reste reste dans le dropdown "Actions"
+// (absent s'il n'y a qu'une seule action legale). `menuItem` matche donc les DEUX
+// formes : un role="menuitem" (dropdown ouvert) OU un role="button" direct (action
+// primaire deja visible, rien a ouvrir).
 function menuItem(page: Page, name: string) {
-  return page.getByRole('menuitem', { name, exact: true });
+  return page
+    .getByRole('menuitem', { name, exact: true })
+    .or(page.getByRole('button', { name, exact: true }));
 }
 
 function orderRowTitle(page: Page, name: string) {
   return page.locator('[data-testid="order-row-title"]:visible', { hasText: name }).first();
 }
 
-async function openActionsMenu(page: Page) {
-  await page.getByRole('button', { name: 'Actions' }).first().click();
+// Ouvre le dropdown "Actions" SI il existe (reste des actions legales au-dela de la
+// primaire). S'il n'existe pas — cible = action primaire, deja un bouton direct —
+// ne bloque pas dessus : `menuItem` ci-dessus la retrouvera sans avoir rien ouvert.
+//
+// PIEGE REEL (confirme par error-context.md en CI mobile, pas par le reasoning
+// statique initial) : sur mobile, le Drawer Vaul du dropdown "Actions" pose un
+// backdrop plein ecran QUI COUVRE le reste de la page pendant qu'il est ouvert — le
+// bouton primaire reste present et "visible" au sens ARIA, mais physiquement recouvert
+// (Playwright retente le clic indefiniment, jamais d'erreur explicite, juste un
+// timeout muet). Deuxieme piege qui a fait echouer un premier correctif : un simple
+// `direct.isVisible()` NON-ATTENDANT, appele juste apres la navigation, retombe
+// systematiquement a `false` (rien n'est encore rendu) — il faut ATTENDRE que l'un
+// des deux etats (bouton direct OU trigger "Actions") apparaisse avant de decider.
+async function openActionsMenu(page: Page, name?: string) {
+  const trigger = page.getByRole('button', { name: 'Actions' }).first();
+
+  if (name) {
+    const direct = page.getByRole('button', { name, exact: true });
+    await Promise.race([
+      direct.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+      trigger.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined),
+    ]);
+    if (await direct.isVisible().catch(() => false)) {
+      return;
+    }
+  }
+
+  try {
+    await trigger.waitFor({ state: 'visible', timeout: 2_000 });
+    await trigger.click();
+  } catch {
+    // Pas de dropdown "Actions" visible : action ciblee = primaire, deja directe.
+  }
 }
 
-// Detail (page mode) : ouvre le dropdown puis clique l'entree d'action.
+// Detail (page/sheet) : ouvre le dropdown si necessaire puis clique l'entree d'action
+// (ou le bouton direct de l'action primaire — voir openActionsMenu/menuItem ci-dessus).
 async function runDetailMenuAction(page: Page, name: string) {
-  await openActionsMenu(page);
+  await openActionsMenu(page, name);
   await menuItem(page, name).click();
 }
 
@@ -555,11 +594,14 @@ async function runRowMenuAction(page: Page, rowText: string, name: string) {
   await menuItem(page, name).click();
 }
 
+// UX-COD-01 §4 — sous `md` (pixel-7/iphone-14), le detail est desormais une page
+// dediee (lien "Retour"), pas un dialog modal : les deux mecanismes de fermeture
+// divergent structurellement selon le viewport. `openOrderDetailSheet` reste
+// viewport-agnostique (elle attend seulement le heading) ; `detailCloseControl`
+// (ci-dessous) porte la difference pour l'unique test qui verifie la fermeture.
 async function openOrderDetailSheet(page: Page, orderId: string, customerName: string) {
   const listUrl = page.url();
-  const detailDialog = page.getByRole('dialog');
-  const detailHeading = detailDialog.getByRole('heading', { name: customerName, exact: true });
-  const closeButton = detailDialog.getByRole('button', { name: 'Fermer', exact: true });
+  const detailHeading = page.getByRole('heading', { name: customerName, exact: true });
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     if (attempt > 1) {
@@ -575,8 +617,8 @@ async function openOrderDetailSheet(page: Page, orderId: string, customerName: s
 
     try {
       await expect(detailHeading).toBeVisible({ timeout: 15_000 });
-      await expect(closeButton).toBeVisible({ timeout: 15_000 });
-      return detailDialog;
+      await expect(detailCloseControl(page)).toBeVisible({ timeout: 15_000 });
+      return;
     } catch (error) {
       if (attempt === 2) {
         throw error;
@@ -585,6 +627,20 @@ async function openOrderDetailSheet(page: Page, orderId: string, customerName: s
   }
 
   throw new Error('Order detail sheet did not open');
+}
+
+// >=768 (chromium) : dialog modal desktop, ferme par "Fermer". <768 (pixel-7,
+// iphone-14) : page dediee pleine largeur, fermee par "Retour" — aucun role="dialog"
+// ne se monte sur ce chemin (OrderSideSheet rend OrderDetailPanel mode="page"
+// directement, voir components/orders/order-side-sheet.tsx). Ici la navigation est
+// DOUCE (clic depuis la liste, pas hard-nav) : "Retour" est un <button onClick=
+// {router.back()}> (role="button"), PAS un <Link> — order-detail-panel.tsx ne rend
+// un <Link> que pour l'entree hard-nav directe (onClose absent).
+function detailCloseControl(page: Page) {
+  const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+  return isMobile
+    ? page.getByRole('button', { name: 'Retour', exact: true })
+    : page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true });
 }
 
 function savedViewButton(page: Page, label: string) {
@@ -623,7 +679,7 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
     await waitForOrderStatus(fixture.admin, orderId, 'PROGRAMMEE');
     await page.reload();
     await expect(page.getByText('Programmée').first()).toBeVisible({ timeout: 15_000 });
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Assigner');
     await expect(menuItem(page, 'Assigner')).toBeVisible({ timeout: 15_000 });
 
     // Assigner ouvre un dialog imposant le choix d'un livreur actif.
@@ -656,7 +712,7 @@ test('chemin nominal confirmer programmer assigner livrer en especes', async ({ 
 
     await waitForOrderStatus(fixture.admin, orderId, 'EN_LIVRAISON');
     await page.reload();
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Marquer livree');
     await expect(menuItem(page, 'Marquer livree')).toBeVisible({ timeout: 15_000 });
 
     await menuItem(page, 'Marquer livree').click();
@@ -1402,9 +1458,13 @@ test('un agent ne voit que les actions legales sur une commande a appeler', asyn
   try {
     await signIn(page, agent.email, `/commandes/${orderId}`);
 
-    await openActionsMenu(page);
-    // Un agent sur A_APPELER : Programmer + À rappeler sont légales.
+    // Un agent sur A_APPELER : Programmer + À rappeler sont légales. « Programmer »
+    // est la PREMIÈRE (primaire, bouton direct) — vérifiée AVANT d'ouvrir "Actions" :
+    // sur mobile, le Drawer Vaul pose aria-hidden sur le reste de la page pendant
+    // qu'il est ouvert, ce qui masquerait ce bouton par role s'il était encore ouvert.
     await expect(menuItem(page, 'Programmer la livraison')).toBeVisible();
+
+    await openActionsMenu(page, 'À rappeler');
     await expect(menuItem(page, 'À rappeler')).toBeVisible();
     await expect(menuItem(page, 'Journaliser un appel')).toHaveCount(0);
     await expect(menuItem(page, 'Confirmer')).toHaveCount(0);
@@ -1512,7 +1572,7 @@ test("Lot B - deconfirmer n'est pas propose apres dispatch", async ({ page }) =>
     // PLUS le popup d'assignation (autoOpenAssignment retiré du détail — l'overlay
     // interceptait les clics, p.ex. « Changer le livreur »). On accède donc directement
     // au menu, sans popup à fermer.
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Marquer livree');
     await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
     await expect(menuItem(page, 'Livrer')).toHaveCount(0);
     await expect(menuItem(page, 'Marquer livree')).toBeVisible();
@@ -1952,13 +2012,14 @@ test.describe('detail sheet preserve search and view', () => {
       await expect(page).toHaveURL(preservedViewUrl);
       await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
 
-      const detailDialog = await openOrderDetailSheet(page, orderId, 'Client Detail Preserve');
+      await openOrderDetailSheet(page, orderId, 'Client Detail Preserve');
 
       // Geste central : fermer le détail (router.back) → retour dans la vue filtrée AVEC la
       // recherche (vérifié manuellement : .../commandes?q=client+detail+preserve&vue=confirmee).
-      await detailDialog.getByRole('button', { name: 'Fermer', exact: true }).click();
+      // "Fermer" (dialog, >=768) ou "Retour" (page dédiée, <768) selon le viewport —
+      // voir detailCloseControl (UX-COD-01 §4).
+      await detailCloseControl(page).click();
       await expect(page).toHaveURL(preservedViewUrl, { timeout: 20_000 });
-      await expect(detailDialog).toHaveCount(0);
       await expect(page.getByText('Client Detail Preserve')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole('heading', { name: 'Client Detail Preserve' })).toHaveCount(0);
     } finally {
@@ -2115,7 +2176,7 @@ test('Lot 3 - Déprogrammer ramène une commande Programmée vers À appeler', a
   try {
     await signIn(page, fixture.email, `/commandes/${orderId}`);
 
-    await openActionsMenu(page);
+    await openActionsMenu(page, 'Déprogrammer');
     // Le libellé reflète le contexte "scheduled" — jamais "Déconfirmer" ici.
     await expect(menuItem(page, 'Déprogrammer')).toBeVisible({ timeout: 15_000 });
     await expect(menuItem(page, 'Déconfirmer')).toHaveCount(0);
@@ -2566,9 +2627,11 @@ test('0116 - invalider une commande livrée la ramène dans « À appeler » et 
     await expect(page.getByRole('button', { name: 'Actions' }).first()).toBeVisible({
       timeout: 15_000,
     });
-    await openActionsMenu(page);
-    await expect(menuItem(page, 'Invalider')).toBeVisible({ timeout: 15_000 });
+    // « Marquer retournée » est la PREMIÈRE (primaire, bouton direct) — vérifiée AVANT
+    // d'ouvrir "Actions" (« Invalider », secondaire) : voir openActionsMenu ci-dessus.
     await expect(menuItem(page, 'Marquer retournée')).toBeVisible();
+    await openActionsMenu(page, 'Invalider');
+    await expect(menuItem(page, 'Invalider')).toBeVisible({ timeout: 15_000 });
     await menuItem(page, 'Invalider').click();
     await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
 

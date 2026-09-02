@@ -30,7 +30,7 @@ export function OrdersViewChips({
         return (
           <button
             className={cn(
-              'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium',
+              'inline-flex min-h-12 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium',
               isActive
                 ? 'border-accent bg-accent text-[#111]'
                 : 'border-border bg-surface text-muted hover:bg-canvas',

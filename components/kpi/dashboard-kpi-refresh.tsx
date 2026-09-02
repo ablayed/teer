@@ -4,9 +4,13 @@ import { KPICard } from '@/components/kpi/KPICard';
 import { type DashboardKpi, getDashboardKpiAction } from '@/lib/actions/dashboard';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
+import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
 
 type DashboardKpiRefreshProps = {
+  // Population commandes « à appeler » derrière ce compteur : voir plan UX-COD-01 §1, un
+  // compteur qui désigne une population traitable doit ouvrir cette population.
+  aAppelerHref: string;
   initialError: boolean;
   initialKpi: DashboardKpi | null;
   initialUpdatedAt: string;
@@ -24,6 +28,7 @@ function formatRefreshTime(value: string): string {
 }
 
 export function DashboardKpiRefresh({
+  aAppelerHref,
   initialError,
   initialKpi,
   initialUpdatedAt,
@@ -63,7 +68,11 @@ export function DashboardKpiRefresh({
   return (
     <section className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="col-span-2 xl:col-span-1">
+        <Link
+          aria-label={t('kpi.a_appeler')}
+          className="col-span-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent xl:col-span-1"
+          href={aAppelerHref}
+        >
           <KPICard
             deltaAbs={kpi?.a_appeler_delta}
             deltaType="abs"
@@ -76,7 +85,7 @@ export function DashboardKpiRefresh({
             unit="count"
             value={kpi?.a_appeler_count ?? 0}
           />
-        </div>
+        </Link>
         <KPICard
           currency={kpi?.currency}
           definition={t('kpi.ca_attente_def')}

@@ -162,7 +162,7 @@ export function OrderCartEditor({
           </p>
         </div>
         <button
-          className="min-h-10 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
+          className="min-h-12 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
           onClick={() => setOpen((value) => !value)}
           type="button"
         >
@@ -198,7 +198,7 @@ export function OrderCartEditor({
                           className="absolute left-3 top-3 size-4 text-muted"
                         />
                         <input
-                          className="min-h-10 w-full rounded-lg border border-border bg-canvas py-2 pl-9 pr-3"
+                          className="min-h-12 w-full rounded-lg border border-border bg-canvas py-2 pl-9 pr-3"
                           onChange={(event) => patchLine(line.id, { search: event.target.value })}
                           value={line.search}
                         />
@@ -206,7 +206,7 @@ export function OrderCartEditor({
                     </label>
                     <select
                       aria-label="Produit sélectionné"
-                      className="min-h-10 w-full rounded-lg border border-border bg-canvas px-3"
+                      className="min-h-12 w-full rounded-lg border border-border bg-canvas px-3"
                       onChange={(event) => selectProduct(line.id, event.target.value)}
                       value={line.productId}
                     >
@@ -228,7 +228,7 @@ export function OrderCartEditor({
                   <label className="text-sm font-medium">
                     Quantité
                     <input
-                      className="mt-1 min-h-10 w-full rounded-lg border border-border bg-canvas px-3"
+                      className="mt-1 min-h-12 w-full rounded-lg border border-border bg-canvas px-3"
                       min="1"
                       onChange={(event) => patchLine(line.id, { quantity: event.target.value })}
                       type="number"
@@ -239,7 +239,7 @@ export function OrderCartEditor({
                     <label className="text-sm font-medium">
                       Prix unitaire
                       <input
-                        className="mt-1 min-h-10 w-full rounded-lg border border-border bg-canvas px-3"
+                        className="mt-1 min-h-12 w-full rounded-lg border border-border bg-canvas px-3"
                         min="0"
                         onChange={(event) => patchLine(line.id, { unitPrice: event.target.value })}
                         type="number"
@@ -249,7 +249,7 @@ export function OrderCartEditor({
                   ) : null}
                   <button
                     aria-label="Supprimer la ligne"
-                    className="mt-6 inline-flex size-10 items-center justify-center rounded-lg border border-border hover:bg-canvas"
+                    className="mt-6 inline-flex size-12 items-center justify-center rounded-lg border border-border hover:bg-canvas"
                     disabled={lines.length === 1}
                     onClick={() =>
                       setLines((current) =>
@@ -268,7 +268,7 @@ export function OrderCartEditor({
           })}
           {mode === 'full' ? (
             <button
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
+              className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas"
               onClick={() => setLines((current) => [...current, newLine()])}
               type="button"
             >
@@ -281,7 +281,7 @@ export function OrderCartEditor({
             <p className="font-mono font-semibold">{formatMoney(total, currency)}</p>
           </div>
           <button
-            className="min-h-10 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] disabled:opacity-50"
+            className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] disabled:opacity-50"
             disabled={!valid || isSaving}
             onClick={submit}
             type="button"

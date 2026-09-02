@@ -278,7 +278,7 @@ export function OrderActionsMenu({
           trigger={
             <button
               aria-label={t('actions.menuTitle')}
-              className="inline-flex size-11 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex size-12 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               disabled={transition.isExecuting}
               type="button"
             >
@@ -324,52 +324,59 @@ export function OrderActionsMenu({
     );
   }
 
+  // Fiche Commande (mode non-compact) : appeler/WhatsApp sont désormais rendus par l'appelant
+  // (order-detail-panel.tsx) dans le rail d'actions rapides sous l'en-tête — ce composant ne
+  // porte plus, ici, que « l'action du stade actuel » (le PREMIER item déjà ordonné par
+  // `transitionMenuOrder`, donc déjà légal — aucune règle nouvelle) + le reste en débordement.
+  // Sans transition légale (commande terminale sans "invalider" visible), rien à afficher :
+  // appeler/WhatsApp restent gérés indépendamment par l'appelant.
+  if (!hasMenu && !assignmentOpen) {
+    return null;
+  }
+
+  const [primaryTransition, ...restTransitions] = transitionEntries;
+  const overflowItems: ActionSheetItem[] = restTransitions.map((action) => ({
+    key: action,
+    label: getTransitionLabel(action),
+    onSelect: () => handleTransition(action),
+    variant: destructiveActions.has(action) ? 'destructive' : 'default',
+    disabled: transition.isExecuting,
+  }));
+
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {canCall ? (
-          <a
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text hover:bg-canvas"
-            href={`tel:${phone?.replace(/\s/g, '') ?? ''}`}
+      {primaryTransition ? (
+        <div className="flex items-center gap-2">
+          <Button
+            className="min-h-12 flex-1"
+            data-testid="primary-transition-action"
+            disabled={transition.isExecuting}
+            onClick={() => handleTransition(primaryTransition)}
+            type="button"
+            variant={destructiveActions.has(primaryTransition) ? 'destructive' : 'primary'}
           >
-            <Phone aria-hidden="true" className="size-4" />
-            Appeler
-          </a>
-        ) : null}
+            {getTransitionLabel(primaryTransition)}
+          </Button>
 
-        <WhatsappComposeSheet
-          order={whatsappOrderData}
-          template={whatsappTemplate}
-          trigger={
-            <button
-              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text hover:bg-canvas"
-              type="button"
-            >
-              Message client
-            </button>
-          }
-        />
-
-        {hasMenu ? (
-          <ActionSheet
-            align="end"
-            items={actionItems}
-            title={t('actions.menuTitle')}
-            trigger={
-              <Button
-                className="min-h-11"
-                disabled={transition.isExecuting}
-                size="sm"
-                type="button"
-                variant="primary"
-              >
-                Actions
-                <ChevronDown aria-hidden="true" className="ml-1 size-4" />
-              </Button>
-            }
-          />
-        ) : null}
-      </div>
+          {overflowItems.length > 0 ? (
+            <ActionSheet
+              align="end"
+              items={overflowItems}
+              title={t('actions.menuTitle')}
+              trigger={
+                <button
+                  aria-label={t('actions.menuTitle')}
+                  className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg border border-border text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  disabled={transition.isExecuting}
+                  type="button"
+                >
+                  <ChevronDown aria-hidden="true" className="size-4" />
+                </button>
+              }
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {feedback ? <p className="text-sm text-muted">{feedback}</p> : null}
 

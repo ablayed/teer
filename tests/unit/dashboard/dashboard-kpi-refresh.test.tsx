@@ -49,7 +49,12 @@ const kpiNonZero: DashboardKpi = {
 function renderStrip(props: { initialError: boolean; initialKpi: DashboardKpi | null }) {
   return render(
     <NextIntlClientProvider locale="fr" messages={messages}>
-      <DashboardKpiRefresh initialUpdatedAt="2026-08-31T10:00:00.000Z" shopId={null} {...props} />
+      <DashboardKpiRefresh
+        aAppelerHref="/commandes?vue=a-appeler&period=7j"
+        initialUpdatedAt="2026-08-31T10:00:00.000Z"
+        shopId={null}
+        {...props}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -80,5 +85,13 @@ describe('DashboardKpiRefresh — TB-P0', () => {
 
     expect(screen.queryByText('Données indisponibles')).toBeNull();
     expect(screen.getByText('6')).toBeTruthy();
+  });
+
+  // UX-COD-01 §1 — un compteur qui désigne une population de commandes doit l'ouvrir.
+  it('la carte « à appeler » ouvre la liste filtrée correspondante', () => {
+    renderStrip({ initialError: false, initialKpi: kpiNonZero });
+
+    const link = screen.getByRole('link', { name: 'À appeler (7 j)' });
+    expect(link.getAttribute('href')).toBe('/commandes?vue=a-appeler&period=7j');
   });
 });
