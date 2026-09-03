@@ -141,33 +141,6 @@ export const createPurchaseLotAction = requireRole('owner')
     return { ok: true as const, lotId: lot.id };
   });
 
-// ── UPDATE LOT DETAILS ───────────────────────────────────────────────────────
-
-export const updatePurchaseLotAction = requireRole('owner')
-  .metadata({ actionName: 'purchases.update_lot', section: 'purchases' })
-  .inputSchema(lotBaseSchema.extend({ lotId: z.string().uuid() }))
-  .action(async ({ ctx, parsedInput }) => {
-    const { merchantAccountId } = ctx.member;
-    const admin = createSupabaseAdminClient();
-
-    const { error } = await admin
-      .from('purchase_lot')
-      .update({
-        supplier_name: parsedInput.supplierName,
-        reference: parsedInput.reference ?? null,
-        ordered_at: parsedInput.orderedAt,
-        estimated_lead_time_days: parsedInput.estimatedLeadTimeDays,
-        transport_total: parsedInput.transportTotal,
-      })
-      .eq('id', parsedInput.lotId)
-      .eq('merchant_account_id', merchantAccountId)
-      .neq('status', 'received');
-
-    if (error) return { ok: false as const, message: error.message };
-    revalidatePath('/produits');
-    return { ok: true as const };
-  });
-
 // ── ADD LINE ─────────────────────────────────────────────────────────────────
 
 export const addPurchaseLotLineAction = requireRole('owner')
