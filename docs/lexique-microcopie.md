@@ -60,6 +60,27 @@ endroit où le mot « écart »/« reste » peut légitimement apparaître est l
 confirmation d'un versement (`driver-remittance-form.tsx`, « Reste après la remise »), où il
 compare une vraie action en cours (attendu vs. saisi) — jamais comme état permanent d'une carte.
 
+## Gestion Shopify unifiée sous Paramètres > Boutiques (Lot SHOP-01)
+
+`/boutiques` ne fait plus que rediriger vers `/parametres?tab=shops` (report de `connected`/
+`error` uniquement). Les messages de retour OAuth (`settings.shops.messages.connected`,
+`settings.shops.errors.*`) vivent désormais dans `SettingsShops`
+(`components/settings/settings-shops.tsx`), pas dans l'ancien namespace `shops.*` de
+`messages/fr.json` (réduit à `shops.banner`, seul reliquat encore référencé par
+`ConnectShopBanner`, un composant déjà mort avant ce lot — laissé tel quel).
+
+**Nouveau code d'erreur `unknown_client_id`** (émis par `callback/route.ts` quand le
+`client_id` de la requête ne correspond à aucune app Shopify enregistrée) : « Cette
+installation Shopify n'est pas reconnue. Contactez le support. » — même registre que les 6
+autres codes déjà figés (impératif, pas de tutoiement, incite à réessayer ou contacter le
+support). Un code émis par le serveur et absent de la liste reconnue retombe sur
+`errors.generic`, jamais un silence ni le code brut affiché.
+
+**Avertissement scope produit manquant, par boutique** (`reasons.productsScopeRequired` /
+`productsScopeInstructions`, copie reprise verbatim de l'ancienne page) : distinct de
+`reason === 'token_expired'` — un jeton valide peut manquer `read_products` (scope ajouté
+après une première connexion). Les deux messages ne se substituent jamais l'un à l'autre.
+
 ## Page de démonstration retirée (Lot F2-bis)
 
 `app/(app)/dev/finance-foundations/page.tsx` (données 100 % fictives, hors navigation réelle) a
