@@ -281,10 +281,107 @@ describe('receive_purchase_lot RPC — garde boutique (S3, migration 0150)', () 
 
       const { data: movements } = await admin
         .from('stock_movement')
-        .select('id, movement_type')
+        .select('id, movement_type, created_by')
         .eq('idempotency_key', `recv:${lotId}:${lineId}`);
       expect(movements).toHaveLength(1);
       expect(movements?.[0]?.movement_type).toBe('purchase_in');
+      expect(movements?.[0]?.created_by).toBe(userId);
+    },
+  );
+
+  // Second défaut fermé par la même migration 0150 (revue avant fusion, même
+  // motif que S2/0148 sur transition_order) : receive_purchase_lot recevait
+  // p_actor_id du client et l'écrivait tel quel comme auteur du mouvement de
+  // stock (private.post_stock_movement, p_created_by), sans jamais le
+  // confronter à auth.uid() — contrairement au wrapper public de
+  // post_stock_movement, qui porte cette garde depuis 0136. Un owner légitime
+  // de la bonne boutique pouvait réceptionner un lot réel en attribuant le
+  // mouvement à n'importe quel autre utilisateur.
+  skipIfNoServiceRole(
+    "refuse quand p_actor_id ne correspond pas à l'appelant réel (auth.uid()), aucune écriture",
+    async () => {
+      const { admin, email, merchantAccountId, shopId } =
+        await createOwnerFixture('receive-actor-mismatch');
+      const owner = await signIn(email);
+
+      // B n'a aucun rapport avec ce tenant : la garde doit refuser QUELQUE
+      // SOIT l'identité usurpée, pas seulement celle d'un membre légitime.
+      const impersonatedUserId = await createConfirmedUser(
+        admin,
+        `lot-s3-rls-actor-b-${Date.now()}@example.com`,
+      );
+
+      const productId = await createProduct(admin, merchantAccountId, shopId);
+      const { lotId, lineId } = await createLotWithLine(
+        admin,
+        merchantAccountId,
+        shopId,
+        productId,
+        10,
+        100_000,
+      );
+
+      const receive = receivePurchaseLotRpc(owner);
+      const { error } = await receive('receive_purchase_lot', {
+        p_lot_id: lotId,
+        p_merchant_account_id: merchantAccountId,
+        p_actor_id: impersonatedUserId, // usurpé — la session réelle est userId
+        p_lines: linesPayload(lineId, 10, 100_000),
+      });
+
+      // AVANT le correctif : error est null, le lot est reçu, le mouvement de
+      // stock porte created_by = impersonatedUserId — c'est le défaut.
+      expect(error).not.toBeNull();
+
+      const { data: lotAfter } = await admin
+        .from('purchase_lot')
+        .select('status, received_at')
+        .eq('id', lotId)
+        .single();
+      expect(lotAfter?.status).toBe('ordered');
+      expect(lotAfter?.received_at).toBeNull();
+
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('id')
+        .eq('idempotency_key', `recv:${lotId}:${lineId}`);
+      expect(movements ?? []).toEqual([]);
+    },
+  );
+
+  skipIfNoServiceRole(
+    "le chemin légitime reste ouvert : p_actor_id égal à l'appelant réel réussit, l'attribution est correcte",
+    async () => {
+      const { admin, email, merchantAccountId, userId, shopId } =
+        await createOwnerFixture('receive-actor-legit');
+      const owner = await signIn(email);
+
+      const productId = await createProduct(admin, merchantAccountId, shopId);
+      const { lotId, lineId } = await createLotWithLine(
+        admin,
+        merchantAccountId,
+        shopId,
+        productId,
+        7,
+        70_000,
+      );
+
+      const receive = receivePurchaseLotRpc(owner);
+      const { error } = await receive('receive_purchase_lot', {
+        p_lot_id: lotId,
+        p_merchant_account_id: merchantAccountId,
+        p_actor_id: userId, // égal à l'appelant réel (auth.uid())
+        p_lines: linesPayload(lineId, 7, 70_000),
+      });
+
+      expect(error).toBeNull();
+
+      const { data: movements } = await admin
+        .from('stock_movement')
+        .select('created_by')
+        .eq('idempotency_key', `recv:${lotId}:${lineId}`);
+      expect(movements).toHaveLength(1);
+      expect(movements?.[0]?.created_by).toBe(userId);
     },
   );
 

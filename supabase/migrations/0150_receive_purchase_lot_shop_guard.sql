@@ -63,6 +63,36 @@
 -- condition n'ajoute un refus que lorsque current_shop_role(v_lot.shop_id)
 -- n'est PAS 'owner' pour l'appelant courant — un cas qui, avant cette
 -- migration, réussissait à tort.
+--
+-- SECOND DÉFAUT, MÊME FONCTION, MÊME MIGRATION (revue avant fusion) : le même
+-- motif que S2 (docs/phaseU/S2-ACTOR-ATTRIBUTION-FIX.md, 0148 sur
+-- transition_order) existait ici. `receive_purchase_lot` reçoit `p_actor_id`
+-- du CLIENT et le transmet tel quel à `private.post_stock_movement(p_created_by
+-- := p_actor_id)`, sans jamais le confronter à `auth.uid()`. Le wrapper public
+-- de `post_stock_movement` (0136) porte cette garde depuis toujours
+-- (`p_created_by <> v_actor` → forbidden) ; l'appel direct au cœur `private`
+-- depuis `receive_purchase_lot` la contourne entièrement — la garde boutique
+-- ci-dessus ferme QUI peut réceptionner un lot donné, pas QUI est inscrit
+-- comme auteur du mouvement de stock qui en résulte. Un owner légitime de la
+-- bonne boutique pouvait donc réceptionner un lot réel en attribuant le
+-- mouvement à n'importe quel autre utilisateur (uuid arbitraire, y compris
+-- celui d'un autre membre) — traçabilité financière falsifiable sur un
+-- mouvement de stock réel (`purchase_in`).
+--
+-- Fermé en confrontant `p_actor_id` à `auth.uid()` avant toute écriture,
+-- NULL-safe (`is distinct from`, jamais `<>` — un `p_actor_id` NULL traverse un
+-- `<>` par la logique ternaire, exactement le défaut initial de 0148). La
+-- valeur réellement écrite (`v_actor`) remplace `p_actor_id` au seul site
+-- d'attribution de cette fonction (`p_created_by`). Signature inchangée :
+-- `p_actor_id` reste un paramètre (l'appelant continue de le fournir
+-- explicitement, comme receiveLotAction le fait déjà via `ctx.user.id` — jamais
+-- une valeur reçue du client), il n'est simplement plus fait confiance sans
+-- vérification.
+--
+-- Audité, pas d'autre site d'attribution dans cette fonction :
+-- `purchase_lot.received_at` est une date, pas un acteur ; `receive_purchase_lot`
+-- n'écrit aucune ligne `audit_log`. Seul `p_created_by` du mouvement de stock
+-- portait le défaut.
 -- ============================================================================
 
 create or replace function public.receive_purchase_lot(
@@ -85,8 +115,18 @@ declare
   v_alloc    bigint;
   v_landed   bigint;
   v_ucost    bigint;
+  v_actor    uuid;
 begin
   if public.current_member_role(p_merchant_account_id) is distinct from 'owner' then
+    raise exception 'forbidden'
+      using errcode = '42501';
+  end if;
+
+  -- Attribution : p_actor_id est reçu du client, jamais fait autorité tant
+  -- qu'il n'est pas confronté à auth.uid() — même défaut que 0148 fermait sur
+  -- transition_order. NULL-safe : is distinct from, jamais <>.
+  v_actor := auth.uid();
+  if v_actor is null or p_actor_id is distinct from v_actor then
     raise exception 'forbidden'
       using errcode = '42501';
   end if;
@@ -146,7 +186,7 @@ begin
         p_movement_type       := 'purchase_in',
         p_qty                 := v_line_row.qty,
         p_idempotency_key     := 'recv:' || p_lot_id::text || ':' || v_line_id::text,
-        p_created_by          := p_actor_id,
+        p_created_by          := v_actor,
         p_unit_cost           := v_ucost,
         p_received_value      := v_landed
       );
