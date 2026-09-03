@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
+import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 
 type CountryCode = 'SN' | 'CI' | 'BJ' | 'TG' | 'BF' | 'ML';
@@ -65,7 +66,14 @@ export function SettingsProfile({
   const t = useTranslations('settings');
   const router = useRouter();
   const updateProfile = useAction(updateMerchantProfileAction);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
+  // `tab` fusionne en place (nuqs) : ne touche jamais les autres query params
+  // (ex. `connected`/`error` du retour OAuth Shopify sur l'onglet Boutiques).
+  const [tabParam, setTabParam] = useQueryState(
+    'tab',
+    parseAsStringLiteral(settingsTabs).withOptions({ history: 'push', scroll: false }),
+  );
+  const activeTab = tabParam ?? 'profile';
+  const setActiveTab = setTabParam;
   const [currentShopName, setCurrentShopName] = useState(shopName);
   const [currentCountryCode, setCurrentCountryCode] = useState<CountryCode>(
     isCountryCode(countryCode) ? countryCode : 'SN',
