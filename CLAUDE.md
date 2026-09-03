@@ -185,6 +185,8 @@ Every data-heavy analytics page must: (1) keep top-level `await` minimal; (2) wr
 
 **(h) Understood, local-only.** `E2E_PROD_BUILD=1` must be built with `.env.test`, not `.env.local` (see gotchas above). Does not affect `ci.yml`.
 
+**(i) Ouvert, dette d'infrastructure CI — pas de sécurité, sans rapport avec S4.** `supabase start` échoue par intermittence en CI sur l'étape « Start Supabase (sanitized diagnostics) », par échec/blocage d'un pull d'image Docker (`ghcr.io`, image `postgres`/`gotrue`/etc. — le log sanitisé n'isole pas laquelle). Confirmé sur **2 occurrences** à ce jour, deux lots distincts : run `33263054883` (`phaseF/lotF2-purchase-lot-profitability`, 2026-08-29, job `test-e2e-phase1`) et run `33791111236` (`phaseSHOP-01/parametres-boutiques-unification`, 2026-09-03, job `test-e2e-phase1 (chromium)`) — corrigé chaque fois par `gh run rerun --failed` sur le seul job concerné, jamais par un changement de code. **Recherche d'une 3ᵉ occurrence non concluante** : le reste de l'historique `ci.yml` accessible (~100 runs) ne montre que des échecs de test réels (assertions, régressions visuelles) sous ce même nom de job, pas ce symptôme précis — si une 3ᵉ occurrence existe, son identifiant reste à fournir. Remède pressenti côté cache d'image ou retry borné sur le pull (ex. `docker pull` avec backoff avant `supabase start`, ou pré-chauffage via `actions/cache` sur les layers), jamais côté code applicatif.
+
 ## Gotcha — maturité des cohortes de livraison
 
 `DEFAULT_COHORT_MATURITY_DAYS = 3` (graphe « Taux de livraison dans le temps ») reste cohérent avec l'audit prod (délai moyen 3,37j, médiane 1,88j, p90 10,43j) — pas un SLA. `deriveCohortMaturityDays` utilise la moyenne observée quand un échantillon existe, retombe sur 3 sinon.
