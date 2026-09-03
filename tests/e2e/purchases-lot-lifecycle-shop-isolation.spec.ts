@@ -282,7 +282,15 @@ test.describe('purchases — lot lifecycle isolation boutique (S3)', () => {
 
       const capture = captureOnce(page, lineA1);
       await page.getByRole('button', { name: 'Supprimer la ligne' }).first().click();
-      await expect.poll(() => capture.get(), { timeout: 15_000 }).not.toBeNull();
+      // La requête est capturée dès son ENVOI (page.on('request')), avant que le
+      // serveur ait traité la mutation — attendre uniquement `capture.get()` court-
+      // circuite la vérification du contrôle positif (course observée en CI : la
+      // ligne existait encore en base au moment de la lecture). Seule la
+      // disparition de la ligne dans le DOM (revalidatePath + re-render RSC après
+      // réponse reçue) prouve que la suppression légitime a bien abouti.
+      await expect(page.getByRole('button', { name: 'Supprimer la ligne' })).toHaveCount(0, {
+        timeout: 15_000,
+      });
       const legit = capture.get();
       expect(legit, 'appel légitime capturé (contrôle positif)').not.toBeNull();
 
@@ -356,7 +364,14 @@ test.describe('purchases — lot lifecycle isolation boutique (S3)', () => {
 
       const capture = captureOnce(page, lotA1);
       await page.getByRole('button', { name: 'Marquer en transit' }).click();
-      await expect.poll(() => capture.get(), { timeout: 15_000 }).not.toBeNull();
+      // Même piège que removePurchaseLotLineAction ci-dessus : la requête est
+      // capturée à l'ENVOI (page.on('request')), pas à la réponse. Le badge de
+      // statut (StatusBadge, "En transit") ne s'affiche qu'après la réponse
+      // reçue et le re-render RSC (revalidatePath) — seul signal fiable que la
+      // mutation légitime a abouti avant de lire la base.
+      await expect(page.getByText('En transit', { exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
       const legit = capture.get();
       expect(legit, 'appel légitime capturé (contrôle positif)').not.toBeNull();
 
@@ -427,7 +442,13 @@ test.describe('purchases — lot lifecycle isolation boutique (S3)', () => {
 
       const capture = captureOnce(page, lotA1);
       await page.getByRole('button', { name: 'Marquer reçu' }).click();
-      await expect.poll(() => capture.get(), { timeout: 15_000 }).not.toBeNull();
+      // Même piège que les deux tests ci-dessus : la requête est capturée à
+      // l'ENVOI, pas à la réponse. Le badge de statut (StatusBadge, "Reçu") ne
+      // s'affiche qu'après la réponse reçue et le re-render RSC (revalidatePath)
+      // — seul signal fiable que la mutation légitime a abouti avant de lire la
+      // base (course observée en CI : le statut était encore "ordered" au
+      // moment de la lecture).
+      await expect(page.getByText('Reçu', { exact: true })).toBeVisible({ timeout: 15_000 });
       const legit = capture.get();
       expect(legit, 'appel légitime capturé (contrôle positif)').not.toBeNull();
 
