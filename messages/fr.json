@@ -699,7 +699,9 @@
       "reasons": {
         "tokenExpired": "Le jeton Shopify a expiré. Réinstallez Tëër depuis Shopify Admin pour relancer la synchronisation.",
         "reconnectInstructions": "La réinstallation doit être initiée depuis Shopify Admin ; Tëër ne demande pas de domaine ici.",
-        "generic": "La connexion Shopify doit être vérifiée."
+        "generic": "La connexion Shopify doit être vérifiée.",
+        "productsScopeRequired": "Cette boutique doit être reconnectée pour autoriser la synchronisation du catalogue produit Shopify.",
+        "productsScopeInstructions": "Réinstallez ou réautorisez Tëër depuis Shopify Admin pour mettre à jour cette autorisation."
       },
       "empty": {
         "title": "Aucune boutique connectée",
@@ -714,7 +716,17 @@
         "synced": "{count, plural, =0 {Aucune commande synchronisée.} one {# commande synchronisée.} other {# commandes synchronisées.}}",
         "disconnected": "Boutique déconnectée."
       },
+      "messages": {
+        "connected": "Boutique connectée avec succès !"
+      },
       "errors": {
+        "invalid_shop": "Le domaine de la boutique est invalide.",
+        "invalid_state": "La session de connexion a expiré. Réessayez.",
+        "state_mismatch": "La session de connexion a expiré. Réessayez.",
+        "shop_mismatch": "Le domaine ne correspond pas à la demande.",
+        "invalid_hmac": "Échec de la vérification de sécurité. Réessayez.",
+        "connection_failed": "La connexion a échoué. Réessayez ou contactez le support.",
+        "unknown_client_id": "Cette installation Shopify n’est pas reconnue. Contactez le support.",
         "generic": "Une erreur est survenue, réessayez."
       }
     },
@@ -769,52 +781,6 @@
     }
   },
   "shops": {
-    "title": "Boutiques",
-    "subtitle": "Installez Tëër depuis Shopify Admin pour synchroniser vos commandes.",
-    "connect": {
-      "title": "Connecter Shopify",
-      "description": "Tëër utilisera cette connexion pour lire vos commandes, clients et produits Shopify.",
-      "instructions": "Ouvrez Tëër depuis Shopify Admin. L’installation et l’autorisation commencent depuis cette surface Shopify ; aucune saisie de domaine n’est nécessaire ici.",
-      "domainLabel": "Domaine de votre boutique",
-      "domainPlaceholder": "ma-boutique.myshopify.com",
-      "submit": "Connecter ma boutique"
-    },
-    "connected": {
-      "scopes": "Autorisations",
-      "installedAt": "Connectée le"
-    },
-    "status": {
-      "connected": "Connectée"
-    },
-    "scopes": {
-      "orders": "Commandes",
-      "customers": "Clients",
-      "products": "Produits"
-    },
-    "messages": {
-      "connected": "Boutique connectée avec succès !",
-      "productsScopeRequired": "Cette boutique doit être reconnectée pour autoriser la synchronisation du catalogue produit Shopify.",
-      "productsScopeCta": "Reconnecter pour les produits",
-      "productsScopeInstructions": "Réinstallez ou réautorisez Tëër depuis Shopify Admin pour mettre à jour cette autorisation."
-    },
-    "disconnect": {
-      "submit": "Déconnecter",
-      "confirm": "Déconnecter cette boutique de Tëër ?",
-      "errors": {
-        "merchant_not_found": "Aucun compte marchand n’a été trouvé.",
-        "shop_not_found": "Aucune boutique connectée n’a été trouvée.",
-        "disconnect_failed": "La déconnexion a échoué. Réessayez."
-      }
-    },
-    "errors": {
-      "invalid_shop": "Le domaine de la boutique est invalide.",
-      "invalid_state": "La session de connexion a expiré. Réessayez.",
-      "state_mismatch": "La session de connexion a expiré. Réessayez.",
-      "shop_mismatch": "Le domaine ne correspond pas à la demande.",
-      "invalid_hmac": "Échec de la vérification de sécurité. Réessayez.",
-      "connection_failed": "La connexion a échoué. Réessayez ou contactez le support.",
-      "generic": "Une erreur est survenue. Réessayez."
-    },
     "banner": {
       "ariaLabel": "Rappel de connexion Shopify",
       "title": "Connectez votre boutique Shopify",

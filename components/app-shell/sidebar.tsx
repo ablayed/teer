@@ -15,7 +15,6 @@ import {
   Settings,
   ShoppingBag,
   Sparkles,
-  Store,
   Truck,
   Users,
 } from 'lucide-react';
@@ -32,7 +31,6 @@ type NavKey =
   | 'analyses'
   | 'finances'
   | 'assistant'
-  | 'boutiques'
   | 'parametres';
 
 type SidebarItem = {
@@ -57,7 +55,6 @@ const sidebarItems: SidebarItem[] = [
   },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
   { href: '/assistant', icon: Sparkles, labelKey: 'assistant' },
-  { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
 

@@ -14,7 +14,6 @@ import {
   ReceiptText,
   Settings,
   ShoppingBag,
-  Store,
   Truck,
   Users,
 } from 'lucide-react';
@@ -32,7 +31,6 @@ type BottomTabKey =
   | 'analyses'
   | 'finances'
   | 'assistant'
-  | 'boutiques'
   | 'parametres';
 
 type BottomTabItem = {
@@ -60,7 +58,6 @@ const overflowItems: BottomTabItem[] = [
     ownerManagerOnly: true,
   },
   { href: '/finances', icon: ReceiptText, labelKey: 'finances', ownerOnly: true },
-  { href: '/boutiques', icon: Store, labelKey: 'boutiques' },
   { href: '/parametres', icon: Settings, labelKey: 'parametres' },
 ];
 
