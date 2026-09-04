@@ -181,11 +181,16 @@ Faits confirmés par lecture directe de `lib/actions/shopify.ts:43-64` :
 
 ## 10. `git diff --stat main..HEAD`
 
+Capturé après le commit du présent rapport ET après un commit correctif (voir note ci-dessous) —
+c'est l'arbre final réellement soumis aux deux runs CI du §11 :
+
 ```
  .github/workflows/ci.yml                                                     |   9 +
  docs/security/s4-enumeration-definer-authenticated.md                        |  91 +++++
  docs/security/s4-etape0-mesures.md                                           |  77 +++++
+ docs/security/s4-rapport.md                                                  | 210 +++++++++++
  package.json                                                                 |   2 +
+ scripts/lib/acl-snapshot.d.mts                                               |  80 +++++
  scripts/s4-check-service-role-inventory.mjs                                  |  76 ++++
  scripts/s4-run-splinter.mjs                                                  | 207 +++++++++++
  supabase/security/definer-authenticated-whitelist.json                      | 385 +++++++++++++++++++++
@@ -195,12 +200,20 @@ Faits confirmés par lecture directe de `lib/actions/shopify.ts:43-64` :
  supabase/security/splinter/0028_anon_security_definer_function_executable.sql |  76 ++++
  supabase/security/splinter/0029_authenticated_security_definer_function_executable.sql | 77 +++++
  tests/rls/s4-uncovered-definer-authenticated.rls.test.ts                     | 315 +++++++++++++++++
- tests/rls/security-definer-authenticated-whitelist.rls.test.ts              | 114 ++++++
- 14 files changed, 1695 insertions(+)
+ tests/rls/security-definer-authenticated-whitelist.rls.test.ts              | 113 ++++++
+ 16 files changed, 1984 insertions(+)
 ```
 
-(Ce rapport lui-même et le fichier `docs/security/s4-rapport.md` s'ajoutent après coup dans un
-commit séparé — non inclus dans ce diff-stat, capturé avant leur commit.)
+**Note honnête sur le premier passage** : les deux premiers runs CI déclenchés (un `pull_request`,
+un `workflow_dispatch`, sur l'arbre du commit `5b0766c`) ont échoué au `typecheck` — `tsc` refusait
+l'import de `scripts/lib/acl-snapshot.mjs` (module `.mjs` sans déclaration, `allowJs: false` dans
+`tsconfig.json`) depuis `tests/rls/security-definer-authenticated-whitelist.rls.test.ts` : 7
+erreurs (module introuvable + `implicit any` en cascade), qui ont elles-mêmes fait échouer/sauter
+tous les jobs `test-e2e` en aval (gate sur `typecheck`). Corrigé par l'ajout de
+`scripts/lib/acl-snapshot.d.mts` (déclarations de types tenues à la main, synchronisées avec les
+colonnes réellement retournées par `collectFunctions()`), commit `13cb66f`. Les deux runs relancés
+après ce correctif (§11) portent sur cet arbre corrigé — les deux premiers essais, réels et non
+supprimés de l'historique, ne comptent pas parmi les "deux runs verts" exigés par ce lot.
 
 ## 11. Deux runs CI verts, arbre identique
 
