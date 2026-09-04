@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
-// biome-ignore lint/correctness/noNodejsModules: script partagé Node pur (Couche 1/2/4 ACL), déjà consommé ainsi par acl-production-probe.mjs.
 import { EXPOSED_SCHEMAS, collectFunctions } from '../../scripts/lib/acl-snapshot.mjs';
 
 // Lot S4 — Couche 1 étendue : toute routine SECURITY DEFINER exécutable par
