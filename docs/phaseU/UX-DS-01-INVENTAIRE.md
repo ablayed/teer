@@ -27,9 +27,12 @@ Deux couches déjà en place, séparées :
 **Nommage déjà sémantique, pas par apparence** : `--text`, `--muted`, `--accent`, `--surface`,
 `--canvas`, `--border`, `--success`/`--warning`/`--danger`/`--info` (+ leurs `-subtle`/`-foreground`
 quand ils existent), `--status-*` (9 tokens calqués sur `cod_status`, commentés comme
-« additif uniquement, ne pas utiliser en Phase 1 Socle » — cette réserve date d'avant U1-F/UX-COD-01
-et est aujourd'hui obsolète : `StatusBadge` les consomme, à vérifier en Temps 2 si le commentaire est
-encore correct). Rien à renommer — le vocabulaire cible du plan (`text-secondary`, `surface-raised`,
+« additif uniquement, ne pas utiliser en Phase 1 Socle » — cette réserve date d'avant U1-F/UX-COD-01).
+**Correction post-vérification (Temps 2)** : le commentaire était bien obsolète, mais le consommateur
+réel n'est pas `StatusBadge` — c'est `components/orders/cod-status-badge.tsx:74-82`, appelé en
+production par `clients-workspace.tsx`, `cod-status-list-badge.tsx`, `orders/kanban/KanbanCard.tsx`
+et `order-detail-panel.tsx`. Commentaire corrigé en conséquence (`app/globals.css`, commit `4665d00`).
+Rien à renommer — le vocabulaire cible du plan (`text-secondary`, `surface-raised`,
 etc.) n'existe pas nommément mais les tokens actuels remplissent déjà ces rôles.
 
 **Couleurs : hex/rgba, jamais `oklch`.** Aucune occurrence d'`oklch(` dans `globals.css`. Aucune
