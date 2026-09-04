@@ -304,7 +304,7 @@
       "accepting": "Acceptation…",
       "empty": "Vous n'avez aucune invitation en attente.",
       "emptyCta": "Créer mon organisation",
-      "genericError": "Une erreur est survenue, réessayez."
+      "genericError": "Une erreur est survenue. Réessayez."
     },
     "roles": {
       "owner": "Propriétaire",
@@ -675,7 +675,7 @@
         "driverDeleted": "Livreur supprimé."
       },
       "errors": {
-        "generic": "Une erreur est survenue, réessayez."
+        "generic": "Une erreur est survenue. Réessayez."
       }
     },
     "shops": {
@@ -727,7 +727,7 @@
         "invalid_hmac": "Échec de la vérification de sécurité. Réessayez.",
         "connection_failed": "La connexion a échoué. Réessayez ou contactez le support.",
         "unknown_client_id": "Cette installation Shopify n’est pas reconnue. Contactez le support.",
-        "generic": "Une erreur est survenue, réessayez."
+        "generic": "Une erreur est survenue. Réessayez."
       }
     },
     "errors": {
@@ -868,7 +868,7 @@
       "refused": "Refus"
     },
     "errors": {
-      "list": "Une erreur est survenue, réessayez.",
+      "list": "Une erreur est survenue. Réessayez.",
       "detail": "Impossible de charger cette fiche client."
     }
   },
@@ -965,7 +965,7 @@
       "submit": "Confirmer le versement",
       "shortfallWarning": "Un écart de {amount} sera signalé.",
       "success": "Versement enregistré.",
-      "error": "Une erreur est survenue, réessayez.",
+      "error": "Une erreur est survenue. Réessayez.",
       "offline": "Connexion requise pour enregistrer un versement.",
       "empty": "Aucun cash en attente — tous les versements sont à jour.",
       "toPay": "À remettre",
@@ -1001,7 +1001,7 @@
       "cogsKnown": "Je connais mon coût d'achat",
       "save": "Enregistrer les frais",
       "success": "Paramètres de frais mis à jour.",
-      "error": "Une erreur est survenue, réessayez."
+      "error": "Une erreur est survenue. Réessayez."
     },
     "profit": {
       "title": "Compte de résultat simplifié",
@@ -1049,7 +1049,7 @@
       "success": "Dépense enregistrée.",
       "updateSuccess": "Dépense mise à jour.",
       "deleteSuccess": "Dépense supprimée.",
-      "error": "Une erreur est survenue, réessayez.",
+      "error": "Une erreur est survenue. Réessayez.",
       "empty": "Aucune dépense sur cette période.",
       "total": "Total dépenses",
       "categoryAdsDisabled": "Publicité (se saisit depuis l'arrivage)",
@@ -1349,7 +1349,7 @@
         "invalidAltPhone": "Le téléphone alternatif doit contenir 9 chiffres après +221.",
         "orderNotFound": "Commande introuvable.",
         "auditFailed": "L'adresse est enregistrée, mais l'audit a échoué.",
-        "generic": "Une erreur est survenue, réessayez."
+        "generic": "Une erreur est survenue. Réessayez."
       }
     },
     "detail": {
