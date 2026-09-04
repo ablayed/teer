@@ -190,14 +190,14 @@ Faits confirmés par lecture directe de `lib/actions/shopify.ts:43-64` :
 
 ## 10. `git diff --stat main..HEAD`
 
-Capturé après le commit du présent rapport ET après un commit correctif (voir note ci-dessous) —
-c'est l'arbre final réellement soumis aux deux runs CI du §11 :
+Le rapport documentant ses propres runs CI se lit après coup — l'extrait ci-dessous est capturé sur
+l'arbre `9a8c267` (celui réellement soumis aux deux runs CI du §11), fichiers hors `s4-rapport.md`
+lui-même (dont le contenu change forcément après la capture, pour ajouter cette section) :
 
 ```
  .github/workflows/ci.yml                                                     |   9 +
  docs/security/s4-enumeration-definer-authenticated.md                        |  91 +++++
  docs/security/s4-etape0-mesures.md                                           |  77 +++++
- docs/security/s4-rapport.md                                                  | 210 +++++++++++
  package.json                                                                 |   2 +
  scripts/lib/acl-snapshot.d.mts                                               |  80 +++++
  scripts/s4-check-service-role-inventory.mjs                                  |  76 ++++
@@ -210,19 +210,29 @@ c'est l'arbre final réellement soumis aux deux runs CI du §11 :
  supabase/security/splinter/0029_authenticated_security_definer_function_executable.sql | 77 +++++
  tests/rls/s4-uncovered-definer-authenticated.rls.test.ts                     | 315 +++++++++++++++++
  tests/rls/security-definer-authenticated-whitelist.rls.test.ts              | 113 ++++++
- 16 files changed, 1984 insertions(+)
+ 15 files changed, 1774 insertions(+)
 ```
 
-**Note honnête sur le premier passage** : les deux premiers runs CI déclenchés (un `pull_request`,
-un `workflow_dispatch`, sur l'arbre du commit `5b0766c`) ont échoué au `typecheck` — `tsc` refusait
-l'import de `scripts/lib/acl-snapshot.mjs` (module `.mjs` sans déclaration, `allowJs: false` dans
-`tsconfig.json`) depuis `tests/rls/security-definer-authenticated-whitelist.rls.test.ts` : 7
+**Note honnête sur le premier passage** : les deux tout premiers runs CI déclenchés (un
+`pull_request`, un `workflow_dispatch`, sur l'arbre du commit `5b0766c`) ont échoué au `typecheck` —
+`tsc` refusait l'import de `scripts/lib/acl-snapshot.mjs` (module `.mjs` sans déclaration,
+`allowJs: false` dans `tsconfig.json`) depuis
+`tests/rls/security-definer-authenticated-whitelist.rls.test.ts` : 7
 erreurs (module introuvable + `implicit any` en cascade), qui ont elles-mêmes fait échouer/sauter
 tous les jobs `test-e2e` en aval (gate sur `typecheck`). Corrigé par l'ajout de
 `scripts/lib/acl-snapshot.d.mts` (déclarations de types tenues à la main, synchronisées avec les
-colonnes réellement retournées par `collectFunctions()`), commit `13cb66f`. Les deux runs relancés
-après ce correctif (§11) portent sur cet arbre corrigé — les deux premiers essais, réels et non
-supprimés de l'historique, ne comptent pas parmi les "deux runs verts" exigés par ce lot.
+colonnes réellement retournées par `collectFunctions()`), commit `13cb66f`. Les deux runs déclenchés
+après ce correctif (arbre `6d69809`, commit `86850ce`) étaient réellement verts — mais ne comptaient
+plus dès lors qu'un correctif ultérieur au rapport lui-même a produit un nouvel arbre (note
+suivante).
+
+**Note honnête sur le second passage** : le rapport initial (commit `86850ce`) annonçait 35 routines
+`legacy-uncovered`/4 fermées, alors que `definer-authenticated-whitelist.json` en contient réellement
+32/7 — un rapport qui documente un état inexistant est précisément ce que cet invariant est censé
+empêcher ailleurs. Corrigé par le commit `9a8c267` (§2), qui a aussi ajouté la citation exacte de la
+garde interne de `purge_pcd_access_audit` (§3). Ce commit produisant un nouvel arbre, la paire de
+runs verts a été refaite intégralement à zéro sur cet arbre (§11) — la paire précédente (arbre
+`6d69809`) ne compte plus, conservée en note pour mémoire seulement.
 
 ## 11. Deux runs CI verts, arbre identique
 
@@ -240,25 +250,33 @@ traitée séparément (hors périmètre de ce lot). Repli sur le motif déjà do
 ce cas exact : fermeture puis réouverture de la PR (`gh pr close 185` / `gh pr reopen 185`), qui
 redéclenche un `pull_request` propre (scan diff-only).
 
-**Les deux runs qui comptent, tous deux verts, arbre strictement identique :**
+**Les deux runs qui comptent, tous deux verts, arbre strictement identique — ceux-ci portent sur
+l'arbre final APRÈS la correction du §2 (commit `9a8c267`), qui a produit un nouvel arbre. La paire
+précédente (§10, arbre `6d69809`) ne compte plus depuis que ce commit correctif existe — reconstruite
+ci-dessous, à zéro, sur l'arbre réellement soumis :**
 
 | # | Run ID | Déclencheur | `headSha` | Conclusion | Créé à |
 |---|---|---|---|---|---|
-| 1 | `33870795299` | `pull_request` (ouverture de la PR #185) | `6d69809b6f960e333cefb722ed9cb8ea3ffb0064` | success | 2026-09-04T12:02:36Z |
-| 2 | `33871913731` | `pull_request` (fermeture/réouverture de la PR #185) | `6d69809b6f960e333cefb722ed9cb8ea3ffb0064` | success | 2026-09-04T12:16:03Z |
+| 1 | `33884680124` | `pull_request` (push du commit `9a8c267` sur la PR #185) | `9a8c267e1dd9535531155e91c2158be1b99ef773` | success | 2026-09-04T14:36:08Z |
+| 2 | `33885743309` | `pull_request` (fermeture/réouverture de la PR #185) | `9a8c267e1dd9535531155e91c2158be1b99ef773` | success | 2026-09-04T14:47:15Z |
 
 `headSha` identique confirmé par `gh run view --json headSha` sur les deux runs, et par
-`git rev-parse HEAD` en local (`6d69809b6f960e333cefb722ed9cb8ea3ffb0064`, arbre
-`3c78bb08bcec7df62584f822438d8e8f09b72cbd`). Aucun rejeu (`gh run rerun`), aucun commit vide entre
-les deux — le premier run a réellement re-exécuté toute la suite (24 jobs, ~9 minutes), le second
-aussi (mêmes 24 jobs, ~14 minutes).
+`git rev-parse HEAD` en local (`9a8c267e1dd9535531155e91c2158be1b99ef773`, arbre
+`70a58b544b6d374eafc6374f316441f2877497fb`). Aucun rejeu (`gh run rerun`), aucun commit vide entre
+les deux — chaque run a réellement re-exécuté toute la suite depuis le début (24 jobs), déclenchée
+par un événement `pull_request` initial distinct (un push, une réouverture), jamais par une relance
+du même run.
 
-**Runs écartés, avec raison** :
-- `33870042825` (pull_request, arbre `5b0766c`) et `33870089828` (workflow_dispatch, arbre
-  `5b0766c`) : `typecheck` en échec (import `.mjs` non typé, `allowJs: false`) — corrigé par le
-  commit `13cb66f`, voir §10.
+**Runs de la paire précédente (arbre `6d69809`, avant le commit correctif `9a8c267`) — ne comptent
+plus, conservés ici pour mémoire seulement** :
+- `33870795299` / `33871913731` (pull_request, arbre `6d69809`) : verts, mais portaient sur un arbre
+  aujourd'hui remplacé par la correction du §2 — un rapport qui documentait un état inexistant.
+- `33870042825` / `33870089828` (arbre `5b0766c`) : `typecheck` en échec (import `.mjs` non typé,
+  `allowJs: false`) — corrigé par le commit `13cb66f`, voir §10.
 - `33870806652` (workflow_dispatch, arbre `6d69809`) : `test-rls` en échec sur
   `tests/rls/shopify-reconcile-cursor.rls.test.ts` (`expected 1 to be 2`), un test préexistant sans
   rapport avec S4, vert sur le run `33870795299` exécuté sur le MÊME arbre à la même minute — flake,
   pas une régression. `gitleaks` en échec sur ce même run pour la raison structurelle décrite
-  ci-dessus (scan complet vs scan diff).
+  ci-dessus (scan complet vs scan diff) — reconfirmée sur ce lot : `workflow_dispatch` reste
+  inutilisable comme second déclencheur sur ce dépôt, fermeture/réouverture de la PR utilisée à
+  nouveau pour la paire finale ci-dessus.
