@@ -217,7 +217,39 @@ supprimés de l'historique, ne comptent pas parmi les "deux runs verts" exigés 
 
 ## 11. Deux runs CI verts, arbre identique
 
-À compléter après ouverture de la PR (Tâche 8) — deux déclenchements distincts sur le workflow
-`ci.yml` désormais doté de `workflow_dispatch` (Tâche 6) : le push d'ouverture de PR, puis `gh
-workflow run ci.yml --ref phaseS4/invariant-securite-definer-authenticated`. IDs de run, SHA
-d'arbre (doivent être identiques) et type de déclencheur consignés ci-dessous une fois disponibles.
+**Trouvaille non anticipée sur `workflow_dispatch`** : bien que le trigger ait été ajouté et
+fonctionne (`gh workflow run` déclenche réellement un run), `gitleaks-action` se comporte
+différemment selon le type d'événement — `pull_request` lance `gitleaks protect` (diff contre la
+base, rapide), tandis que `workflow_dispatch` (comme `push`) lance `gitleaks detect` (scan complet
+de l'historique). Le run `33870806652` (workflow_dispatch, arbre `6d69809`) a échoué sur ce scan
+complet : `leaks found: 2`, deux occurrences de `const encryptionKey = '[REDACTED]'` — une chaîne
+préexistante dans l'historique du dépôt, sans rapport avec S4 (aucun fichier de ce lot ne contient
+`encryptionKey`), jamais détectée par le scan diff-only qu'utilisent les PR normales. **Ce n'est pas
+un défaut S4** ; c'est une propriété structurelle de ce dépôt qui rend `workflow_dispatch`
+inutilisable comme second déclencheur ici tant que cette dette gitleaks historique n'est pas
+traitée séparément (hors périmètre de ce lot). Repli sur le motif déjà documenté par CLAUDE.md pour
+ce cas exact : fermeture puis réouverture de la PR (`gh pr close 185` / `gh pr reopen 185`), qui
+redéclenche un `pull_request` propre (scan diff-only).
+
+**Les deux runs qui comptent, tous deux verts, arbre strictement identique :**
+
+| # | Run ID | Déclencheur | `headSha` | Conclusion | Créé à |
+|---|---|---|---|---|---|
+| 1 | `33870795299` | `pull_request` (ouverture de la PR #185) | `6d69809b6f960e333cefb722ed9cb8ea3ffb0064` | success | 2026-09-04T12:02:36Z |
+| 2 | `33871913731` | `pull_request` (fermeture/réouverture de la PR #185) | `6d69809b6f960e333cefb722ed9cb8ea3ffb0064` | success | 2026-09-04T12:16:03Z |
+
+`headSha` identique confirmé par `gh run view --json headSha` sur les deux runs, et par
+`git rev-parse HEAD` en local (`6d69809b6f960e333cefb722ed9cb8ea3ffb0064`, arbre
+`3c78bb08bcec7df62584f822438d8e8f09b72cbd`). Aucun rejeu (`gh run rerun`), aucun commit vide entre
+les deux — le premier run a réellement re-exécuté toute la suite (24 jobs, ~9 minutes), le second
+aussi (mêmes 24 jobs, ~14 minutes).
+
+**Runs écartés, avec raison** :
+- `33870042825` (pull_request, arbre `5b0766c`) et `33870089828` (workflow_dispatch, arbre
+  `5b0766c`) : `typecheck` en échec (import `.mjs` non typé, `allowJs: false`) — corrigé par le
+  commit `13cb66f`, voir §10.
+- `33870806652` (workflow_dispatch, arbre `6d69809`) : `test-rls` en échec sur
+  `tests/rls/shopify-reconcile-cursor.rls.test.ts` (`expected 1 to be 2`), un test préexistant sans
+  rapport avec S4, vert sur le run `33870795299` exécuté sur le MÊME arbre à la même minute — flake,
+  pas une régression. `gitleaks` en échec sur ce même run pour la raison structurelle décrite
+  ci-dessus (scan complet vs scan diff).
