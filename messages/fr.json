@@ -52,12 +52,12 @@
         "autre": "Autre"
       },
       "messageLabel": "Description",
-      "messagePlaceholder": "Décris le problème ou ta suggestion…",
+      "messagePlaceholder": "Décrivez le problème ou votre suggestion…",
       "submit": "Envoyer",
       "submitting": "Envoi…",
       "successTitle": "Merci !",
-      "successBody": "Ton retour a bien été enregistré.",
-      "errorBody": "Une erreur est survenue. Réessaie.",
+      "successBody": "Votre retour a bien été enregistré.",
+      "errorBody": "Une erreur est survenue. Réessayez.",
       "close": "Fermer"
     }
   },
