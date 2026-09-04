@@ -2,6 +2,7 @@
 
 import { DriverRemittanceForm } from '@/components/drivers/driver-remittance-form';
 import { SettlementHistoryTable } from '@/components/drivers/settlement-history';
+import { Amount } from '@/components/ui/amount';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import {
   type DriverCashData,
@@ -11,17 +12,16 @@ import {
 } from '@/lib/actions/drivers';
 import { derivePeriodCashOnHand } from '@/lib/drivers/cash-consolidation';
 import { formatDateAbsolute, formatDateTime } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
-function statCard(label: string, value: string, scope: string) {
+function statCard(label: string, value: React.ReactNode, scope: string) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
       <p className="text-[13px] font-medium text-muted">{label}</p>
-      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
       <p className="mt-1 text-xs text-muted">{scope}</p>
     </section>
   );
@@ -50,16 +50,12 @@ function cashCardWithDefinition({
   emphasize?: boolean;
   label: string;
   scope: string;
-  value: string;
+  value: React.ReactNode;
 }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
       <p className="text-[13px] font-medium text-muted">{label}</p>
-      <p
-        className={`mt-2 font-mono font-semibold tabular-nums ${emphasize ? 'text-3xl' : 'text-2xl'}`}
-      >
-        {value}
-      </p>
+      <p className={`mt-2 font-semibold ${emphasize ? 'text-3xl' : 'text-2xl'}`}>{value}</p>
       <p className="mt-1 text-xs text-muted">{scope}</p>
       {/* `flex-wrap` : une action au libellé long (« Enregistrer un versement »)
           déborde sinon de la carte et se retrouve SOUS la carte voisine de la
@@ -140,8 +136,16 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statCard(t('collectedTotal'), formatMoney(c.collectedMinor, 'XOF'), periodScope)}
-        {statCard(t('deliveryFees'), formatMoney(c.collectedDeliveryFeesMinor, 'XOF'), periodScope)}
+        {statCard(
+          t('collectedTotal'),
+          <Amount amountMinor={c.collectedMinor} className="font-mono" />,
+          periodScope,
+        )}
+        {statCard(
+          t('deliveryFees'),
+          <Amount amountMinor={c.collectedDeliveryFeesMinor} className="font-mono" />,
+          periodScope,
+        )}
         {cashCardWithDefinition({
           emphasize: true,
           // Partie 2 — raccourci de règlement. Ce bouton n'enregistre RIEN : il
@@ -167,13 +171,13 @@ export function DriverCashPanel({ driverId, initialCash, initialHistory }: Props
           definition: t('cashOnHandLiveDefinition'),
           label: t('cashOnHand'),
           scope: asOfScope,
-          value: formatMoney(c.cashOnHandMinor, 'XOF'),
+          value: <Amount amountMinor={c.cashOnHandMinor} className="font-mono" />,
         })}
         {cashCardWithDefinition({
           definition: t('cashOnHandPeriodDefinition'),
           label: t('cashOnHandPeriod'),
           scope: periodScope,
-          value: formatMoney(periodCashOnHandMinor, 'XOF'),
+          value: <Amount amountMinor={periodCashOnHandMinor} className="font-mono" />,
         })}
       </div>
       <div className="rounded-lg border border-border bg-surface p-4 shadow-1">
