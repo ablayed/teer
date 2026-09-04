@@ -66,7 +66,7 @@ function MaskedProfitRow({ label }: { label: string }) {
     <div className="flex items-baseline justify-between gap-4 py-2">
       <span className="text-sm font-semibold text-text">{label}</span>
       <span
-        className="shrink-0 text-right text-xs font-medium text-amber-700 dark:text-amber-300"
+        className="shrink-0 text-right text-xs font-medium text-amber-700"
         title={t('marginUnavailableHint')}
       >
         {t('marginUnavailable')}
@@ -123,7 +123,7 @@ export function ProfitSection({ report, from, storeId, to }: Props) {
         <div className="flex shrink-0 items-center gap-2">
           {coverageIncomplete ? (
             <span
-              className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+              className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900"
               title={t('marginUnavailableHint')}
             >
               {t('marginUnavailable')}
@@ -131,9 +131,7 @@ export function ProfitSection({ report, from, storeId, to }: Props) {
           ) : (
             <span
               className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                marginEstimated
-                  ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
-                  : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
+                marginEstimated ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'
               }`}
               title={
                 marginEstimated
@@ -199,12 +197,12 @@ export function ProfitSection({ report, from, storeId, to }: Props) {
         )}
         <p className="pb-2 text-xs text-muted">{t('grossMarginHint')}</p>
         {report.cogsExcludedOrderCount > 0 && (
-          <p className="pb-2 text-xs text-amber-700 dark:text-amber-300">
+          <p className="pb-2 text-xs text-amber-700">
             {t('excludedOrders', { count: report.cogsExcludedOrderCount })}
           </p>
         )}
         {report.cogsUnknownLineCount > 0 && (
-          <p className="pb-2 text-xs text-amber-700 dark:text-amber-300">
+          <p className="pb-2 text-xs text-amber-700">
             {t('blindSpotLines', { count: report.cogsUnknownLineCount })}
           </p>
         )}

@@ -45,7 +45,7 @@ function CostMissingBadge() {
   const t = useTranslations('finance.products.table');
   return (
     <span
-      className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+      className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
       title={t('costMissingHint')}
     >
       {t('costMissing')}
@@ -57,7 +57,7 @@ function EstimatedBadge() {
   const t = useTranslations('finance.products.table');
   return (
     <span
-      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
       title={t('estimatedHint')}
     >
       {t('estimated')}
@@ -69,7 +69,7 @@ function LowVolumeBadge() {
   const t = useTranslations('finance.products.table');
   return (
     <span
-      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
       title={t('lowVolumeHint')}
     >
       {t('lowVolume')}
@@ -376,12 +376,12 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
           />
         </div>
 
-        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
+        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           {t('pilotBanner')}
         </p>
 
         {report.unallocatedDeliveryMinor > 0 ? (
-          <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+          <p className="mt-3 text-xs text-amber-700">
             {t('unallocatedDelivery', { amount: money(report.unallocatedDeliveryMinor) })}
           </p>
         ) : null}

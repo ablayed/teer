@@ -38,8 +38,9 @@
   --danger: #b42318;
   --danger-subtle: rgba(180, 35, 24, 0.1);
   /*
-   * Tokens de statut COD — ajout additif uniquement.
-   * Ne pas utiliser dans les composants pendant la Phase 1 Socle.
+   * Tokens de statut COD — consommés en production par components/orders/cod-status-badge.tsx
+   * (bg-status-x/15 + text-status-x), lui-même appelé par clients-workspace.tsx,
+   * cod-status-list-badge.tsx, orders/kanban/KanbanCard.tsx et order-detail-panel.tsx.
    * Mapping statut COD -> token :
    *   A_APPELER    -> --status-a-appeler
    *   TENTEE       -> --status-tentee

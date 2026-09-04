@@ -361,7 +361,7 @@ async function GlobalTabContent({
 
   return (
     <>
-      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
         <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         <p className="text-xs">{t('disclaimer')}</p>
       </div>
