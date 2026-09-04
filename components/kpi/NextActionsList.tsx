@@ -3,7 +3,6 @@ import {
   NextActionsListMotion,
 } from '@/components/kpi/next-actions-list-motion';
 import { formatDateRelative } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -73,7 +72,7 @@ export async function NextActionsList({
     phone: order.customer?.phone ? formatPhoneSN(order.customer.phone) : emptyValueLabel,
     phoneRaw: order.customer?.phone ?? null,
     age: formatDateRelative(order.created_at),
-    total: formatMoney(order.total_amount, order.currency),
+    totalMinor: order.total_amount,
   }));
 
   return <NextActionsListMotion callLabel={callLabel} emptyLabel={emptyLabel} items={items} />;

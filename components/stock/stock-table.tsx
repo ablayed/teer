@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import {
   courierReturnAction,
   manualAdjustmentAction,
@@ -7,7 +8,6 @@ import {
   setLowStockThresholdAction,
 } from '@/lib/actions/stock';
 import type { StockPageRow } from '@/lib/actions/stock';
-import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
 import { useState } from 'react';
@@ -344,7 +344,7 @@ export function StockTable({ rows, canSeeCost }: Props) {
       {canSeeCost && totalValue !== null && (
         <p className="text-sm text-muted">
           Valeur totale du stock :{' '}
-          <span className="font-semibold text-text">{formatMoney(totalValue, 'XOF')}</span>
+          <Amount amountMinor={totalValue} className="font-semibold text-text" />
         </p>
       )}
 
@@ -430,7 +430,7 @@ export function StockTable({ rows, canSeeCost }: Props) {
                       </td>
                       {canSeeCost && (
                         <td className="px-4 py-3 text-right text-muted">
-                          {row.stockValue !== null ? formatMoney(row.stockValue, 'XOF') : '—'}
+                          {row.stockValue !== null ? <Amount amountMinor={row.stockValue} /> : '—'}
                         </td>
                       )}
                       <td className="px-4 py-3">

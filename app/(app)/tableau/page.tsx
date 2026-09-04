@@ -12,6 +12,7 @@ import { DashboardKpiRefresh } from '@/components/kpi/dashboard-kpi-refresh';
 import { ActivationChecklist } from '@/components/onboarding/activation-checklist';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
+import { Amount } from '@/components/ui/amount';
 import { Card } from '@/components/ui/card';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import {
@@ -36,7 +37,6 @@ import {
   toMetricLoadState,
 } from '@/lib/dashboard/metric-load-state';
 import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
-import { formatMoney } from '@/lib/format/fcfa';
 import type { LossAnalyticsTrendPoint } from '@/lib/loss-analytics/metrics';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { cn } from '@/lib/utils';
@@ -226,7 +226,7 @@ function EssentialMetricCard({
   label: string;
   stateLabel?: string;
   stateTone?: 'danger' | 'neutral';
-  value?: string;
+  value?: React.ReactNode;
 }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
@@ -235,7 +235,7 @@ function EssentialMetricCard({
         {definition ? <DefinitionToggle definition={definition} /> : null}
       </div>
       {value ? (
-        <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{value}</p>
+        <p className="mt-2 text-2xl font-semibold">{value}</p>
       ) : (
         <p
           className={cn(
@@ -311,9 +311,9 @@ async function OperationsEssentialsSection({
           }
           stateTone={cashCollectedState.status === 'error' ? 'danger' : 'neutral'}
           value={
-            cashCollectedState.status === 'ready'
-              ? formatMoney(cashCollectedState.data.caMinor)
-              : undefined
+            cashCollectedState.status === 'ready' ? (
+              <Amount amountMinor={cashCollectedState.data.caMinor} className="font-mono" />
+            ) : undefined
           }
         />
         <EssentialMetricCard
@@ -336,7 +336,11 @@ async function OperationsEssentialsSection({
           label={tOps('cashDrivers.label')}
           stateLabel={hasCashTotalError ? tPeriodMetrics('error') : undefined}
           stateTone={hasCashTotalError ? 'danger' : 'neutral'}
-          value={cashTotal.ok ? formatMoney(cashTotal.totalMinor, 'XOF') : undefined}
+          value={
+            cashTotal.ok ? (
+              <Amount amountMinor={cashTotal.totalMinor} className="font-mono" />
+            ) : undefined
+          }
         />
         <EssentialMetricCard
           label={tOps('cancellationRate')}

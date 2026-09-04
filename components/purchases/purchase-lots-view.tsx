@@ -4,6 +4,7 @@ import {
   MARGIN_PCT_MISSING_LABEL,
   PurchaseLotDetailPanel,
 } from '@/components/purchases/purchase-lot-detail-panel';
+import { Amount } from '@/components/ui/amount';
 import { GainLoss } from '@/components/ui/gain-loss';
 import { ValueAmount } from '@/components/ui/value-state';
 import { type ProductCatalogItem, createProductAction } from '@/lib/actions/products';
@@ -18,7 +19,6 @@ import {
   removePurchaseLotLineAction,
 } from '@/lib/actions/purchases';
 import type { PurchaseLotProfitabilitySummary } from '@/lib/finance/lot-profitability-assembly';
-import { formatMoney } from '@/lib/format/fcfa';
 import { formatPercentFr } from '@/lib/format/percent';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
@@ -101,22 +101,26 @@ function CostDetail({
                   {l.productTitle}
                   {l.productSku ? ` (${l.productSku})` : ''} — {l.qty} pcs
                 </p>
-                <div className="ml-2 mt-1 space-y-0.5 text-xs text-muted-foreground font-mono tabular-nums">
+                <div className="ml-2 mt-1 space-y-0.5 text-xs text-muted-foreground">
                   <div className="flex justify-between">
                     <span>Achat ({l.qty} pcs)</span>
-                    <span>{formatMoney(l.d.lv)}</span>
+                    <Amount amountMinor={l.d.lv} className="font-mono" />
                   </div>
                   <div className="flex justify-between">
                     <span>Transport</span>
-                    <span>+ {formatMoney(l.d.af)}</span>
+                    <span>
+                      + <Amount amountMinor={l.d.af} className="font-mono" />
+                    </span>
                   </div>
                   <div className="flex justify-between border-t border-border pt-0.5 font-semibold text-foreground">
                     <span>Total atterri</span>
-                    <span>{formatMoney(l.d.ltv)}</span>
+                    <Amount amountMinor={l.d.ltv} className="font-mono" />
                   </div>
                   <div className="flex justify-between text-accent-deep">
                     <span>Coût unitaire</span>
-                    <span>{formatMoney(l.d.luc)} / u</span>
+                    <span>
+                      <Amount amountMinor={l.d.luc} className="font-mono" /> / u
+                    </span>
                   </div>
                 </div>
               </div>
@@ -128,14 +132,19 @@ function CostDetail({
             </p>
             <p
               className={cn(
-                'mt-1 font-medium font-mono tabular-nums',
+                'mt-1 font-medium',
                 sumAllocated === transportTotal ? 'text-success' : 'text-danger',
               )}
             >
-              Vérification : Σ transport alloué = {formatMoney(sumAllocated)}{' '}
-              {sumAllocated === transportTotal
-                ? '= Total transport ✓'
-                : `≠ Total transport ${formatMoney(transportTotal)} ✗`}
+              Vérification : Σ transport alloué ={' '}
+              <Amount amountMinor={sumAllocated} className="font-mono" />{' '}
+              {sumAllocated === transportTotal ? (
+                '= Total transport ✓'
+              ) : (
+                <>
+                  ≠ Total transport <Amount amountMinor={transportTotal} className="font-mono" /> ✗
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -351,9 +360,10 @@ function LotCard({
         </span>
         <span>
           Transport :{' '}
-          <span className="font-mono tabular-nums font-medium text-foreground">
-            {formatMoney(effectiveTransportTotal)}
-          </span>
+          <Amount
+            amountMinor={effectiveTransportTotal}
+            className="font-mono font-medium text-foreground"
+          />
           <TransportCorrector
             lotId={lot.id}
             onCorrected={setTransportOverride}
@@ -440,20 +450,19 @@ function LotCard({
                       )}
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{l.qty}</td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">
-                      {formatMoney(l.purchasePriceTotal)}
+                    <td className="px-3 py-2 text-right">
+                      <Amount amountMinor={l.purchasePriceTotal} className="font-mono" />
                     </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">
+                    <td className="px-3 py-2 text-right">
                       {luc != null ? (
-                        <span
+                        <Amount
+                          amountMinor={luc}
                           className={
                             l.landedUnitCost != null
-                              ? 'font-semibold text-foreground'
-                              : 'text-muted-foreground italic'
+                              ? 'font-mono font-semibold text-foreground'
+                              : 'font-mono text-muted-foreground italic'
                           }
-                        >
-                          {formatMoney(luc)}
-                        </span>
+                        />
                       ) : (
                         '—'
                       )}

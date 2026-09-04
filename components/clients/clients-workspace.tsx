@@ -2,6 +2,7 @@
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet';
+import { Amount } from '@/components/ui/amount';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
@@ -18,7 +19,6 @@ import {
 import type { ReliabilityTier } from '@/lib/customers/reliability';
 import { type OrderStatus, orderStatuses } from '@/lib/domain/order-state-machine';
 import { formatDateRelative } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN, toWhatsAppLink } from '@/lib/format/phone';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -163,7 +163,7 @@ function ClientMeta({ customer }: { customer: CustomerListItem }) {
       </span>
       <span className="@min-[26rem]/row:inline hidden">
         {' · '}
-        {formatMoney(customer.deliveredLifetime)}
+        <Amount amountMinor={customer.deliveredLifetime} />
       </span>
       {customer.isRecurring ? (
         <span className="@min-[26rem]/row:inline hidden"> · {t('badges.recurring')}</span>
@@ -490,8 +490,8 @@ function CustomerSheet({
                               <CodStatusBadge status={order.cod_status} />
                             ) : null}
                           </div>
-                          <p className="mt-2 font-mono text-sm font-semibold tabular-nums">
-                            {formatMoney(order.total_amount)}
+                          <p className="mt-2 text-sm font-semibold">
+                            <Amount amountMinor={order.total_amount} className="font-mono" />
                           </p>
                         </Link>
                       ))}
@@ -529,8 +529,8 @@ function CustomerSheet({
                   </div>
                   <div className="rounded-lg border border-border p-3">
                     <p className="text-xs text-muted">{t('stats.delivered')}</p>
-                    <p className="font-mono text-sm font-semibold tabular-nums">
-                      {formatMoney(customer.deliveredLifetime)}
+                    <p className="text-sm font-semibold">
+                      <Amount amountMinor={customer.deliveredLifetime} className="font-mono" />
                     </p>
                   </div>
                 </section>
