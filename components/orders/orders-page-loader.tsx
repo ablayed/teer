@@ -8,6 +8,7 @@ import {
   REASSIGNABLE_STATES,
 } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
+import { Amount } from '@/components/ui/amount';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ResourceRow } from '@/components/ui/resource-row';
 import {
@@ -25,7 +26,6 @@ import {
   formatDateRelative,
   formatDateTime,
 } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 import { formatOrderAddress } from '@/lib/format/order-address';
 import { hasVisibleScheduledDelivery } from '@/lib/orders/scheduled-delivery';
 import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
@@ -260,11 +260,11 @@ export function OrdersPageLoader({
                   // titre reste `flex-1 min-w-0 truncate` ; le badge de statut a
                   // `min-width:auto` (il se réduit) → pas d'effondrement 0 px du
                   // titre sur iphone-14.
-                  <span
-                    className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-text"
-                    data-testid="order-row-amount"
-                  >
-                    {formatMoney(order.total_amount, order.currency)}
+                  <span className="shrink-0 whitespace-nowrap" data-testid="order-row-amount">
+                    <Amount
+                      amountMinor={order.total_amount}
+                      className="text-sm font-semibold text-text"
+                    />
                   </span>
                 }
                 overflow={

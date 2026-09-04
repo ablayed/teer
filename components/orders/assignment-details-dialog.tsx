@@ -1,6 +1,7 @@
 'use client';
 
 import { StockShortageWarning } from '@/components/orders/stock-shortage-warning';
+import { Amount } from '@/components/ui/amount';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,7 +19,6 @@ import {
   nextWholeHourInputs,
   normalizeHourInput,
 } from '@/lib/format/datetime-input';
-import { formatMoney } from '@/lib/format/fcfa';
 import { type StockShortageRow, computeStockShortages } from '@/lib/orders/assignment-stock-check';
 import {
   ORDER_TOTAL_POSITIVE_MESSAGE,
@@ -74,7 +74,6 @@ export function AssignmentDetailsDialog({
   const [customerName, setCustomerName] = useState<string | null>(null);
   const [customerPhone, setCustomerPhone] = useState<string | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<string | null>(null);
   const [driverMessage, setDriverMessage] = useState('');
   const [items, setItems] = useState<{ title: string; quantity: number; price: number }[]>([]);
   const [savedTotal, setSavedTotal] = useState(0);
@@ -110,7 +109,6 @@ export function AssignmentDetailsDialog({
       setCustomerName(d.customerName);
       setCustomerPhone(d.customerPhone);
       setDeliveryAddress(d.deliveryAddress);
-      setCurrency(d.currency);
       setItems(d.items);
       setSavedTotal(d.totalAmount);
       setSavedFee(d.deliveryFeeMinor);
@@ -315,9 +313,7 @@ export function AssignmentDetailsDialog({
                     <span className="min-w-0 truncate">
                       {item.quantity} × {item.title || '—'}
                     </span>
-                    <span className="shrink-0 font-mono tabular-nums">
-                      {formatMoney(item.quantity * item.price, currency)}
-                    </span>
+                    <Amount amountMinor={item.quantity * item.price} className="shrink-0" />
                   </li>
                 ))}
               </ul>
@@ -381,9 +377,7 @@ export function AssignmentDetailsDialog({
 
             <p className="text-sm text-muted">
               Net (hors livraison) :{' '}
-              <span className="font-mono font-semibold tabular-nums text-text">
-                {formatMoney(netMinor, currency)}
-              </span>
+              <Amount amountMinor={netMinor} className="font-semibold text-text" />
             </p>
 
             <div className="space-y-2">

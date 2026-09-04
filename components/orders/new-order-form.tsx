@@ -1,10 +1,10 @@
 'use client';
 
 import { useOrdersBoard } from '@/components/orders/orders-board-context';
+import { Amount } from '@/components/ui/amount';
 import { createManualOrderAction } from '@/lib/actions/orders';
 import { createProductAction } from '@/lib/actions/products';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
-import { formatMoney } from '@/lib/format/fcfa';
 import type { ShopFilterOption } from '@/lib/shops/shop-filter';
 import { cn } from '@/lib/utils';
 import { Search, Trash2 } from 'lucide-react';
@@ -573,7 +573,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
             <p className="text-sm">
               <span className="text-muted">Total : </span>
               <span className="font-semibold text-text">
-                {computedTotal > 0 ? formatMoney(computedTotal, 'XOF') : '—'}
+                {computedTotal > 0 ? <Amount amountMinor={computedTotal} /> : '—'}
               </span>
             </p>
             <button

@@ -2,9 +2,9 @@
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { normalizeOrderStatus } from '@/components/orders/kanban/kanban-utils';
+import { Amount } from '@/components/ui/amount';
 import type { OrderListItem } from '@/lib/actions/orders';
 import { formatDateRelative } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -56,9 +56,7 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
         className="mt-auto flex min-h-12 items-end justify-between gap-3 focus-visible:outline-none"
         href={orderHref}
       >
-        <span className="font-mono text-sm font-medium tabular-nums text-text">
-          {formatMoney(order.total_amount, order.currency)}
-        </span>
+        <Amount amountMinor={order.total_amount} className="text-sm font-medium text-text" />
         <span className="text-xs text-muted">{formatDateRelative(orderDate)}</span>
       </Link>
     </div>
