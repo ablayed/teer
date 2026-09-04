@@ -87,7 +87,7 @@ function CostDetail({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex min-h-11 w-full items-center justify-between text-sm font-medium"
+        className="flex min-h-12 w-full items-center justify-between text-sm font-medium"
       >
         <span>Détail du coût atterri</span>
         <span className="text-muted-foreground">{open ? '▲' : '▼'}</span>
@@ -409,7 +409,7 @@ function LotCard({
           <button
             type="button"
             onClick={() => setDetailOpen(true)}
-            className="ml-auto min-h-11 rounded-md border border-border px-3 text-sm font-medium text-text hover:bg-canvas"
+            className="ml-auto min-h-12 rounded-md border border-border px-3 text-sm font-medium text-text hover:bg-canvas"
           >
             Voir la rentabilité
           </button>
@@ -486,7 +486,7 @@ function LotCard({
               <select
                 value={newLine.productId}
                 onChange={(e) => setNewLine((p) => ({ ...p, productId: e.target.value }))}
-                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
               >
                 <option value="">Sélectionner un produit…</option>
                 {products.map((p) => (
@@ -503,7 +503,7 @@ function LotCard({
                   placeholder="Qté"
                   value={newLine.qty}
                   onChange={(e) => setNewLine((p) => ({ ...p, qty: e.target.value }))}
-                  className="min-h-11 w-1/3 min-w-0 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  className="min-h-12 w-1/3 min-w-0 rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 />
                 <input
                   type="number"
@@ -513,7 +513,7 @@ function LotCard({
                   onChange={(e) =>
                     setNewLine((p) => ({ ...p, purchasePriceTotal: e.target.value }))
                   }
-                  className="min-h-11 w-2/3 min-w-0 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                  className="min-h-12 w-2/3 min-w-0 rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 />
               </div>
               <div className="flex gap-2">
@@ -521,14 +521,14 @@ function LotCard({
                   type="button"
                   onClick={handleAddLine}
                   disabled={isExecuting}
-                  className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+                  className="min-h-12 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover disabled:opacity-50"
                 >
                   Ajouter
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddLine(false)}
-                  className="min-h-11 rounded-md border border-border px-4 py-2 text-sm"
+                  className="min-h-12 rounded-md border border-border px-4 py-2 text-sm"
                 >
                   Annuler
                 </button>
@@ -538,7 +538,7 @@ function LotCard({
             <button
               type="button"
               onClick={() => setShowAddLine(true)}
-              className="inline-flex min-h-11 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-text hover:bg-canvas"
+              className="inline-flex min-h-12 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-text hover:bg-canvas"
             >
               + Ajouter un produit
             </button>
@@ -726,7 +726,7 @@ function CreateLotForm({
             </label>
             <input
               id="f-supplier"
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
               value={form.supplierName}
               onChange={(e) => setF('supplierName', e.target.value)}
               placeholder="Nom du fournisseur"
@@ -738,7 +738,7 @@ function CreateLotForm({
             </label>
             <input
               id="f-ref"
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
               value={form.reference}
               onChange={(e) => setF('reference', e.target.value)}
               placeholder="Facture, numéro…"
@@ -751,7 +751,7 @@ function CreateLotForm({
             <input
               id="f-ordered-at"
               type="date"
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
               value={form.orderedAt}
               onChange={(e) => setF('orderedAt', e.target.value)}
             />
@@ -764,7 +764,7 @@ function CreateLotForm({
               id="f-lead-time"
               type="number"
               min={0}
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
               value={form.estimatedLeadTimeDays}
               onChange={(e) => setF('estimatedLeadTimeDays', e.target.value)}
             />
@@ -784,7 +784,7 @@ function CreateLotForm({
             id="f-transport"
             type="number"
             min={0}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono tabular-nums"
+            className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono tabular-nums"
             value={form.transportTotal}
             onChange={(e) => setF('transportTotal', e.target.value)}
           />
@@ -802,7 +802,7 @@ function CreateLotForm({
           {lines.map((l) => (
             <div key={l.key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <select
-                className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:flex-1"
+                className="min-h-12 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:flex-1"
                 value={l.productId}
                 onChange={(e) => selectProduct(l.key, e.target.value)}
               >
@@ -820,7 +820,7 @@ function CreateLotForm({
                   type="number"
                   min={0}
                   placeholder="Qté"
-                  className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:w-20"
+                  className="min-h-12 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:w-20"
                   value={l.qty}
                   onChange={(e) => setLine(l.key, 'qty', e.target.value)}
                 />
@@ -828,7 +828,7 @@ function CreateLotForm({
                   type="number"
                   min={0}
                   placeholder="Prix total"
-                  className="min-h-11 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:w-32"
+                  className="min-h-12 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-2 text-sm sm:w-32"
                   value={l.purchasePriceTotal}
                   onChange={(e) => setLine(l.key, 'purchasePriceTotal', e.target.value)}
                 />
@@ -848,7 +848,7 @@ function CreateLotForm({
           <button
             type="button"
             onClick={() => setLines((p) => [...p, mkLine()])}
-            className="inline-flex min-h-11 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-text hover:bg-canvas"
+            className="inline-flex min-h-12 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium text-text hover:bg-canvas"
           >
             + Ajouter un produit
           </button>
@@ -858,7 +858,7 @@ function CreateLotForm({
             <label className="space-y-1">
               <span className="text-xs font-medium">Nom du produit *</span>
               <input
-                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 onChange={(e) => setProductDraft((draft) => ({ ...draft, title: e.target.value }))}
                 placeholder="Ex : Sac cuir noir"
                 type="text"
@@ -868,7 +868,7 @@ function CreateLotForm({
             <label className="space-y-1">
               <span className="text-xs font-medium">SKU</span>
               <input
-                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
                 onChange={(e) => setProductDraft((draft) => ({ ...draft, sku: e.target.value }))}
                 placeholder="Ex : SAC-NOIR"
                 type="text"
@@ -876,7 +876,7 @@ function CreateLotForm({
               />
             </label>
             <button
-              className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover disabled:opacity-50"
+              className="min-h-12 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent-hover disabled:opacity-50"
               disabled={createProduct.isExecuting}
               onClick={handleCreateProduct}
               type="button"
@@ -884,7 +884,7 @@ function CreateLotForm({
               {createProduct.isExecuting ? 'Création…' : 'Créer'}
             </button>
             <button
-              className="min-h-11 rounded-md border border-border px-4 py-2 text-sm"
+              className="min-h-12 rounded-md border border-border px-4 py-2 text-sm"
               onClick={() => setCreateProductLineKey(null)}
               type="button"
             >

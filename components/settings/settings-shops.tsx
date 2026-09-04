@@ -175,7 +175,7 @@ export function SettingsShops({ currentRole }: SettingsShopsProps) {
           <p className="mt-1 text-sm text-muted">{t('description')}</p>
         </div>
         <Link
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover"
           href="/boutiques"
         >
           <ExternalLink aria-hidden="true" className="h-4 w-4" />

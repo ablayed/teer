@@ -107,7 +107,7 @@ export function IdleTimeout({ timeoutMs, warningMs }: IdleTimeoutProps) {
         <h2 className="text-lg font-semibold">{t('idle.warningTitle')}</h2>
         <p className="text-sm text-muted">{t('idle.warningBody', { seconds: countdown })}</p>
         <button
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover active:scale-[0.97]"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover active:scale-[0.97]"
           onClick={handleStayConnected}
           ref={stayButtonRef}
           type="button"

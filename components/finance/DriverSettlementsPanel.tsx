@@ -244,7 +244,7 @@ export function DriverSettlementsPanel({
                 </output>
               </div>
               <button
-                className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
+                className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
                 onClick={() => openSheet(selectedDriver.driverId)}
                 type="button"
               >
@@ -310,7 +310,7 @@ export function DriverSettlementsPanel({
                       </div>
                       {currentRole === 'owner' ? (
                         <input
-                          className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                          className="h-12 w-full rounded-md border border-border bg-surface px-3 text-sm"
                           onChange={(event) =>
                             setWriteOffReasonById((current) => ({
                               ...current,
@@ -345,7 +345,7 @@ export function DriverSettlementsPanel({
               </div>
               <button
                 aria-label={t('settlements.close')}
-                className="grid min-h-11 min-w-11 place-items-center rounded-md text-muted hover:bg-canvas"
+                className="grid min-h-12 min-w-12 place-items-center rounded-md text-muted hover:bg-canvas"
                 onClick={closeSheet}
                 type="button"
               >
@@ -371,7 +371,7 @@ export function DriverSettlementsPanel({
                   {settlementMethods.map((candidate) => (
                     <button
                       className={cn(
-                        'min-h-11 rounded-md border border-border px-3 text-sm font-semibold',
+                        'min-h-12 rounded-md border border-border px-3 text-sm font-semibold',
                         method === candidate ? 'bg-accent text-text' : 'bg-surface text-muted',
                       )}
                       key={candidate}

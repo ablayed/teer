@@ -142,7 +142,7 @@ export function ActionSheet({ trigger, items, title, align = 'end' }: ActionShee
               <button
                 key={item.key}
                 className={cn(
-                  'flex min-h-11 w-full items-center gap-2 px-4 text-left text-sm font-medium outline-none hover:bg-canvas focus-visible:bg-canvas',
+                  'flex min-h-12 w-full items-center gap-2 px-4 text-left text-sm font-medium outline-none hover:bg-canvas focus-visible:bg-canvas',
                   item.variant === 'destructive' ? 'text-danger' : 'text-text',
                 )}
                 disabled={item.disabled}

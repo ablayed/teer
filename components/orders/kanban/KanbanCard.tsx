@@ -33,7 +33,7 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
     >
       <div className="flex items-start justify-between gap-3">
         <Link
-          className="min-h-11 min-w-0 flex-1 font-mono text-sm font-semibold tabular-nums text-text focus-visible:outline-none"
+          className="min-h-12 min-w-0 flex-1 font-mono text-sm font-semibold tabular-nums text-text focus-visible:outline-none"
           href={orderHref}
         >
           {orderLabel}
@@ -47,13 +47,13 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
         </div>
       </div>
       <Link
-        className="min-h-11 min-w-0 text-sm text-text focus-visible:outline-none"
+        className="min-h-12 min-w-0 text-sm text-text focus-visible:outline-none"
         href={orderHref}
       >
         <span className="block truncate">{customerLabel}</span>
       </Link>
       <Link
-        className="mt-auto flex min-h-11 items-end justify-between gap-3 focus-visible:outline-none"
+        className="mt-auto flex min-h-12 items-end justify-between gap-3 focus-visible:outline-none"
         href={orderHref}
       >
         <span className="font-mono text-sm font-medium tabular-nums text-text">

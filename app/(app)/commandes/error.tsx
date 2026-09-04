@@ -13,7 +13,7 @@ export default function CommandesError({
           <h1 className="text-xl font-semibold">Impossible de charger les commandes</h1>
           <p className="text-sm">Rafraîchissez la liste ou réessayez dans quelques instants.</p>
           <button
-            className="min-h-11 rounded-lg bg-danger px-4 text-sm font-semibold text-white hover:opacity-90"
+            className="min-h-12 rounded-lg bg-danger px-4 text-sm font-semibold text-white hover:opacity-90"
             onClick={() => reset()}
             type="button"
           >

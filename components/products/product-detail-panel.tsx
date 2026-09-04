@@ -270,7 +270,7 @@ export function ProductDetailPanel({
           {message ? <output className="block text-sm text-muted">{message}</output> : null}
 
           <button
-            className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+            className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
             disabled={save.isExecuting || load.isExecuting}
             onClick={onSave}
             type="button"
@@ -304,7 +304,7 @@ export function ProductDetailPanel({
                   productLabel={product.title}
                 />
                 <button
-                  className="min-h-11 text-xs font-medium text-muted underline hover:text-text"
+                  className="min-h-12 text-xs font-medium text-muted underline hover:text-text"
                   onClick={() => setShowAdSpendForm(false)}
                   type="button"
                 >
@@ -313,7 +313,7 @@ export function ProductDetailPanel({
               </div>
             ) : (
               <button
-                className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas disabled:opacity-60"
+                className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium hover:bg-canvas disabled:opacity-60"
                 disabled={candidateLots == null}
                 onClick={() => {
                   setAdSpendMessage(null);

@@ -99,7 +99,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
       <label className="space-y-1">
         <span className="text-xs text-muted">Montant reçu (FCFA)</span>
         <input
-          className="min-h-11 w-36 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-12 w-36 rounded-md border border-border bg-canvas px-2 text-sm"
           disabled={pendingConfirm}
           min="0"
           onChange={(e) => {
@@ -115,7 +115,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
       <label className="space-y-1">
         <span className="text-xs text-muted">Moyen</span>
         <select
-          className="min-h-11 w-40 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-12 w-40 rounded-md border border-border bg-canvas px-2 text-sm"
           disabled={pendingConfirm}
           onChange={(e) => {
             setMethod(e.target.value as (typeof settlementMethods)[number]);
@@ -132,7 +132,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
       </label>
       {!pendingConfirm ? (
         <button
-          className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+          className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
           onClick={requestConfirm}
           type="button"
         >
@@ -151,7 +151,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
           </p>
           <div className="flex flex-wrap gap-2">
             <button
-              className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+              className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
               disabled={action.isExecuting}
               onClick={confirmSubmit}
               type="button"
@@ -159,7 +159,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
               {action.isExecuting ? 'En cours…' : 'Confirmer le versement'}
             </button>
             <button
-              className="min-h-11 rounded-md border border-border px-4 text-sm font-medium text-muted hover:bg-surface"
+              className="min-h-12 rounded-md border border-border px-4 text-sm font-medium text-muted hover:bg-surface"
               onClick={() => setPendingConfirm(false)}
               type="button"
             >

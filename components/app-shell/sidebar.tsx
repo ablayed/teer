@@ -104,7 +104,7 @@ export function Sidebar({
                   aria-current={active ? 'page' : undefined}
                   aria-label={t(item.labelKey)}
                   className={cn(
-                    'relative flex h-11 items-center gap-3 rounded-md px-4 text-[15px] font-medium transition',
+                    'relative flex h-12 items-center gap-3 rounded-md px-4 text-[15px] font-medium transition',
                     active ? 'bg-canvas text-text' : 'text-muted hover:bg-canvas hover:text-text',
                   )}
                   href={href}
@@ -124,7 +124,7 @@ export function Sidebar({
       </nav>
 
       <div className="mt-auto border-border border-t p-3">
-        <SignOutButton className="h-11 w-full justify-start text-muted hover:text-text" />
+        <SignOutButton className="h-12 w-full justify-start text-muted hover:text-text" />
       </div>
     </aside>
   );

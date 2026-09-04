@@ -40,7 +40,7 @@ export function ProductSearchBar({
         className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
       />
       <input
-        className="min-h-11 w-full rounded-lg border border-border bg-canvas pl-10 pr-3 text-sm text-text shadow-1"
+        className="min-h-12 w-full rounded-lg border border-border bg-canvas pl-10 pr-3 text-sm text-text shadow-1"
         onChange={handleChange}
         placeholder="Rechercher par titre ou SKU…"
         type="search"

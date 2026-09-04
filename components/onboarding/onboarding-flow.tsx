@@ -181,7 +181,7 @@ export function OnboardingFlow() {
                   <div className="space-y-2">
                     <Label htmlFor="countryCode">{t('fields.country')}</Label>
                     <select
-                      className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent focus:outline-none"
+                      className="h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent focus:outline-none"
                       id="countryCode"
                       name="countryCode"
                       onChange={(event) => setCountryCode(event.target.value as CountryCode)}

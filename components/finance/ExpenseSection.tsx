@@ -129,7 +129,7 @@ function ExpenseForm({
           {t('category')}
         </label>
         <select
-          className="block h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
+          className="block h-12 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
           id="expense-category"
           onChange={(e) => setCategoryId(e.target.value)}
           value={categoryId}
@@ -162,7 +162,7 @@ function ExpenseForm({
             {t('freeText')}
           </label>
           <input
-            className="block h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
+            className="block h-12 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
             id="expense-freetext"
             maxLength={100}
             onChange={(e) => setFreeText(e.target.value)}
@@ -178,7 +178,7 @@ function ExpenseForm({
             {t('amount')}
           </label>
           <input
-            className="block h-11 w-full rounded-md border border-border bg-surface px-3 font-mono text-sm text-text tabular-nums"
+            className="block h-12 w-full rounded-md border border-border bg-surface px-3 font-mono text-sm text-text tabular-nums"
             id="expense-amount"
             min="1"
             onChange={(e) => setAmount(e.target.value)}
@@ -193,7 +193,7 @@ function ExpenseForm({
             {t('date')}
           </label>
           <input
-            className="block h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
+            className="block h-12 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
             id="expense-date"
             onChange={(e) => setDate(e.target.value)}
             required
@@ -208,7 +208,7 @@ function ExpenseForm({
           {t('note')}
         </label>
         <input
-          className="block h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
+          className="block h-12 w-full rounded-md border border-border bg-surface px-3 text-sm text-text"
           id="expense-note"
           maxLength={500}
           onChange={(e) => setNote(e.target.value)}
@@ -221,14 +221,14 @@ function ExpenseForm({
 
       <div className="flex gap-3">
         <button
-          className="min-h-11 flex-1 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover disabled:opacity-60"
+          className="min-h-12 flex-1 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover disabled:opacity-60"
           disabled={isPending}
           type="submit"
         >
           {isPending ? '…' : t('save')}
         </button>
         <button
-          className="min-h-11 rounded-md border border-border px-4 text-sm font-medium text-muted hover:bg-canvas hover:text-text"
+          className="min-h-12 rounded-md border border-border px-4 text-sm font-medium text-muted hover:bg-canvas hover:text-text"
           onClick={onCancel}
           type="button"
         >
@@ -292,7 +292,7 @@ export function ExpenseSection({
         </div>
         {formState === null && (
           <button
-            className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
+            className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
             onClick={() => setFormState({ mode: 'create' })}
             type="button"
           >

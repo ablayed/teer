@@ -136,7 +136,7 @@ export function StoreSwitcher({
               <a
                 aria-current={active ? 'true' : undefined}
                 className={cn(
-                  'flex min-h-11 items-center gap-2 rounded-md px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'flex min-h-12 items-center gap-2 rounded-md px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active ? 'bg-accent-subtle text-accent-deep' : 'text-text hover:bg-canvas',
                 )}
                 href={buildStoreSwitchHref(pathname ?? '', store.id, search)}

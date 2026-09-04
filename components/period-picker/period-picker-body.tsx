@@ -50,7 +50,7 @@ export function PeriodPickerBody({
 
   const rowClass = (selected: boolean) =>
     cn(
-      'flex min-h-11 w-full items-center justify-between rounded-md px-3 text-left text-sm font-medium transition',
+      'flex min-h-12 w-full items-center justify-between rounded-md px-3 text-left text-sm font-medium transition',
       selected ? 'bg-accent-subtle text-accent-deep' : 'text-text hover:bg-canvas',
     );
 
@@ -103,7 +103,7 @@ export function PeriodPickerBody({
                       : undefined
                 }
                 aria-invalid={Boolean(fromError || rangeError)}
-                className="h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+                className="h-12 rounded-md border border-border bg-surface px-3 text-sm text-text"
                 onChange={(event) => setDraftFrom(event.target.value)}
                 inputMode="numeric"
                 placeholder={t('datePlaceholder')}
@@ -130,7 +130,7 @@ export function PeriodPickerBody({
                       : undefined
                 }
                 aria-invalid={Boolean(toError || rangeError)}
-                className="h-11 rounded-md border border-border bg-surface px-3 text-sm text-text"
+                className="h-12 rounded-md border border-border bg-surface px-3 text-sm text-text"
                 onChange={(event) => setDraftTo(event.target.value)}
                 inputMode="numeric"
                 placeholder={t('datePlaceholder')}

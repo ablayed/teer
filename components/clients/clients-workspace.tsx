@@ -231,7 +231,7 @@ function ClientRow({
           trigger={
             <button
               aria-label={`${t('actions.more')} — ${name}`}
-              className="inline-flex size-11 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex size-12 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               type="button"
             >
               <MoreHorizontal aria-hidden="true" className="size-4" />
@@ -243,7 +243,7 @@ function ClientRow({
         phone ? (
           <a
             aria-label={`${t('actions.whatsapp')} — ${name}`}
-            className="inline-flex size-11 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex size-12 items-center justify-center rounded-md text-muted hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             href={toWhatsAppLink(phone)}
             rel="noreferrer"
             target="_blank"
@@ -280,7 +280,7 @@ function DetailActionBar({
       <a
         aria-disabled={!canCall}
         className={cn(
-          'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium',
+          'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium',
           canCall ? 'bg-surface text-text hover:bg-canvas' : 'pointer-events-none text-muted',
         )}
         href={phone ? `tel:${phone.replace(/\s/g, '')}` : undefined}
@@ -291,7 +291,7 @@ function DetailActionBar({
       <a
         aria-disabled={!canCall}
         className={cn(
-          'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium',
+          'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium',
           canCall ? 'bg-surface text-text hover:bg-canvas' : 'pointer-events-none text-muted',
         )}
         href={phone ? toWhatsAppLink(phone) : undefined}
@@ -302,13 +302,13 @@ function DetailActionBar({
         {t('actions.whatsapp')}
       </a>
       {customer.tier === 'watch' ? (
-        <Button className="min-h-11" type="button" variant="secondary">
+        <Button className="min-h-12" type="button" variant="secondary">
           {t('actions.requestConfirmation')}
         </Button>
       ) : null}
       {customer.tier === 'risk' ? (
         <Button
-          className="min-h-11"
+          className="min-h-12"
           disabled
           title={t('actions.depositSoon')}
           type="button"
@@ -319,7 +319,7 @@ function DetailActionBar({
       ) : null}
       {customer.tier === 'risk' ? (
         <Button
-          className="min-h-11"
+          className="min-h-12"
           disabled
           title={t('actions.noteSoon')}
           type="button"
@@ -329,7 +329,7 @@ function DetailActionBar({
         </Button>
       ) : null}
       <Link
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-accent-ink hover:bg-accent-hover"
+        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-accent-ink hover:bg-accent-hover"
         href={`/s/${storeId}/commandes`}
       >
         {t('actions.orders')}
@@ -381,7 +381,7 @@ function CustomerSheet({
             </div>
             <button
               aria-label={t('sheet.close')}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg hover:bg-canvas"
+              className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg hover:bg-canvas"
               onClick={onClose}
               type="button"
             >

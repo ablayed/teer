@@ -86,7 +86,7 @@ export function FinanceSettingsPanel({ currentRole, settings }: FinanceSettingsP
         <span className="text-sm font-medium">{label}</span>
         <div className="flex items-center gap-2">
           <input
-            className="h-11 w-full rounded-md border border-border bg-canvas px-3 font-mono tabular-nums disabled:text-muted"
+            className="h-12 w-full rounded-md border border-border bg-canvas px-3 font-mono tabular-nums disabled:text-muted"
             disabled={readOnly}
             max={10_000}
             min={0}
@@ -123,7 +123,7 @@ export function FinanceSettingsPanel({ currentRole, settings }: FinanceSettingsP
         <label className="space-y-2">
           <span className="text-sm font-medium">{t('transferTaxCap')}</span>
           <input
-            className="h-11 w-full rounded-md border border-border bg-canvas px-3 font-mono tabular-nums disabled:text-muted"
+            className="h-12 w-full rounded-md border border-border bg-canvas px-3 font-mono tabular-nums disabled:text-muted"
             disabled={readOnly}
             min={0}
             onChange={(event) => setTransferTaxCapMinor(Number(event.target.value))}
@@ -148,7 +148,7 @@ export function FinanceSettingsPanel({ currentRole, settings }: FinanceSettingsP
         <label className="space-y-2">
           <span className="text-sm font-medium">{t('deliveryCost')}</span>
           <input
-            className="h-11 w-full rounded-md border border-border bg-canvas px-3 font-mono tabular-nums disabled:text-muted"
+            className="h-12 w-full rounded-md border border-border bg-canvas px-3 font-mono tabular-nums disabled:text-muted"
             disabled={readOnly}
             min={0}
             onChange={(event) => setDefaultDeliveryCostMinor(Number(event.target.value))}
@@ -159,7 +159,7 @@ export function FinanceSettingsPanel({ currentRole, settings }: FinanceSettingsP
             {formatMoney(defaultDeliveryCostMinor, 'XOF')}
           </span>
         </label>
-        <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-canvas px-3">
+        <label className="flex min-h-12 items-center gap-3 rounded-md border border-border bg-canvas px-3">
           <input
             checked={cogsKnown}
             disabled={readOnly}
@@ -173,7 +173,7 @@ export function FinanceSettingsPanel({ currentRole, settings }: FinanceSettingsP
           <output className="mb-3 block text-sm text-muted">{notice}</output>
           {!readOnly ? (
             <button
-              className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover disabled:opacity-60"
+              className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover disabled:opacity-60"
               disabled={updateSettings.isExecuting}
               type="submit"
             >

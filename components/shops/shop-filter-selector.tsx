@@ -47,7 +47,7 @@ export function ShopFilterSelector({
   }
 
   const itemClass = (active: boolean) =>
-    `grid min-h-11 place-items-center rounded-md px-3 text-sm font-medium ${
+    `grid min-h-12 place-items-center rounded-md px-3 text-sm font-medium ${
       active ? 'bg-accent text-text' : 'text-muted hover:text-text'
     }`;
 

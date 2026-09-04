@@ -211,7 +211,7 @@ async function FinanceTabBar({
   const t = await getTranslations('finance');
   const periodParams = periodLinkParams(period, from, to);
   const tabClass = (active: boolean) =>
-    `grid min-h-11 place-items-center rounded-md px-4 text-sm font-medium ${
+    `grid min-h-12 place-items-center rounded-md px-4 text-sm font-medium ${
       active ? 'bg-accent text-text' : 'text-muted hover:text-text'
     }`;
 

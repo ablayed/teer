@@ -410,7 +410,7 @@ export function PurchaseLotDetailPanel({
                       <button
                         type="button"
                         onClick={() => setAdSpendOpenFor(null)}
-                        className="mt-2 min-h-11 text-xs font-medium text-muted underline hover:text-text"
+                        className="mt-2 min-h-12 text-xs font-medium text-muted underline hover:text-text"
                       >
                         Annuler
                       </button>
@@ -419,7 +419,7 @@ export function PurchaseLotDetailPanel({
                     <button
                       type="button"
                       onClick={() => setAdSpendOpenFor(line.purchaseLotLineId)}
-                      className="inline-flex min-h-11 items-center rounded-md border border-border bg-surface px-3 text-xs font-medium text-text hover:bg-canvas"
+                      className="inline-flex min-h-12 items-center rounded-md border border-border bg-surface px-3 text-xs font-medium text-text hover:bg-canvas"
                     >
                       + Ajouter une dépense publicitaire
                     </button>
@@ -505,7 +505,7 @@ function MethodSelector({
               disabled={disabled || setMethod.isExecuting}
               onClick={() => handleSelect(method)}
               className={cn(
-                'min-h-11 rounded-md border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50',
+                'min-h-12 rounded-md border px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50',
                 selected
                   ? 'border-accent bg-accent-subtle text-text'
                   : 'border-border text-text hover:bg-canvas',
@@ -666,13 +666,13 @@ function WeightEditorRow({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onBlur={handleBlur}
-          className="min-h-11 w-28 min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-sm tabular-nums"
+          className="min-h-12 w-28 min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-sm tabular-nums"
         />
         <button
           type="button"
           onClick={handleSave}
           disabled={weightAction.state === 'saving'}
-          className="min-h-11 shrink-0 rounded-md border border-border px-3 text-xs font-medium text-text hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-12 shrink-0 rounded-md border border-border px-3 text-xs font-medium text-text hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
         >
           {WEIGHT_BUTTON_LABEL[weightAction.state]}
         </button>

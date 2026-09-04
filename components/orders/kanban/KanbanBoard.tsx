@@ -276,7 +276,7 @@ function MobileTransitionMenu({
         >
           {actions.map((action) => (
             <button
-              className="flex min-h-11 w-full items-center rounded-sm px-3 text-left text-sm text-text hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              className="flex min-h-12 w-full items-center rounded-sm px-3 text-left text-sm text-text hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
               key={action}
               onClick={async () => {
                 setOpen(false);

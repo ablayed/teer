@@ -34,7 +34,7 @@ export function ConnectShopBanner({ hasShop }: ConnectShopBannerProps) {
           </div>
           <Link
             className={cn(
-              'inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-5 font-medium text-[#111] transition hover:bg-accent-soft',
+              'inline-flex min-h-12 items-center justify-center rounded-lg bg-accent px-5 font-medium text-[#111] transition hover:bg-accent-soft',
             )}
             href="/boutiques"
           >

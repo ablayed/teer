@@ -40,7 +40,7 @@ export function ReportDownloadButton({
     <div className="space-y-2">
       <a
         className={cn(
-          'inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover',
+          'inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover',
           isLoading && 'pointer-events-none opacity-80',
         )}
         href={href}

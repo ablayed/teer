@@ -137,7 +137,7 @@ function PurchaseCell({
       <div className="flex flex-wrap items-center justify-end gap-1">
         <input
           aria-label={t('purchaseUnitPlaceholder')}
-          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-right text-sm md:min-h-9"
+          className="min-h-12 w-24 rounded-md border border-border bg-canvas px-2 text-right text-sm md:min-h-9"
           inputMode="numeric"
           min="0"
           onChange={(event) => setValue(event.target.value)}
@@ -146,7 +146,7 @@ function PurchaseCell({
           value={value}
         />
         <button
-          className="min-h-11 rounded-md px-2 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
+          className="min-h-12 rounded-md px-2 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
           disabled={action.isExecuting}
           onClick={submit}
           type="button"
@@ -154,7 +154,7 @@ function PurchaseCell({
           {action.isExecuting ? '…' : t('save')}
         </button>
         <button
-          className="min-h-11 rounded-md px-2 text-sm text-muted underline md:min-h-9"
+          className="min-h-12 rounded-md px-2 text-sm text-muted underline md:min-h-9"
           onClick={() => setEditing(false)}
           type="button"
         >
@@ -269,7 +269,7 @@ function ProductCard({
 
       <button
         aria-expanded={expanded}
-        className="mt-3 min-h-11 w-full rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+        className="mt-3 min-h-12 w-full rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
         onClick={onToggle}
         type="button"
       >
@@ -341,13 +341,13 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              className="min-h-11 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-canvas hover:text-text"
+              className="min-h-12 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-canvas hover:text-text"
               href={`/s/${storeId}/finances?tab=global#depenses`}
             >
               {t('editExpenses')}
             </Link>
             <Link
-              className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-text hover:bg-accent-hover"
+              className="min-h-12 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-text hover:bg-accent-hover"
               href={`/s/${storeId}/commandes`}
             >
               {t('editOrders')}
@@ -442,7 +442,7 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
                           <td className="px-4 py-3 text-right">
                             <button
                               aria-expanded={expanded}
-                              className="min-h-11 rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+                              className="min-h-12 rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
                               onClick={() => toggleRow(row.productId)}
                               type="button"
                             >

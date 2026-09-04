@@ -40,7 +40,7 @@ export function PeriodPicker({ align = 'end', presets = PERIOD_PRESETS }: Period
       aria-haspopup="dialog"
       aria-label={t('triggerAria', { label })}
       className={cn(
-        'inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-text shadow-1 transition hover:bg-canvas data-[pending]:opacity-70',
+        'inline-flex min-h-12 max-w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-text shadow-1 transition hover:bg-canvas data-[pending]:opacity-70',
       )}
       data-pending={isPending ? '' : undefined}
       onClick={() => setOpen(true)}

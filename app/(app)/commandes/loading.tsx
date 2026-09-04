@@ -9,7 +9,7 @@ export default function CommandesLoading() {
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {['chip-1', 'chip-2', 'chip-3', 'chip-4'].map((key) => (
-          <div className="dashboard-shimmer h-11 w-32 rounded-full" key={key} />
+          <div className="dashboard-shimmer h-12 w-32 rounded-full" key={key} />
         ))}
       </div>
       <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-1">

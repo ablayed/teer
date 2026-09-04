@@ -60,7 +60,7 @@ export function NextActionsListMotion({
             {item.phoneRaw ? (
               <a
                 aria-label={`Appeler ${item.customerName}`}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover"
                 href={`tel:${item.phoneRaw.replace(/\s/g, '')}`}
               >
                 <Phone aria-hidden="true" className="size-4" />
