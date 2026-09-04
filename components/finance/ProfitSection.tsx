@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import { type FinanceReport, isProfitCoverageIncomplete } from '@/lib/finance/profit';
 import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
@@ -47,9 +48,7 @@ function ProfitRow({
         <span className={`text-sm ${textClass}`}>{label}</span>
         {note ? <span className="ml-2 text-xs text-muted">({note})</span> : null}
       </div>
-      <span className={`shrink-0 font-mono text-sm tabular-nums ${textClass}`}>
-        {formatMoney(value, 'XOF')}
-      </span>
+      <Amount amountMinor={value} className={`shrink-0 font-mono text-sm ${textClass}`} />
     </div>
   );
 }

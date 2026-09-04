@@ -1,7 +1,7 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import { updateMerchantSettingsAction } from '@/lib/actions/finance-settings';
-import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
@@ -131,7 +131,7 @@ export function FinanceSettingsPanel({ currentRole, settings }: FinanceSettingsP
             value={transferTaxCapMinor}
           />
           <span className="block text-xs text-muted">
-            {formatMoney(transferTaxCapMinor, 'XOF')}
+            <Amount amountMinor={transferTaxCapMinor} />
           </span>
         </label>
         {bpsInput({ label: t('waveFee'), onChange: setWaveFeeBps, value: waveFeeBps })}
@@ -156,7 +156,7 @@ export function FinanceSettingsPanel({ currentRole, settings }: FinanceSettingsP
             value={defaultDeliveryCostMinor}
           />
           <span className="block text-xs text-muted">
-            {formatMoney(defaultDeliveryCostMinor, 'XOF')}
+            <Amount amountMinor={defaultDeliveryCostMinor} />
           </span>
         </label>
         <label className="flex min-h-12 items-center gap-3 rounded-md border border-border bg-canvas px-3">

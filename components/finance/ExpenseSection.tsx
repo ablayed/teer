@@ -1,11 +1,11 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import {
   createExpenseAction,
   deleteExpenseAction,
   updateExpenseAction,
 } from '@/lib/actions/expenses';
-import { formatMoney } from '@/lib/format/fcfa';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useCallback, useState, useTransition } from 'react';
@@ -285,8 +285,8 @@ export function ExpenseSection({
         <div>
           <h2 className="text-base font-semibold text-text">{t('title')}</h2>
           {totalMinor > 0 && (
-            <p className="mt-0.5 font-mono text-sm tabular-nums text-muted">
-              {t('total')} : {formatMoney(totalMinor, 'XOF')}
+            <p className="mt-0.5 text-sm text-muted">
+              {t('total')} : <Amount amountMinor={totalMinor} className="font-mono" />
             </p>
           )}
         </div>
@@ -334,9 +334,10 @@ export function ExpenseSection({
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <span className="font-mono text-sm tabular-nums text-text">
-                    {formatMoney(expense.amount_minor, 'XOF')}
-                  </span>
+                  <Amount
+                    amountMinor={expense.amount_minor}
+                    className="font-mono text-sm text-text"
+                  />
                   <button
                     className="text-xs text-muted hover:text-text"
                     onClick={() => setFormState({ mode: 'edit', expense })}

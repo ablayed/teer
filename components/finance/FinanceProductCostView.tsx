@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import { DefinitionCard } from '@/components/ui/definition-card';
 import { updateProductUnitCostAction } from '@/lib/actions/products';
 import type { FinanceProductCostReport, FinanceProductCostRow } from '@/lib/finance/product-cost';
@@ -86,7 +87,12 @@ function ProfitValue({ row, value }: { row: FinanceProductCostRow; value: number
       </span>
     );
   }
-  return <span className={value < 0 ? 'text-danger' : 'text-success'}>{money(value)}</span>;
+  return (
+    <Amount
+      amountMinor={value}
+      className={`font-mono ${value < 0 ? 'text-danger' : 'text-success'}`}
+    />
+  );
 }
 
 // Cellule « Prix d'achat » éditable in-cell (pattern du seuil par produit). Éditable
@@ -171,7 +177,7 @@ function PurchaseCell({
         <CostMissingBadge />
       ) : (
         <>
-          <span>{money(row.purchasePriceMinor)}</span>
+          <Amount amountMinor={row.purchasePriceMinor} className="font-mono" />
           {row.estimated ? <EstimatedBadge /> : null}
         </>
       )}
@@ -196,16 +202,24 @@ function DetailRow({ row }: { row: FinanceProductCostRow }) {
     <div className="grid gap-3 rounded-md border border-border bg-canvas p-3 sm:grid-cols-4">
       <div>
         <p className="text-xs text-muted">{t('ads')}</p>
-        <p className="font-mono tabular-nums">{money(row.adsAllocatedMinor)}</p>
+        <p>
+          <Amount amountMinor={row.adsAllocatedMinor} className="font-mono" />
+        </p>
       </div>
       <div>
         <p className="text-xs text-muted">{t('delivery')}</p>
-        <p className="font-mono tabular-nums">{money(row.deliveryAllocatedMinor)}</p>
+        <p>
+          <Amount amountMinor={row.deliveryAllocatedMinor} className="font-mono" />
+        </p>
       </div>
       <div>
         <p className="text-xs text-muted">{t('totalCost')}</p>
-        <p className="font-mono tabular-nums">
-          {row.costMissing ? <span className="text-muted">—</span> : money(row.totalCostMinor)}
+        <p>
+          {row.costMissing ? (
+            <span className="text-muted">—</span>
+          ) : (
+            <Amount amountMinor={row.totalCostMinor} className="font-mono" />
+          )}
         </p>
       </div>
       <div>
@@ -248,7 +262,9 @@ function ProductCard({
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[11px] text-muted">{t('revenue')}</p>
-          <p className="font-mono text-lg font-semibold tabular-nums">{money(row.revenueMinor)}</p>
+          <p className="text-lg font-semibold">
+            <Amount amountMinor={row.revenueMinor} className="font-mono" />
+          </p>
         </div>
       </div>
 
@@ -360,19 +376,19 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
             definition={t('cards.purchase.definition')}
             formula={t('cards.purchase.formula')}
             label={t('cards.purchase.label')}
-            value={money(totals.purchase)}
+            value={<Amount amountMinor={totals.purchase} className="font-mono" />}
           />
           <DefinitionCard
             definition={t('cards.totalCost.definition')}
             formula={t('cards.totalCost.formula')}
             label={t('cards.totalCost.label')}
-            value={money(totals.totalCost)}
+            value={<Amount amountMinor={totals.totalCost} className="font-mono" />}
           />
           <DefinitionCard
             definition={t('cards.profitAfter.definition')}
             formula={t('cards.profitAfter.formula')}
             label={t('cards.profitAfter.label')}
-            value={money(totals.profitAfter)}
+            value={<Amount amountMinor={totals.profitAfter} className="font-mono" />}
           />
         </div>
 
@@ -430,13 +446,13 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
                           <td className="px-4 py-3 text-right font-mono tabular-nums">
                             {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
-                            {money(row.revenueMinor)}
+                          <td className="px-4 py-3 text-right">
+                            <Amount amountMinor={row.revenueMinor} className="font-mono" />
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3 text-right">
                             <PurchaseCell onUpdated={handleUpdated} row={row} />
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3 text-right">
                             <ProfitValue row={row} value={row.profitBeforeMinor} />
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -465,14 +481,14 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
                     <td className="px-4 py-3 text-right font-mono tabular-nums">
                       {new Intl.NumberFormat('fr-FR').format(totals.qty)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {money(totals.revenue)}
+                    <td className="px-4 py-3 text-right">
+                      <Amount amountMinor={totals.revenue} className="font-mono" />
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {money(totals.purchase)}
+                    <td className="px-4 py-3 text-right">
+                      <Amount amountMinor={totals.purchase} className="font-mono" />
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {money(totals.profitBefore)}
+                    <td className="px-4 py-3 text-right">
+                      <Amount amountMinor={totals.profitBefore} className="font-mono" />
                     </td>
                     <td className="px-4 py-3" />
                   </tr>
@@ -495,20 +511,23 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
                 <dl className="mt-2 space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <dt className="text-muted">{t('table.revenue')}</dt>
-                    <dd className="font-mono tabular-nums">{money(totals.revenue)}</dd>
+                    <dd>
+                      <Amount amountMinor={totals.revenue} className="font-mono" />
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <dt className="text-muted">{t('table.purchase')}</dt>
-                    <dd className="font-mono tabular-nums">{money(totals.purchase)}</dd>
+                    <dd>
+                      <Amount amountMinor={totals.purchase} className="font-mono" />
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <dt className="text-muted">{t('table.profitAfter')}</dt>
-                    <dd
-                      className={`font-mono tabular-nums ${
-                        totals.profitAfter < 0 ? 'text-danger' : 'text-success'
-                      }`}
-                    >
-                      {money(totals.profitAfter)}
+                    <dd>
+                      <Amount
+                        amountMinor={totals.profitAfter}
+                        className={`font-mono ${totals.profitAfter < 0 ? 'text-danger' : 'text-success'}`}
+                      />
                     </dd>
                   </div>
                 </dl>

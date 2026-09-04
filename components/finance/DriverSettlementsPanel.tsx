@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import {
   getDriverSettlementsAction,
   recordSettlementAction,
@@ -222,8 +223,8 @@ export function DriverSettlementsPanel({
                     {tone === 'danger' ? t('settlements.late') : t('settlements.current')}
                   </span>
                 </div>
-                <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">
-                  {formatMoney(driver.outstandingMinor, 'XOF')}
+                <p className="mt-3 text-2xl font-semibold">
+                  <Amount amountMinor={driver.outstandingMinor} className="font-mono" />
                 </p>
               </button>
             );
@@ -238,9 +239,9 @@ export function DriverSettlementsPanel({
                 <p className="mt-1 text-sm text-muted">{t('settlements.reliability')}</p>
                 <output
                   aria-label={t('settlements.ariaTotal')}
-                  className="mt-3 block font-mono text-3xl font-semibold tabular-nums"
+                  className="mt-3 block text-3xl font-semibold"
                 >
-                  {formatMoney(selectedDriver.outstandingMinor, 'XOF')}
+                  <Amount amountMinor={selectedDriver.outstandingMinor} className="font-mono" />
                 </output>
               </div>
               <button
@@ -265,8 +266,8 @@ export function DriverSettlementsPanel({
                     </p>
                     <p className="text-xs text-muted">{formatDateRelative(order.deliveredAt)}</p>
                   </div>
-                  <p className="font-mono text-sm font-semibold tabular-nums">
-                    {formatMoney(order.outstandingMinor, 'XOF')}
+                  <p className="text-sm font-semibold">
+                    <Amount amountMinor={order.outstandingMinor} className="font-mono" />
                   </p>
                 </div>
               ))}
@@ -288,7 +289,7 @@ export function DriverSettlementsPanel({
                       <div className="flex items-center justify-between gap-3">
                         <p className="flex items-center gap-2 text-sm font-semibold text-danger">
                           <AlertTriangle aria-hidden="true" className="size-4" />
-                          {formatMoney(shortfall.shortfallMinor, 'XOF')}
+                          <Amount amountMinor={shortfall.shortfallMinor} />
                         </p>
                         {currentRole === 'owner' ? (
                           <button

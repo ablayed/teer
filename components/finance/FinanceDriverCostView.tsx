@@ -1,3 +1,4 @@
+import { Amount } from '@/components/ui/amount';
 import type { FinanceDriverCostReport } from '@/lib/finance/driver-cost';
 import { formatMoney } from '@/lib/format/fcfa';
 import { getTranslations } from 'next-intl/server';
@@ -27,8 +28,8 @@ export async function FinanceDriverCostView({ from, report, scopeNote, to }: Pro
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <section className="rounded-lg border border-border bg-canvas p-4">
             <p className="text-[13px] font-medium text-muted">{t('cards.cogs')}</p>
-            <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">
-              {formatMoney(report.totalCogsMinor, 'XOF')}
+            <p className="mt-2 text-2xl font-semibold">
+              <Amount amountMinor={report.totalCogsMinor} className="font-mono" />
             </p>
             <p className="mt-2 text-sm text-muted">{t('cards.cogsHint')}</p>
           </section>
@@ -41,8 +42,8 @@ export async function FinanceDriverCostView({ from, report, scopeNote, to }: Pro
           </section>
           <section className="rounded-lg border border-border bg-canvas p-4">
             <p className="text-[13px] font-medium text-muted">{t('cards.unit')}</p>
-            <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">
-              {formatMoney(totalAverageUnitCogs, 'XOF')}
+            <p className="mt-2 text-2xl font-semibold">
+              <Amount amountMinor={totalAverageUnitCogs} className="font-mono" />
             </p>
             <p className="mt-2 text-sm text-muted">{t('cards.unitHint')}</p>
           </section>
@@ -92,21 +93,20 @@ export async function FinanceDriverCostView({ from, report, scopeNote, to }: Pro
                     <td className="px-4 py-3 text-right font-mono tabular-nums">
                       {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {formatMoney(row.cogsMinor, 'XOF')}
+                    <td className="px-4 py-3 text-right">
+                      <Amount amountMinor={row.cogsMinor} className="font-mono" />
                     </td>
                     {report.totalRevenueMinor > 0 ? (
-                      <td className="px-4 py-3 text-right font-mono tabular-nums">
-                        {formatMoney(row.revenueMinor ?? 0, 'XOF')}
+                      <td className="px-4 py-3 text-right">
+                        <Amount amountMinor={row.revenueMinor ?? 0} className="font-mono" />
                       </td>
                     ) : null}
                     {report.totalRevenueMinor > 0 ? (
-                      <td
-                        className={`px-4 py-3 text-right font-mono tabular-nums ${
-                          (row.marginMinor ?? 0) < 0 ? 'text-danger' : 'text-success'
-                        }`}
-                      >
-                        {formatMoney(row.marginMinor ?? 0, 'XOF')}
+                      <td className="px-4 py-3 text-right">
+                        <Amount
+                          amountMinor={row.marginMinor ?? 0}
+                          className={`font-mono ${(row.marginMinor ?? 0) < 0 ? 'text-danger' : 'text-success'}`}
+                        />
                       </td>
                     ) : null}
                   </tr>

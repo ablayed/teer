@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 
 // Card « à définition » partagée : un libellé marchand + une explication en langage
 // simple révélée AU TAP (pas au survol — mobile-first). Deux variantes :
@@ -58,8 +58,8 @@ export function DefinitionCard({
   description?: string;
   formula?: string;
   label: string;
-  // Valeur déjà formatée (FCFA, %, compte…) — la card est générique.
-  value: string;
+  // Valeur déjà formatée (FCFA via <Amount>, %, compte…) — la card est générique.
+  value: ReactNode;
 }) {
   const t = useTranslations('definitionCard');
   const [open, setOpen] = useState(false);
