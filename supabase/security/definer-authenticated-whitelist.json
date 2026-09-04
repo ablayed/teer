@@ -1,0 +1,385 @@
+[
+  {
+    "schema": "public",
+    "name": "is_shop_member_of",
+    "argsSignature": "p_shop_id uuid",
+    "role": "any authenticated shop member",
+    "nature": "read",
+    "status": "covered",
+    "test": "tests/rls/s4-uncovered-definer-authenticated.rls.test.ts"
+  },
+  {
+    "schema": "public",
+    "name": "list_my_stores",
+    "argsSignature": "",
+    "role": "any authenticated user",
+    "nature": "read",
+    "status": "covered",
+    "test": "tests/rls/s4-uncovered-definer-authenticated.rls.test.ts"
+  },
+  {
+    "schema": "public",
+    "name": "cash_aging",
+    "argsSignature": "p_merchant uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "covered",
+    "test": "tests/rls/s4-uncovered-definer-authenticated.rls.test.ts"
+  },
+  {
+    "schema": "public",
+    "name": "purge_pcd_access_audit",
+    "argsSignature": "p_before timestamp with time zone, p_batch_size integer",
+    "role": "service_role only (internal guard at supabase/migrations/0123_s1c_pcd_access_audit.sql:457, `auth.role() <> 'service_role'` -> raise exception; EXECUTE grant to authenticated is broader than the runtime guard needs, inherited from a pre-0123 version and never revoked — see docs/security/s4-rapport.md §3)",
+    "nature": "write",
+    "status": "covered",
+    "test": "tests/rls/s4-uncovered-definer-authenticated.rls.test.ts"
+  },
+  {
+    "schema": "public",
+    "name": "correct_purchase_lot_cost",
+    "argsSignature": "p_merchant_account_id uuid, p_purchase_lot_id uuid, p_purchase_lot_line_id uuid, p_field text, p_new_value bigint, p_actor_id uuid",
+    "role": "owner",
+    "nature": "write",
+    "status": "covered",
+    "test": "tests/rls/lot-f1-finances-v2-socle.rls.test.ts"
+  },
+  {
+    "schema": "public",
+    "name": "receive_purchase_lot",
+    "argsSignature": "p_lot_id uuid, p_merchant_account_id uuid, p_actor_id uuid, p_lines jsonb",
+    "role": "owner, manager",
+    "nature": "write",
+    "status": "covered",
+    "test": "tests/rls/lot-s3-receive-purchase-lot-shop-guard.rls.test.ts"
+  },
+  {
+    "schema": "public",
+    "name": "current_shop_role",
+    "argsSignature": "p_shop_id uuid",
+    "role": "any authenticated shop member (returns own role or NULL)",
+    "nature": "read",
+    "status": "covered",
+    "test": "tests/rls/lot-s3-receive-purchase-lot-shop-guard.rls.test.ts"
+  },
+  {
+    "schema": "public",
+    "name": "accept_invitation",
+    "argsSignature": "p_token text",
+    "role": "any authenticated user",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (invitation-organization-guard.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4 — à revérifier manuellement."
+  },
+  {
+    "schema": "public",
+    "name": "accept_pending_invitation_by_email",
+    "argsSignature": "p_invitation_id uuid",
+    "role": "any authenticated user",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (pending-invitation-by-email.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "consume_pcd_access_quota",
+    "argsSignature": "p_tenant_id uuid, p_shop_id uuid, p_actor_kind text, p_service_kind text, p_action text",
+    "role": "authenticated (internal quota accounting)",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (s1c2-pcd-access-controls.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "consume_shopify_dsar_download_authorization",
+    "argsSignature": "p_download_token text, p_tenant_id uuid, p_shop_id uuid, p_artifact_id uuid",
+    "role": "authenticated (one-shot token consumption)",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (s1c3-dsar-one-shot.rls.test.ts + 2 tests unitaires) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "current_member_role",
+    "argsSignature": "p_account uuid",
+    "role": "any authenticated member (returns own role or NULL)",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (lot-s3-receive-purchase-lot-shop-guard, order-note, tenant-isolation, workspace-store-function-derivation) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "finance_kpis",
+    "argsSignature": "p_merchant uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (finance-delivered-count, finance-driver-cash, finance-kpis-cash-collected-at + 2 unit) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_dashboard_cash_collected_total",
+    "argsSignature": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (dashboard-period-metrics.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_dashboard_deliveries_by_product",
+    "argsSignature": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (dashboard-period-metrics.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_dashboard_shop_performance",
+    "argsSignature": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (dashboard-period-metrics.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_driver_cash_consolidation",
+    "argsSignature": "p_merchant_id uuid, p_driver_id uuid, p_period_from timestamp with time zone, p_period_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (dashboard-period-metrics, finance-driver-cash) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_driver_cash_outstanding_orders",
+    "argsSignature": "p_merchant_id uuid, p_driver_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (finance-driver-cash.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_my_store",
+    "argsSignature": "p_shop_id uuid",
+    "role": "any authenticated shop member",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (workspace-store.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_report_driver_cash_pending",
+    "argsSignature": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (finance-driver-cash.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_report_revenue_by_day",
+    "argsSignature": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (report-non-cash-aggregates.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_report_status_breakdown",
+    "argsSignature": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (report-non-cash-aggregates.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "get_report_top_products",
+    "argsSignature": "p_merchant_id uuid, p_from timestamp with time zone, p_to timestamp with time zone, p_shop_id uuid",
+    "role": "owner, manager",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (report-non-cash-aggregates.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "ia_count_recent_tool_calls",
+    "argsSignature": "p_merchant_account_id uuid, p_since timestamp with time zone",
+    "role": "any authenticated member",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (ia-assistant.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "ia_finance_cost_movements",
+    "argsSignature": "p_merchant uuid, p_order_ids uuid[]",
+    "role": "any authenticated member",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (ia-assistant.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "ia_product_cump",
+    "argsSignature": "p_merchant uuid, p_product_ids uuid[]",
+    "role": "any authenticated member",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (ia-assistant.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "is_driver_in_shop",
+    "argsSignature": "p_merchant_account_id uuid, p_driver_id uuid, p_shop_id uuid",
+    "role": "any authenticated member",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (driver-store-scope.rls.test.ts + 1 unit) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "is_member_of",
+    "argsSignature": "p_merchant_account_id uuid",
+    "role": "any authenticated user",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (tenant-isolation.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "issue_shopify_dsar_download_authorization",
+    "argsSignature": "p_tenant_id uuid, p_shop_id uuid, p_artifact_id uuid",
+    "role": "owner, manager",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (s1c3-dsar-one-shot.rls.test.ts + 1 unit) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "list_my_pending_invitations",
+    "argsSignature": "",
+    "role": "any authenticated user",
+    "nature": "read",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (pending-invitation-by-email.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "log_ia_tool_audit",
+    "argsSignature": "p_merchant_account_id uuid, p_user_role text, p_tool_name text, p_tool_args jsonb, p_allowed boolean, p_conversation_id uuid, p_denied_reason text, p_latency_ms integer, p_data_category text",
+    "role": "any authenticated member",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (ia-assistant, red-team, lot4a-migration-revoke-pairing) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "log_pcd_access_event",
+    "argsSignature": "p_tenant_id uuid, p_shop_id uuid, p_actor_kind text, p_service_kind text, p_action text, p_data_category text, p_purpose text, p_outcome text, p_resource_type text, p_resource_id uuid, p_surface text, p_metadata jsonb, p_idempotency_key text",
+    "role": "authenticated (internal audit logging)",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (s1c-pcd-access-audit, s1d3-audit-rpc-hardening + 1 unit) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "post_stock_movement",
+    "argsSignature": "p_merchant_account_id uuid, p_product_id uuid, p_movement_type text, p_qty integer, p_idempotency_key text, p_expected_shop_id uuid, p_created_by uuid, p_order_id uuid, p_transition_id uuid, p_unit_cost bigint, p_received_value bigint, p_reason text, p_driver_id uuid",
+    "role": "owner, manager (public 13-arg overload)",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (8 fichiers rls) non confirmée double-axe par l'heuristique de l'énumération S4. Voir aussi CLAUDE.md, incident 0134/0135 — surcharges legacy 4/5-arg encore exécutables par anon, cleanup séparé en attente."
+  },
+  {
+    "schema": "public",
+    "name": "record_cash_settlement",
+    "argsSignature": "p_merchant uuid, p_driver uuid, p_amount_received_minor bigint, p_method text, p_note text, p_client_request_id uuid, p_allocations jsonb, p_actor uuid",
+    "role": "owner, manager",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (finance-driver-cash, cash-consolidation unit, lot4a-migration-revoke-pairing) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "reduce_order_cart_post_assignment",
+    "argsSignature": "p_order_id uuid, p_lines jsonb",
+    "role": "owner, manager, agent (selon transitionCatalog)",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (order-cart-reduction.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "replace_order_cart",
+    "argsSignature": "p_order_id uuid, p_lines jsonb",
+    "role": "owner, manager, agent (selon transitionCatalog)",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (order-cart-editing.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "reserve_manual_order_number",
+    "argsSignature": "p_merchant_account_id uuid",
+    "role": "any authenticated member",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (orders-dimensions.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "set_order_note",
+    "argsSignature": "p_order_id uuid, p_note text",
+    "role": "any authenticated member",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (order-note.rls.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  },
+  {
+    "schema": "public",
+    "name": "write_off_shortfall",
+    "argsSignature": "p_merchant uuid, p_shortfall_id uuid, p_reason text, p_actor uuid",
+    "role": "owner, manager",
+    "nature": "write",
+    "status": "legacy-uncovered",
+    "loggedAt": "2026-09-04",
+    "debt": "Couverture existante (lot4a-migration-revoke-pairing.test.ts) non confirmée double-axe par l'heuristique de l'énumération S4."
+  }
+]

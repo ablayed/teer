@@ -6,6 +6,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -147,6 +148,14 @@ jobs:
       - run: pnpm security:acl-baseline:check
         env:
           SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Lot S4 — Splinter (0011/0028/0029) par requête directe sur les schémas exposés,
+      # cf. scripts/s4-run-splinter.mjs et docs/security/s4-rapport.md.
+      - run: pnpm security:splinter:check
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      # Lot S4 — inventaire justifié des références à SUPABASE_SERVICE_ROLE_KEY,
+      # cf. scripts/s4-check-service-role-inventory.mjs.
+      - run: pnpm security:service-role-inventory:check
 
   # Lot L1 — le backfill de 0142 s'exécute UNE SEULE FOIS en production ; un
   # `db reset --local` ordinaire ne l'exerce jamais (supabase/seed.sql ne

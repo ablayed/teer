@@ -1,0 +1,191 @@
+[
+  {
+    "file": "app/api/cron/keep-alive/route.ts",
+    "boundaryType": "cron-secret",
+    "boundaryFile": "app/api/cron/keep-alive/route.ts",
+    "boundaryLine": 13,
+    "boundaryDetail": "if (!cronSecret || authorization !== `Bearer ${cronSecret}`) return 401 — before any admin-client construction."
+  },
+  {
+    "file": "app/api/cron/shopify-pcd-retention/route.ts",
+    "boundaryType": "cron-secret",
+    "boundaryFile": "app/api/cron/shopify-pcd-retention/route.ts",
+    "boundaryLine": 29,
+    "boundaryDetail": "hasValidCronSecret(): timingSafeEqual(expectedBuffer, providedBuffer) against process.env.CRON_SECRET."
+  },
+  {
+    "file": "app/api/cron/shopify-reconcile/route.ts",
+    "boundaryType": "cron-secret",
+    "boundaryFile": "app/api/cron/shopify-reconcile/route.ts",
+    "boundaryLine": 21,
+    "boundaryDetail": "if (!cronSecret || authorization !== `Bearer ${cronSecret}`) return 401 — before any admin-client construction."
+  },
+  {
+    "file": "app/api/shopify/callback/route.ts",
+    "boundaryType": "oauth-state-and-hmac",
+    "boundaryFile": "app/api/shopify/callback/route.ts",
+    "boundaryLine": 82,
+    "boundaryDetail": "verifyOAuthHmac(searchParams, clientSecret) — plus verifyState(stateCookie) at line 55 confronting the callback's `state` query param against the signed cookie payload's nonce (line 61)."
+  },
+  {
+    "file": "app/api/shopify/embedded/session/route.ts",
+    "boundaryType": "session-token-verification",
+    "boundaryFile": "app/api/shopify/embedded/session/route.ts",
+    "boundaryLine": 61,
+    "boundaryDetail": "verifyShopifySessionToken(token, { clientId, clientSecret }) — signature+claims checked before any shop row is read via the admin client."
+  },
+  {
+    "file": "app/api/shopify/ingest/[token]/route.ts",
+    "boundaryType": "opaque-token-resolution",
+    "boundaryFile": "app/api/shopify/ingest/[token]/route.ts",
+    "boundaryLine": 102,
+    "boundaryDetail": "resolveConnectionByToken(supabase, token) — URL-token→connection resolution (Lot L3, migration 0143), plus HMAC cross-check at line 115-117."
+  },
+  {
+    "file": "app/api/shopify/webhooks/route.ts",
+    "boundaryType": "webhook-hmac",
+    "boundaryFile": "app/api/shopify/webhooks/route.ts",
+    "boundaryLine": 309,
+    "boundaryDetail": "verifyWebhookHmacAnySecret(rawBody, hmacHeader, hmacSecrets) — plus resolveSignedShopDomain (line 178) confronting the signed body's shop_domain against the unsigned header (incident cross-tenant, 23 août 2026)."
+  },
+  {
+    "file": "lib/actions/address.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/address.ts",
+    "boundaryLine": 62,
+    "boundaryDetail": "Every export in this file is requireRole('owner','manager','agent') — upsertOrderDeliveryAddressAction (line 62). Confirmed by direct grep, no export bypasses it."
+  },
+  {
+    "file": "lib/actions/auth.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/actions/auth.ts",
+    "boundaryLine": 148,
+    "boundaryDetail": "createSupabaseAdminClient() (line 68) used only inside signUpAction (actionClient, no role — pre-authentication by construction, no existing identity to gate against). Creates a brand-new user for the request's own email; does not read or write another tenant's data. signOutAction (line 276, authActionClient) never touches the admin client at all — it calls ctx.supabase.auth.signOut(), the caller's own RLS-respecting session client."
+  },
+  {
+    "file": "lib/actions/drivers.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/drivers.ts",
+    "boundaryLine": 54,
+    "boundaryDetail": "setDriverStockAction = requireRole('owner','manager') — the file's only export using the admin client."
+  },
+  {
+    "file": "lib/actions/expenses.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/expenses.ts",
+    "boundaryLine": 45,
+    "boundaryDetail": "Every export is requireRole('owner') — listExpenseCategoriesAction (45), listExpensesAction (60), createExpenseAction (77), updateExpenseAction (107), deleteExpenseAction (144). Confirmed by direct grep, no export bypasses it."
+  },
+  {
+    "file": "lib/actions/finance-settings.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/finance-settings.ts",
+    "boundaryLine": 103,
+    "boundaryDetail": "getMerchantSettingsAction = requireRole('owner','manager') (103), updateMerchantSettingsAction = requireRole('owner') (116). Confirmed by direct grep."
+  },
+  {
+    "file": "lib/actions/merchant.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/actions/merchant.ts",
+    "boundaryLine": 170,
+    "boundaryDetail": "completeOnboardingAction/updateMerchantProfileAction use authActionClient only (no requireRole), but both derive `account` via getMerchantAccountForUser(ctx.user.id) (lines 170, 190) — server-derived from the real session, never a client-supplied account id. Self-service pattern, not an unchecked foreign id."
+  },
+  {
+    "file": "lib/actions/orders.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/orders.ts",
+    "boundaryLine": 1160,
+    "boundaryDetail": "Every export is requireRole(...): loadMoreOrdersAction/createManualOrderAction/transitionOrderStatusAction/logCallAction/updateCodStatusAction ('owner','manager','agent'), updateOrderAmountsAction/getOrderCartEditorDataAction/replaceOrderCartAction ('owner','manager'). Confirmed by direct grep, 8 exports, all gated."
+  },
+  {
+    "file": "lib/actions/products.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/products.ts",
+    "boundaryLine": 309,
+    "boundaryDetail": "Every export is requireRole(...): createProductAction/loadMoreProductsAction ('owner','manager','agent'), updateProductUnitCostAction/getBundleCompositionAction/saveBundleConfigurationAction ('owner','manager'). Confirmed by direct grep, 5 exports, all gated."
+  },
+  {
+    "file": "lib/actions/purchases.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/purchases.ts",
+    "boundaryLine": 75,
+    "boundaryDetail": "Every export is requireRole('owner'): createPurchaseLotAction (75), addPurchaseLotLineAction (146), removePurchaseLotLineAction (201), markLotInTransitAction (238), receiveLotAction (264), setPurchaseLotAllocationMethodAction (535), setPurchaseLotLineWeightAction (605), correctPurchaseLotTransportAction (677). Confirmed by direct grep, 8 exports, all owner-only."
+  },
+  {
+    "file": "lib/actions/shops.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/shops.ts",
+    "boundaryLine": 87,
+    "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (87, 129), disconnectShopAction = requireRole('owner') (151). Confirmed by direct grep, 3 exports, all gated."
+  },
+  {
+    "file": "lib/actions/stock.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/stock.ts",
+    "boundaryLine": 80,
+    "boundaryDetail": "Every export is requireRole('owner','manager'): backfillOrderLinesAction (80), purchaseInAction (132), manualAdjustmentAction (167), courierReturnAction (204), setLowStockThresholdAction (238). Confirmed by direct grep, 5 exports, all gated."
+  },
+  {
+    "file": "lib/actions/team.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/team.ts",
+    "boundaryLine": 271,
+    "boundaryDetail": "Every export is requireRole('owner','manager'): inviteMemberAction (271), resendInviteAction (381), revokeInviteAction (468), changeRoleAction (516), removeMemberAction (583), listTeamAction (639), createDriverAction (723), updateDriverAction (790). Confirmed by direct grep, 8 exports, all gated."
+  },
+  {
+    "file": "lib/actions/transitions.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/transitions.ts",
+    "boundaryLine": 545,
+    "boundaryDetail": "performTransition = requireRole('owner','manager','agent') — CLAUDE.md's canonical write gate for order state (rule #7). Admin client used only for the audit_log insert inside performTransitionForContext, after canTransition() has already run."
+  },
+  {
+    "file": "lib/env.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/env.ts",
+    "boundaryLine": 18,
+    "boundaryDetail": "Zod schema declaration + process.env passthrough only (lines 18, 63, 100) — does not construct a Supabase client. No boundary applicable; nothing to gate."
+  },
+  {
+    "file": "lib/finance/report-data.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/finance/report-data.ts",
+    "boundaryLine": 21,
+    "boundaryDetail": "Shared library helper (createFinanceAdminClient, own file comment: \"used by the owner-only finance report action AND the PDF report route\") — not gated by this file itself. Guarded by its callers; not independently verified here beyond that documented intent."
+  },
+  {
+    "file": "lib/legal/consent.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/legal/consent.ts",
+    "boundaryLine": 25,
+    "boundaryDetail": "Library functions take userId as a parameter (getMissingCurrentConsents, persistSignupConsents, deleteUserForFailedSignup) but do not check it themselves. Verified callers: lib/actions/legal.ts:25/32 pass ctx.user.id; lib/actions/auth.ts:182/192/197/236/238 pass the newly-created signup user's own id. Never a client-supplied foreign id at any current call site."
+  },
+  {
+    "file": "lib/security/environment-validation.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/security/environment-validation.ts",
+    "boundaryLine": 125,
+    "boundaryDetail": "Bundle-leak check listing forbidden env var names as strings (S1D-4) — does not construct a Supabase client. No boundary applicable."
+  },
+  {
+    "file": "lib/security/s1d4-boundaries.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/security/s1d4-boundaries.ts",
+    "boundaryLine": 13,
+    "boundaryDetail": "Same S1D-4 forbidden-name list (client-bundle check), referenced by name only — does not construct a client."
+  },
+  {
+    "file": "lib/shopify/dsar.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/shopify/dsar.ts",
+    "boundaryLine": 41,
+    "boundaryDetail": "createStorageAdminClient() is a library helper — the real boundary is the caller, app/api/shopify/dsar/[artifactId]/download/route.ts, which resolves via the one-shot token (consume_shopify_dsar_download_authorization, whitelisted in Tâche 3) before this client is ever used."
+  },
+  {
+    "file": "lib/shopify/shop-sync.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/shopify/shop-sync.ts",
+    "boundaryLine": 30,
+    "boundaryDetail": "syncShopOrders() is called from two actions with DIFFERENT guard status: lib/actions/shops.ts:129 (syncShopAction, requireRole('owner','manager') — gated) AND lib/actions/shopify.ts:43 (syncOrdersAction, authActionClient only, NO requireRole — reachable by any authenticated member including agent). Tenant scoping itself (merchantAccountId from getMerchantAccount(), shopId from getRequestStoreId(), both server-derived, never client-supplied) is not at issue — the missing ROLE gate is. Arbitrage ouvert, voir docs/security/s4-rapport.md — S4 ne tranche pas si un agent doit pouvoir déclencher cette synchronisation."
+  }
+]

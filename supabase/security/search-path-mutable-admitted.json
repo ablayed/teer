@@ -1,0 +1,26 @@
+[
+  {
+    "schema": "public",
+    "name": "get_dashboard_kpi",
+    "loggedAt": "2026-09-04",
+    "debt": "Trouvé par Splinter 0011 (Lot S4) — search_path mutable, hors périmètre de ce lot (classe de défaut visée : identifiant client jamais confronté au parent, pas hardening search_path). Probablement une fonction historique supplantée par les RPC period-aware get_dashboard_* (PR C1/#84) — à vérifier avant de fermer : encore appelée quelque part, ou candidate au nettoyage ?"
+  },
+  {
+    "schema": "public",
+    "name": "customer_reliability_decay_epoch",
+    "loggedAt": "2026-09-04",
+    "debt": "Trouvé par Splinter 0011 (Lot S4) — search_path mutable. Fonction d'ancrage temporel (T0=2020-01-01, CLAUDE.md section scoring fiabilité) — ne pas modifier la logique en fermant ce point, un search_path explicite n'affecte que la résolution de noms non qualifiés."
+  },
+  {
+    "schema": "public",
+    "name": "customer_reliability_decay_anchor",
+    "loggedAt": "2026-09-04",
+    "debt": "Trouvé par Splinter 0011 (Lot S4) — search_path mutable, même famille que customer_reliability_decay_epoch."
+  },
+  {
+    "schema": "public",
+    "name": "customer_reliability_decay_factor",
+    "loggedAt": "2026-09-04",
+    "debt": "Trouvé par Splinter 0011 (Lot S4) — search_path mutable, même famille que customer_reliability_decay_epoch."
+  }
+]
