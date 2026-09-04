@@ -12,11 +12,14 @@ Voir `docs/security/s4-etape0-mesures.md` (commité séparément). Résumé :
   mesure — voir §5) ne transmettent de JWT utilisateur au client admin. L'affirmation "ce client
   contourne RLS sans condition" est donc exacte pour ce dépôt, mesurée et non supposée.
 
-## 2. Liste des 35 routines admises en `legacy-uncovered` (ratchet)
+## 2. Liste des 32 routines admises en `legacy-uncovered` (ratchet)
 
-Arbitrage du porteur (2026-09-04) : ratchet pour ces 35, fermeture complète pour les 4 sans aucune
-couverture connue (§3). Chaque entrée porte `loggedAt: "2026-09-04"` et une `debt` nommée dans
-`supabase/security/definer-authenticated-whitelist.json` :
+Arbitrage du porteur (2026-09-04) : ratchet pour ces 32, fermeture complète pour les 4 sans aucune
+couverture connue (§3). Avec les 3 routines déjà `covered` par des lots antérieurs
+(`correct_purchase_lot_cost`, `receive_purchase_lot`, `current_shop_role`) et les 4 fermées dans ce
+lot (§3), la liste blanche compte 39 entrées au total (32 `legacy-uncovered` + 7 `covered`) —
+`supabase/security/definer-authenticated-whitelist.json` fait foi. Chaque entrée `legacy-uncovered`
+porte `loggedAt: "2026-09-04"` et une `debt` nommée :
 
 `accept_invitation`, `accept_pending_invitation_by_email`, `consume_pcd_access_quota`,
 `consume_shopify_dsar_download_authorization`, `current_member_role`, `finance_kpis`,
@@ -34,7 +37,7 @@ plus `correct_purchase_lot_cost`, `receive_purchase_lot`, `current_shop_role` ma
 
 **Ce que le ratchet garantit dès ce lot** : toute NOUVELLE routine SECURITY DEFINER×authenticated
 qui apparaîtrait sans être inscrite dans `definer-authenticated-whitelist.json` fait échouer
-`tests/rls/security-definer-authenticated-whitelist.rls.test.ts` en CI. L'arriéré des 35 n'est PAS
+`tests/rls/security-definer-authenticated-whitelist.rls.test.ts` en CI. L'arriéré des 32 n'est PAS
 fermé — chaque entrée reste une dette non vérifiée, datée pour rester honnête (jamais un trou
 silencieux permanent).
 
@@ -58,15 +61,21 @@ devinée depuis une migration.
   structurellement pas de sens ici ; remplacé par l'axe "même compte, rôle `agent` insuffisant".
   3 tests.
 - **`purge_pcd_access_audit(p_before, p_batch_size)`** — **EXECUTE accordé à `authenticated`**
-  (constaté via `has_function_privilege`) alors que la garde interne (`auth.role() <>
-  'service_role'` → `raise exception`) rejette inconditionnellement tout appelant non
-  `service_role`, quel que soit le tenant. **Aucun défaut exploitable** — le rejet est prouvé
-  (test : owner authentifié légitime rejeté, zéro suppression ; service_role réussit en contrôle
-  positif). **Écart de posture noté, pas corrigé** : le grant `authenticated` est plus large que
-  nécessaire vis-à-vis de la doctrine du projet pour ce type de fonction (comparer à
-  `AUTHENTICATED_FORBIDDEN` dans la Couche 1 existante, qui restreint le grant lui-même plutôt que
-  de compter sur une vérification runtime seule). Resserrer ce grant exigerait une migration —
-  hors périmètre de ce lot (aucune migration). 2 tests.
+  (constaté via `has_function_privilege`, mesure directe — jamais déduite du texte des migrations)
+  alors que la garde interne (`supabase/migrations/0123_s1c_pcd_access_audit.sql:457`, `if
+  auth.role() <> 'service_role' then raise exception ...`) rejette inconditionnellement tout
+  appelant non `service_role`, quel que soit le tenant. Le texte de `0123`/`0140` ne montre qu'un
+  `grant execute ... to service_role` (0123:487) et un `revoke ... from public, anon` (0140:203-206)
+  — jamais `authenticated` explicitement — mais un `CREATE OR REPLACE` à signature identique
+  préserve l'ACL existante (gotcha déjà documenté dans CLAUDE.md) : le grant `authenticated` mesuré
+  aujourd'hui provient d'une version antérieure à `0123` (cf. le commentaire de `0140:27-29` sur
+  cette fonction et `log_ia_tool_audit`), jamais retiré depuis. **Aucun défaut exploitable** — le
+  rejet est prouvé (test : owner authentifié légitime rejeté, zéro suppression ; service_role
+  réussit en contrôle positif). **Écart de posture noté, pas corrigé** : le grant `authenticated`
+  est plus large que nécessaire vis-à-vis de la doctrine du projet pour ce type de fonction
+  (comparer à `AUTHENTICATED_FORBIDDEN` dans la Couche 1 existante, qui restreint le grant lui-même
+  plutôt que de compter sur une vérification runtime seule). Resserrer ce grant exigerait une
+  migration — hors périmètre de ce lot (aucune migration). 2 tests.
 
 Aucune des quatre n'a révélé de défaut réel — dans les quatre cas, il ne s'agissait que d'une
 preuve manquante. Rien à remonter comme "arrête et remonte" pour ces quatre.

@@ -30,7 +30,7 @@
     "schema": "public",
     "name": "purge_pcd_access_audit",
     "argsSignature": "p_before timestamp with time zone, p_batch_size integer",
-    "role": "service_role only (internal auth.role() check; EXECUTE grant to authenticated is broader than the runtime guard needs — see docs/security/s4-rapport.md)",
+    "role": "service_role only (internal guard at supabase/migrations/0123_s1c_pcd_access_audit.sql:457, `auth.role() <> 'service_role'` -> raise exception; EXECUTE grant to authenticated is broader than the runtime guard needs, inherited from a pre-0123 version and never revoked — see docs/security/s4-rapport.md §3)",
     "nature": "write",
     "status": "covered",
     "test": "tests/rls/s4-uncovered-definer-authenticated.rls.test.ts"
