@@ -535,6 +535,11 @@ function CustomerSheet({
 
 // ── Workspace principal ─────────────────────────────────────────────────────
 
+// Consomme le plafond déjà supporté par listCustomersSchema (limit max 100,
+// offset) — jamais consommé côté UI avant ce lot (troncature silencieuse au
+// delà de 50 clients, U0-D2 P0 §8).
+const CLIENTS_PAGE_SIZE = 100;
+
 export function ClientsWorkspace({ storeId }: { storeId: string }) {
   const t = useTranslations('clients');
   const reduceMotion = useReducedMotion();
@@ -542,21 +547,56 @@ export function ClientsWorkspace({ storeId }: { storeId: string }) {
   const getCustomer = useAction(getCustomerAction);
   const [search, setSearch] = useState('');
   const [sortByRisk, setSortByRisk] = useState(true);
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const listData = listCustomers.result.data?.ok ? listCustomers.result.data : null;
-  const customers = listData?.customers ?? [];
-  const loading = listCustomers.isExecuting && !listData;
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const loading = listCustomers.isExecuting && !initialLoadDone;
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      listCustomers.execute({ search, shopId: storeId, sortByRisk });
+    setInitialLoadDone(false);
+    const timeoutId = window.setTimeout(async () => {
+      const result = await listCustomers.executeAsync({
+        search,
+        shopId: storeId,
+        sortByRisk,
+        limit: CLIENTS_PAGE_SIZE,
+        offset: 0,
+      });
+      setInitialLoadDone(true);
+      if (result?.data?.ok) {
+        setCustomers(result.data.customers);
+        setHasMore(result.data.customers.length === CLIENTS_PAGE_SIZE);
+        setOffset(0);
+      }
     }, 280);
 
     return () => window.clearTimeout(timeoutId);
-  }, [listCustomers.execute, search, sortByRisk, storeId]);
+  }, [listCustomers.executeAsync, search, sortByRisk, storeId]);
+
+  async function loadMoreCustomers() {
+    const nextOffset = offset + CLIENTS_PAGE_SIZE;
+    setIsLoadingMore(true);
+    const result = await listCustomers.executeAsync({
+      search,
+      shopId: storeId,
+      sortByRisk,
+      limit: CLIENTS_PAGE_SIZE,
+      offset: nextOffset,
+    });
+    setIsLoadingMore(false);
+    if (result?.data?.ok) {
+      const newCustomers = result.data.customers;
+      setCustomers((prev) => [...prev, ...newCustomers]);
+      setHasMore(newCustomers.length === CLIENTS_PAGE_SIZE);
+      setOffset(nextOffset);
+    }
+  }
 
   async function selectCustomer(customerId: string) {
     setSelectedCustomerId(customerId);
@@ -651,6 +691,19 @@ export function ClientsWorkspace({ storeId }: { storeId: string }) {
             />
           ))}
         </motion.div>
+      ) : null}
+
+      {!loading && hasMore ? (
+        <div className="flex justify-center">
+          <button
+            className="min-h-12 rounded-lg border border-border bg-surface px-6 text-sm font-medium text-text hover:bg-canvas disabled:opacity-60"
+            disabled={isLoadingMore}
+            onClick={loadMoreCustomers}
+            type="button"
+          >
+            {isLoadingMore ? 'Chargement…' : 'Voir plus'}
+          </button>
+        </div>
       ) : null}
 
       {selectedCustomerId ? (
