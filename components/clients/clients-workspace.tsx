@@ -39,7 +39,7 @@ import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Feedback = {
   message: string;
@@ -557,6 +557,9 @@ export function ClientsWorkspace({ storeId }: { storeId: string }) {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const loading = listCustomers.isExecuting && !initialLoadDone;
+  // Compteur de génération : une sélection A puis B (avant résolution de A) ne
+  // doit jamais laisser la réponse de A écraser B (course U0-D2 §7/§8).
+  const selectionRequestIdRef = useRef(0);
 
   useEffect(() => {
     setInitialLoadDone(false);
@@ -599,12 +602,20 @@ export function ClientsWorkspace({ storeId }: { storeId: string }) {
   }
 
   async function selectCustomer(customerId: string) {
+    const requestId = ++selectionRequestIdRef.current;
     setSelectedCustomerId(customerId);
     setSelectedCustomer(null);
     setDetailLoading(true);
     setFeedback(null);
 
     const result = await getCustomer.executeAsync({ customerId, shopId: storeId });
+
+    if (selectionRequestIdRef.current !== requestId) {
+      // Une sélection plus récente a déjà démarré — cette réponse est
+      // obsolète, ne jamais l'appliquer (course U0-D2 §7/§8).
+      return;
+    }
+
     setDetailLoading(false);
 
     if (result?.data?.ok) {
