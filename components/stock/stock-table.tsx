@@ -325,6 +325,7 @@ export function StockTable({ rows, canSeeCost, stockSummary, lowStockOnly, store
       {stockSummary && stockSummary.lowStockCount > 0 && (
         <Link
           className="flex min-h-12 items-center gap-3 rounded-lg border border-danger/25 bg-danger-subtle p-4 text-sm font-medium text-danger hover:bg-danger-subtle/80"
+          data-testid="stock-low-stock-alert"
           href={`/s/${storeId}/produits?tab=stock&filtre=stock_bas`}
         >
           <span>
@@ -344,7 +345,7 @@ export function StockTable({ rows, canSeeCost, stockSummary, lowStockOnly, store
       )}
 
       {canSeeCost && stockSummary && (
-        <p className="text-sm text-muted">
+        <p className="text-sm text-muted" data-testid="stock-total-value">
           Valeur totale du stock :{' '}
           {stockSummary.totalValueMinor !== null ? (
             <Amount
@@ -406,8 +407,9 @@ export function StockTable({ rows, canSeeCost, stockSummary, lowStockOnly, store
 
               return (
                 <tr
-                  key={row.productId}
                   className="border-b border-border last:border-0 hover:bg-surface/50"
+                  data-testid={`stock-row-${row.productId}`}
+                  key={row.productId}
                 >
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-0.5">
@@ -549,6 +551,7 @@ export function StockTable({ rows, canSeeCost, stockSummary, lowStockOnly, store
           return (
             <article
               className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1"
+              data-testid={`stock-row-${row.productId}`}
               key={row.productId}
             >
               <div className="flex items-start justify-between gap-2">
