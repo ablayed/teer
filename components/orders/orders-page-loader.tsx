@@ -8,6 +8,7 @@ import {
   REASSIGNABLE_STATES,
 } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
+import { useMediaQuery } from '@/components/period-picker/use-media-query';
 import { Amount } from '@/components/ui/amount';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ResourceRow } from '@/components/ui/resource-row';
@@ -81,6 +82,7 @@ export function OrdersPageLoader({
 }: Props) {
   const t = useTranslations('orders');
   const pathname = usePathname();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const [orders, setOrders] = useState(initialOrders);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
@@ -231,6 +233,7 @@ export function OrdersPageLoader({
             >
               <ResourceRow
                 href={buildOrderDetailHref(pathname, order.id)}
+                scroll={!isDesktop}
                 prefetch={false}
                 meta={
                   <span className="inline-flex flex-wrap items-center gap-x-1.5">

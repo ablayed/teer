@@ -25,11 +25,13 @@ type ResourceRowWithHref = ResourceRowBase & {
    * un prefetch RSC concurrent, souvent annulé avant résolution.
    */
   prefetch?: boolean;
+  scroll?: boolean;
 };
 type ResourceRowWithActivate = ResourceRowBase & {
   href?: never;
   onActivate?: () => void;
   prefetch?: never;
+  scroll?: never;
 };
 
 export type ResourceRowProps = ResourceRowWithHref | ResourceRowWithActivate;
@@ -45,6 +47,7 @@ export function ResourceRow({
   overflow,
   className,
   prefetch,
+  scroll,
   testId,
 }: ResourceRowProps) {
   const mainContent = (
@@ -72,7 +75,7 @@ export function ResourceRow({
       data-testid={testId}
     >
       {href ? (
-        <Link className={linkClasses} href={href} prefetch={prefetch}>
+        <Link className={linkClasses} href={href} prefetch={prefetch} scroll={scroll}>
           {mainContent}
         </Link>
       ) : onActivate ? (
