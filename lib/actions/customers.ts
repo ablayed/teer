@@ -61,6 +61,9 @@ export type CustomerDetail = CustomerListItem & {
     confirmsThenRefuses: boolean;
     hardToReach: boolean;
   };
+  // true si plus de 30 commandes existent pour ce client — l'historique
+  // n'affiche que les 30 plus récentes (sort_at desc).
+  hasMoreHistory: boolean;
   history: CustomerOrderHistoryItem[];
 };
 
@@ -213,8 +216,13 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
         .eq('merchant_account_id', ctx.member.merchantAccountId)
         .eq('shop_id', parsedInput.shopId)
         .eq('customer_id', parsedInput.customerId)
-        .order('created_at_shopify', { ascending: false, nullsFirst: false })
-        .limit(30),
+        // sort_at (colonne générée, coalesce(created_at_shopify, created_at),
+        // migration 0044) — jamais created_at_shopify seul, qui placerait
+        // systématiquement une commande créée par appel (sans created_at_shopify)
+        // après toutes les commandes Shopify, indépendamment de sa date réelle.
+        .order('sort_at', { ascending: false })
+        // +1 pour détecter la troncature sans un second aller-retour.
+        .limit(31),
       // Colonnes PII enrichies (Phase 7b) absentes de la RPC de fiabilité.
       supabase
         .from('customer')
@@ -237,6 +245,8 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
 
     const enrichment = enrichmentResult.data;
     const customer = toListItem(row);
+    const rawHistory = (historyResult.data ?? []) as CustomerOrderHistoryItem[];
+    const hasMoreHistory = rawHistory.length > 30;
     const detail: CustomerDetail = {
       ...customer,
       actionsKey: customer.tier,
@@ -251,7 +261,8 @@ export const getCustomerAction = requireRole('owner', 'manager', 'agent')
         confirmsThenRefuses: row.flag_confirms_then_refuses,
         hardToReach: row.flag_hard_to_reach,
       },
-      history: (historyResult.data ?? []) as CustomerOrderHistoryItem[],
+      hasMoreHistory,
+      history: hasMoreHistory ? rawHistory.slice(0, 30) : rawHistory,
     };
 
     try {

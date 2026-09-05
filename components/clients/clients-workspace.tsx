@@ -452,7 +452,14 @@ function CustomerSheet({
                 </section>
 
                 <section className="space-y-3">
-                  <h3 className="text-sm font-semibold">{t('history.title')}</h3>
+                  <h3 className="text-sm font-semibold">
+                    {t('history.title')}
+                    {customer.hasMoreHistory && (
+                      <span className="ml-2 font-normal text-muted">
+                        — 30 les plus récentes affichées
+                      </span>
+                    )}
+                  </h3>
                   {customer.history.length > 0 ? (
                     <div className="divide-y divide-border rounded-lg border border-border">
                       {customer.history.map((order) => (
