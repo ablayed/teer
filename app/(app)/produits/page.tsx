@@ -1,6 +1,10 @@
 import { ProductsPageLoader } from '@/components/products/products-page-loader';
 import { PurchaseLotsView } from '@/components/purchases/purchase-lots-view';
-import { getProductCatalogPageData, getProductsPageData } from '@/lib/actions/products';
+import {
+  getProductCatalogPageData,
+  getProductsPageData,
+  getStockCatalogSummaryData,
+} from '@/lib/actions/products';
 import { getPurchaseLotPageData, getPurchaseLotProfitability } from '@/lib/actions/purchases';
 import { getRequestStoreId } from '@/lib/workspace/store';
 import { getTranslations } from 'next-intl/server';
@@ -68,7 +72,21 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
     );
   }
 
-  const productsResult = await getProductsPageData({ q: q.trim() || undefined, shopId: storeId });
+  // activeOnly n'est appliqué qu'à l'onglet Stock : le Catalogue affiche
+  // délibérément les produits inactifs (badge "Inactif") — filtrer ici
+  // dépeuplerait cet écran sans rapport avec ce lot. fetchStockCatalogRows
+  // (résumé Stock) filtre déjà is_active=true ; sans ce paramètre, la liste
+  // affichée sur l'onglet Stock incluait les produits inactifs alors que le
+  // total/l'alerte ne les comptaient pas — deux populations différentes pour
+  // le même écran.
+  const activeOnly = tab === 'stock';
+  const rawFiltre = typeof params.filtre === 'string' ? params.filtre : '';
+  const lowStockOnly = tab === 'stock' && rawFiltre === 'stock_bas';
+
+  const [productsResult, stockSummaryResult] = await Promise.all([
+    getProductsPageData({ q: q.trim() || undefined, shopId: storeId, activeOnly, lowStockOnly }),
+    tab === 'stock' ? getStockCatalogSummaryData(storeId) : Promise.resolve(null),
+  ]);
 
   const isOwner = productsResult.ok && productsResult.currentRole === 'owner';
 
@@ -91,7 +109,9 @@ export default async function ProduitsPage({ searchParams }: { searchParams: Sea
           initialHasMore={productsResult.hasMore}
           initialItems={productsResult.items}
           initialNextOffset={productsResult.nextOffset}
+          lowStockOnly={lowStockOnly}
           searchQuery={q}
+          stockSummary={stockSummaryResult?.ok ? stockSummaryResult.summary : null}
           storeId={storeId}
           view={tab === 'stock' ? 'stock' : 'catalogue'}
         />

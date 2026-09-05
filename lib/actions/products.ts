@@ -4,6 +4,12 @@ import { requireRole } from '@/lib/actions/safe-action';
 import { resolveActiveStoreProduct } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
 import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-availability';
+import {
+  type StockCatalogSummary,
+  computeStockCatalogSummary,
+  fetchStockCatalogRows,
+  isRowLowStock,
+} from '@/lib/stock/stock-catalog-facts';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
@@ -155,6 +161,8 @@ export async function getProductsPageData(params: {
   q?: string;
   offset?: number;
   shopId: string;
+  lowStockOnly?: boolean;
+  activeOnly?: boolean;
 }): Promise<ProductsPageResult> {
   const currentMember = await getCurrentMember();
   if (!currentMember.ok) return currentMember;
@@ -166,6 +174,16 @@ export async function getProductsPageData(params: {
 
   const admin = createSupabaseAdminClient();
 
+  let lowStockIds: string[] | null = null;
+  if (params.lowStockOnly) {
+    const facts = await fetchStockCatalogRows(admin, merchantAccountId, params.shopId);
+    if (!facts.ok) return { ok: false, errorCode: 'load_failed' };
+    lowStockIds = computeStockCatalogSummary(facts.rows).lowStockProductIds;
+    if (lowStockIds.length === 0) {
+      return { ok: true, items: [], hasMore: false, nextOffset: 0, canSeeCost, currentRole: role };
+    }
+  }
+
   let productQuery = admin
     .from('product')
     .select(
@@ -176,6 +194,14 @@ export async function getProductsPageData(params: {
     .order('title', { ascending: true })
     .order('id', { ascending: true })
     .range(offset, offset + limit - 1);
+
+  if (params.activeOnly) {
+    productQuery = productQuery.eq('is_active', true);
+  }
+
+  if (lowStockIds) {
+    productQuery = productQuery.in('id', lowStockIds);
+  }
 
   if (params.q?.trim()) {
     const q = params.q.trim();
@@ -229,7 +255,7 @@ export async function getProductsPageData(params: {
       qtyReserved,
       qtyAvailable,
       lowStockThreshold: threshold,
-      isLowStock: qtyOnHand <= threshold,
+      isLowStock: isRowLowStock(qtyOnHand, threshold),
       stockUnitCost: canSeeCost ? (s?.unit_cost ?? 0) : null,
       stockValue: canSeeCost ? qtyOnHand * (s?.unit_cost ?? 0) : null,
       isBundle: p.is_bundle,
@@ -244,6 +270,36 @@ export async function getProductsPageData(params: {
     nextOffset: offset + PRODUCTS_PER_PAGE,
     canSeeCost,
     currentRole: role,
+  };
+}
+
+export async function getStockCatalogSummaryData(
+  shopId: string,
+): Promise<{ ok: true; summary: StockCatalogSummary } | { ok: false; errorCode: string }> {
+  const currentMember = await getCurrentMember();
+  if (!currentMember.ok) return currentMember;
+  const { merchantAccountId, role } = currentMember.member;
+  const canSeeCost = role === 'owner' || role === 'manager';
+
+  const admin = createSupabaseAdminClient();
+  const result = await fetchStockCatalogRows(admin, merchantAccountId, shopId);
+  if (!result.ok) return { ok: false, errorCode: 'load_failed' };
+
+  const summary = computeStockCatalogSummary(result.rows);
+
+  return {
+    ok: true,
+    summary: canSeeCost
+      ? summary
+      : {
+          // Masqué : dérivé de unit_cost, une donnée de coût (RLS #9).
+          totalValueMinor: null,
+          costUnknownCount: 0,
+          // Conservé : quantité, pas coût — l'agent voit et peut ouvrir la
+          // même population "stock bas" que owner/manager.
+          lowStockCount: summary.lowStockCount,
+          lowStockProductIds: summary.lowStockProductIds,
+        },
   };
 }
 
@@ -375,6 +431,8 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
       q: z.string().optional(),
       offset: z.number().int().min(0),
       shopId: z.string().uuid(),
+      lowStockOnly: z.boolean().optional(),
+      activeOnly: z.boolean().optional(),
     }),
   )
   .action(async ({ ctx, parsedInput }) => {
@@ -389,6 +447,21 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
     }
     const shopId = parsedInput.shopId;
 
+    let lowStockIds: string[] | null = null;
+    if (parsedInput.lowStockOnly) {
+      const facts = await fetchStockCatalogRows(admin, merchantAccountId, shopId);
+      if (!facts.ok) return { ok: false as const, errorCode: 'load_failed' as const };
+      lowStockIds = computeStockCatalogSummary(facts.rows).lowStockProductIds;
+      if (lowStockIds.length === 0) {
+        return {
+          ok: true as const,
+          items: [],
+          hasMore: false,
+          nextOffset: parsedInput.offset + PRODUCTS_PER_PAGE,
+        };
+      }
+    }
+
     let productQuery = admin
       .from('product')
       .select(
@@ -399,6 +472,14 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
       .order('title', { ascending: true })
       .order('id', { ascending: true })
       .range(parsedInput.offset, parsedInput.offset + limit - 1);
+
+    if (parsedInput.activeOnly) {
+      productQuery = productQuery.eq('is_active', true);
+    }
+
+    if (lowStockIds) {
+      productQuery = productQuery.in('id', lowStockIds);
+    }
 
     if (parsedInput.q?.trim()) {
       const q = parsedInput.q.trim();
@@ -452,7 +533,7 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
         qtyReserved,
         qtyAvailable,
         lowStockThreshold: threshold,
-        isLowStock: qtyOnHand <= threshold,
+        isLowStock: isRowLowStock(qtyOnHand, threshold),
         stockUnitCost: canSeeCost ? (s?.unit_cost ?? 0) : null,
         stockValue: canSeeCost ? qtyOnHand * (s?.unit_cost ?? 0) : null,
         isBundle: p.is_bundle,

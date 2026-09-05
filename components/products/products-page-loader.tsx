@@ -5,6 +5,7 @@ import { ProductsCatalog } from '@/components/products/products-catalog';
 import { StockTable } from '@/components/stock/stock-table';
 import { type ProductsPageItem, loadMoreProductsAction } from '@/lib/actions/products';
 import type { StockPageRow } from '@/lib/actions/stock';
+import type { StockCatalogSummary } from '@/lib/stock/stock-catalog-facts';
 import type { TeamRole } from '@/lib/team/permissions';
 import { useEffect, useState, useTransition } from 'react';
 
@@ -17,6 +18,8 @@ type Props = {
   currentRole: TeamRole;
   searchQuery: string;
   storeId: string;
+  stockSummary: StockCatalogSummary | null;
+  lowStockOnly: boolean;
 };
 
 function toStockRow(item: ProductsPageItem): StockPageRow {
@@ -45,6 +48,8 @@ export function ProductsPageLoader({
   currentRole,
   searchQuery,
   storeId: activeStoreId,
+  stockSummary,
+  lowStockOnly,
 }: Props) {
   const [items, setItems] = useState(initialItems);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -64,6 +69,12 @@ export function ProductsPageLoader({
         q: searchQuery || undefined,
         offset: nextOffset,
         shopId: activeStoreId,
+        // "Voir plus" doit conserver le même périmètre que le chargement
+        // initial (onglet Stock : actifs seulement, éventuellement filtré sur
+        // le stock bas) — sinon la page mélangerait deux populations au fil
+        // du défilement.
+        activeOnly: view === 'stock',
+        lowStockOnly: view === 'stock' ? lowStockOnly : undefined,
       });
       const data = result?.data;
       if (data?.ok) {
@@ -90,7 +101,13 @@ export function ProductsPageLoader({
       ) : (
         <section className="space-y-4">
           <h2 className="text-xl font-semibold">Stock</h2>
-          <StockTable canSeeCost={canSeeCost} rows={items.map(toStockRow)} />
+          <StockTable
+            canSeeCost={canSeeCost}
+            lowStockOnly={lowStockOnly}
+            rows={items.map(toStockRow)}
+            stockSummary={stockSummary}
+            storeId={activeStoreId}
+          />
         </section>
       )}
 
