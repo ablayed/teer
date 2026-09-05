@@ -2,10 +2,12 @@
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { normalizeOrderStatus } from '@/components/orders/kanban/kanban-utils';
+import { useMediaQuery } from '@/components/period-picker/use-media-query';
 import { Amount } from '@/components/ui/amount';
 import type { OrderListItem } from '@/lib/actions/orders';
 import { formatDateRelative } from '@/lib/format/date';
 import { cn } from '@/lib/utils';
+import { buildOrderDetailHref } from '@/lib/workspace/store-switch';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -19,7 +21,8 @@ type KanbanCardProps = {
 
 export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: KanbanCardProps) {
   const pathname = usePathname();
-  const orderHref = `${pathname.replace(/\/$/, '')}/${order.id}`;
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const orderHref = buildOrderDetailHref(pathname, order.id);
   const orderLabel = order.order_number ?? emptyLabel;
   const customerLabel = order.customer?.full_name ?? emptyLabel;
   const orderDate = order.created_at_shopify ?? order.created_at;
@@ -35,6 +38,7 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
         <Link
           className="min-h-12 min-w-0 flex-1 font-mono text-sm font-semibold tabular-nums text-text focus-visible:outline-none"
           href={orderHref}
+          scroll={!isDesktop}
         >
           {orderLabel}
         </Link>
@@ -49,12 +53,14 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
       <Link
         className="min-h-12 min-w-0 text-sm text-text focus-visible:outline-none"
         href={orderHref}
+        scroll={!isDesktop}
       >
         <span className="block truncate">{customerLabel}</span>
       </Link>
       <Link
         className="mt-auto flex min-h-12 items-end justify-between gap-3 focus-visible:outline-none"
         href={orderHref}
+        scroll={!isDesktop}
       >
         <Amount amountMinor={order.total_amount} className="text-sm font-medium text-text" />
         <span className="text-xs text-muted">{formatDateRelative(orderDate)}</span>

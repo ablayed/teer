@@ -8,6 +8,7 @@ import {
   REASSIGNABLE_STATES,
 } from '@/components/orders/order-driver-reassign';
 import type { DriverOption } from '@/components/orders/transition-dialog';
+import { useMediaQuery } from '@/components/period-picker/use-media-query';
 import { Amount } from '@/components/ui/amount';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ResourceRow } from '@/components/ui/resource-row';
@@ -31,6 +32,7 @@ import { hasVisibleScheduledDelivery } from '@/lib/orders/scheduled-delivery';
 import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
+import { buildOrderDetailHref } from '@/lib/workspace/store-switch';
 import { useTranslations } from 'next-intl';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
@@ -80,6 +82,7 @@ export function OrdersPageLoader({
 }: Props) {
   const t = useTranslations('orders');
   const pathname = usePathname();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const [orders, setOrders] = useState(initialOrders);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
@@ -229,7 +232,8 @@ export function OrdersPageLoader({
               key={order.id}
             >
               <ResourceRow
-                href={`${pathname.replace(/\/$/, '')}/${order.id}`}
+                href={buildOrderDetailHref(pathname, order.id)}
+                scroll={!isDesktop}
                 prefetch={false}
                 meta={
                   <span className="inline-flex flex-wrap items-center gap-x-1.5">

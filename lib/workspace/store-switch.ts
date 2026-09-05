@@ -26,6 +26,13 @@ const UUID_VALUE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}
 /** Paramètres portant une identité de boutique, toujours retirés au changement. */
 const STORE_SCOPED_PARAMS = new Set(['shop']);
 
+/** Une fiche part de la racine boutique, même si la liste reste montée sous une fiche. */
+export function buildOrderDetailHref(pathname: string, orderId: string): string {
+  const storeId = pathname.match(STORE_PREFIX)?.[1];
+  const base = storeId ? buildStoreSwitchHref('/commandes', storeId) : '/commandes';
+  return `${base}/${orderId}`;
+}
+
 const DEFAULT_SECTION = 'tableau';
 
 /**
