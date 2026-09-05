@@ -279,12 +279,10 @@ async function openDetails(page: Page, productId: string, title: string) {
     return;
   }
 
-  const overflowTrigger = productRow.getByRole('button', {
-    name: `Actions — ${title}`,
-    exact: true,
-  });
-  await overflowTrigger.click();
-  await page.getByRole('menuitem', { name: 'Détails', exact: true }).click();
+  // Depuis UX-CAT-01, la carte entière ouvre le détail sur mobile (onActivate
+  // sur ResourceRow) — le menu "Actions — <titre>" ne porte plus "Détails"
+  // (réservé aux gestes rares, ex. "Modifier le coût").
+  await productRow.getByText(title, { exact: true }).click();
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E bundles');
