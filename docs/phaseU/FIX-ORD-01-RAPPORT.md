@@ -124,5 +124,34 @@ second passage — aucune régression du parcours clavier.
 
 Aucune baseline visuelle modifiée.
 
-Identifiants des deux exécutions initiales de CI à compléter après ouverture
-de la PR et vérification du même arbre final sur le remote.
+## Deux exécutions initiales de CI
+
+PR #187 (https://github.com/ablayed/teer/pull/187), commit final
+`23a241bb84284fd6eb24a09e52f849bafd3a6ff0` (tree `8c9a6446e88140a1cdbf006d76d9a09c23808ec6`),
+même arbre pour les deux runs — aucun rejeu, aucun commit vide.
+
+- **Run 1** : ouverture initiale de la PR — déclencheur `pull_request`,
+  https://github.com/ablayed/teer/actions/runs/33967988390 — succès, tous les
+  jobs verts (lint, typecheck, test-unit, test-rls, gitleaks, test-visual-desktop/mobile,
+  test-e2e-phase1 × chromium/pixel-7/iphone-14, test-e2e-regression × 3 cibles/4 shards,
+  test-e2e × 3 cibles, merge-e2e-reports).
+- **Run 2** : fermeture puis réouverture de la PR — déclencheur `pull_request`
+  (event `reopened`, même mécanisme initial, pas une relance d'un run existant),
+  https://github.com/ablayed/teer/actions/runs/33969423089 — succès, mêmes
+  jobs tous verts, y compris `gitleaks`.
+
+**Écart noté, non bloquant.** Un essai intermédiaire via `workflow_dispatch`
+(https://github.com/ablayed/teer/actions/runs/33968002083, même commit) a
+échoué sur `gitleaks` seul — tout le reste vert. Cause établie :
+`gitleaks-action@v2` scanne différemment selon le déclencheur ; sans base/head
+de PR (`workflow_dispatch`), il retombe sur `git log --full-history --all` et
+remonte une fausse clé de test préexistante (`tests/unit/shopify-offline-token.test.ts:6`,
+commit `fbf3c4f2`, PR #126, mergée des semaines avant cette branche, jamais
+touchée par FIX-ORD-01). Le run `pull_request` sur le même commit passe
+`gitleaks` sans problème (scope PR uniquement) — c'est pourquoi le mandat
+prescrit la fermeture-réouverture plutôt que `workflow_dispatch` pour obtenir
+un second déclenchement initial : ce dernier n'exerce pas le même chemin de
+scan que la vraie porte de fusion (`push`/`pull_request` sur `main`). Dette
+CI à noter au même titre que les autres entrées documentées dans CLAUDE.md
+(section Dette E2E résiduelle) : `workflow_dispatch` n'est pas équivalent au
+portail de fusion réel pour `gitleaks`.
