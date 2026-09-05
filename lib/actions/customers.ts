@@ -21,6 +21,9 @@ export type CustomerListItem = {
   cancelledCount: number;
   customerId: string;
   decided: number;
+  // Retiré de l'écran (arbitrage fondateur, UX-CAT-01) : les faits vérifiables
+  // priment sur un score opaque. delivered_count reste utile, delivered_lifetime aussi.
+  deliveredCount: number;
   deliveredLifetime: number;
   fullName: string | null;
   isProvisional: boolean;
@@ -30,6 +33,9 @@ export type CustomerListItem = {
   orderCount: number;
   phone: string | null;
   refusedCount: number;
+  // Conservé dans le type (toujours retourné par la RPC) mais plus rendu à
+  // l'écran — le marchand a écarté le score chiffré (UX-CAT-01) au profit du
+  // palier + des faits vérifiables.
   score: number;
   tier: ReliabilityTier;
 };
@@ -88,6 +94,7 @@ function toListItem(row: CustomerReliabilityRow): CustomerListItem {
     cancelledCount: row.cancelled_count,
     customerId: row.customer_id,
     decided: row.decided,
+    deliveredCount: row.delivered_count,
     deliveredLifetime: row.delivered_lifetime,
     fullName: row.full_name ?? null,
     isProvisional: row.is_provisional,

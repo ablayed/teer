@@ -26,6 +26,13 @@ entrées ci-dessous existent précisément pour qu'une notion déjà tranchée n
 | « Enregistrer » → « Enregistré sur l'appareil — en attente de synchronisation » → « Enregistré » | **Vocabulaire canonique à réutiliser verbatim** (tiret cadratin `—` inclus) pour TOUTE future UI de mutation offline-durable de ce projet, pas seulement Lot F2. | Introduit par `WEIGHT_BUTTON_LABEL` (`purchase-lot-detail-panel.tsx`) puis repris tel quel par `AD_SPEND_BUTTON_LABEL` (`product-ad-spend-form.tsx`) avec un commentaire explicite « pattern déjà revu deux fois sur ce fichier, ne pas le retaper de mémoire ». Les états intermédiaires « Enregistrement… » (écriture en vol) et « Réessayer » (échec confirmé, retry) complètent le cycle mais ne sont pas le nom de la formulation figée — c'est la paire idle→queued→synced qui doit rester identique mot pour mot d'un formulaire offline à l'autre. |
 | « Coût manquant » | **Réutilisée verbatim** depuis `finance.products.table.costMissing` (Lot F2-bis) pour la carte "Valeur totale du stock" (`/produits?tab=stock`). | Même contrat "manquant ≠ zéro" (`unit_cost <= 0` = jamais saisi), même écran de risque (un chiffre faux affiché avec la confiance d'un total exact) — pas de raison de reformuler. Lot UX-CAT-01. |
 
+## Décisions produit (Lot UX-CAT-01 — fiche client)
+
+| Décision | Raison |
+|---|---|
+| Le score de fiabilité chiffré (0-100) n'est plus affiché en fiche/liste client. Seuls le palier (« Fiable »/« À surveiller »/« À risque »/« Nouveau client »), les faits vérifiables (commandes, livrées, refusées, annulées, montant livré) et les 3 signaux qualitatifs restent visibles. | Arbitrage du fondateur (session 2026-09-05, Lot UX-CAT-01) : « tout dépend du client » — un score opaque qu'il ne peut ni auditer ni expliquer va contre sa façon de décider. Ne pas réintroduire le chiffre sans une nouvelle décision explicite. |
+| « Livré » scindé en deux libellés distincts sur la fiche client : « Livrées » (nombre de commandes, `stats.deliveredCount`) et « Montant livré » (somme en FCFA, `stats.delivered`). | Avant ce lot, `delivered_count` existait dans la RPC mais n'était jamais rendu — un seul libellé « Livré » sur le montant aurait été ambigu une fois le compte ajouté à côté. |
+
 ## Vocabulaire du domaine (Lot F2 — rentabilité par arrivage)
 
 | Terme | Sens |

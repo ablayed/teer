@@ -105,16 +105,6 @@ function TierBadge({
   );
 }
 
-function ScoreValue({ customer }: { customer: Pick<CustomerListItem, 'score' | 'tier'> }) {
-  const t = useTranslations('clients');
-
-  if (customer.tier === 'new') {
-    return <span className="text-sm text-muted">{t('score.hidden')}</span>;
-  }
-
-  return <span className="font-mono text-2xl font-semibold tabular-nums">{customer.score}</span>;
-}
-
 function CustomerBadges({
   customer,
 }: {
@@ -400,20 +390,8 @@ function CustomerSheet({
             {!loading && customer ? (
               <div className="space-y-6">
                 <section className="rounded-lg border border-border bg-canvas p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <TierBadge isProvisional={customer.isProvisional} tier={customer.tier} />
-                      <p className="mt-3 text-sm text-muted">
-                        {t(`advice.${customer.actionsKey}`)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <ScoreValue customer={customer} />
-                      {customer.tier !== 'new' ? (
-                        <p className="text-xs text-muted">{t('score.label')}</p>
-                      ) : null}
-                    </div>
-                  </div>
+                  <TierBadge isProvisional={customer.isProvisional} tier={customer.tier} />
+                  <p className="mt-3 text-sm text-muted">{t(`advice.${customer.actionsKey}`)}</p>
                   <div className="mt-3">
                     <CustomerBadges customer={customer} />
                   </div>
@@ -503,11 +481,17 @@ function CustomerSheet({
                   )}
                 </section>
 
-                <section className="grid grid-cols-3 gap-3">
+                <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <div className="rounded-lg border border-border p-3">
                     <p className="text-xs text-muted">{t('stats.orders')}</p>
                     <p className="font-mono text-lg font-semibold tabular-nums">
                       {customer.orderCount}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted">{t('stats.deliveredCount')}</p>
+                    <p className="font-mono text-lg font-semibold tabular-nums">
+                      {customer.deliveredCount}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border p-3">
