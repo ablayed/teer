@@ -227,7 +227,12 @@ async function signIn(page: Page, email: string, redirectTo: string) {
 }
 
 function bundleRow(page: Page, title: string): Locator {
-  return page.locator('tr', { has: page.getByText(title, { exact: true }) });
+  // Depuis UX-CAT-01, la ligne Stock existe en 2 variantes DOM (desktop <tr>
+  // hidden md:block / mobile <article> md:hidden, même data-testid
+  // stock-row-<id>) — :visible isole celle réellement rendue à ce viewport.
+  return page.locator('[data-testid^="stock-row-"]:visible', {
+    has: page.getByText(title, { exact: true }),
+  });
 }
 
 test.skip(!hasSupabaseAdmin, 'Variables Supabase admin manquantes pour les E2E bundles');

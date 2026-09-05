@@ -246,10 +246,14 @@ async function selectPeriod30j(page: Page) {
   await expect(page).toHaveURL(/period=30j/);
 }
 
-// Table Stock : desktop = `<tr>` (sr-only md:not-sr-only md:table, cf. CLAUDE.md), la
-// même ligne accessible sert de source de vérité même sous md (cf. PR 2, bundleRow).
+// Table Stock : depuis UX-CAT-01, 2 variantes DOM (desktop <tr> hidden
+// md:block / mobile <article> md:hidden, même data-testid stock-row-<id>) —
+// :visible isole celle réellement rendue à ce viewport (même motif que
+// bundleRow dans tests/e2e/products-bundle-availability.spec.ts).
 function stockRow(page: Page, title: string): Locator {
-  return page.locator('tr', { has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid^="stock-row-"]:visible', {
+    has: page.getByText(title, { exact: true }),
+  });
 }
 
 // Le catalogue reste dans le DOM derrière le panneau (chaque ligne a déjà son propre
