@@ -292,7 +292,13 @@ function DetailActionBar({
         {t('actions.whatsapp')}
       </a>
       {customer.tier === 'watch' ? (
-        <Button className="min-h-12" type="button" variant="secondary">
+        <Button
+          className="min-h-12"
+          disabled
+          title={t('actions.requestConfirmationSoon')}
+          type="button"
+          variant="secondary"
+        >
           {t('actions.requestConfirmation')}
         </Button>
       ) : null}
