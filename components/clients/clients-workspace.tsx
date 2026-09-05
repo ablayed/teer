@@ -205,7 +205,12 @@ function ClientRow({
       key: 'orders',
       label: t('actions.orders'),
       icon: <Package className="size-4" />,
-      onSelect: () => router.push(`/s/${storeId}/commandes`),
+      onSelect: () =>
+        router.push(
+          phone
+            ? `/s/${storeId}/commandes?q=${encodeURIComponent(phone)}`
+            : `/s/${storeId}/commandes`,
+        ),
     },
   ];
 
@@ -326,7 +331,11 @@ function DetailActionBar({
       ) : null}
       <Link
         className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-accent-ink hover:bg-accent-hover"
-        href={`/s/${storeId}/commandes`}
+        href={
+          phone
+            ? `/s/${storeId}/commandes?q=${encodeURIComponent(phone)}`
+            : `/s/${storeId}/commandes`
+        }
       >
         {t('actions.orders')}
         <ArrowRight aria-hidden="true" className="size-4" />
