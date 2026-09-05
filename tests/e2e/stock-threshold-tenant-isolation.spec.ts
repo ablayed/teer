@@ -99,7 +99,11 @@ test.describe('stock.set_threshold — isolation cross-tenant', () => {
       await loginViaForm(page, emailT1, e2ePassword, '/produits?tab=stock');
       await landOnTarget(page, '/produits?tab=stock');
 
-      const row = page.locator('tr', { hasText: titleT1 });
+      // Depuis UX-CAT-01, la ligne Stock existe en 2 variantes DOM (desktop
+      // <tr> hidden md:block / mobile <article> md:hidden, même data-testid
+      // stock-row-<id>) — :visible isole celle réellement rendue à ce
+      // viewport ; les deux portent les mêmes contrôles (seuil, formulaire).
+      const row = page.locator('[data-testid^="stock-row-"]:visible', { hasText: titleT1 });
       await expect(row).toBeVisible();
 
       // Défaut sans ligne product_stock (`lib/actions/products.ts` :

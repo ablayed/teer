@@ -105,13 +105,12 @@ async function signIn(page: Page, email: string, redirectTo: string) {
   await expect(page.locator('main#main')).toBeVisible({ timeout: 45_000 });
 }
 
-// Responsive : desktop rend product-catalog-card (bouton "Détails" inline),
-// mobile rend product-catalog-row (menu "Actions — <titre>" à la place). Même
-// motif que openDetails() dans tests/e2e/products-bundle-configuration.spec.ts
+// Responsive : desktop rend product-catalog-card (bouton "Détails" inline).
+// Mobile rend product-catalog-row : depuis UX-CAT-01, la carte entière ouvre
+// le détail (onActivate sur ResourceRow) — le menu "Actions — <titre>" ne
+// porte plus "Détails" (réservé aux gestes rares, ex. "Modifier le coût").
+// Même motif que openDetails() dans tests/e2e/products-bundle-configuration.spec.ts
 // (aucun module de fixtures partagé dans ce dépôt — cf. commentaire de tête).
-// Absent ici avant correctif : timeout de 90s sur iphone-14/pixel-7 en CI
-// (jamais chromium, qui rend toujours la carte desktop), le bouton "Détails"
-// visé étant caché à l'accessibilité sur mobile.
 async function openProductDetails(page: Page, productId: string, title: string) {
   const viewport = page.viewportSize();
   if (!viewport) throw new Error('Viewport Playwright requis pour ouvrir les détails produit');
@@ -127,8 +126,7 @@ async function openProductDetails(page: Page, productId: string, title: string) 
     return;
   }
 
-  await productRow.getByRole('button', { name: `Actions — ${title}`, exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Détails', exact: true }).click();
+  await productRow.getByText(title, { exact: true }).click();
 }
 
 async function createProduct(admin: AdminClient, merchantAccountId: string, shopId: string) {

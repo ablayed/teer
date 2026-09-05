@@ -5,6 +5,7 @@ import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import { landOnTarget } from './helpers/auth';
 import { grantCurrentConsents } from './helpers/consent';
+import { defaultShopId } from './helpers/workspace';
 
 function readLocalEnv(): Record<string, string> {
   if (!existsSync('.env.local')) return {};
@@ -186,6 +187,138 @@ test('page produits : recherche filtre par titre côté serveur', async ({ page 
       timeout: 10_000,
     });
     await expect(page.getByRole('heading', { name: 'Alpha 001' })).not.toBeVisible();
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test("Stock — le total, le compteur d'alerte et la population ouverte viennent du même prédicat", async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('stock-summary');
+  try {
+    const shopId = await defaultShopId(fixture.admin, fixture.merchantAccountId);
+
+    // 26 produits en stock bas (seuil 10, qty_on_hand=1), dont 2 au coût
+    // jamais saisi (unit_cost=0) — reproduit exactement le gabarit prouvé
+    // côté unitaire (stock-catalog-facts.test.ts) mais via la vraie page,
+    // pour prouver le câblage bout en bout, pas seulement la formule.
+    const lowStockCount = 26;
+    const healthyCount = 4;
+    const missingCostCount = 2;
+
+    const products = Array.from({ length: lowStockCount + healthyCount }, (_, i) => ({
+      merchant_account_id: fixture.merchantAccountId,
+      shop_id: shopId,
+      title: `Stock ${String(i + 1).padStart(3, '0')}`,
+      sku: `STK-${i + 1}`,
+      unit_cost: 500,
+      is_active: true,
+    }));
+    const { data: insertedProducts, error: insertError } = await fixture.admin
+      .from('product')
+      .insert(products)
+      .select('id');
+    if (insertError || !insertedProducts) throw insertError ?? new Error('Produits non créés');
+
+    const stockRows = insertedProducts.map((p, i) => {
+      const isLow = i < lowStockCount;
+      const missingCost = isLow && i < missingCostCount;
+      return {
+        product_id: p.id,
+        merchant_account_id: fixture.merchantAccountId,
+        shop_id: shopId,
+        qty_on_hand: isLow ? 1 : 100,
+        qty_reserved: 0,
+        low_stock_threshold: 10,
+        unit_cost: missingCost ? 0 : 500,
+      };
+    });
+    const { error: stockError } = await fixture.admin.from('product_stock').insert(stockRows);
+    if (stockError) throw stockError;
+
+    await signIn(page, fixture.email, '/produits?tab=stock');
+
+    const alert = page.getByTestId('stock-low-stock-alert');
+    await expect(alert).toBeVisible({ timeout: 15_000 });
+    await expect(alert).toContainText(`${lowStockCount} produits en stock bas`);
+
+    const totalValue = page.getByTestId('stock-total-value');
+    await expect(totalValue).toBeVisible();
+    await expect(totalValue).toContainText('coût');
+    await expect(totalValue).not.toContainText('Non calculable');
+
+    await alert.click();
+    await page.waitForURL('**/produits?tab=stock&filtre=stock_bas', { timeout: 10_000 });
+
+    // 26 > PRODUCTS_PER_PAGE (25) : la population entière n'est visible
+    // qu'après "Voir plus" — même pagination que le catalogue, la preuve
+    // porte sur le total réel, pas sur ce qui tient dans la première page.
+    const voirPlus = page.getByRole('button', { name: 'Voir plus' });
+    if (await voirPlus.isVisible().catch(() => false)) {
+      await voirPlus.click();
+    }
+
+    // Desktop (table) et mobile (cartes) portent le même data-testid par
+    // produit et coexistent dans le DOM (CSS hidden md:block / md:hidden) —
+    // :visible isole la variante réellement rendue à ce viewport.
+    await expect(page.locator('[data-testid^="stock-row-"]:visible')).toHaveCount(lowStockCount, {
+      timeout: 15_000,
+    });
+  } finally {
+    await fixture.admin.auth.admin.deleteUser(fixture.userId);
+  }
+});
+
+test("Stock — un agent voit l'alerte stock bas mais jamais la valeur (coût masqué, quantité conservée)", async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('stock-agent');
+  try {
+    const shopId = await defaultShopId(fixture.admin, fixture.merchantAccountId);
+
+    const { data: product, error: productError } = await fixture.admin
+      .from('product')
+      .insert({
+        merchant_account_id: fixture.merchantAccountId,
+        shop_id: shopId,
+        title: 'Produit agent stock bas',
+        unit_cost: 500,
+        is_active: true,
+      })
+      .select('id')
+      .single();
+    if (productError || !product) throw productError ?? new Error('Produit non créé');
+
+    const { error: stockError } = await fixture.admin.from('product_stock').insert({
+      product_id: product.id,
+      merchant_account_id: fixture.merchantAccountId,
+      shop_id: shopId,
+      qty_on_hand: 1,
+      qty_reserved: 0,
+      low_stock_threshold: 10,
+      unit_cost: 500,
+    });
+    if (stockError) throw stockError;
+
+    const agentEmail = e2eEmail('stock-agent-member');
+    const agentUserId = await createConfirmedUser(fixture.admin, agentEmail);
+    // createConfirmedUser provisionne son propre merchant_account (trigger de
+    // signup) — supprimé pour ne garder QUE l'appartenance au tenant du test,
+    // même motif que tests/e2e/purchases.spec.ts:354.
+    await fixture.admin.from('merchant_account').delete().eq('owner_user_id', agentUserId);
+    await fixture.admin.from('merchant_member').insert({
+      merchant_account_id: fixture.merchantAccountId,
+      user_id: agentUserId,
+      role: 'agent',
+    });
+
+    await signIn(page, agentEmail, '/produits?tab=stock');
+
+    await expect(page.getByTestId('stock-low-stock-alert')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('stock-total-value')).not.toBeVisible();
+
+    await fixture.admin.auth.admin.deleteUser(agentUserId);
   } finally {
     await fixture.admin.auth.admin.deleteUser(fixture.userId);
   }

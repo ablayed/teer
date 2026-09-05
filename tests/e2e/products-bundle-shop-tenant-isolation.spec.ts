@@ -151,10 +151,11 @@ test.describe('saveBundleConfigurationAction — isolation boutique/tenant (fuit
         true,
       );
 
-      // Responsive : desktop rend product-catalog-card (bouton "Détails" inline),
-      // mobile rend product-catalog-row (carte desktop présente mais hidden — menu
-      // "Actions — <titre>" à la place). Même motif que openDetails() dans
-      // tests/e2e/products-bundle-configuration.spec.ts.
+      // Responsive : desktop rend product-catalog-card (bouton "Détails" inline).
+      // Mobile rend product-catalog-row : depuis UX-CAT-01, la carte entière
+      // ouvre le détail (onActivate sur ResourceRow) — le menu "Actions —
+      // <titre>" ne porte plus "Détails" (réservé aux gestes rares). Même
+      // motif que openDetails() dans tests/e2e/products-bundle-configuration.spec.ts.
       const viewport = page.viewportSize();
       if (!viewport) throw new Error('Viewport Playwright requis');
       const isDesktop = viewport.width >= 768;
@@ -165,10 +166,7 @@ test.describe('saveBundleConfigurationAction — isolation boutique/tenant (fuit
       if (isDesktop) {
         await productRow.getByRole('button', { name: 'Détails', exact: true }).click();
       } else {
-        await productRow
-          .getByRole('button', { name: `Actions — ${titleBundle}`, exact: true })
-          .click();
-        await page.getByRole('menuitem', { name: 'Détails', exact: true }).click();
+        await productRow.getByText(titleBundle, { exact: true }).click();
       }
 
       const panel = page.getByTestId('product-detail-panel');

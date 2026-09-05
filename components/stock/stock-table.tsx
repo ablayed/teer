@@ -8,13 +8,18 @@ import {
   setLowStockThresholdAction,
 } from '@/lib/actions/stock';
 import type { StockPageRow } from '@/lib/actions/stock';
+import type { StockCatalogSummary } from '@/lib/stock/stock-catalog-facts';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
+import Link from 'next/link';
 import { useState } from 'react';
 
 type Props = {
   rows: StockPageRow[];
   canSeeCost: boolean;
+  stockSummary: StockCatalogSummary | null;
+  lowStockOnly: boolean;
+  storeId: string;
 };
 
 type ActiveForm =
@@ -301,26 +306,10 @@ function ThresholdForm({
   );
 }
 
-export function StockTable({ rows, canSeeCost }: Props) {
+export function StockTable({ rows, canSeeCost, stockSummary, lowStockOnly, storeId }: Props) {
   const [activeForm, setActiveForm] = useState<ActiveForm>(null);
   const [thresholdEdit, setThresholdEdit] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
-
-  if (rows.length === 0) {
-    return (
-      <p className="text-sm text-muted">
-        Aucun produit actif. Ajoutez des produits dans le catalogue pour gérer le stock.
-      </p>
-    );
-  }
-
-  // Un bundle n'a pas de qty_on_hand propre significatif (cascade PR 1) : son
-  // isLowStock/stockValue propres sont exclus des agrégats, qui n'auraient
-  // aucun sens mélangés à des stocks de produits normaux.
-  const lowStockCount = rows.filter((r) => !r.isBundle && r.isLowStock).length;
-  const totalValue = canSeeCost
-    ? rows.filter((r) => !r.isBundle).reduce((sum, r) => sum + (r.stockValue ?? 0), 0)
-    : null;
 
   function closeForm() {
     setActiveForm(null);
@@ -331,30 +320,77 @@ export function StockTable({ rows, canSeeCost }: Props) {
     setMenuOpen(null);
   }
 
-  return (
-    <div className="space-y-4">
-      {lowStockCount > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-danger/25 bg-danger-subtle p-4 text-sm font-medium text-danger">
+  const summaryBlock = (
+    <>
+      {stockSummary && stockSummary.lowStockCount > 0 && (
+        <Link
+          className="flex min-h-12 items-center gap-3 rounded-lg border border-danger/25 bg-danger-subtle p-4 text-sm font-medium text-danger hover:bg-danger-subtle/80"
+          data-testid="stock-low-stock-alert"
+          href={`/s/${storeId}/produits?tab=stock&filtre=stock_bas`}
+        >
           <span>
-            {lowStockCount} produit{lowStockCount > 1 ? 's' : ''} en stock bas
+            {stockSummary.lowStockCount} produit{stockSummary.lowStockCount > 1 ? 's' : ''} en stock
+            bas
           </span>
-        </div>
+        </Link>
       )}
 
-      {canSeeCost && totalValue !== null && (
-        <p className="text-sm text-muted">
+      {lowStockOnly && (
+        <Link
+          className="inline-flex min-h-12 items-center text-sm font-medium text-muted underline underline-offset-2 hover:text-text"
+          href={`/s/${storeId}/produits?tab=stock`}
+        >
+          Retirer le filtre « stock bas »
+        </Link>
+      )}
+
+      {canSeeCost && stockSummary && (
+        <p className="text-sm text-muted" data-testid="stock-total-value">
           Valeur totale du stock :{' '}
-          <Amount amountMinor={totalValue} className="font-semibold text-text" />
+          {stockSummary.totalValueMinor !== null ? (
+            <Amount
+              amountMinor={stockSummary.totalValueMinor}
+              className="font-semibold text-text"
+            />
+          ) : (
+            <span className="font-semibold text-text">Non calculable</span>
+          )}
+          {stockSummary.costUnknownCount > 0 && (
+            <span className="ml-1 text-muted">
+              — {stockSummary.costUnknownCount} coût
+              {stockSummary.costUnknownCount > 1 ? 's' : ''} manquant
+              {stockSummary.costUnknownCount > 1 ? 's' : ''}
+            </span>
+          )}
         </p>
       )}
+    </>
+  );
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+  if (rows.length === 0) {
+    return (
+      <div className="space-y-4">
+        {summaryBlock}
+        <p className="text-sm text-muted">
+          {lowStockOnly
+            ? 'Aucun produit en stock bas.'
+            : 'Aucun produit actif. Ajoutez des produits dans le catalogue pour gérer le stock.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {summaryBlock}
+
+      <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface text-left">
               <th className="px-4 py-3 font-medium">Produit</th>
               <th className="px-4 py-3 font-medium text-right">En stock</th>
-              <th className="px-4 py-3 font-medium text-right">Commandé</th>
+              <th className="px-4 py-3 font-medium text-right">Réservé</th>
               <th className="px-4 py-3 font-medium text-right">Disponible</th>
               <th className="px-4 py-3 font-medium text-right">Seuil alerte</th>
               {canSeeCost && <th className="px-4 py-3 font-medium text-right">Valeur</th>}
@@ -371,8 +407,9 @@ export function StockTable({ rows, canSeeCost }: Props) {
 
               return (
                 <tr
-                  key={row.productId}
                   className="border-b border-border last:border-0 hover:bg-surface/50"
+                  data-testid={`stock-row-${row.productId}`}
+                  key={row.productId}
                 >
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-0.5">
@@ -389,10 +426,19 @@ export function StockTable({ rows, canSeeCost }: Props) {
                       <td className="px-4 py-3 text-right font-mono text-muted">—</td>
                       <td className="px-4 py-3 text-right font-mono text-muted">—</td>
                       <td
-                        className="px-4 py-3 text-right font-mono tabular-nums"
+                        className={cn(
+                          'px-4 py-3 text-right font-mono tabular-nums',
+                          row.bundleAvailability !== null &&
+                            row.bundleAvailability < 0 &&
+                            'font-semibold text-danger',
+                        )}
                         title="Disponibilité dérivée du stock de ses composants (min de stock_composant / quantité requise)"
                       >
-                        {row.bundleAvailability ?? '—'}
+                        {row.bundleAvailability === null
+                          ? '—'
+                          : row.bundleAvailability < 0
+                            ? `Déficit : ${row.bundleAvailability}`
+                            : row.bundleAvailability}
                       </td>
                       <td className="px-4 py-3 text-right text-muted">—</td>
                       {canSeeCost && <td className="px-4 py-3 text-right text-muted">—</td>}
@@ -494,6 +540,151 @@ export function StockTable({ rows, canSeeCost }: Props) {
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="space-y-3 md:hidden">
+        {rows.map((row) => {
+          const isEditingThreshold = thresholdEdit === row.productId;
+          const form =
+            activeForm !== null && activeForm.productId === row.productId ? activeForm.type : null;
+
+          return (
+            <article
+              className="space-y-3 rounded-lg border border-border bg-surface p-4 shadow-1"
+              data-testid={`stock-row-${row.productId}`}
+              key={row.productId}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium">{row.title}</p>
+                  {row.sku && <p className="text-xs text-muted">{row.sku}</p>}
+                </div>
+                <div className="flex flex-wrap justify-end gap-1">
+                  {row.isBundle && <BundleBadge />}
+                  {!row.isBundle && row.isLowStock && <LowStockBadge />}
+                </div>
+              </div>
+
+              {row.isBundle ? (
+                <p
+                  className={cn(
+                    'font-mono text-sm',
+                    row.bundleAvailability !== null &&
+                      row.bundleAvailability < 0 &&
+                      'font-semibold text-danger',
+                  )}
+                >
+                  Disponible :{' '}
+                  {row.bundleAvailability === null
+                    ? '— (composition incomplète)'
+                    : row.bundleAvailability < 0
+                      ? `Déficit : ${row.bundleAvailability}`
+                      : row.bundleAvailability}
+                </p>
+              ) : (
+                <dl className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-muted">En stock</dt>
+                    <dd className="font-mono">{row.qtyOnHand}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">Réservé</dt>
+                    <dd className="font-mono text-muted">{row.qtyReserved}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">Disponible</dt>
+                    <dd className={cn('font-mono', row.isLowStock && 'font-semibold text-danger')}>
+                      {row.qtyAvailable}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">Seuil alerte</dt>
+                    <dd>
+                      {isEditingThreshold ? (
+                        <ThresholdForm
+                          current={row.lowStockThreshold}
+                          onDone={() => setThresholdEdit(null)}
+                          productId={row.productId}
+                        />
+                      ) : (
+                        <button
+                          className="min-h-12 text-muted underline underline-offset-2 hover:text-text"
+                          onClick={() => setThresholdEdit(row.productId)}
+                          type="button"
+                        >
+                          {row.lowStockThreshold}
+                        </button>
+                      )}
+                    </dd>
+                  </div>
+                  {canSeeCost && (
+                    <div className="col-span-2">
+                      <dt className="text-xs text-muted">Valeur</dt>
+                      <dd>
+                        {row.stockValue !== null ? <Amount amountMinor={row.stockValue} /> : '—'}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+
+              {!row.isBundle && (
+                <div className="space-y-2">
+                  {!form && menuOpen !== row.productId && (
+                    <button
+                      className="min-h-12 w-full rounded-md border border-border bg-canvas px-3 text-sm font-medium hover:bg-surface"
+                      onClick={() => setMenuOpen(row.productId)}
+                      type="button"
+                    >
+                      Modifier le stock
+                    </button>
+                  )}
+                  {!form && menuOpen === row.productId && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="min-h-12 rounded-md border border-border bg-canvas px-3 text-sm font-medium hover:bg-surface"
+                        onClick={() => openForm('purchase', row.productId)}
+                        type="button"
+                      >
+                        + Entrée stock
+                      </button>
+                      <button
+                        className="min-h-12 rounded-md border border-border bg-canvas px-3 text-sm font-medium hover:bg-surface"
+                        onClick={() => openForm('adjustment', row.productId)}
+                        type="button"
+                      >
+                        Ajustement
+                      </button>
+                      <button
+                        className="min-h-12 rounded-md border border-border bg-canvas px-3 text-sm font-medium hover:bg-surface"
+                        onClick={() => openForm('return', row.productId)}
+                        type="button"
+                      >
+                        Retour livreur
+                      </button>
+                      <button
+                        className="min-h-12 rounded-md px-3 text-sm text-muted underline"
+                        onClick={() => setMenuOpen(null)}
+                        type="button"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  )}
+                  {form === 'purchase' && (
+                    <PurchaseForm onDone={closeForm} productId={row.productId} />
+                  )}
+                  {form === 'adjustment' && (
+                    <AdjustmentForm onDone={closeForm} productId={row.productId} />
+                  )}
+                  {form === 'return' && (
+                    <CourierReturnForm onDone={closeForm} productId={row.productId} />
+                  )}
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
     </div>
   );
