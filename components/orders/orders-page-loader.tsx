@@ -31,6 +31,7 @@ import { hasVisibleScheduledDelivery } from '@/lib/orders/scheduled-delivery';
 import { filterOrdersBySearch, normalizeOrderSearch } from '@/lib/orders/search';
 import { cn } from '@/lib/utils';
 import { type WhatsappOrderData, parseItemsSummaryForWhatsapp } from '@/lib/whatsapp/format';
+import { buildOrderDetailHref } from '@/lib/workspace/store-switch';
 import { useTranslations } from 'next-intl';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
@@ -229,7 +230,7 @@ export function OrdersPageLoader({
               key={order.id}
             >
               <ResourceRow
-                href={`${pathname.replace(/\/$/, '')}/${order.id}`}
+                href={buildOrderDetailHref(pathname, order.id)}
                 prefetch={false}
                 meta={
                   <span className="inline-flex flex-wrap items-center gap-x-1.5">

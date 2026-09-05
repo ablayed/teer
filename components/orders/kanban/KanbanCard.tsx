@@ -6,6 +6,7 @@ import { Amount } from '@/components/ui/amount';
 import type { OrderListItem } from '@/lib/actions/orders';
 import { formatDateRelative } from '@/lib/format/date';
 import { cn } from '@/lib/utils';
+import { buildOrderDetailHref } from '@/lib/workspace/store-switch';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -19,7 +20,7 @@ type KanbanCardProps = {
 
 export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: KanbanCardProps) {
   const pathname = usePathname();
-  const orderHref = `${pathname.replace(/\/$/, '')}/${order.id}`;
+  const orderHref = buildOrderDetailHref(pathname, order.id);
   const orderLabel = order.order_number ?? emptyLabel;
   const customerLabel = order.customer?.full_name ?? emptyLabel;
   const orderDate = order.created_at_shopify ?? order.created_at;
