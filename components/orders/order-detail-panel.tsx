@@ -8,13 +8,13 @@ import { OrderCartEditor } from '@/components/orders/order-cart-editor';
 import { OrderDriverReassign } from '@/components/orders/order-driver-reassign';
 import { OrderNoteEditor } from '@/components/orders/order-note-editor';
 import type { DriverOption } from '@/components/orders/transition-dialog';
+import { Amount } from '@/components/ui/amount';
 import { Button } from '@/components/ui/button';
 import { WhatsappComposeSheet } from '@/components/whatsapp/whatsapp-compose-sheet';
 import type { OrderDetail } from '@/lib/actions/orders';
 import { type OrderStatus, orderStatusLabels } from '@/lib/domain/order-state-machine';
 import { cancelReasonLabels, isCancelReason } from '@/lib/domain/order-transition-actions';
 import { formatDateTime } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 import { formatPhoneSN } from '@/lib/format/phone';
 import { getOrderCartEditingMode } from '@/lib/orders/cart-editing';
 import { hasVisibleScheduledDelivery } from '@/lib/orders/scheduled-delivery';
@@ -336,9 +336,7 @@ export function OrderDetailPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          <span className="font-mono font-semibold tabular-nums text-text">
-            {formatMoney(order.total_amount, order.currency)}
-          </span>
+          <Amount amountMinor={order.total_amount} className="font-semibold text-text" />
           <span aria-hidden="true">·</span>
           <span className="font-medium text-muted">
             {codDisplayLabel(currentStatus, order.delivery_state)}
@@ -424,12 +422,12 @@ export function OrderDetailPanel({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{item.title || emptyValue}</p>
                       <p className="text-xs text-muted">
-                        {item.quantity} x {formatMoney(item.price, order.currency)}
+                        {item.quantity} x <Amount amountMinor={item.price} />
                       </p>
                     </div>
                   </div>
                   <p className="shrink-0 text-sm font-semibold">
-                    {formatMoney(item.quantity * item.price, order.currency)}
+                    <Amount amountMinor={item.quantity * item.price} />
                   </p>
                 </div>
               ))}
@@ -475,12 +473,11 @@ export function OrderDetailPanel({
         ) : null}
 
         {canEditCart && cartEditingMode ? (
-          <OrderCartEditor currency={order.currency} mode={cartEditingMode} orderId={order.id} />
+          <OrderCartEditor mode={cartEditingMode} orderId={order.id} />
         ) : null}
 
         {canEditAmounts ? (
           <OrderAmountsEditor
-            currency={order.currency}
             deliveryFeeMinor={order.delivery_fee_minor}
             deliveryState={order.delivery_state}
             orderId={order.id}
@@ -490,8 +487,8 @@ export function OrderDetailPanel({
         ) : (
           <section className="rounded-lg border border-border p-4">
             <p className="text-sm text-muted">Total</p>
-            <p className="mt-1 font-mono text-xl font-semibold tabular-nums">
-              {formatMoney(order.total_amount, order.currency)}
+            <p className="mt-1 text-xl font-semibold">
+              <Amount amountMinor={order.total_amount} />
             </p>
           </section>
         )}

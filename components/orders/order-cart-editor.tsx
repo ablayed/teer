@@ -1,11 +1,11 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import {
   getOrderCartEditorDataAction,
   reduceOrderCartPostAssignmentAction,
   replaceOrderCartAction,
 } from '@/lib/actions/orders';
-import { formatMoney } from '@/lib/format/fcfa';
 import { type CartEditingMode, calculateCartTotal } from '@/lib/orders/cart-editing';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
@@ -36,11 +36,9 @@ function newLine(): Line {
 }
 
 export function OrderCartEditor({
-  currency,
   mode,
   orderId,
 }: {
-  currency: string;
   mode: CartEditingMode;
   orderId: string;
 }) {
@@ -278,7 +276,9 @@ export function OrderCartEditor({
           ) : null}
           <div className="flex items-center justify-between border-t border-border pt-3">
             <p className="font-medium">Total</p>
-            <p className="font-mono font-semibold">{formatMoney(total, currency)}</p>
+            <p className="font-semibold">
+              <Amount amountMinor={total} />
+            </p>
           </div>
           <button
             className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] disabled:opacity-50"

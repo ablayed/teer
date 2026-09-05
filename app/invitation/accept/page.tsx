@@ -136,7 +136,7 @@ function InvitationError({
         <h1 className="text-xl font-semibold">{title}</h1>
         <p className="mt-3 text-sm leading-6 text-muted">{message}</p>
         <Link
-          className="mt-6 inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover"
+          className="mt-6 inline-flex min-h-12 items-center justify-center rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover"
           href={href}
         >
           {cta}

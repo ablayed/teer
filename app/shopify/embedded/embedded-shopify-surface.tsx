@@ -245,7 +245,7 @@ export function EmbeddedShopifySurface({ clientId, host, supportEmail }: Embedde
                 nécessite une action explicite avec votre compte Tëër.
               </p>
               <Link
-                className="inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-text"
+                className="inline-flex min-h-12 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-text"
                 href={installHref ?? '#'}
               >
                 Associer Tëër et installer
@@ -274,7 +274,7 @@ export function EmbeddedShopifySurface({ clientId, host, supportEmail }: Embedde
               ) : null}
               {state.kind === 'ready' ? (
                 <a
-                  className="inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-text"
+                  className="inline-flex min-h-12 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-text"
                   href="/tableau"
                   rel="noreferrer noopener"
                   target="_blank"

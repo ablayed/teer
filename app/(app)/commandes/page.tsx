@@ -220,7 +220,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             action={
               showNoShop ? (
                 <Link
-                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-accent px-4 font-medium text-[#111]"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-accent px-4 font-medium text-[#111]"
                   href="/boutiques"
                 >
                   {t('empty.noShopCta')}

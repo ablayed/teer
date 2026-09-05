@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import { DefinitionCard } from '@/components/ui/definition-card';
 import { updateProductUnitCostAction } from '@/lib/actions/products';
 import type { FinanceProductCostReport, FinanceProductCostRow } from '@/lib/finance/product-cost';
@@ -45,7 +46,7 @@ function CostMissingBadge() {
   const t = useTranslations('finance.products.table');
   return (
     <span
-      className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+      className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
       title={t('costMissingHint')}
     >
       {t('costMissing')}
@@ -57,7 +58,7 @@ function EstimatedBadge() {
   const t = useTranslations('finance.products.table');
   return (
     <span
-      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
       title={t('estimatedHint')}
     >
       {t('estimated')}
@@ -69,7 +70,7 @@ function LowVolumeBadge() {
   const t = useTranslations('finance.products.table');
   return (
     <span
-      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+      className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700"
       title={t('lowVolumeHint')}
     >
       {t('lowVolume')}
@@ -86,7 +87,12 @@ function ProfitValue({ row, value }: { row: FinanceProductCostRow; value: number
       </span>
     );
   }
-  return <span className={value < 0 ? 'text-danger' : 'text-success'}>{money(value)}</span>;
+  return (
+    <Amount
+      amountMinor={value}
+      className={`font-mono ${value < 0 ? 'text-danger' : 'text-success'}`}
+    />
+  );
 }
 
 // Cellule « Prix d'achat » éditable in-cell (pattern du seuil par produit). Éditable
@@ -137,7 +143,7 @@ function PurchaseCell({
       <div className="flex flex-wrap items-center justify-end gap-1">
         <input
           aria-label={t('purchaseUnitPlaceholder')}
-          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-right text-sm md:min-h-9"
+          className="min-h-12 w-24 rounded-md border border-border bg-canvas px-2 text-right text-sm md:min-h-9"
           inputMode="numeric"
           min="0"
           onChange={(event) => setValue(event.target.value)}
@@ -146,7 +152,7 @@ function PurchaseCell({
           value={value}
         />
         <button
-          className="min-h-11 rounded-md px-2 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
+          className="min-h-12 rounded-md px-2 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
           disabled={action.isExecuting}
           onClick={submit}
           type="button"
@@ -154,7 +160,7 @@ function PurchaseCell({
           {action.isExecuting ? '…' : t('save')}
         </button>
         <button
-          className="min-h-11 rounded-md px-2 text-sm text-muted underline md:min-h-9"
+          className="min-h-12 rounded-md px-2 text-sm text-muted underline md:min-h-9"
           onClick={() => setEditing(false)}
           type="button"
         >
@@ -171,7 +177,7 @@ function PurchaseCell({
         <CostMissingBadge />
       ) : (
         <>
-          <span>{money(row.purchasePriceMinor)}</span>
+          <Amount amountMinor={row.purchasePriceMinor} className="font-mono" />
           {row.estimated ? <EstimatedBadge /> : null}
         </>
       )}
@@ -196,16 +202,24 @@ function DetailRow({ row }: { row: FinanceProductCostRow }) {
     <div className="grid gap-3 rounded-md border border-border bg-canvas p-3 sm:grid-cols-4">
       <div>
         <p className="text-xs text-muted">{t('ads')}</p>
-        <p className="font-mono tabular-nums">{money(row.adsAllocatedMinor)}</p>
+        <p>
+          <Amount amountMinor={row.adsAllocatedMinor} className="font-mono" />
+        </p>
       </div>
       <div>
         <p className="text-xs text-muted">{t('delivery')}</p>
-        <p className="font-mono tabular-nums">{money(row.deliveryAllocatedMinor)}</p>
+        <p>
+          <Amount amountMinor={row.deliveryAllocatedMinor} className="font-mono" />
+        </p>
       </div>
       <div>
         <p className="text-xs text-muted">{t('totalCost')}</p>
-        <p className="font-mono tabular-nums">
-          {row.costMissing ? <span className="text-muted">—</span> : money(row.totalCostMinor)}
+        <p>
+          {row.costMissing ? (
+            <span className="text-muted">—</span>
+          ) : (
+            <Amount amountMinor={row.totalCostMinor} className="font-mono" />
+          )}
         </p>
       </div>
       <div>
@@ -248,7 +262,9 @@ function ProductCard({
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[11px] text-muted">{t('revenue')}</p>
-          <p className="font-mono text-lg font-semibold tabular-nums">{money(row.revenueMinor)}</p>
+          <p className="text-lg font-semibold">
+            <Amount amountMinor={row.revenueMinor} className="font-mono" />
+          </p>
         </div>
       </div>
 
@@ -269,7 +285,7 @@ function ProductCard({
 
       <button
         aria-expanded={expanded}
-        className="mt-3 min-h-11 w-full rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+        className="mt-3 min-h-12 w-full rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
         onClick={onToggle}
         type="button"
       >
@@ -341,13 +357,13 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              className="min-h-11 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-canvas hover:text-text"
+              className="min-h-12 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-canvas hover:text-text"
               href={`/s/${storeId}/finances?tab=global#depenses`}
             >
               {t('editExpenses')}
             </Link>
             <Link
-              className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-text hover:bg-accent-hover"
+              className="min-h-12 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-text hover:bg-accent-hover"
               href={`/s/${storeId}/commandes`}
             >
               {t('editOrders')}
@@ -360,28 +376,28 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
             definition={t('cards.purchase.definition')}
             formula={t('cards.purchase.formula')}
             label={t('cards.purchase.label')}
-            value={money(totals.purchase)}
+            value={<Amount amountMinor={totals.purchase} className="font-mono" />}
           />
           <DefinitionCard
             definition={t('cards.totalCost.definition')}
             formula={t('cards.totalCost.formula')}
             label={t('cards.totalCost.label')}
-            value={money(totals.totalCost)}
+            value={<Amount amountMinor={totals.totalCost} className="font-mono" />}
           />
           <DefinitionCard
             definition={t('cards.profitAfter.definition')}
             formula={t('cards.profitAfter.formula')}
             label={t('cards.profitAfter.label')}
-            value={money(totals.profitAfter)}
+            value={<Amount amountMinor={totals.profitAfter} className="font-mono" />}
           />
         </div>
 
-        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
+        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           {t('pilotBanner')}
         </p>
 
         {report.unallocatedDeliveryMinor > 0 ? (
-          <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+          <p className="mt-3 text-xs text-amber-700">
             {t('unallocatedDelivery', { amount: money(report.unallocatedDeliveryMinor) })}
           </p>
         ) : null}
@@ -430,19 +446,19 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
                           <td className="px-4 py-3 text-right font-mono tabular-nums">
                             {new Intl.NumberFormat('fr-FR').format(row.qtySold)}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
-                            {money(row.revenueMinor)}
+                          <td className="px-4 py-3 text-right">
+                            <Amount amountMinor={row.revenueMinor} className="font-mono" />
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3 text-right">
                             <PurchaseCell onUpdated={handleUpdated} row={row} />
                           </td>
-                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <td className="px-4 py-3 text-right">
                             <ProfitValue row={row} value={row.profitBeforeMinor} />
                           </td>
                           <td className="px-4 py-3 text-right">
                             <button
                               aria-expanded={expanded}
-                              className="min-h-11 rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
+                              className="min-h-12 rounded-md border border-border px-3 text-xs font-medium text-muted hover:bg-canvas hover:text-text"
                               onClick={() => toggleRow(row.productId)}
                               type="button"
                             >
@@ -465,14 +481,14 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
                     <td className="px-4 py-3 text-right font-mono tabular-nums">
                       {new Intl.NumberFormat('fr-FR').format(totals.qty)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {money(totals.revenue)}
+                    <td className="px-4 py-3 text-right">
+                      <Amount amountMinor={totals.revenue} className="font-mono" />
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {money(totals.purchase)}
+                    <td className="px-4 py-3 text-right">
+                      <Amount amountMinor={totals.purchase} className="font-mono" />
                     </td>
-                    <td className="px-4 py-3 text-right font-mono tabular-nums">
-                      {money(totals.profitBefore)}
+                    <td className="px-4 py-3 text-right">
+                      <Amount amountMinor={totals.profitBefore} className="font-mono" />
                     </td>
                     <td className="px-4 py-3" />
                   </tr>
@@ -495,20 +511,23 @@ export function FinanceProductCostView({ from, report, scopeNote, storeId, to }:
                 <dl className="mt-2 space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <dt className="text-muted">{t('table.revenue')}</dt>
-                    <dd className="font-mono tabular-nums">{money(totals.revenue)}</dd>
+                    <dd>
+                      <Amount amountMinor={totals.revenue} className="font-mono" />
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <dt className="text-muted">{t('table.purchase')}</dt>
-                    <dd className="font-mono tabular-nums">{money(totals.purchase)}</dd>
+                    <dd>
+                      <Amount amountMinor={totals.purchase} className="font-mono" />
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <dt className="text-muted">{t('table.profitAfter')}</dt>
-                    <dd
-                      className={`font-mono tabular-nums ${
-                        totals.profitAfter < 0 ? 'text-danger' : 'text-success'
-                      }`}
-                    >
-                      {money(totals.profitAfter)}
+                    <dd>
+                      <Amount
+                        amountMinor={totals.profitAfter}
+                        className={`font-mono ${totals.profitAfter < 0 ? 'text-danger' : 'text-success'}`}
+                      />
                     </dd>
                   </div>
                 </dl>

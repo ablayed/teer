@@ -109,14 +109,14 @@ function SetStockForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">{t('newQtyLabel')}</span>
         <input
-          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
+          className="min-h-12 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           onChange={(e) => setValue(e.target.value)}
           type="number"
           value={value}
         />
       </label>
       <button
-        className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
+        className="min-h-12 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
@@ -124,7 +124,7 @@ function SetStockForm({
         {action.isExecuting ? 'En cours…' : t('submit')}
       </button>
       <button
-        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        className="min-h-12 rounded-md px-3 text-sm text-muted underline md:min-h-9"
         onClick={onDone}
         type="button"
       >
@@ -216,7 +216,7 @@ export function DriverStockTable({ driverId, products, physicalRows, availableRo
                         />
                       ) : (
                         <button
-                          className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                          className="min-h-12 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                           onClick={() => setActiveProductId(row.productId)}
                           type="button"
                         >
@@ -259,7 +259,7 @@ export function DriverStockTable({ driverId, products, physicalRows, availableRo
                   />
                 ) : (
                   <button
-                    className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface"
+                    className="min-h-12 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface"
                     onClick={() => setActiveProductId(row.productId)}
                     type="button"
                   >
@@ -288,7 +288,7 @@ export function DriverStockTable({ driverId, products, physicalRows, availableRo
             <label className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted">{t('addProduct')}</span>
               <select
-                className="min-h-11 w-56 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
+                className="min-h-12 w-56 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
                 onChange={(e) => setAddingProductId(e.target.value)}
                 value={addingProductId}
               >

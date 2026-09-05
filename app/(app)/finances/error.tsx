@@ -22,7 +22,7 @@ export default function FinancesError({
       <section className="flex max-w-2xl flex-col gap-3 rounded-lg border border-danger/25 bg-danger-subtle p-5 text-danger shadow-1">
         <p className="text-sm font-medium">{t('title')}</p>
         <button
-          className="min-h-11 self-start rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
+          className="min-h-12 self-start rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
           onClick={() => reset()}
           type="button"
         >

@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +10,6 @@ import {
   isoToDateTimeInputs,
   normalizeHourInput,
 } from '@/lib/format/datetime-input';
-import { formatMoney } from '@/lib/format/fcfa';
 import {
   ORDER_TOTAL_POSITIVE_MESSAGE,
   parsePositiveOrderTotalInput,
@@ -21,7 +21,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
 
 type OrderAmountsEditorProps = {
-  currency: string | null;
   deliveryFeeMinor: number;
   deliveryState: string | null;
   orderId: string;
@@ -39,7 +38,6 @@ type OrderAmountsEditorProps = {
 const SCHEDULING_STATES: readonly string[] = SCHEDULED_DELIVERY_STATES;
 
 export function OrderAmountsEditor({
-  currency,
   deliveryFeeMinor,
   deliveryState,
   orderId,
@@ -147,14 +145,14 @@ export function OrderAmountsEditor({
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-border p-4">
           <p className="text-sm text-muted">Total</p>
-          <p className="mt-1 font-mono text-xl font-semibold tabular-nums">
-            {formatMoney(displayedTotal, currency)}
+          <p className="mt-1 text-xl font-semibold">
+            <Amount amountMinor={displayedTotal} />
           </p>
         </div>
         <div className="rounded-lg border border-border p-4">
           <p className="text-sm text-muted">Frais de livraison</p>
-          <p className="mt-1 font-mono text-xl font-semibold tabular-nums">
-            {formatMoney(displayedFee, currency)}
+          <p className="mt-1 text-xl font-semibold">
+            <Amount amountMinor={displayedFee} />
           </p>
         </div>
       </div>
@@ -237,9 +235,7 @@ export function OrderAmountsEditor({
 
             <p className="text-sm text-muted">
               Net (hors livraison) :{' '}
-              <span className="font-mono font-semibold tabular-nums text-text">
-                {formatMoney(netMinor, currency)}
-              </span>
+              <Amount amountMinor={netMinor} className="font-semibold text-text" />
             </p>
 
             {feedback?.tone === 'error' ? (

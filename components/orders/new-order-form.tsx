@@ -1,10 +1,10 @@
 'use client';
 
 import { useOrdersBoard } from '@/components/orders/orders-board-context';
+import { Amount } from '@/components/ui/amount';
 import { createManualOrderAction } from '@/lib/actions/orders';
 import { createProductAction } from '@/lib/actions/products';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
-import { formatMoney } from '@/lib/format/fcfa';
 import type { ShopFilterOption } from '@/lib/shops/shop-filter';
 import { cn } from '@/lib/utils';
 import { Search, Trash2 } from 'lucide-react';
@@ -53,7 +53,7 @@ type NewOrderFormProps = {
   shops: ShopFilterOption[];
 };
 
-const inputBase = 'min-h-11 w-full rounded-lg border border-border bg-canvas px-3';
+const inputBase = 'min-h-12 w-full rounded-lg border border-border bg-canvas px-3';
 
 function FieldError({ message }: { message: string | undefined }) {
   if (!message) return null;
@@ -308,7 +308,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
           </p>
         </div>
         <button
-          className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover"
+          className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover"
           onClick={() => setIsOpen((v) => !v)}
           type="button"
         >
@@ -356,7 +356,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
             <label className="space-y-2">
               <span className="text-sm font-medium">Source</span>
               <select
-                className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                className="min-h-12 w-full rounded-lg border border-border bg-canvas px-3"
                 onChange={(e) =>
                   setSource(e.target.value as (typeof sourceOptions)[number]['value'])
                 }
@@ -376,7 +376,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
                 <select
                   aria-invalid={!!fieldErrors.shop}
                   className={cn(
-                    'min-h-11 w-full rounded-lg border border-border bg-canvas px-3',
+                    'min-h-12 w-full rounded-lg border border-border bg-canvas px-3',
                     fieldErrors.shop && 'border-danger',
                   )}
                   onChange={(e) => {
@@ -432,7 +432,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
                         className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
                       />
                       <input
-                        className="min-h-11 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm md:min-h-10"
+                        className="min-h-12 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm md:min-h-10"
                         onChange={(e) => updateLine(line.id, { productSearch: e.target.value })}
                         placeholder="Rechercher titre ou SKU"
                         type="search"
@@ -442,7 +442,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
                     <select
                       aria-invalid={!!lineErr?.productId}
                       className={cn(
-                        'min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
+                        'min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
                         lineErr?.productId && 'border-danger',
                       )}
                       onChange={(e) => updateLine(line.id, { productId: e.target.value })}
@@ -466,7 +466,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
                       <input
                         aria-invalid={!!lineErr?.quantity}
                         className={cn(
-                          'min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
+                          'min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
                           lineErr?.quantity && 'border-danger',
                         )}
                         min="1"
@@ -483,7 +483,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
                       <input
                         aria-invalid={!!lineErr?.unitPrice}
                         className={cn(
-                          'min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
+                          'min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm md:min-h-10',
                           lineErr?.unitPrice && 'border-danger',
                         )}
                         min="0"
@@ -503,7 +503,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
             {fieldErrors.lines && <FieldError message={fieldErrors.lines} />}
 
             <button
-              className="min-h-11 rounded-lg border border-border bg-canvas px-4 text-sm font-medium hover:bg-surface md:min-h-10"
+              className="min-h-12 rounded-lg border border-border bg-canvas px-4 text-sm font-medium hover:bg-surface md:min-h-10"
               onClick={addLine}
               type="button"
             >
@@ -514,7 +514,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
           {/* Inline product creation */}
           <div>
             <button
-              className="min-h-11 rounded-lg px-3 text-sm font-medium text-text underline underline-offset-4 md:min-h-10"
+              className="min-h-12 rounded-lg px-3 text-sm font-medium text-text underline underline-offset-4 md:min-h-10"
               onClick={() => setShowCreateProduct((v) => !v)}
               type="button"
             >
@@ -546,7 +546,7 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
               </label>
               <div className="md:col-span-2">
                 <button
-                  className="min-h-11 rounded-lg border border-border bg-surface px-4 text-sm font-medium shadow-1 hover:bg-canvas disabled:opacity-60"
+                  className="min-h-12 rounded-lg border border-border bg-surface px-4 text-sm font-medium shadow-1 hover:bg-canvas disabled:opacity-60"
                   disabled={createProduct.isExecuting}
                   onClick={() => createInlineProduct(lines[lines.length - 1]?.id ?? '')}
                   type="button"
@@ -573,11 +573,11 @@ export function NewOrderForm({ products, shops }: NewOrderFormProps) {
             <p className="text-sm">
               <span className="text-muted">Total : </span>
               <span className="font-semibold text-text">
-                {computedTotal > 0 ? formatMoney(computedTotal, 'XOF') : '—'}
+                {computedTotal > 0 ? <Amount amountMinor={computedTotal} /> : '—'}
               </span>
             </p>
             <button
-              className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+              className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
               disabled={createOrder.isExecuting}
               onClick={submit}
               type="button"

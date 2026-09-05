@@ -1,8 +1,8 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import { recordSettlementAction } from '@/lib/actions/finance';
 import { settlementMethods } from '@/lib/finance/cash';
-import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
 import { useEffect, useRef, useState } from 'react';
@@ -99,7 +99,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
       <label className="space-y-1">
         <span className="text-xs text-muted">Montant reçu (FCFA)</span>
         <input
-          className="min-h-11 w-36 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-12 w-36 rounded-md border border-border bg-canvas px-2 text-sm"
           disabled={pendingConfirm}
           min="0"
           onChange={(e) => {
@@ -115,7 +115,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
       <label className="space-y-1">
         <span className="text-xs text-muted">Moyen</span>
         <select
-          className="min-h-11 w-40 rounded-md border border-border bg-canvas px-2 text-sm"
+          className="min-h-12 w-40 rounded-md border border-border bg-canvas px-2 text-sm"
           disabled={pendingConfirm}
           onChange={(e) => {
             setMethod(e.target.value as (typeof settlementMethods)[number]);
@@ -132,7 +132,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
       </label>
       {!pendingConfirm ? (
         <button
-          className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+          className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
           onClick={requestConfirm}
           type="button"
         >
@@ -141,17 +141,17 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
       ) : (
         <div className="flex w-full flex-col gap-2 rounded-md border border-border bg-canvas p-3 text-sm">
           <p>
-            Montant attendu : <span className="font-semibold">{formatMoney(expectedMinor)}</span>
+            Montant attendu : <Amount amountMinor={expectedMinor} className="font-semibold" />
           </p>
           <p>
-            Montant saisi : <span className="font-semibold">{formatMoney(parsedAmount)}</span>
+            Montant saisi : <Amount amountMinor={parsedAmount} className="font-semibold" />
           </p>
           <p>
-            Reste après la remise : <span className="font-semibold">{formatMoney(restMinor)}</span>
+            Reste après la remise : <Amount amountMinor={restMinor} className="font-semibold" />
           </p>
           <div className="flex flex-wrap gap-2">
             <button
-              className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
+              className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60"
               disabled={action.isExecuting}
               onClick={confirmSubmit}
               type="button"
@@ -159,7 +159,7 @@ export function DriverRemittanceForm({ driverId, expectedMinor, onSettled, prefi
               {action.isExecuting ? 'En cours…' : 'Confirmer le versement'}
             </button>
             <button
-              className="min-h-11 rounded-md border border-border px-4 text-sm font-medium text-muted hover:bg-surface"
+              className="min-h-12 rounded-md border border-border px-4 text-sm font-medium text-muted hover:bg-surface"
               onClick={() => setPendingConfirm(false)}
               type="button"
             >

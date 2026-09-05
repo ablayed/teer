@@ -103,7 +103,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
         <section className="space-y-3">
           {!showCreate ? (
             <button
-              className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink shadow-1 hover:bg-accent-hover"
+              className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink shadow-1 hover:bg-accent-hover"
               onClick={() => setShowCreate(true)}
               type="button"
             >
@@ -118,7 +118,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                 <label className="space-y-2">
                   <span className="text-sm font-medium">Nom *</span>
                   <input
-                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                    className="min-h-12 w-full rounded-lg border border-border bg-canvas px-3"
                     onChange={(event) => setTitle(event.target.value)}
                     placeholder="Ex : Sac cuir noir"
                     type="text"
@@ -128,7 +128,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                 <label className="space-y-2">
                   <span className="text-sm font-medium">SKU</span>
                   <input
-                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3"
+                    className="min-h-12 w-full rounded-lg border border-border bg-canvas px-3"
                     onChange={(event) => setSku(event.target.value)}
                     placeholder="Ex : SAC-NOIR"
                     type="text"
@@ -138,7 +138,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                 <label className="space-y-2">
                   <span className="text-sm font-medium">Coût unitaire initial</span>
                   <input
-                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
+                    className="min-h-12 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
                     min="0"
                     onChange={(event) => setUnitCost(event.target.value)}
                     placeholder="0"
@@ -150,7 +150,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                 <label className="space-y-2">
                   <span className="text-sm font-medium">Seuil d'alerte</span>
                   <input
-                    className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
+                    className="min-h-12 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
                     min="0"
                     onChange={(event) => setThresholdValue(event.target.value)}
                     placeholder="10"
@@ -162,7 +162,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
               </div>
               <div className="mt-4 flex gap-2">
                 <button
-                  className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+                  className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
                   disabled={createProduct.isExecuting || setThreshold.isExecuting}
                   onClick={onCreateProduct}
                   type="button"
@@ -170,7 +170,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                   {createProduct.isExecuting ? 'Création…' : 'Créer le produit'}
                 </button>
                 <button
-                  className="min-h-11 rounded-lg border border-border px-4 text-sm font-medium text-text hover:bg-canvas"
+                  className="min-h-12 rounded-lg border border-border px-4 text-sm font-medium text-text hover:bg-canvas"
                   onClick={() => setShowCreate(false)}
                   type="button"
                 >
@@ -245,7 +245,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                       <label className="space-y-2">
                         <span className="text-sm font-medium">Coût unitaire</span>
                         <input
-                          className="min-h-11 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
+                          className="min-h-12 w-full rounded-lg border border-border bg-canvas px-3 font-mono tabular-nums"
                           min="0"
                           onChange={(event) =>
                             setUnitCostDrafts((current) => ({
@@ -259,7 +259,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                         />
                       </label>
                       <button
-                        className="min-h-11 rounded-lg border border-border bg-canvas px-4 text-sm font-medium text-text shadow-1 hover:bg-surface disabled:opacity-60"
+                        className="min-h-12 rounded-lg border border-border bg-canvas px-4 text-sm font-medium text-text shadow-1 hover:bg-surface disabled:opacity-60"
                         disabled={updateUnitCost.isExecuting}
                         onClick={() => onSaveUnitCost(product)}
                         type="button"
@@ -405,7 +405,7 @@ function ProductMobileRow({
           <label className="flex-1 space-y-1">
             <span className="text-xs font-medium text-muted">Coût unitaire</span>
             <input
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-2 font-mono text-sm tabular-nums"
+              className="min-h-12 w-full rounded-md border border-border bg-surface px-2 font-mono text-sm tabular-nums"
               min="0"
               onChange={(event) => onUnitCostChange(event.target.value)}
               step="1"
@@ -414,7 +414,7 @@ function ProductMobileRow({
             />
           </label>
           <button
-            className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+            className="min-h-12 rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
             disabled={isSaving}
             onClick={onSaveUnitCost}
             type="button"
@@ -422,7 +422,7 @@ function ProductMobileRow({
             {isSaving ? 'Enregistrement…' : 'Enregistrer'}
           </button>
           <button
-            className="min-h-11 rounded-md px-3 text-sm text-muted underline"
+            className="min-h-12 rounded-md px-3 text-sm text-muted underline"
             onClick={() => onToggleEdit(null)}
             type="button"
           >

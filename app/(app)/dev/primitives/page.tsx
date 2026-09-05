@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { ResourceRow } from '@/components/ui/resource-row';
-import { ResourceRowSkeleton, StatCardSkeleton } from '@/components/ui/skeleton';
-import { StatCard } from '@/components/ui/stat-card';
+import { ResourceRowSkeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { orderStatuses } from '@/lib/domain/order-state-machine';
 import { Package, ShoppingBag } from 'lucide-react';
@@ -191,33 +190,6 @@ export default async function PrimitivesDemoPage() {
           </div>
         </section>
 
-        {/* ── StatCard ── */}
-        <section className="mt-10 space-y-4">
-          <h2 className="text-lg font-semibold text-text">StatCard — 3 largeurs</h2>
-          <div className="flex flex-wrap items-start gap-4">
-            <div className="w-[120px]">
-              <p className="mb-1 text-xs text-muted">120 px — compact</p>
-              <StatCard label="Commandes" value="142" />
-            </div>
-            <div className="w-[200px]">
-              <p className="mb-1 text-xs text-muted">200 px — standard</p>
-              <StatCard
-                delta="+12 % vs mois dernier"
-                label="Chiffre d'affaires"
-                value="1 245 000 F"
-              />
-            </div>
-            <div className="w-[320px]">
-              <p className="mb-1 text-xs text-muted">320 px — riche</p>
-              <StatCard
-                delta="Taux de livraison · 7 derniers jours"
-                label="Taux de livraison"
-                value="87,4 %"
-              />
-            </div>
-          </div>
-        </section>
-
         {/* ── EmptyState ── */}
         <section className="mt-10 space-y-4">
           <h2 className="text-lg font-semibold text-text">EmptyState</h2>
@@ -250,13 +222,6 @@ export default async function PrimitivesDemoPage() {
                 <ResourceRowSkeleton />
                 <ResourceRowSkeleton />
                 <ResourceRowSkeleton />
-              </div>
-            </div>
-            <div>
-              <p className="mb-2 text-xs text-muted">StatCardSkeleton × 2</p>
-              <div className="space-y-3">
-                <StatCardSkeleton />
-                <StatCardSkeleton />
               </div>
             </div>
           </div>

@@ -113,8 +113,8 @@ export function SearchInput({
       />
       <input
         aria-label={ariaLabel}
-        // text-base (≥16px) : empêche le zoom auto au focus sur iOS. min-h-11 = 44px.
-        className="min-h-11 w-full rounded-lg border border-border bg-surface pr-12 pl-9 text-base text-text outline-none focus:border-accent"
+        // text-base (≥16px) : empêche le zoom auto au focus sur iOS. min-h-12 = 48px.
+        className="min-h-12 w-full rounded-lg border border-border bg-surface pr-12 pl-9 text-base text-text outline-none focus:border-accent"
         inputMode="search"
         onChange={(event) => handleChange(event.target.value)}
         placeholder={placeholder}
@@ -124,7 +124,7 @@ export function SearchInput({
       {value ? (
         <button
           aria-label={clearLabel}
-          className="absolute top-1/2 right-1 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-text"
+          className="absolute top-1/2 right-1 inline-flex size-12 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-text"
           onClick={() => handleChange('')}
           type="button"
         >

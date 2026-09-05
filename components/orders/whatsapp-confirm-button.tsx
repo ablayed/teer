@@ -21,7 +21,7 @@ export function WhatsAppConfirmButton({ disabledLabel, label, url }: WhatsAppCon
   return (
     <button
       className={cn(
-        'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold',
+        'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold',
         url
           ? 'bg-[#128C7E] text-white hover:brightness-95'
           : 'cursor-not-allowed border border-border bg-canvas text-muted',

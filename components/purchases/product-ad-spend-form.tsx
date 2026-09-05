@@ -137,7 +137,7 @@ export function ProductAdSpendForm({
         <div className="space-y-1">
           <span className="block text-sm font-medium text-text">Arrivage</span>
           <p
-            className="flex min-h-11 items-center rounded-md border border-border bg-canvas px-3 text-sm text-muted"
+            className="flex min-h-12 items-center rounded-md border border-border bg-canvas px-3 text-sm text-muted"
             data-testid="ad-spend-lot-locked"
           >
             {lockedPurchaseLotLabel ?? lockedPurchaseLotId}
@@ -150,7 +150,7 @@ export function ProductAdSpendForm({
             required
             value={purchaseLotId}
             onChange={(e) => setPurchaseLotId(e.target.value)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
             data-testid="ad-spend-lot-select"
           >
             <option value="">Sélectionnez l'arrivage concerné…</option>
@@ -176,7 +176,7 @@ export function ProductAdSpendForm({
             value={amountText}
             onChange={(e) => setAmountText(formatThousands(e.target.value))}
             onBlur={validateAmountOnBlur}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 pr-16 text-sm font-mono tabular-nums"
+            className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 pr-16 text-sm font-mono tabular-nums"
             placeholder="0"
             aria-describedby={amountError ? 'ad-spend-amount-error' : undefined}
           />
@@ -197,7 +197,7 @@ export function ProductAdSpendForm({
           type="date"
           value={spentAt}
           onChange={(e) => setSpentAt(e.target.value)}
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+          className="min-h-12 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
         />
       </label>
 

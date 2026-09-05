@@ -5,6 +5,7 @@ import { DriverCashPanel } from '@/components/drivers/driver-cash-panel';
 import { DriverStockTable } from '@/components/drivers/driver-stock-table';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { usePeriodParams } from '@/components/period-picker/use-period-params';
+import { Amount } from '@/components/ui/amount';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import { ResourceRow } from '@/components/ui/resource-row';
 import type {
@@ -14,7 +15,6 @@ import type {
   DriverStockData,
   SettlementHistoryRow,
 } from '@/lib/actions/drivers';
-import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { Phone } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -43,15 +43,11 @@ type DriversWorkspaceProps = {
   storeId: string;
 };
 
-function statCard(label: string, value: string, accent?: boolean) {
+function statCard(label: string, value: React.ReactNode, accent?: boolean) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1">
       <p className="text-[13px] font-medium text-muted">{label}</p>
-      <p
-        className={`mt-2 font-mono text-2xl font-semibold tabular-nums ${accent ? 'text-accent' : ''}`}
-      >
-        {value}
-      </p>
+      <p className={`mt-2 text-2xl font-semibold ${accent ? 'text-accent' : ''}`}>{value}</p>
     </section>
   );
 }
@@ -238,7 +234,10 @@ export function DriversWorkspace({
                   )}
                   {statCard(
                     'Collecté (net annul.)',
-                    formatMoney(detail.perf.performance.collectedNetMinor, 'XOF'),
+                    <Amount
+                      amountMinor={detail.perf.performance.collectedNetMinor}
+                      className="font-mono"
+                    />,
                   )}
                 </div>
               )}
@@ -271,8 +270,11 @@ export function DriversWorkspace({
                               </Link>
                             </td>
                             <td className="px-4 py-3 text-muted">{order.cod_status}</td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums">
-                              {formatMoney(Math.round(order.total_amount), 'XOF')}
+                            <td className="px-4 py-3 text-right">
+                              <Amount
+                                amountMinor={Math.round(order.total_amount)}
+                                className="font-mono"
+                              />
                             </td>
                           </tr>
                         ))}
@@ -286,9 +288,10 @@ export function DriversWorkspace({
                         key={order.id}
                         meta={order.cod_status}
                         primaryAction={
-                          <span className="font-mono text-sm tabular-nums">
-                            {formatMoney(Math.round(order.total_amount), 'XOF')}
-                          </span>
+                          <Amount
+                            amountMinor={Math.round(order.total_amount)}
+                            className="font-mono text-sm"
+                          />
                         }
                         title={order.order_number ?? order.id.slice(0, 8)}
                       />

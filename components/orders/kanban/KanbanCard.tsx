@@ -2,9 +2,9 @@
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { normalizeOrderStatus } from '@/components/orders/kanban/kanban-utils';
+import { Amount } from '@/components/ui/amount';
 import type { OrderListItem } from '@/lib/actions/orders';
 import { formatDateRelative } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -33,7 +33,7 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
     >
       <div className="flex items-start justify-between gap-3">
         <Link
-          className="min-h-11 min-w-0 flex-1 font-mono text-sm font-semibold tabular-nums text-text focus-visible:outline-none"
+          className="min-h-12 min-w-0 flex-1 font-mono text-sm font-semibold tabular-nums text-text focus-visible:outline-none"
           href={orderHref}
         >
           {orderLabel}
@@ -47,18 +47,16 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
         </div>
       </div>
       <Link
-        className="min-h-11 min-w-0 text-sm text-text focus-visible:outline-none"
+        className="min-h-12 min-w-0 text-sm text-text focus-visible:outline-none"
         href={orderHref}
       >
         <span className="block truncate">{customerLabel}</span>
       </Link>
       <Link
-        className="mt-auto flex min-h-11 items-end justify-between gap-3 focus-visible:outline-none"
+        className="mt-auto flex min-h-12 items-end justify-between gap-3 focus-visible:outline-none"
         href={orderHref}
       >
-        <span className="font-mono text-sm font-medium tabular-nums text-text">
-          {formatMoney(order.total_amount, order.currency)}
-        </span>
+        <Amount amountMinor={order.total_amount} className="text-sm font-medium text-text" />
         <span className="text-xs text-muted">{formatDateRelative(orderDate)}</span>
       </Link>
     </div>

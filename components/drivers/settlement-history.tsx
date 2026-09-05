@@ -1,6 +1,6 @@
+import { Amount } from '@/components/ui/amount';
 import type { SettlementHistoryRow } from '@/lib/actions/drivers';
 import { formatDateTime } from '@/lib/format/date';
-import { formatMoney } from '@/lib/format/fcfa';
 
 const METHOD_LABELS: Record<string, string> = {
   ESPECES: 'Espèces',
@@ -42,12 +42,11 @@ export function SettlementHistoryTable({ rows, showDriver = false, emptyLabel }:
             <tr className="border-b border-border last:border-0" key={row.id}>
               <td className="px-4 py-3 text-muted">{formatDateTime(row.settledAt)}</td>
               {showDriver ? <td className="px-4 py-3 font-medium">{row.driverName}</td> : null}
-              <td
-                className={`px-4 py-3 text-right font-mono tabular-nums ${
-                  row.amountMinor < 0 ? 'text-danger' : ''
-                }`}
-              >
-                {formatMoney(row.amountMinor, 'XOF')}
+              <td className="px-4 py-3 text-right">
+                <Amount
+                  amountMinor={row.amountMinor}
+                  className={`font-mono ${row.amountMinor < 0 ? 'text-danger' : ''}`}
+                />
               </td>
               <td className="px-4 py-3">{METHOD_LABELS[row.method] ?? row.method}</td>
               <td className="px-4 py-3 text-muted">{row.authorName}</td>

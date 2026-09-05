@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import {
   getDriverSettlementsAction,
   recordSettlementAction,
@@ -222,8 +223,8 @@ export function DriverSettlementsPanel({
                     {tone === 'danger' ? t('settlements.late') : t('settlements.current')}
                   </span>
                 </div>
-                <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">
-                  {formatMoney(driver.outstandingMinor, 'XOF')}
+                <p className="mt-3 text-2xl font-semibold">
+                  <Amount amountMinor={driver.outstandingMinor} className="font-mono" />
                 </p>
               </button>
             );
@@ -238,13 +239,13 @@ export function DriverSettlementsPanel({
                 <p className="mt-1 text-sm text-muted">{t('settlements.reliability')}</p>
                 <output
                   aria-label={t('settlements.ariaTotal')}
-                  className="mt-3 block font-mono text-3xl font-semibold tabular-nums"
+                  className="mt-3 block text-3xl font-semibold"
                 >
-                  {formatMoney(selectedDriver.outstandingMinor, 'XOF')}
+                  <Amount amountMinor={selectedDriver.outstandingMinor} className="font-mono" />
                 </output>
               </div>
               <button
-                className="min-h-11 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
+                className="min-h-12 rounded-md bg-accent px-4 text-sm font-semibold text-text hover:bg-accent-hover"
                 onClick={() => openSheet(selectedDriver.driverId)}
                 type="button"
               >
@@ -265,8 +266,8 @@ export function DriverSettlementsPanel({
                     </p>
                     <p className="text-xs text-muted">{formatDateRelative(order.deliveredAt)}</p>
                   </div>
-                  <p className="font-mono text-sm font-semibold tabular-nums">
-                    {formatMoney(order.outstandingMinor, 'XOF')}
+                  <p className="text-sm font-semibold">
+                    <Amount amountMinor={order.outstandingMinor} className="font-mono" />
                   </p>
                 </div>
               ))}
@@ -288,7 +289,7 @@ export function DriverSettlementsPanel({
                       <div className="flex items-center justify-between gap-3">
                         <p className="flex items-center gap-2 text-sm font-semibold text-danger">
                           <AlertTriangle aria-hidden="true" className="size-4" />
-                          {formatMoney(shortfall.shortfallMinor, 'XOF')}
+                          <Amount amountMinor={shortfall.shortfallMinor} />
                         </p>
                         {currentRole === 'owner' ? (
                           <button
@@ -310,7 +311,7 @@ export function DriverSettlementsPanel({
                       </div>
                       {currentRole === 'owner' ? (
                         <input
-                          className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                          className="h-12 w-full rounded-md border border-border bg-surface px-3 text-sm"
                           onChange={(event) =>
                             setWriteOffReasonById((current) => ({
                               ...current,
@@ -345,7 +346,7 @@ export function DriverSettlementsPanel({
               </div>
               <button
                 aria-label={t('settlements.close')}
-                className="grid min-h-11 min-w-11 place-items-center rounded-md text-muted hover:bg-canvas"
+                className="grid min-h-12 min-w-12 place-items-center rounded-md text-muted hover:bg-canvas"
                 onClick={closeSheet}
                 type="button"
               >
@@ -371,7 +372,7 @@ export function DriverSettlementsPanel({
                   {settlementMethods.map((candidate) => (
                     <button
                       className={cn(
-                        'min-h-11 rounded-md border border-border px-3 text-sm font-semibold',
+                        'min-h-12 rounded-md border border-border px-3 text-sm font-semibold',
                         method === candidate ? 'bg-accent text-text' : 'bg-surface text-muted',
                       )}
                       key={candidate}

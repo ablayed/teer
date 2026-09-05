@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Phone } from 'lucide-react';
 import Link from 'next/link';
@@ -13,7 +14,7 @@ export type NextActionViewItem = {
   phone: string;
   phoneRaw: string | null;
   age: string;
-  total: string;
+  totalMinor: number;
 };
 
 type NextActionsListMotionProps = {
@@ -56,11 +57,14 @@ export function NextActionsListMotion({
                 <span>{item.age}</span>
               </div>
             </Link>
-            <p className="font-mono text-sm font-semibold text-text sm:text-right">{item.total}</p>
+            <Amount
+              amountMinor={item.totalMinor}
+              className="font-mono text-sm font-semibold text-text sm:text-right"
+            />
             {item.phoneRaw ? (
               <a
                 aria-label={`Appeler ${item.customerName}`}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover"
                 href={`tel:${item.phoneRaw.replace(/\s/g, '')}`}
               >
                 <Phone aria-hidden="true" className="size-4" />

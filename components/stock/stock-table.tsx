@@ -1,5 +1,6 @@
 'use client';
 
+import { Amount } from '@/components/ui/amount';
 import {
   courierReturnAction,
   manualAdjustmentAction,
@@ -7,7 +8,6 @@ import {
   setLowStockThresholdAction,
 } from '@/lib/actions/stock';
 import type { StockPageRow } from '@/lib/actions/stock';
-import { formatMoney } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
 import { useAction } from 'next-safe-action/hooks';
 import { useState } from 'react';
@@ -88,7 +88,7 @@ function PurchaseForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Qté reçue</span>
         <input
-          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
+          className="min-h-12 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           min="1"
           onChange={(e) => setQty(e.target.value)}
           placeholder="10"
@@ -99,7 +99,7 @@ function PurchaseForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Coût unit. (FCFA)</span>
         <input
-          className="min-h-11 w-32 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
+          className="min-h-12 w-32 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           min="0"
           onChange={(e) => setCost(e.target.value)}
           placeholder="0"
@@ -108,7 +108,7 @@ function PurchaseForm({
         />
       </label>
       <button
-        className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
+        className="min-h-12 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
@@ -116,7 +116,7 @@ function PurchaseForm({
         {action.isExecuting ? 'En cours…' : 'Valider'}
       </button>
       <button
-        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        className="min-h-12 rounded-md px-3 text-sm text-muted underline md:min-h-9"
         onClick={onDone}
         type="button"
       >
@@ -158,7 +158,7 @@ function AdjustmentForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Δ qté (+/−)</span>
         <input
-          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
+          className="min-h-12 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           onChange={(e) => setQty(e.target.value)}
           placeholder="-3"
           type="number"
@@ -166,7 +166,7 @@ function AdjustmentForm({
         />
       </label>
       <button
-        className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
+        className="min-h-12 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
@@ -174,7 +174,7 @@ function AdjustmentForm({
         {action.isExecuting ? 'En cours…' : 'Valider'}
       </button>
       <button
-        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        className="min-h-12 rounded-md px-3 text-sm text-muted underline md:min-h-9"
         onClick={onDone}
         type="button"
       >
@@ -216,7 +216,7 @@ function CourierReturnForm({
       <label className="space-y-1">
         <span className="text-xs text-muted">Qté retournée</span>
         <input
-          className="min-h-11 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
+          className="min-h-12 w-24 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
           min="1"
           onChange={(e) => setQty(e.target.value)}
           placeholder="1"
@@ -225,7 +225,7 @@ function CourierReturnForm({
         />
       </label>
       <button
-        className="min-h-11 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
+        className="min-h-12 rounded-md bg-accent px-3 text-sm font-semibold text-[#111] hover:bg-accent-hover disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
@@ -233,7 +233,7 @@ function CourierReturnForm({
         {action.isExecuting ? 'En cours…' : 'Valider'}
       </button>
       <button
-        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        className="min-h-12 rounded-md px-3 text-sm text-muted underline md:min-h-9"
         onClick={onDone}
         type="button"
       >
@@ -275,14 +275,14 @@ function ThresholdForm({
   return (
     <div className="flex items-center gap-2">
       <input
-        className="min-h-11 w-20 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
+        className="min-h-12 w-20 rounded-md border border-border bg-canvas px-2 text-sm md:min-h-9"
         min="0"
         onChange={(e) => setValue(e.target.value)}
         type="number"
         value={value}
       />
       <button
-        className="min-h-11 rounded-md px-3 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
+        className="min-h-12 rounded-md px-3 text-sm font-medium text-accent underline disabled:opacity-60 md:min-h-9"
         disabled={action.isExecuting}
         onClick={submit}
         type="button"
@@ -290,7 +290,7 @@ function ThresholdForm({
         OK
       </button>
       <button
-        className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9"
+        className="min-h-12 rounded-md px-3 text-sm text-muted underline md:min-h-9"
         onClick={onDone}
         type="button"
       >
@@ -344,7 +344,7 @@ export function StockTable({ rows, canSeeCost }: Props) {
       {canSeeCost && totalValue !== null && (
         <p className="text-sm text-muted">
           Valeur totale du stock :{' '}
-          <span className="font-semibold text-text">{formatMoney(totalValue, 'XOF')}</span>
+          <Amount amountMinor={totalValue} className="font-semibold text-text" />
         </p>
       )}
 
@@ -430,14 +430,14 @@ export function StockTable({ rows, canSeeCost }: Props) {
                       </td>
                       {canSeeCost && (
                         <td className="px-4 py-3 text-right text-muted">
-                          {row.stockValue !== null ? formatMoney(row.stockValue, 'XOF') : '—'}
+                          {row.stockValue !== null ? <Amount amountMinor={row.stockValue} /> : '—'}
                         </td>
                       )}
                       <td className="px-4 py-3">
                         <div className="space-y-2">
                           {!form && menuOpen !== row.productId && (
                             <button
-                              className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                              className="min-h-12 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                               onClick={() => setMenuOpen(row.productId)}
                               type="button"
                             >
@@ -447,28 +447,28 @@ export function StockTable({ rows, canSeeCost }: Props) {
                           {!form && menuOpen === row.productId && (
                             <div className="flex flex-wrap items-center gap-2">
                               <button
-                                className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                                className="min-h-12 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                                 onClick={() => openForm('purchase', row.productId)}
                                 type="button"
                               >
                                 + Entrée stock
                               </button>
                               <button
-                                className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                                className="min-h-12 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                                 onClick={() => openForm('adjustment', row.productId)}
                                 type="button"
                               >
                                 Ajustement
                               </button>
                               <button
-                                className="min-h-11 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
+                                className="min-h-12 rounded-md border border-border bg-canvas px-3 py-1 text-sm font-medium hover:bg-surface md:min-h-9 md:text-xs"
                                 onClick={() => openForm('return', row.productId)}
                                 type="button"
                               >
                                 Retour livreur
                               </button>
                               <button
-                                className="min-h-11 rounded-md px-3 text-sm text-muted underline md:min-h-9 md:text-xs"
+                                className="min-h-12 rounded-md px-3 text-sm text-muted underline md:min-h-9 md:text-xs"
                                 onClick={() => setMenuOpen(null)}
                                 type="button"
                               >

@@ -14,6 +14,7 @@ import {
 } from '@/components/purchases/purchase-lot-detail-panel';
 import { ShopFilterPersistence } from '@/components/shops/shop-filter-persistence';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
+import { Amount } from '@/components/ui/amount';
 import { DefinitionCard } from '@/components/ui/definition-card';
 import { GainLoss } from '@/components/ui/gain-loss';
 import { ValueAmount } from '@/components/ui/value-state';
@@ -139,7 +140,7 @@ function periodLinkParams(
   return { period: activePeriod };
 }
 
-function kpiCard(label: string, value: string, description?: string) {
+function kpiCard(label: string, value: React.ReactNode, description?: React.ReactNode) {
   return (
     <section className="rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
       <p className="text-[13px] font-medium text-muted">{label}</p>
@@ -211,7 +212,7 @@ async function FinanceTabBar({
   const t = await getTranslations('finance');
   const periodParams = periodLinkParams(period, from, to);
   const tabClass = (active: boolean) =>
-    `grid min-h-11 place-items-center rounded-md px-4 text-sm font-medium ${
+    `grid min-h-12 place-items-center rounded-md px-4 text-sm font-medium ${
       active ? 'bg-accent text-text' : 'text-muted hover:text-text'
     }`;
 
@@ -361,7 +362,7 @@ async function GlobalTabContent({
 
   return (
     <>
-      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
         <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         <p className="text-xs">{t('disclaimer')}</p>
       </div>
@@ -388,10 +389,10 @@ async function GlobalTabContent({
       />
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {kpiCard(t('kpis.caUnified'), formatMoney(caMinor, 'XOF'))}
+        {kpiCard(t('kpis.caUnified'), <Amount amountMinor={caMinor} className="font-mono" />)}
         {kpiCard(
           isShopFiltered ? t('kpis.cashDriversAllShops') : t('kpis.cashDrivers'),
-          formatMoney(cashMinor, 'XOF'),
+          <Amount amountMinor={cashMinor} className="font-mono" />,
         )}
         {profitReport ? (
           isProfitCoverageIncomplete(profitReport) ? (
@@ -412,7 +413,7 @@ async function GlobalTabContent({
               }
               formula={t('kpis.grossMarginFormula')}
               label={t('kpis.grossMargin')}
-              value={formatMoney(profitReport.grossMarginMinor, 'XOF')}
+              value={<Amount amountMinor={profitReport.grossMarginMinor} className="font-mono" />}
             />
           )
         ) : (
@@ -421,7 +422,7 @@ async function GlobalTabContent({
             description={settings.cogs_known ? undefined : t('kpis.marginEstimate')}
             formula={t('kpis.grossMarginFormula')}
             label={t('kpis.margin')}
-            value={formatMoney(marginMinor, 'XOF')}
+            value={<Amount amountMinor={marginMinor} className="font-mono" />}
           />
         )}
         {profitReport ? (
@@ -439,7 +440,7 @@ async function GlobalTabContent({
               description={t('kpis.netProfitDesc')}
               formula={t('kpis.netProfitFormula')}
               label={t('kpis.netProfit')}
-              value={formatMoney(profitReport.netProfitMinor, 'XOF')}
+              value={<Amount amountMinor={profitReport.netProfitMinor} className="font-mono" />}
             />
           )
         ) : null}
@@ -452,7 +453,7 @@ async function GlobalTabContent({
         {kpiCard(
           t('kpis.driversConcernedTitle'),
           new Intl.NumberFormat('fr-FR').format(driversConcerned),
-          formatMoney(kpis.cash_chez_livreurs, 'XOF'),
+          <Amount amountMinor={kpis.cash_chez_livreurs} />,
         )}
       </section>
 

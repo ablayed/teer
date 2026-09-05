@@ -153,7 +153,7 @@ export function AssistantView({
             aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={cn(
-              'flex h-11 shrink-0 items-center gap-2 rounded-md px-4 font-medium transition',
+              'flex h-12 shrink-0 items-center gap-2 rounded-md px-4 font-medium transition',
               tab === key ? 'bg-accent text-accent-ink' : 'bg-surface text-muted hover:text-text',
             )}
           >
@@ -229,7 +229,7 @@ function FaqPanel({
         value={query}
         onChange={(e) => handleSearch(e.target.value)}
         placeholder={t('faq.searchPlaceholder')}
-        className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text outline-none focus:border-accent"
+        className="h-12 w-full rounded-md border border-border bg-surface px-3 text-sm text-text outline-none focus:border-accent"
         aria-label={t('faq.searchPlaceholder')}
       />
 
@@ -333,7 +333,7 @@ function ChatPanel({
         <button
           type="button"
           onClick={onNewConversation}
-          className="flex min-h-11 shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-3 text-sm text-text md:min-h-9"
+          className="flex min-h-12 shrink-0 items-center gap-1 rounded-md border border-border bg-surface px-3 text-sm text-text md:min-h-9"
         >
           <Plus aria-hidden="true" className="size-4" />
           Nouvelle
@@ -344,7 +344,7 @@ function ChatPanel({
             key={conversation.id}
             onClick={() => onSelectConversation(conversation.id)}
             className={cn(
-              'min-h-11 max-w-[180px] shrink-0 truncate rounded-md border px-3 text-sm transition md:min-h-9',
+              'min-h-12 max-w-[180px] shrink-0 truncate rounded-md border px-3 text-sm transition md:min-h-9',
               activeId === conversation.id
                 ? 'border-accent bg-accent/10 text-text'
                 : 'border-border bg-surface text-muted hover:text-text',
@@ -368,7 +368,7 @@ function ChatPanel({
                   type="button"
                   key={suggestion}
                   onClick={() => onSubmit(suggestion)}
-                  className="min-h-11 rounded-md border border-border bg-surface px-3 py-2 text-left text-sm text-text hover:bg-surface/70"
+                  className="min-h-12 rounded-md border border-border bg-surface px-3 py-2 text-left text-sm text-text hover:bg-surface/70"
                 >
                   {suggestion}
                 </button>
@@ -430,13 +430,13 @@ function ChatPanel({
           rows={1}
           maxLength={4000}
           placeholder="Écris ta question…"
-          className="min-h-11 flex-1 resize-none rounded-md border border-border bg-surface px-3 py-2 text-text outline-none focus:border-accent"
+          className="min-h-12 flex-1 resize-none rounded-md border border-border bg-surface px-3 py-2 text-text outline-none focus:border-accent"
         />
         <button
           type="submit"
           disabled={busy || creating || !input.trim()}
           aria-label="Envoyer"
-          className="flex size-11 shrink-0 items-center justify-center rounded-md bg-accent text-accent-ink transition disabled:opacity-50"
+          className="flex size-12 shrink-0 items-center justify-center rounded-md bg-accent text-accent-ink transition disabled:opacity-50"
         >
           <Send aria-hidden="true" className="size-5" />
         </button>
@@ -466,7 +466,7 @@ function ContactPanel({
             href={`https://wa.me/${supportWhatsApp.replace(/\D/g, '')}?text=${encodeURIComponent('Bonjour, j’ai besoin d’aide avec Tëër…')}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
+            className="flex min-h-12 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
           >
             <HelpCircle aria-hidden="true" className="size-5 shrink-0 text-accent" />
             {t('contact.whatsapp')}
@@ -476,7 +476,7 @@ function ContactPanel({
         {supportEmail ? (
           <a
             href={`mailto:${supportEmail}`}
-            className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
+            className="flex min-h-12 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
           >
             <MessageCircle aria-hidden="true" className="size-5 shrink-0 text-accent" />
             {t('contact.email')}
@@ -486,7 +486,7 @@ function ContactPanel({
         <button
           type="button"
           onClick={() => setDialogOpen(true)}
-          className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
+          className="flex min-h-12 items-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text transition hover:bg-canvas"
         >
           <Phone aria-hidden="true" className="size-5 shrink-0 text-accent" />
           {t('contact.reportBug')}
@@ -570,7 +570,7 @@ function FeedbackDialog({ onClose }: { onClose: () => void }) {
                 id={`${fieldId}-category`}
                 value={category}
                 onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
-                className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text outline-none focus:border-accent"
+                className="h-12 w-full rounded-md border border-border bg-surface px-3 text-sm text-text outline-none focus:border-accent"
               >
                 {FEEDBACK_CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>

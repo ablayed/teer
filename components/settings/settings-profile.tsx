@@ -145,7 +145,7 @@ export function SettingsProfile({
             aria-controls={`settings-panel-${tab}`}
             aria-selected={activeTab === tab}
             className={cn(
-              'min-h-11 whitespace-nowrap border-b-2 px-3 text-sm font-medium transition',
+              'min-h-12 whitespace-nowrap border-b-2 px-3 text-sm font-medium transition',
               activeTab === tab
                 ? 'border-accent text-text'
                 : 'border-transparent text-muted hover:text-text',
@@ -184,7 +184,7 @@ export function SettingsProfile({
               <div className="space-y-2">
                 <Label htmlFor="settings-country">{t('profile.fields.country')}</Label>
                 <select
-                  className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent"
+                  className="h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 transition focus:border-accent"
                   id="settings-country"
                   name="countryCode"
                   onChange={(event) => setCurrentCountryCode(event.target.value as CountryCode)}
