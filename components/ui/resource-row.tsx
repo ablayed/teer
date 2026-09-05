@@ -7,6 +7,13 @@ import type * as React from 'react';
 type ResourceRowBase = {
   leading?: React.ReactNode;
   title: React.ReactNode;
+  /**
+   * Nombre de lignes avant troncature du titre. Défaut `1` (comportement
+   * historique, inchangé pour tout appelant existant). Passer `2` pour un
+   * titre potentiellement long dont la troncature à 1 ligne rend deux
+   * variantes à préfixe commun indistinguables (Produits/UX-CAT-01).
+   */
+  titleLineClamp?: 1 | 2;
   meta?: React.ReactNode;
   status?: React.ReactNode;
   primaryAction?: React.ReactNode;
@@ -41,6 +48,7 @@ export function ResourceRow({
   onActivate,
   leading,
   title,
+  titleLineClamp = 1,
   meta,
   status,
   primaryAction,
@@ -54,7 +62,11 @@ export function ResourceRow({
     <span className="flex min-w-0 flex-1 items-center gap-3">
       {leading}
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{title}</span>
+        <span
+          className={cn('block font-medium', titleLineClamp === 2 ? 'line-clamp-2' : 'truncate')}
+        >
+          {title}
+        </span>
         {meta ? (
           <span className="@max-[22rem]/row:hidden block truncate text-sm text-muted">{meta}</span>
         ) : null}

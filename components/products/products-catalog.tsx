@@ -2,6 +2,7 @@
 
 import { ProductDetailPanel } from '@/components/products/product-detail-panel';
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet';
+import { Amount } from '@/components/ui/amount';
 import { ResourceRow } from '@/components/ui/resource-row';
 import {
   type ProductsPageItem,
@@ -12,19 +13,12 @@ import { setLowStockThresholdAction } from '@/lib/actions/stock';
 import { Info, MoreHorizontal, Store, Tag } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 type ProductsCatalogProps = {
   currentRole: 'agent' | 'manager' | 'owner';
   products: ProductsPageItem[];
 };
-
-function formatMinorAmount(value: number) {
-  return new Intl.NumberFormat('fr-SN', {
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
-  }).format(value);
-}
 
 export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps) {
   const router = useRouter();
@@ -273,7 +267,7 @@ export function ProductsCatalog({ currentRole, products }: ProductsCatalogProps)
                 </div>
                 {canManage && product.unit_cost !== null ? (
                   <p className="mt-3 text-sm text-muted">
-                    Valeur enregistrée : {formatMinorAmount(product.unit_cost)} XOF
+                    Valeur enregistrée : <Amount amountMinor={product.unit_cost} />
                   </p>
                 ) : null}
               </article>
@@ -343,14 +337,16 @@ function ProductMobileRow({
   product: ProductsPageItem;
   unitCostValue: string;
 }) {
-  const metaParts = [product.sku ?? 'SKU non renseigné'];
+  const metaParts: ReactNode[] = [product.sku ?? 'SKU non renseigné'];
   if (canManage) {
-    metaParts.push(`${formatMinorAmount(product.unit_cost ?? 0)} XOF`);
+    metaParts.push(<Amount amountMinor={product.unit_cost ?? 0} key="unit-cost" />);
   }
   if (product.isBundle) {
     metaParts.push('Bundle');
   }
 
+  // "Détails" retiré du menu : la carte entière ouvre désormais le détail
+  // (onActivate ci-dessous) — le menu ne garde que le geste rare (coût).
   const overflowItems: ActionSheetItem[] = canManage
     ? [
         {
@@ -359,19 +355,20 @@ function ProductMobileRow({
           icon: <Tag className="size-4" />,
           onSelect: () => onToggleEdit(product.id),
         },
-        {
-          key: 'details',
-          label: 'Détails',
-          icon: <Info className="size-4" />,
-          onSelect: onOpenDetail,
-        },
       ]
     : [];
 
   return (
     <>
       <ResourceRow
-        meta={metaParts.join(' · ')}
+        meta={metaParts.map((part, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: metaParts est reconstruit à chaque rendu, ordre stable
+          <span key={i}>
+            {i > 0 ? ' · ' : null}
+            {part}
+          </span>
+        ))}
+        onActivate={canManage ? onOpenDetail : undefined}
         overflow={
           canManage ? (
             <ActionSheet
@@ -398,7 +395,8 @@ function ProductMobileRow({
           ) : null
         }
         testId={`product-catalog-row-${product.id}`}
-        title={<h2 className="truncate text-base font-semibold text-text">{product.title}</h2>}
+        title={<h2 className="text-base font-semibold text-text">{product.title}</h2>}
+        titleLineClamp={2}
       />
       {editingId === product.id ? (
         <div className="flex items-end gap-2 border-b border-border bg-canvas px-3 py-3">
