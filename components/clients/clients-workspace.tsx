@@ -39,7 +39,7 @@ import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Feedback = {
   message: string;
@@ -103,16 +103,6 @@ function TierBadge({
       {t(`tiers.${tier}`)}
     </span>
   );
-}
-
-function ScoreValue({ customer }: { customer: Pick<CustomerListItem, 'score' | 'tier'> }) {
-  const t = useTranslations('clients');
-
-  if (customer.tier === 'new') {
-    return <span className="text-sm text-muted">{t('score.hidden')}</span>;
-  }
-
-  return <span className="font-mono text-2xl font-semibold tabular-nums">{customer.score}</span>;
 }
 
 function CustomerBadges({
@@ -215,7 +205,12 @@ function ClientRow({
       key: 'orders',
       label: t('actions.orders'),
       icon: <Package className="size-4" />,
-      onSelect: () => router.push(`/s/${storeId}/commandes`),
+      onSelect: () =>
+        router.push(
+          phone
+            ? `/s/${storeId}/commandes?q=${encodeURIComponent(phone)}`
+            : `/s/${storeId}/commandes`,
+        ),
     },
   ];
 
@@ -302,7 +297,13 @@ function DetailActionBar({
         {t('actions.whatsapp')}
       </a>
       {customer.tier === 'watch' ? (
-        <Button className="min-h-12" type="button" variant="secondary">
+        <Button
+          className="min-h-12"
+          disabled
+          title={t('actions.requestConfirmationSoon')}
+          type="button"
+          variant="secondary"
+        >
           {t('actions.requestConfirmation')}
         </Button>
       ) : null}
@@ -330,7 +331,11 @@ function DetailActionBar({
       ) : null}
       <Link
         className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-accent-ink hover:bg-accent-hover"
-        href={`/s/${storeId}/commandes`}
+        href={
+          phone
+            ? `/s/${storeId}/commandes?q=${encodeURIComponent(phone)}`
+            : `/s/${storeId}/commandes`
+        }
       >
         {t('actions.orders')}
         <ArrowRight aria-hidden="true" className="size-4" />
@@ -400,20 +405,8 @@ function CustomerSheet({
             {!loading && customer ? (
               <div className="space-y-6">
                 <section className="rounded-lg border border-border bg-canvas p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <TierBadge isProvisional={customer.isProvisional} tier={customer.tier} />
-                      <p className="mt-3 text-sm text-muted">
-                        {t(`advice.${customer.actionsKey}`)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <ScoreValue customer={customer} />
-                      {customer.tier !== 'new' ? (
-                        <p className="text-xs text-muted">{t('score.label')}</p>
-                      ) : null}
-                    </div>
-                  </div>
+                  <TierBadge isProvisional={customer.isProvisional} tier={customer.tier} />
+                  <p className="mt-3 text-sm text-muted">{t(`advice.${customer.actionsKey}`)}</p>
                   <div className="mt-3">
                     <CustomerBadges customer={customer} />
                   </div>
@@ -468,7 +461,14 @@ function CustomerSheet({
                 </section>
 
                 <section className="space-y-3">
-                  <h3 className="text-sm font-semibold">{t('history.title')}</h3>
+                  <h3 className="text-sm font-semibold">
+                    {t('history.title')}
+                    {customer.hasMoreHistory && (
+                      <span className="ml-2 font-normal text-muted">
+                        — 30 les plus récentes affichées
+                      </span>
+                    )}
+                  </h3>
                   {customer.history.length > 0 ? (
                     <div className="divide-y divide-border rounded-lg border border-border">
                       {customer.history.map((order) => (
@@ -503,11 +503,17 @@ function CustomerSheet({
                   )}
                 </section>
 
-                <section className="grid grid-cols-3 gap-3">
+                <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <div className="rounded-lg border border-border p-3">
                     <p className="text-xs text-muted">{t('stats.orders')}</p>
                     <p className="font-mono text-lg font-semibold tabular-nums">
                       {customer.orderCount}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted">{t('stats.deliveredCount')}</p>
+                    <p className="font-mono text-lg font-semibold tabular-nums">
+                      {customer.deliveredCount}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border p-3">
@@ -545,6 +551,11 @@ function CustomerSheet({
 
 // ── Workspace principal ─────────────────────────────────────────────────────
 
+// Consomme le plafond déjà supporté par listCustomersSchema (limit max 100,
+// offset) — jamais consommé côté UI avant ce lot (troncature silencieuse au
+// delà de 50 clients, U0-D2 P0 §8).
+const CLIENTS_PAGE_SIZE = 100;
+
 export function ClientsWorkspace({ storeId }: { storeId: string }) {
   const t = useTranslations('clients');
   const reduceMotion = useReducedMotion();
@@ -552,29 +563,75 @@ export function ClientsWorkspace({ storeId }: { storeId: string }) {
   const getCustomer = useAction(getCustomerAction);
   const [search, setSearch] = useState('');
   const [sortByRisk, setSortByRisk] = useState(true);
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const listData = listCustomers.result.data?.ok ? listCustomers.result.data : null;
-  const customers = listData?.customers ?? [];
-  const loading = listCustomers.isExecuting && !listData;
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const loading = listCustomers.isExecuting && !initialLoadDone;
+  // Compteur de génération : une sélection A puis B (avant résolution de A) ne
+  // doit jamais laisser la réponse de A écraser B (course U0-D2 §7/§8).
+  const selectionRequestIdRef = useRef(0);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      listCustomers.execute({ search, shopId: storeId, sortByRisk });
+    setInitialLoadDone(false);
+    const timeoutId = window.setTimeout(async () => {
+      const result = await listCustomers.executeAsync({
+        search,
+        shopId: storeId,
+        sortByRisk,
+        limit: CLIENTS_PAGE_SIZE,
+        offset: 0,
+      });
+      setInitialLoadDone(true);
+      if (result?.data?.ok) {
+        setCustomers(result.data.customers);
+        setHasMore(result.data.customers.length === CLIENTS_PAGE_SIZE);
+        setOffset(0);
+      }
     }, 280);
 
     return () => window.clearTimeout(timeoutId);
-  }, [listCustomers.execute, search, sortByRisk, storeId]);
+  }, [listCustomers.executeAsync, search, sortByRisk, storeId]);
+
+  async function loadMoreCustomers() {
+    const nextOffset = offset + CLIENTS_PAGE_SIZE;
+    setIsLoadingMore(true);
+    const result = await listCustomers.executeAsync({
+      search,
+      shopId: storeId,
+      sortByRisk,
+      limit: CLIENTS_PAGE_SIZE,
+      offset: nextOffset,
+    });
+    setIsLoadingMore(false);
+    if (result?.data?.ok) {
+      const newCustomers = result.data.customers;
+      setCustomers((prev) => [...prev, ...newCustomers]);
+      setHasMore(newCustomers.length === CLIENTS_PAGE_SIZE);
+      setOffset(nextOffset);
+    }
+  }
 
   async function selectCustomer(customerId: string) {
+    const requestId = ++selectionRequestIdRef.current;
     setSelectedCustomerId(customerId);
     setSelectedCustomer(null);
     setDetailLoading(true);
     setFeedback(null);
 
     const result = await getCustomer.executeAsync({ customerId, shopId: storeId });
+
+    if (selectionRequestIdRef.current !== requestId) {
+      // Une sélection plus récente a déjà démarré — cette réponse est
+      // obsolète, ne jamais l'appliquer (course U0-D2 §7/§8).
+      return;
+    }
+
     setDetailLoading(false);
 
     if (result?.data?.ok) {
@@ -661,6 +718,19 @@ export function ClientsWorkspace({ storeId }: { storeId: string }) {
             />
           ))}
         </motion.div>
+      ) : null}
+
+      {!loading && hasMore ? (
+        <div className="flex justify-center">
+          <button
+            className="min-h-12 rounded-lg border border-border bg-surface px-6 text-sm font-medium text-text hover:bg-canvas disabled:opacity-60"
+            disabled={isLoadingMore}
+            onClick={loadMoreCustomers}
+            type="button"
+          >
+            {isLoadingMore ? 'Chargement…' : 'Voir plus'}
+          </button>
+        </div>
       ) : null}
 
       {selectedCustomerId ? (

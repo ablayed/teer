@@ -161,3 +161,98 @@ test('fiche client enrichie : badge récurrent + adresse', async ({ page }) => {
   await expect(page.getByText(messages.clients.badges.recurring, { exact: true })).toBeVisible();
   await expect(page.getByText('Cité Keur Gorgui, près de la mosquée')).toBeVisible();
 });
+
+// Preuve U0-D2 P0 §8 : la liste clients supportait déjà limit/offset côté RPC
+// (jusqu'à 100), jamais consommé côté UI (plafond silencieux à 50). Seed 120
+// clients pour dépasser CLIENTS_PAGE_SIZE (100) et forcer "Voir plus".
+test('un tenant à plus de 100 clients les voit tous via "Voir plus"', async ({ page }) => {
+  const { email, merchantAccountId } = await createOwnerFixture('pagination');
+  const admin = adminClient();
+  const prefix = `Pagination ${Date.now()}`;
+  const rows = Array.from({ length: 120 }, (_, i) => ({
+    merchant_account_id: merchantAccountId,
+    source: 'shopify',
+    full_name: `${prefix} ${String(i + 1).padStart(3, '0')}`,
+    phone: `+22177${String(1000000 + i).slice(-7)}`,
+  }));
+  const { error } = await admin.from('customer').insert(rows);
+  if (error) throw error;
+
+  await signIn(page, email, '/clients');
+
+  await expect(page.getByText(`${prefix} 001`)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(`${prefix} 120`)).not.toBeVisible();
+
+  await page.getByRole('button', { name: 'Voir plus' }).click();
+
+  await expect(page.getByText(`${prefix} 120`)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Voir plus' })).not.toBeVisible();
+});
+
+// Preuve U0-D2 P0 §7 : l'historique triait sur created_at_shopify seul
+// (nullsFirst:false), plaçant systématiquement une commande créée par appel
+// (created_at_shopify=null) après TOUTES les commandes Shopify, quelle que
+// soit sa date réelle. sort_at (coalesce(created_at_shopify, created_at))
+// corrige ce tri.
+test('historique client : une commande par appel plus récente qu’une commande Shopify apparaît avant elle', async ({
+  page,
+}) => {
+  const { email, merchantAccountId } = await createOwnerFixture('history-sort');
+  const admin = adminClient();
+  const fullName = `Client Tri Historique ${Date.now()}`;
+  const { data: customer, error: customerError } = await admin
+    .from('customer')
+    .insert({
+      merchant_account_id: merchantAccountId,
+      source: 'shopify',
+      full_name: fullName,
+      phone: '+221773334444',
+    })
+    .select('id')
+    .single();
+  if (customerError || !customer) throw customerError ?? new Error('client non créé');
+
+  const shopifyOrderNumber = `HIST-SHOPIFY-${Date.now()}`;
+  const { error: shopifyOrderError } = await admin.from('orders').insert({
+    merchant_account_id: merchantAccountId,
+    customer_id: customer.id,
+    source: 'shopify',
+    order_number: shopifyOrderNumber,
+    total_amount: 15000,
+    currency: 'XOF',
+    items_summary: [{ title: 'Ancien', quantity: 1, price: 15000 }],
+    order_state: 'completed',
+    call_state: 'validated',
+    delivery_state: 'delivered',
+    cash_state: 'collected',
+    created_at_shopify: '2020-01-01T00:00:00Z',
+  });
+  if (shopifyOrderError) throw shopifyOrderError;
+
+  const callOrderNumber = `HIST-APPEL-${Date.now()}`;
+  const { error: callOrderError } = await admin.from('orders').insert({
+    merchant_account_id: merchantAccountId,
+    customer_id: customer.id,
+    source: 'appel',
+    order_number: callOrderNumber,
+    total_amount: 8000,
+    currency: 'XOF',
+    items_summary: [{ title: 'Récent', quantity: 1, price: 8000 }],
+    order_state: 'completed',
+    call_state: 'validated',
+    delivery_state: 'delivered',
+    cash_state: 'collected',
+    // created_at_shopify absent (NULL) — commande créée par appel, created_at
+    // par défaut = maintenant, donc bien plus récente que l'ordre Shopify ci-dessus.
+  });
+  if (callOrderError) throw callOrderError;
+
+  await signIn(page, email, '/clients');
+  await page.getByText(fullName).first().click();
+
+  // Numéros de commande uniques à ce test — pas besoin de scoper la recherche
+  // à la section historique.
+  const orderNumbers = page.getByText(/HIST-(SHOPIFY|APPEL)-/);
+  await expect(orderNumbers.first()).toBeVisible({ timeout: 15_000 });
+  await expect(orderNumbers.first()).toContainText('HIST-APPEL-');
+});

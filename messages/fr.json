@@ -812,8 +812,6 @@
       "close": "Fermer"
     },
     "score": {
-      "label": "score",
-      "hidden": "Pas assez de données",
       "provisional": "Score provisoire — basé sur peu de commandes"
     },
     "tiers": {
@@ -851,6 +849,7 @@
       "orders": "Voir commandes",
       "more": "Plus d'actions",
       "requestConfirmation": "Demander confirmation",
+      "requestConfirmationSoon": "Disponible bientôt",
       "deposit": "Demander un acompte",
       "depositSoon": "Disponible bientôt",
       "addNote": "Ajouter une note",
@@ -863,8 +862,9 @@
     },
     "stats": {
       "orders": "Commandes",
+      "deliveredCount": "Livrées",
       "cancelled": "Annulations",
-      "delivered": "Livré",
+      "delivered": "Montant livré",
       "refused": "Refus"
     },
     "errors": {
