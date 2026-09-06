@@ -12,7 +12,14 @@ import {
   scopeShopQuery,
   validateShopDomainSelection,
 } from '@/scripts/lib/webhook-subscription-plan.mjs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../../lib/shopify/crypto.ts', () => ({
+  decryptToken: vi.fn(),
+  encryptToken: vi.fn(),
+}));
+vi.mock('../../../lib/shopify/graphql.ts', () => ({ shopifyGraphQL: vi.fn() }));
+vi.mock('../../../lib/shopify/oauth.ts', () => ({ refreshAccessToken: vi.fn() }));
 
 const OUR_ORIGIN = 'https://webhooks.example.com';
 
@@ -381,5 +388,145 @@ describe('Idempotence de --apply, prouvée sur les 3 invariants (pas supposée)'
       throw new Error(`expected 'requires_rotation', got '${decision.kind}'`);
     }
     expect(decision.actionable).toHaveLength(1);
+  });
+});
+
+type PlanResult = {
+  blocked: boolean;
+  reason?: string;
+  topics?: Array<{ topic: string; action: string }>;
+};
+
+type PlanConnection = (args: {
+  connection: { id: string };
+  shop: {
+    shop_domain: string;
+    access_token_encrypted?: string | null;
+    access_token_expires_at?: string | null;
+  };
+  app: { label: string };
+  knownToken: null;
+}) => Promise<PlanResult>;
+
+type PlanInput = Parameters<PlanConnection>[0];
+
+describe('planConnection — propagation du résultat de jeton', () => {
+  let planConnection: PlanConnection;
+  let decryptToken: ReturnType<typeof vi.fn>;
+  let shopifyGraphQL: ReturnType<typeof vi.fn>;
+
+  beforeAll(async () => {
+    const previousArgv = process.argv;
+    const environment = {
+      NODE_ENV: 'test',
+      WEBHOOK_MIGRATION_SUPABASE_URL: 'https://maintenance.example.test',
+      WEBHOOK_MIGRATION_SUPABASE_SERVICE_ROLE_KEY: 'service-role-test-sentinel',
+      WEBHOOK_MIGRATION_SUPABASE_ALLOWED_ORIGIN: 'https://maintenance.example.test',
+      WEBHOOK_PUBLIC_BASE_URL: 'https://webhooks.example.test',
+      SHOPIFY_TOKEN_ENCRYPTION_KEY: 'encryption-test-sentinel',
+      SHOPIFY_KOBA_API_KEY: 'client-test-sentinel',
+      SHOPIFY_KOBA_API_SECRET: 'secret-test-sentinel',
+    } as const;
+    const previousEnvironment = new Map(
+      Object.keys(environment).map((key) => [key, process.env[key]]),
+    );
+
+    process.argv = [
+      process.execPath,
+      'scripts/webhook-subscription-migration.mjs',
+      '--plan',
+      '--shop-domain',
+      'pilot.myshopify.com',
+    ];
+    for (const [key, value] of Object.entries(environment)) {
+      process.env[key] = value;
+    }
+
+    const migration = (await import(
+      new URL('../../../scripts/webhook-subscription-migration.mjs', import.meta.url).href
+    )) as { planConnection: PlanConnection };
+    planConnection = migration.planConnection;
+
+    const crypto = await import('../../../lib/shopify/crypto');
+    const graphql = await import('../../../lib/shopify/graphql');
+    decryptToken = crypto.decryptToken as unknown as ReturnType<typeof vi.fn>;
+    shopifyGraphQL = graphql.shopifyGraphQL as unknown as ReturnType<typeof vi.fn>;
+
+    process.argv = previousArgv;
+    for (const [key, value] of previousEnvironment) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function planInput(shop: PlanInput['shop']): PlanInput {
+    return {
+      connection: { id: 'connection-pilot' },
+      shop,
+      app: { label: 'teer-koba' },
+      knownToken: null,
+    };
+  }
+
+  it('remonte needs_reauth', async () => {
+    const result = await planConnection(
+      planInput({ shop_domain: 'pilot.myshopify.com', access_token_encrypted: null }),
+    );
+    expect(result).toMatchObject({ blocked: true, reason: 'needs_reauth' });
+  });
+
+  it('remonte token_error', async () => {
+    decryptToken.mockImplementation(() => {
+      throw new Error('decrypt-test-sentinel');
+    });
+    const result = await planConnection(
+      planInput({
+        shop_domain: 'pilot.myshopify.com',
+        access_token_encrypted: 'encrypted-test-sentinel',
+        access_token_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      }),
+    );
+    expect(result).toMatchObject({ blocked: true, reason: 'token_error' });
+  });
+
+  it('remonte renewal_required', async () => {
+    decryptToken.mockReturnValue('access-test-sentinel');
+    const result = await planConnection(
+      planInput({
+        shop_domain: 'pilot.myshopify.com',
+        access_token_encrypted: 'encrypted-test-sentinel',
+        access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+    expect(result).toMatchObject({ blocked: true, reason: 'renewal_required' });
+  });
+
+  it("poursuit le plan valide jusqu'à l'inventaire et au calcul par topic", async () => {
+    decryptToken.mockReturnValue('access-test-sentinel');
+    shopifyGraphQL.mockResolvedValue({ webhookSubscriptions: { edges: [] } });
+
+    const result = await planConnection(
+      planInput({
+        shop_domain: 'pilot.myshopify.com',
+        access_token_encrypted: 'encrypted-test-sentinel',
+        access_token_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      }),
+    );
+
+    expect(result.blocked).toBe(false);
+    expect(shopifyGraphQL).toHaveBeenCalledTimes(1);
+    expect(shopifyGraphQL).toHaveBeenCalledWith(
+      expect.objectContaining({ shopDomain: 'pilot.myshopify.com' }),
+    );
+    expect(result.topics?.find((topic) => topic.topic === 'orders/create')).toMatchObject({
+      action: 'creer',
+    });
   });
 });

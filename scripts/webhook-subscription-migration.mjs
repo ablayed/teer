@@ -398,8 +398,8 @@ async function listSubscriptions(shopDomain, accessToken) {
   return data.webhookSubscriptions.edges.map((e) => e.node);
 }
 
-async function planConnection({ connection, shop, app, knownToken }) {
-  const tokenResult = getPlanAccessToken(shop);
+export async function planConnection({ connection, shop, app, knownToken }) {
+  const tokenResult = await getPlanAccessToken(shop);
 
   if (!tokenResult.ok) {
     return { connection, shop, app, blocked: true, reason: tokenResult.reason, topics: [] };
@@ -896,7 +896,9 @@ async function main() {
   process.exit(failedCount > 0 ? 1 : 0);
 }
 
-main().catch((error) => {
-  logError(`webhook-subscription-migration: échec contrôlé (${controlledErrorMessage(error)}).`);
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  main().catch((error) => {
+    logError(`webhook-subscription-migration: échec contrôlé (${controlledErrorMessage(error)}).`);
+    process.exit(1);
+  });
+}
