@@ -4,8 +4,8 @@ import { authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { isValidPhoneSN, toWhatsAppLink } from '@/lib/format/phone';
 import type { Database, Tables } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 const countryCodes = ['SN', 'CI', 'BJ', 'TG', 'BF', 'ML'] as const;
@@ -26,9 +26,13 @@ type MerchantActionErrorCode =
   | 'audit_failed';
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function normalizeWhatsapp(raw: string | undefined): string | null {

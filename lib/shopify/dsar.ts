@@ -6,7 +6,8 @@ import {
 } from '@/lib/security/pcd-access-audit';
 import type { CustomerDataExport } from '@/lib/shopify/gdpr';
 import type { Database } from '@/lib/supabase/database.types';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const SHOPIFY_DSAR_BUCKET = 'shopify-dsar';
 export const DSAR_MAX_TTL_SECONDS = 24 * 60 * 60;
@@ -44,7 +45,7 @@ function createStorageAdminClient(): AdminClient {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('shopify_storage_admin_env_missing');
   }
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
+  return createProtectedSupabaseClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

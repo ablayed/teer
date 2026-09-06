@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { syncShopOrders } from '@/lib/shopify/shop-sync';
 import type { Database, Tables } from '@/lib/supabase/database.types';
-import { createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -31,9 +31,13 @@ export type ShopListItem = {
 };
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function shopStatus(shop: ShopRow): Pick<ShopListItem, 'reason' | 'status'> {

@@ -43,6 +43,8 @@ describe('Lot 4B — cas 1 : secret CI_SCHEMA_AUDITOR_DB_URL absent', () => {
   it('échoue explicitement, en nommant la variable, AVANT toute tentative de connexion', () => {
     const env = { ...process.env };
     env.CI_SCHEMA_AUDITOR_DB_URL = undefined;
+    env.SUPABASE_DB_URL = 'postgresql://ordinary:sentinel@127.0.0.1:1/postgres';
+    env.DATABASE_URL = 'postgresql://ordinary:sentinel@127.0.0.1:1/postgres';
 
     const start = Date.now();
     const result = spawnSync('node', [PROBE_SCRIPT], {

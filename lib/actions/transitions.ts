@@ -18,12 +18,9 @@ import {
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
 import type { Database, Tables } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import type { TeamRole } from '@/lib/team/permissions';
-import {
-  type PostgrestSingleResponse,
-  type SupabaseClient,
-  createClient,
-} from '@supabase/supabase-js';
+import type { PostgrestSingleResponse, SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 
 type SupabaseServerClient = SupabaseClient<Database>;
@@ -101,9 +98,13 @@ export type TransitionResult =
     };
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function isOrderStatus(value: string): value is OrderStatus {

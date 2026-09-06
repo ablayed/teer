@@ -21,7 +21,7 @@
 // aucune incidence ici : le guard du cœur ne teste jamais `current_setting('role')`,
 // seulement `auth.role()`/`current_member_role`, tous deux dérivés du JWT simulé.
 
-import { Client as PgClient } from 'pg';
+import { createTestPostgresClient } from './postgres-client';
 
 const dbUrl =
   process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -53,7 +53,7 @@ export type StockMovementEngineResult = {
 export async function callStockMovementEngine(
   args: StockMovementEngineArgs,
 ): Promise<StockMovementEngineResult> {
-  const pg = new PgClient({ connectionString: dbUrl });
+  const pg = createTestPostgresClient(dbUrl);
   await pg.connect();
   try {
     await pg.query(`select set_config('request.jwt.claim.sub', $1, false)`, [args.p_created_by]);

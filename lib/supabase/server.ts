@@ -1,9 +1,11 @@
 import { publicEnv } from '@/lib/env';
+import { assertProtectedSupabaseServerTarget } from '@/lib/supabase/protected-client';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from './database.types';
 
 export async function createSupabaseServerClient() {
+  assertProtectedSupabaseServerTarget(publicEnv.NEXT_PUBLIC_SUPABASE_URL);
   const cookieStore = await cookies();
   type CookieToSet = {
     name: string;

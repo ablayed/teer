@@ -1,5 +1,5 @@
-import { Client } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
+import { type TestPostgresClient, createTestPostgresClient } from '../helpers/postgres-client';
 
 // Phase 2 / Lot 4A — Couche 1 : assertion invariante sur l'ACL EXECUTE réelle des
 // fonctions, jamais un instantané régénérable.
@@ -77,12 +77,12 @@ type FnRow = {
   service_role_exec: boolean;
 };
 
-let pg: Client | undefined;
+let pg: TestPostgresClient | undefined;
 let rows: FnRow[] = [];
 
 async function loadRows(): Promise<FnRow[]> {
   if (rows.length > 0) return rows;
-  pg = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
+  pg = createTestPostgresClient(dbUrl, 'SUPABASE_DB_URL', { connectionTimeoutMillis: 10_000 });
   await pg.connect();
   const { rows: r } = await pg.query<FnRow>(
     `

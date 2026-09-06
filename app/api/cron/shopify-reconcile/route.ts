@@ -4,8 +4,8 @@
 import { getShopifyAppForShop } from '@/lib/shopify/apps';
 import { reconcileShopOrders } from '@/lib/shopify/reconcile';
 import type { Database, Tables } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
-import { createClient } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'missing_env' }, { status: 500 });
   }
 
-  const supabase = createClient<Database>(supabaseUrl, serviceRoleKey, {
+  const supabase = createProtectedSupabaseClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 

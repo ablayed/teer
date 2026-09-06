@@ -1,6 +1,6 @@
 import type { Database } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
-import { createClient } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const supabase = createClient<Database>(supabaseUrl, serviceRoleKey, {
+  const supabase = createProtectedSupabaseClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 

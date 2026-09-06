@@ -14,14 +14,18 @@ import {
 } from '@/lib/finance/finance-joins';
 import { type FeeSettings, type FinanceReport, computeFinanceReport } from '@/lib/finance/profit';
 import type { Database } from '@/lib/supabase/database.types';
-import { createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 
 export type FinanceAdminClient = ReturnType<typeof createFinanceAdminClient>;
 
 export function createFinanceAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 type RawSettingsRow = {

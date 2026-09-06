@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { assertSupabaseHttpTarget } from '@/lib/security/supabase-target-policy';
 import messages from '@/messages/fr.json';
 import { type Page, expect } from '@playwright/test';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
@@ -41,6 +42,13 @@ export type AdminClient = SupabaseClient;
 
 export function adminClient(): AdminClient {
   assertLocalSupabase(supabaseUrl);
+  assertSupabaseHttpTarget({
+    target: supabaseUrl,
+    variableName: process.env.SUPABASE_URL ? 'SUPABASE_URL' : 'NEXT_PUBLIC_SUPABASE_URL',
+    context: 'test',
+    serverTarget: process.env.SUPABASE_URL ?? localEnv.SUPABASE_URL,
+    publicTarget: process.env.NEXT_PUBLIC_SUPABASE_URL ?? localEnv.NEXT_PUBLIC_SUPABASE_URL,
+  });
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });

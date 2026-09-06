@@ -5,16 +5,20 @@ import {
   verifyShopifySessionToken,
 } from '@/lib/shopify/session-token';
 import type { Database } from '@/lib/supabase/database.types';
-import { createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function bearerToken(request: NextRequest): string | null {

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { assertSupabaseHttpTarget } from '@/lib/security/supabase-target-policy';
 
 function loadEnvFile(relativePath: string) {
   const filePath = resolve(process.cwd(), relativePath);
@@ -29,11 +30,21 @@ function loadEnvFile(relativePath: string) {
           ? rawValue.slice(1, -1)
           : rawValue;
 
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
+    process.env[key] = value;
   }
 }
 
-loadEnvFile('.env.test.local');
 loadEnvFile('.env.test');
+loadEnvFile('.env.test.local');
+
+const serverTarget = process.env.SUPABASE_URL;
+const publicTarget = process.env.NEXT_PUBLIC_SUPABASE_URL;
+if (serverTarget || publicTarget) {
+  assertSupabaseHttpTarget({
+    target: serverTarget ?? publicTarget,
+    variableName: serverTarget ? 'SUPABASE_URL' : 'NEXT_PUBLIC_SUPABASE_URL',
+    context: 'test',
+    serverTarget,
+    publicTarget,
+  });
+}

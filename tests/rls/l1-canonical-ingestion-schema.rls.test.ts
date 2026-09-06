@@ -23,8 +23,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
-import { Client as PgClient } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
+import { type TestPostgresClient, createTestPostgresClient } from '../helpers/postgres-client';
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -146,10 +146,10 @@ async function createStoreConnection(admin: Client, merchantAccountId: string, s
   return data.id as string;
 }
 
-let pg: PgClient | undefined;
-async function pgClient(): Promise<PgClient> {
+let pg: TestPostgresClient | undefined;
+async function pgClient(): Promise<TestPostgresClient> {
   if (pg) return pg;
-  pg = new PgClient({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
+  pg = createTestPostgresClient(dbUrl, 'SUPABASE_DB_URL', { connectionTimeoutMillis: 10_000 });
   await pg.connect();
   return pg;
 }

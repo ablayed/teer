@@ -21,6 +21,7 @@
 // createOrder(), pour ne pas fausser les vues Tableau qui filtrent sur to_status.
 
 import { createClient } from '@supabase/supabase-js';
+import { assertSupabaseHttpTarget } from '../lib/security/supabase-target-policy.ts';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -34,7 +35,15 @@ if (!url || !serviceRoleKey) {
 
 // Garde-fou — même logique que tests/e2e/helpers/assert-local-supabase.ts, dupliquée ici car
 // ce script tourne hors du harness Playwright/TS (plain Node ESM, pas de résolution `@/`).
-if (!/127\.0\.0\.1|localhost/.test(url)) {
+assertSupabaseHttpTarget({
+  target: url,
+  variableName: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'NEXT_PUBLIC_SUPABASE_URL' : 'SUPABASE_URL',
+  context: 'test',
+  serverTarget: process.env.SUPABASE_URL,
+  publicTarget: process.env.NEXT_PUBLIC_SUPABASE_URL,
+});
+
+if (url === '') {
   console.error(
     `seed-synthetic-orders : GARDE-FOU — URL Supabase non-locale détectée (${url.replace(/\/\/.*@/, '//***@')}). Ce script écrit ~1000 lignes et ne doit JAMAIS tourner contre une base distante/prod.`,
   );
