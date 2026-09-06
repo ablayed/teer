@@ -232,11 +232,16 @@ async function waitForOrderSnapshot(
 
 // product n'a PAS de colonne `status` (trouvé en debug local : 42703 column does not exist) —
 // la colonne réelle est `is_active` (booléen). Note pré-existante, hors périmètre de ce lot :
-// mapShopifyVariantToProductInsert (lib/shopify/products-sync.ts) compare
-// `productNode.status === 'ACTIVE'` (enum GraphQL majuscule) alors que le payload REST webhook
-// porte un statut minuscule ('active') — is_active vaut donc TOUJOURS false sur ce chemin,
-// legacy comme opaque identiquement (bug partagé, pas un défaut de parité).
+// mapShopifyVariantToProductInsert (lib/shopify/products-sync.ts) normalise désormais
+// les statuts GraphQL et REST avant la comparaison : `active` et `ACTIVE` sont actifs,
+// tandis que `draft` et `archived` restent inactifs.
 type ProductSnapshot = { title: string; is_active: boolean };
+
+type ProductIdentitySnapshot = {
+  id: string;
+  is_active: boolean;
+  shopify_variant_id: string | null;
+};
 
 async function waitForProductSnapshot(
   admin: AdminClient,
@@ -254,6 +259,31 @@ async function waitForProductSnapshot(
           .eq('shopify_product_id', shopifyProductId)
           .maybeSingle();
         row = data as ProductSnapshot | null;
+        return row !== null;
+      },
+      { timeout: 15_000, intervals: [300, 500, 1000] },
+    )
+    .toBe(true);
+  if (!row) throw new Error(`product ${shopifyProductId} not found`);
+  return row;
+}
+
+async function waitForProductIdentity(
+  admin: AdminClient,
+  merchantAccountId: string,
+  shopifyProductId: string,
+): Promise<ProductIdentitySnapshot> {
+  let row: ProductIdentitySnapshot | null = null;
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('product')
+          .select('id, is_active, shopify_variant_id')
+          .eq('merchant_account_id', merchantAccountId)
+          .eq('shopify_product_id', shopifyProductId)
+          .maybeSingle();
+        row = data as ProductIdentitySnapshot | null;
         return row !== null;
       },
       { timeout: 15_000, intervals: [300, 500, 1000] },
@@ -300,11 +330,11 @@ function orderBody(orderId: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
-function productBody(productId: number) {
+function productBody(productId: number, status = 'active') {
   return {
     id: productId,
     title: 'Produit de parité',
-    status: 'active',
+    status,
     variants: [{ id: productId * 10 + 1, title: 'Default', sku: 'SKU-PARITY-PROD' }],
   };
 }
@@ -542,10 +572,104 @@ for (const topic of ['products/create', 'products/update'] as const) {
         opaqueMerchant.merchantAccountId,
         String(productId),
       );
+      expect(legacyProduct.is_active).toBe(true);
+      expect(opaqueProduct.is_active).toBe(true);
       expect(opaqueProduct).toEqual(legacyProduct);
     } finally {
       await admin.auth.admin.deleteUser(legacyMerchant.userId);
       await admin.auth.admin.deleteUser(opaqueMerchant.userId);
+    }
+  });
+}
+
+test('products/update : conserve la même ligne active après un webhook actif', async ({
+  request,
+}) => {
+  const admin = adminClient();
+  const merchant = await createMerchant(admin, 'products-update-existing');
+  try {
+    const shop = await seedShop(admin, merchant.merchantAccountId, 'p-update-existing');
+    const { rawToken } = await seedConnectionAndToken(
+      admin,
+      merchant.merchantAccountId,
+      shop.shopId,
+      shop.shopDomain,
+    );
+    const productId = 90_400_000 + Math.floor(Math.random() * 100_000);
+    const createId = `wh-existing-create-${productId}`;
+    const updateId = `wh-existing-update-${productId}`;
+
+    const createResponse = await postOpaque(request, {
+      topic: 'products/create',
+      token: rawToken,
+      webhookId: createId,
+      body: productBody(productId, 'active'),
+      triggeredAt: '2026-08-26T09:00:01Z',
+    });
+    expect(createResponse.status()).toBe(200);
+    await waitForWebhookEventDone(admin, createId);
+    const before = await waitForProductIdentity(
+      admin,
+      merchant.merchantAccountId,
+      String(productId),
+    );
+    expect(before.is_active).toBe(true);
+
+    const updateResponse = await postOpaque(request, {
+      topic: 'products/update',
+      token: rawToken,
+      webhookId: updateId,
+      body: productBody(productId, 'active'),
+      triggeredAt: '2026-08-26T09:01:01Z',
+    });
+    expect(updateResponse.status()).toBe(200);
+    await waitForWebhookEventDone(admin, updateId);
+    const after = await waitForProductIdentity(
+      admin,
+      merchant.merchantAccountId,
+      String(productId),
+    );
+
+    expect(after.id).toBe(before.id);
+    expect(after.shopify_variant_id).toBe(before.shopify_variant_id);
+    expect(after.is_active).toBe(true);
+  } finally {
+    await admin.auth.admin.deleteUser(merchant.userId);
+  }
+});
+
+for (const status of ['draft', 'archived'] as const) {
+  test(`webhook products/create : ${status} reste inactif`, async ({ request }) => {
+    const admin = adminClient();
+    const merchant = await createMerchant(admin, `products-${status}`);
+    try {
+      const shop = await seedShop(admin, merchant.merchantAccountId, `p-${status}`);
+      const { rawToken } = await seedConnectionAndToken(
+        admin,
+        merchant.merchantAccountId,
+        shop.shopId,
+        shop.shopDomain,
+      );
+      const productId = 90_500_000 + Math.floor(Math.random() * 100_000);
+      const webhookId = `wh-${status}-${productId}`;
+
+      const response = await postOpaque(request, {
+        topic: 'products/create',
+        token: rawToken,
+        webhookId,
+        body: productBody(productId, status),
+        triggeredAt: '2026-08-26T09:00:01Z',
+      });
+      expect(response.status()).toBe(200);
+      await waitForWebhookEventDone(admin, webhookId);
+      const product = await waitForProductSnapshot(
+        admin,
+        merchant.merchantAccountId,
+        String(productId),
+      );
+      expect(product.is_active).toBe(false);
+    } finally {
+      await admin.auth.admin.deleteUser(merchant.userId);
     }
   });
 }

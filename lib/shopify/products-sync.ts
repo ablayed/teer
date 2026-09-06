@@ -102,7 +102,7 @@ function mapShopifyVariantToProductInsert(
     sku: variantNode.sku?.trim() || null,
     title: displayTitle(productNode.title, variantNode.title),
     unit_cost: 0,
-    is_active: productNode.status === 'ACTIVE',
+    is_active: productNode.status?.toUpperCase() === 'ACTIVE',
   };
 }
 

@@ -1,6 +1,97 @@
+import { shopifyGraphQL } from '@/lib/shopify/graphql';
 import { type ShopifyOrderNode, mapShopifyOrder } from '@/lib/shopify/orders-sync';
-import { SHOPIFY_PRODUCTS_QUERY } from '@/lib/shopify/products-sync';
-import { describe, expect, it } from 'vitest';
+import { SHOPIFY_PRODUCTS_QUERY, syncProductsForShop } from '@/lib/shopify/products-sync';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/shopify/graphql', () => ({
+  shopifyGraphQL: vi.fn(),
+}));
+
+const shopifyGraphQLMock = vi.mocked(shopifyGraphQL);
+
+function resolvedQuery<T>(data: T, error: unknown = null) {
+  const query = Object.assign(Promise.resolve({ data, error }), {
+    select: vi.fn(),
+    eq: vi.fn(),
+    in: vi.fn(),
+    order: vi.fn(),
+    range: vi.fn(),
+  });
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  query.in.mockReturnValue(query);
+  query.order.mockReturnValue(query);
+  query.range.mockReturnValue(query);
+  return query;
+}
+
+function fakeAdmin({
+  existingProducts = [],
+  insertedProducts = [],
+  updatedProducts = [],
+}: {
+  existingProducts?: Array<{ id: string; shopify_variant_id: string }>;
+  insertedProducts?: Array<Record<string, unknown>>;
+  updatedProducts?: Array<Record<string, unknown>>;
+} = {}) {
+  const admin = {
+    from: vi.fn((table: string) => {
+      if (table === 'product') {
+        return {
+          select: vi.fn(() => resolvedQuery(existingProducts)),
+          insert: vi.fn((rows: Array<Record<string, unknown>>) => {
+            insertedProducts.push(...rows);
+            return resolvedQuery(null);
+          }),
+          update: vi.fn((row: Record<string, unknown>) => ({
+            eq: vi.fn(() => {
+              updatedProducts.push(row);
+              return resolvedQuery(null);
+            }),
+          })),
+        };
+      }
+      if (table === 'audit_log') {
+        return { insert: vi.fn(() => resolvedQuery(null)) };
+      }
+      throw new Error(`unexpected table: ${table}`);
+    }),
+  } as unknown as SupabaseClient;
+  return { admin, insertedProducts, updatedProducts };
+}
+
+function graphqlProduct(status: string) {
+  return {
+    products: {
+      edges: [
+        {
+          node: {
+            id: 'gid://shopify/Product/100',
+            title: 'Produit GraphQL',
+            status,
+            variants: {
+              edges: [
+                {
+                  node: {
+                    id: 'gid://shopify/ProductVariant/101',
+                    title: 'Default Title',
+                    sku: 'SKU-GRAPHQL',
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    },
+  };
+}
+
+beforeEach(() => {
+  shopifyGraphQLMock.mockReset();
+});
 
 describe('SHOPIFY_PRODUCTS_QUERY', () => {
   it('demande les champs necessaires au catalogue produit', () => {
@@ -8,6 +99,29 @@ describe('SHOPIFY_PRODUCTS_QUERY', () => {
     expect(SHOPIFY_PRODUCTS_QUERY).toContain('variants(first: 50)');
     expect(SHOPIFY_PRODUCTS_QUERY).toContain('sku');
     expect(SHOPIFY_PRODUCTS_QUERY).toContain('status');
+  });
+});
+
+describe('syncProductsForShop — import GraphQL', () => {
+  it.each([
+    ['ACTIVE', true],
+    ['DRAFT', false],
+    ['ARCHIVED', false],
+  ])('conserve le statut GraphQL %s (%s)', async (status, expectedActive) => {
+    shopifyGraphQLMock.mockResolvedValueOnce(graphqlProduct(status));
+    const { admin, insertedProducts } = fakeAdmin();
+
+    await expect(
+      syncProductsForShop({
+        accessToken: 'synthetic-access-token',
+        admin,
+        merchantAccountId: 'merchant-graphql',
+        shop: { id: 'shop-graphql', shop_domain: 'graphql.example.com' },
+      }),
+    ).resolves.toMatchObject({ ok: true, syncedCount: 1 });
+
+    expect(insertedProducts).toHaveLength(1);
+    expect(insertedProducts[0]?.is_active).toBe(expectedActive);
   });
 });
 
