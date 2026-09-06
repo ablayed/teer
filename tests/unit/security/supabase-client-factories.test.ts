@@ -18,9 +18,9 @@ const originalEnvironment = { ...process.env };
 function configureLoopback(): void {
   process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
-  delete process.env.SUPABASE_ALLOWED_HTTP_ORIGINS;
-  delete process.env.VERCEL;
-  delete process.env.VERCEL_ENV;
+  process.env.SUPABASE_ALLOWED_HTTP_ORIGINS = undefined;
+  process.env.VERCEL = undefined;
+  process.env.VERCEL_ENV = undefined;
   publicEnv.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
 }
 
