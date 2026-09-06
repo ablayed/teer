@@ -115,7 +115,7 @@
     "file": "lib/actions/shops.ts",
     "boundaryType": "server-action-role-check",
     "boundaryFile": "lib/actions/shops.ts",
-    "boundaryLine": 87,
+    "boundaryLine": 91,
     "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (87, 129), disconnectShopAction = requireRole('owner') (151). Confirmed by direct grep, 3 exports, all gated."
   },
   {
@@ -129,14 +129,14 @@
     "file": "lib/actions/team.ts",
     "boundaryType": "server-action-role-check",
     "boundaryFile": "lib/actions/team.ts",
-    "boundaryLine": 271,
+    "boundaryLine": 276,
     "boundaryDetail": "Every export is requireRole('owner','manager'): inviteMemberAction (271), resendInviteAction (381), revokeInviteAction (468), changeRoleAction (516), removeMemberAction (583), listTeamAction (639), createDriverAction (723), updateDriverAction (790). Confirmed by direct grep, 8 exports, all gated."
   },
   {
     "file": "lib/actions/transitions.ts",
     "boundaryType": "server-action-role-check",
     "boundaryFile": "lib/actions/transitions.ts",
-    "boundaryLine": 545,
+    "boundaryLine": 546,
     "boundaryDetail": "performTransition = requireRole('owner','manager','agent') — CLAUDE.md's canonical write gate for order state (rule #7). Admin client used only for the audit_log insert inside performTransitionForContext, after canTransition() has already run."
   },
   {
@@ -145,6 +145,13 @@
     "boundaryFile": "lib/env.ts",
     "boundaryLine": 18,
     "boundaryDetail": "Zod schema declaration + process.env passthrough only (lines 18, 63, 100) — does not construct a Supabase client. No boundary applicable; nothing to gate."
+  },
+  {
+    "file": "lib/supabase/protected-client.ts",
+    "boundaryType": "supabase-target-policy",
+    "boundaryFile": "lib/supabase/protected-client.ts",
+    "boundaryLine": 29,
+    "boundaryDetail": "createProtectedSupabaseClient appelle assertServerTarget avant createClient ; la politique refuse une cible absente, incohérente ou interdite avant toute construction du client."
   },
   {
     "file": "lib/finance/report-data.ts",
