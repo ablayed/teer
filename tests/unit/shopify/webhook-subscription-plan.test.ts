@@ -1,7 +1,16 @@
 import {
   ADMIN_API_TOPICS,
+  controlledErrorMessage,
   decideConnectionApplyPlan,
+  maskSensitiveText,
   planTopicAction,
+  resolveAccessTokenForMode,
+  resolvePlanAccessToken,
+  resolveSingleConnectionSelection,
+  resolveSingleShopSelection,
+  scopeActiveConnectionQuery,
+  scopeShopQuery,
+  validateShopDomainSelection,
 } from '@/scripts/lib/webhook-subscription-plan.mjs';
 import { describe, expect, it } from 'vitest';
 
@@ -103,6 +112,157 @@ describe('planTopicAction', () => {
       ourOrigin: OUR_ORIGIN,
     });
     expect(result.action).toBe('anomalie_token_local_absent');
+  });
+});
+
+describe('ciblage explicite de la boutique pilote', () => {
+  it('exige un domaine canonique myshopify exact', () => {
+    expect(validateShopDomainSelection(undefined)).toEqual({
+      ok: false,
+      reason: 'shop_domain_required',
+    });
+    expect(validateShopDomainSelection('pilot.example.com')).toEqual({
+      ok: false,
+      reason: 'shop_domain_must_be_canonical',
+    });
+    expect(validateShopDomainSelection('ntmwxz-83.myshopify.com')).toEqual({
+      ok: true,
+      shopDomain: 'ntmwxz-83.myshopify.com',
+    });
+  });
+
+  it('refuse une sélection absente ou ambiguë avant les credentials', () => {
+    expect(resolveSingleShopSelection([], 'ntmwxz-83.myshopify.com')).toEqual({
+      ok: false,
+      reason: 'shop_not_found',
+    });
+    expect(
+      resolveSingleShopSelection(
+        [
+          { id: 'shop-a', shop_domain: 'ntmwxz-83.myshopify.com' },
+          { id: 'shop-b', shop_domain: 'ntmwxz-83.myshopify.com' },
+        ],
+        'ntmwxz-83.myshopify.com',
+      ),
+    ).toEqual({ ok: false, reason: 'shop_domain_ambiguous' });
+    expect(resolveSingleConnectionSelection([])).toEqual({
+      ok: false,
+      reason: 'shop_connection_not_found',
+    });
+    expect(resolveSingleConnectionSelection([{ id: 'a' }, { id: 'b' }])).toEqual({
+      ok: false,
+      reason: 'shop_connection_ambiguous',
+    });
+  });
+
+  it('applique le domaine et le shop_id dans les requêtes avant tout credential', () => {
+    const calls: Array<[string, string]> = [];
+    const query = {
+      eq(field: string, value: string) {
+        calls.push([field, value]);
+        return this;
+      },
+    };
+    scopeShopQuery(query, 'ntmwxz-83.myshopify.com');
+    scopeActiveConnectionQuery(query, 'shop-a');
+    expect(calls).toEqual([
+      ['shop_domain', 'ntmwxz-83.myshopify.com'],
+      ['platform', 'shopify'],
+      ['status', 'active'],
+      ['shop_id', 'shop-a'],
+    ]);
+  });
+});
+
+describe('mode plan strictement sans renouvellement ni écriture', () => {
+  it('refuse le renouvellement requis sans appeler OAuth ni client DB', async () => {
+    const writes: string[] = [];
+    let oauthCalls = 0;
+    const result = await resolveAccessTokenForMode({
+      mode: 'plan',
+      shop: {
+        shop_domain: 'ntmwxz-83.myshopify.com',
+        access_token_encrypted: 'encrypted-token-sentinel',
+        access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+      },
+      app: { clientId: 'client-pilot' },
+      decrypt: () => 'access-token-sentinel',
+      refresh: async () => {
+        oauthCalls += 1;
+        throw new Error('SHOPIFY_CALL_SENTINEL');
+      },
+      persistRefreshedToken: async () => {
+        writes.push('unexpected-write');
+        return { ok: true };
+      },
+      refreshBufferMs: 5 * 60 * 1000,
+    });
+    expect(result).toEqual({ ok: false, reason: 'renewal_required' });
+    expect(oauthCalls).toBe(0);
+    expect(writes).toEqual([]);
+  });
+
+  it('utilise un token encore valide sans renouvellement', () => {
+    const result = resolvePlanAccessToken({
+      encryptedToken: 'encrypted-token-sentinel',
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      decrypt: () => 'access-token-sentinel',
+      refreshBufferMs: 5 * 60 * 1000,
+    });
+    expect(result).toEqual({ ok: true, accessToken: 'access-token-sentinel' });
+  });
+
+  it('conserve le renouvellement et la persistance pour apply', async () => {
+    let refreshCalls = 0;
+    let writes = 0;
+    const result = await resolveAccessTokenForMode({
+      mode: 'apply',
+      shop: {
+        shop_domain: 'ntmwxz-83.myshopify.com',
+        access_token_encrypted: 'access-token-encrypted-sentinel',
+        access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        refresh_token_encrypted: 'refresh-token-encrypted-sentinel',
+        refresh_token_expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      },
+      app: { clientId: 'client-sentinel', clientSecret: 'secret-sentinel' },
+      decrypt: (value: string) => `${value}-decrypted`,
+      refresh: async () => {
+        refreshCalls += 1;
+        return {
+          accessToken: 'new-access-token-sentinel',
+          refreshToken: null,
+          accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
+          refreshTokenExpiresAt: null,
+        };
+      },
+      persistRefreshedToken: async () => {
+        writes += 1;
+        return { ok: true };
+      },
+      refreshBufferMs: 5 * 60 * 1000,
+    });
+    expect(result).toEqual({ ok: true, accessToken: 'new-access-token-sentinel' });
+    expect(refreshCalls).toBe(1);
+    expect(writes).toBe(1);
+  });
+});
+
+describe('erreurs contrôlées et masquage', () => {
+  it('ne restitue aucune sentinelle depuis message, propriétés ou cause', () => {
+    const sentinel = 'opaque-token-sentinel';
+    const error = new Error(`message=${sentinel}`, {
+      cause: Object.assign(new Error(`cause=${sentinel}`), {
+        response: { callbackUrl: `https://webhooks.example.com/api/shopify/ingest/${sentinel}` },
+      }),
+    });
+    Object.assign(error, { secret: sentinel, nested: { value: sentinel } });
+    expect(controlledErrorMessage(error)).not.toContain(sentinel);
+    expect(controlledErrorMessage(error)).toMatch(/^cause=/);
+    expect(
+      maskSensitiveText(
+        `provider rejected https://webhooks.example.com/api/shopify/ingest/${sentinel}`,
+      ),
+    ).toBe('provider rejected https://webhooks.example.com/api/shopify/ingest/***');
   });
 });
 

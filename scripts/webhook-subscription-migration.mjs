@@ -9,7 +9,7 @@ import { refreshAccessToken } from '../lib/shopify/oauth.ts';
 // ============================================================================
 //
 // Trois modes, JAMAIS combinés dans la même invocation :
-//   --plan                       lecture seule. Interroge l'Admin API de chaque boutique
+//   --plan --shop-domain <domaine> lecture seule. Interroge l'Admin API de la boutique sélectionnée
 //                                 connectée, produit l'inventaire réel et le diff attendu.
 //                                 AUCUNE mutation, ni côté Shopify ni côté base — pas même la
 //                                 génération d'un jeton.
@@ -29,9 +29,9 @@ import { refreshAccessToken } from '../lib/shopify/oauth.ts';
 //                                 elle est donc explicite et jamais un effet de bord de --apply.
 //
 // Usage :
-//   node scripts/webhook-subscription-migration.mjs --plan
-//   node scripts/webhook-subscription-migration.mjs --apply
-//   node scripts/webhook-subscription-migration.mjs --rotate-token <store_connection_id>
+//   node scripts/webhook-subscription-migration.mjs --plan --shop-domain boutique.myshopify.com
+//   node scripts/webhook-subscription-migration.mjs --apply --shop-domain boutique.myshopify.com
+//   node scripts/webhook-subscription-migration.mjs --rotate-token <store_connection_id> --shop-domain boutique.myshopify.com
 //
 // ── Idempotence de --apply (corrige un défaut trouvé en revue, cf. rapport de session) ────
 // La version précédente de cet outil appelait un helper qui FAISAIT TOURNER le secret dès qu'une
@@ -55,6 +55,7 @@ import { refreshAccessToken } from '../lib/shopify/oauth.ts';
 //   Au moins une paire SHOPIFY_*_API_KEY/SECRET (lib/shopify/apps.ts, mêmes 4 apps)
 //   WEBHOOK_PUBLIC_BASE_URL — HTTPS, SANS slash final. Refuse de démarrer si absente ou
 //   malformée. Aucune URL de production en dur dans ce fichier.
+//   --shop-domain — domaine canonique *.myshopify.com obligatoire pour les trois modes.
 //
 // Topics : cf. scripts/lib/webhook-subscription-plan.mjs. Les trois topics de conformité GDPR
 // (customers/data_request, customers/redact, shop/redact) ne sont PAS souscriptibles via
@@ -85,10 +86,18 @@ import {
   ADMIN_API_TOPICS,
   APP_LEVEL_ONLY_TOPICS,
   INGEST_PATH_PREFIX,
+  controlledErrorMessage,
   decideConnectionApplyPlan,
   maskIngestUrl,
+  maskSensitiveText,
   planTopicAction,
+  resolveAccessTokenForMode,
+  resolveSingleConnectionSelection,
+  resolveSingleShopSelection,
+  scopeActiveConnectionQuery,
+  scopeShopQuery,
   subscriptionsByGraphqlTopic,
+  validateShopDomainSelection,
 } from './lib/webhook-subscription-plan.mjs';
 import {
   createWebhookToken,
@@ -102,73 +111,42 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 // fonction originale n'est pas importable ici — cf. note ci-dessus). Décrypte/rafraîchit/
 // persiste via les MÊMES primitives que le reste du dépôt, jamais une resémantisation.
 async function getValidAccessToken(admin, shop, app) {
-  if (!shop.access_token_encrypted) {
-    return { ok: false, reason: 'needs_reauth' };
-  }
+  return resolveAccessTokenForMode({
+    mode: 'apply',
+    shop,
+    app,
+    decrypt: decryptToken,
+    refresh: refreshAccessToken,
+    refreshBufferMs: REFRESH_BUFFER_MS,
+    persistRefreshedToken: async ({ refreshed }) => {
+      const { data, error } = await admin
+        .from('shop')
+        .update({
+          access_token_encrypted: encryptToken(refreshed.accessToken),
+          refresh_token_encrypted: refreshed.refreshToken
+            ? encryptToken(refreshed.refreshToken)
+            : shop.refresh_token_encrypted,
+          access_token_expires_at: refreshed.accessTokenExpiresAt?.toISOString() ?? null,
+          refresh_token_expires_at:
+            refreshed.refreshTokenExpiresAt?.toISOString() ?? shop.refresh_token_expires_at,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', shop.id)
+        .eq('access_token_encrypted', shop.access_token_encrypted)
+        .select('id')
+        .maybeSingle();
+      return { ok: Boolean(data && !error) };
+    },
+  });
+}
 
-  let accessToken;
-  try {
-    accessToken = decryptToken(shop.access_token_encrypted);
-  } catch {
-    return { ok: false, reason: 'token_error' };
-  }
-
-  const expiresAt = shop.access_token_expires_at ? Date.parse(shop.access_token_expires_at) : null;
-  if (expiresAt === null || expiresAt - Date.now() > REFRESH_BUFFER_MS) {
-    return { ok: true, accessToken };
-  }
-
-  if (!shop.refresh_token_encrypted) {
-    return { ok: false, reason: 'needs_reauth' };
-  }
-  const refreshExpiresAt = shop.refresh_token_expires_at
-    ? Date.parse(shop.refresh_token_expires_at)
-    : null;
-  if (refreshExpiresAt !== null && refreshExpiresAt <= Date.now()) {
-    return { ok: false, reason: 'needs_reauth' };
-  }
-
-  let refreshToken;
-  try {
-    refreshToken = decryptToken(shop.refresh_token_encrypted);
-  } catch {
-    return { ok: false, reason: 'token_error' };
-  }
-
-  let refreshed;
-  try {
-    refreshed = await refreshAccessToken({
-      shop: shop.shop_domain,
-      clientId: app.clientId,
-      clientSecret: app.clientSecret,
-      refreshToken,
-    });
-  } catch {
-    return { ok: false, reason: 'needs_reauth' };
-  }
-
-  const { data, error } = await admin
-    .from('shop')
-    .update({
-      access_token_encrypted: encryptToken(refreshed.accessToken),
-      refresh_token_encrypted: refreshed.refreshToken
-        ? encryptToken(refreshed.refreshToken)
-        : shop.refresh_token_encrypted,
-      access_token_expires_at: refreshed.accessTokenExpiresAt?.toISOString() ?? null,
-      refresh_token_expires_at:
-        refreshed.refreshTokenExpiresAt?.toISOString() ?? shop.refresh_token_expires_at,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', shop.id)
-    .eq('access_token_encrypted', shop.access_token_encrypted)
-    .select('id')
-    .maybeSingle();
-
-  if (error || !data) {
-    return { ok: false, reason: 'token_error' };
-  }
-
-  return { ok: true, accessToken: refreshed.accessToken };
+function getPlanAccessToken(shop) {
+  return resolveAccessTokenForMode({
+    mode: 'plan',
+    shop,
+    decrypt: decryptToken,
+    refreshBufferMs: REFRESH_BUFFER_MS,
+  });
 }
 
 function log(...args) {
@@ -188,11 +166,13 @@ const wantsApply = argv.includes('--apply');
 const rotateFlagIndex = argv.indexOf('--rotate-token');
 const wantsRotate = rotateFlagIndex !== -1;
 const rotateConnectionId = wantsRotate ? argv[rotateFlagIndex + 1] : null;
+const shopDomainFlagIndex = argv.indexOf('--shop-domain');
+const rawShopDomain = shopDomainFlagIndex === -1 ? null : argv[shopDomainFlagIndex + 1];
 
 const modesRequested = [wantsPlan, wantsApply, wantsRotate].filter(Boolean).length;
 if (modesRequested !== 1) {
   logError(
-    'webhook-subscription-migration: usage: node scripts/webhook-subscription-migration.mjs (--plan|--apply|--rotate-token <connection_id>) — exactement un des trois.',
+    'webhook-subscription-migration: usage: node scripts/webhook-subscription-migration.mjs (--plan|--apply|--rotate-token <connection_id>) --shop-domain <canonical.myshopify.com> — exactement un mode et un domaine.',
   );
   process.exit(1);
 }
@@ -202,6 +182,12 @@ if (wantsRotate && (!rotateConnectionId || rotateConnectionId.startsWith('--')))
   );
   process.exit(1);
 }
+const shopDomainSelection = validateShopDomainSelection(rawShopDomain);
+if (!shopDomainSelection.ok) {
+  logError(`webhook-subscription-migration: ${shopDomainSelection.reason}.`);
+  process.exit(1);
+}
+const selectedShopDomain = shopDomainSelection.shopDomain;
 const mode = wantsPlan ? 'plan' : wantsApply ? 'apply' : 'rotate';
 
 // ── Env : Supabase ───────────────────────────────────────────────────────────────────────
@@ -241,7 +227,7 @@ let baseUrl;
 try {
   baseUrl = new URL(rawBaseUrl);
 } catch {
-  logError(`webhook-subscription-migration: WEBHOOK_PUBLIC_BASE_URL malformée : ${rawBaseUrl}`);
+  logError('webhook-subscription-migration: WEBHOOK_PUBLIC_BASE_URL malformée.');
   process.exit(1);
 }
 if (baseUrl.protocol !== 'https:') {
@@ -304,23 +290,43 @@ async function fetchAll(table, select, filter) {
   return rows;
 }
 
-async function loadActiveConnections() {
+async function loadSelectedShop(shopDomain) {
+  const candidates = await fetchAll('shop', 'id, shop_domain, shopify_client_id', (q) =>
+    scopeShopQuery(q, shopDomain),
+  );
+  const selection = resolveSingleShopSelection(candidates, shopDomain);
+  if (!selection.ok) {
+    throw new Error(`shop_selection:${selection.reason}`);
+  }
+  return selection.shop;
+}
+
+async function loadShopCredentials(shopId) {
+  const shops = await fetchAll(
+    'shop',
+    'id, shop_domain, shopify_client_id, access_token_encrypted, refresh_token_encrypted, access_token_expires_at, refresh_token_expires_at',
+    (q) => q.eq('id', shopId),
+  );
+  const selection = resolveSingleShopSelection(shops, shops[0]?.shop_domain);
+  if (!selection.ok) {
+    throw new Error(`shop_credentials:${selection.reason}`);
+  }
+  return selection.shop;
+}
+
+async function loadActiveConnections(shopDomain) {
+  const selectedShop = await loadSelectedShop(shopDomain);
   const connections = await fetchAll(
     'store_connection',
     'id, merchant_account_id, shop_id, external_identifier, platform_app_id, status',
-    (q) => q.eq('platform', 'shopify').eq('status', 'active'),
+    (q) => scopeActiveConnectionQuery(q, selectedShop.id),
   );
-
-  const shopIds = connections.map((c) => c.shop_id);
-  const shops =
-    shopIds.length === 0
-      ? []
-      : await fetchAll(
-          'shop',
-          'id, shop_domain, shopify_client_id, access_token_encrypted, refresh_token_encrypted, access_token_expires_at, refresh_token_expires_at',
-          (q) => q.in('id', shopIds),
-        );
-  const shopById = new Map(shops.map((s) => [s.id, s]));
+  const connectionSelection = resolveSingleConnectionSelection(connections);
+  if (!connectionSelection.ok) {
+    throw new Error(`shop_selection:${connectionSelection.reason}`);
+  }
+  const shop = await loadShopCredentials(selectedShop.id);
+  const shopById = new Map([[shop.id, shop]]);
 
   const connectionIds = connections.map((c) => c.id);
   const tokens =
@@ -333,7 +339,7 @@ async function loadActiveConnections() {
         );
   const tokenByConnection = new Map(tokens.map((t) => [t.store_connection_id, t]));
 
-  return { connections, shopById, tokenByConnection };
+  return { connections: [connectionSelection.connection], shopById, tokenByConnection };
 }
 
 // ── Admin API ────────────────────────────────────────────────────────────────────────────
@@ -393,7 +399,7 @@ async function listSubscriptions(shopDomain, accessToken) {
 }
 
 async function planConnection({ connection, shop, app, knownToken }) {
-  const tokenResult = await getValidAccessToken(admin, shop, app);
+  const tokenResult = getPlanAccessToken(shop);
 
   if (!tokenResult.ok) {
     return { connection, shop, app, blocked: true, reason: tokenResult.reason, topics: [] };
@@ -519,7 +525,7 @@ async function registerTopic({ shopDomain, accessToken, topic, existingId, input
     const errors = data.webhookSubscriptionUpdate.userErrors;
     return errors.length === 0
       ? { ok: true, mutation: 'update' }
-      : { ok: false, detail: errors.map((e) => e.message).join('; ') };
+      : { ok: false, detail: maskSensitiveText(errors.map((e) => e.message).join('; ')) };
   }
   const data = await shopifyGraphQL({
     shopDomain,
@@ -530,7 +536,7 @@ async function registerTopic({ shopDomain, accessToken, topic, existingId, input
   const errors = data.webhookSubscriptionCreate.userErrors;
   return errors.length === 0
     ? { ok: true, mutation: 'create' }
-    : { ok: false, detail: errors.map((e) => e.message).join('; ') };
+    : { ok: false, detail: maskSensitiveText(errors.map((e) => e.message).join('; ')) };
 }
 
 // Vérifie, pour chacun des `topics` donnés, qu'il existe EXACTEMENT un abonnement pointant vers
@@ -580,7 +586,7 @@ async function verifyAndCleanup({ shopDomain, accessToken, topics, publicId }) {
         detail:
           errors.length === 0
             ? `abonnement périmé (${staleSub.id}) retiré après relecture.`
-            : `échec de retrait de l'abonnement périmé (${staleSub.id}) : ${errors.map((e) => e.message).join('; ')}`,
+            : `échec de retrait de l'abonnement périmé (${staleSub.id}) : ${maskSensitiveText(errors.map((e) => e.message).join('; '))}`,
       });
     }
 
@@ -721,12 +727,14 @@ function printApplyReport(results) {
 // continuent de fonctionner sur l'ancien secret jusqu'à expiration de la fenêtre — la
 // vérification finale par relecture couvre l'ensemble des 9 topics, pas seulement ceux qui
 // semblaient actionnables avant la rotation.
-async function rotateConnection(connectionId) {
+async function rotateConnection(connectionId, shopDomain) {
+  const selectedShop = await loadSelectedShop(shopDomain);
   const { data: connection, error: connectionError } = await admin
     .from('store_connection')
     .select('id, merchant_account_id, shop_id, status')
     .eq('id', connectionId)
     .eq('platform', 'shopify')
+    .eq('shop_id', selectedShop.id)
     .maybeSingle();
 
   if (connectionError || !connection) {
@@ -829,11 +837,12 @@ async function rotateConnection(connectionId) {
 // ── main ─────────────────────────────────────────────────────────────────────────────────
 async function main() {
   if (mode === 'rotate') {
-    await rotateConnection(rotateConnectionId);
+    await rotateConnection(rotateConnectionId, selectedShopDomain);
     return;
   }
 
-  const { connections, shopById, tokenByConnection } = await loadActiveConnections();
+  const { connections, shopById, tokenByConnection } =
+    await loadActiveConnections(selectedShopDomain);
 
   if (connections.length === 0) {
     log('webhook-subscription-migration: aucune store_connection Shopify active — rien à faire.');
@@ -888,6 +897,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logError('webhook-subscription-migration: échec', error);
+  logError(`webhook-subscription-migration: échec contrôlé (${controlledErrorMessage(error)}).`);
   process.exit(1);
 });
