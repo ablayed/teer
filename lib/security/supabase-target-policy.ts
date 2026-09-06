@@ -26,6 +26,11 @@ export type PostgresTargetInput = Readonly<{
   variableName: string;
 }>;
 
+export type E2ERunnerTargetInput = Readonly<{
+  target: string | undefined;
+  externalServer: boolean;
+}>;
+
 function refusal(message: string): never {
   throw new Error(message);
 }
@@ -125,6 +130,26 @@ export function assertSupabaseHttpTarget(input: SupabaseHttpTargetInput): void {
   }
 
   refusal(`${input.variableName}: cible distante interdite`);
+}
+
+/**
+ * Contrôle la destination configurée du runner E2E.
+ * Les autorisations distantes du contrôle Supabase ne s'appliquent pas ici.
+ */
+export function assertE2ERunnerTarget(input: E2ERunnerTargetInput): void {
+  if (input.externalServer) {
+    refusal('E2E_EXTERNAL_SERVER: destination externe interdite');
+  }
+
+  let target: ParsedTarget;
+  try {
+    target = parseTarget(input.target, 'E2E_URL', ['http:', 'https:']);
+  } catch {
+    refusal('E2E_URL: destination invalide');
+  }
+  if (target.targetClass !== 'loopback') {
+    refusal('E2E_URL: destination distante interdite');
+  }
 }
 
 /** Controle une cible PostgreSQL ordinaire avant toute construction de client. */
