@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
+import { assertSupabaseHttpTarget } from './lib/security/supabase-target-policy';
 import {
   SHOPIFY_KOBA_CLIENT_ID_FALLBACK,
   SHOPIFY_KOBA_HMAC_SECRET_FALLBACK,
@@ -45,6 +46,18 @@ function loadEnvFile(path: string, override = false) {
 // last for developer-specific test ports/keys.
 loadEnvFile('.env.test', true);
 loadEnvFile('.env.test.local', true);
+
+const serverTarget = process.env.SUPABASE_URL;
+const publicTarget = process.env.NEXT_PUBLIC_SUPABASE_URL;
+if (serverTarget || publicTarget) {
+  assertSupabaseHttpTarget({
+    target: serverTarget ?? publicTarget,
+    variableName: serverTarget ? 'SUPABASE_URL' : 'NEXT_PUBLIC_SUPABASE_URL',
+    context: 'test',
+    serverTarget,
+    publicTarget,
+  });
+}
 
 // Lot L0 — harnais multi-app KOBA/PILOTE (tests/e2e/shopify-koba-multi-app.spec.ts). Repli
 // SEULEMENT : n'écrase jamais une valeur déjà positionnée par `.env.test`/`.env.test.local` ou

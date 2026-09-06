@@ -1,3 +1,4 @@
+import { assertPostgresTarget } from '@/lib/security/supabase-target-policy';
 import {
   DSAR_TEST_AUDIT_FAILURE_HEADER,
   SHOPIFY_DSAR_BUCKET,
@@ -233,6 +234,7 @@ async function expectArtifactDownload(
 async function ageAuthSession(userId: string): Promise<void> {
   const dbUrl =
     process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+  assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
   const client = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
   await client.connect();
   try {

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { assertPostgresTarget } from '@/lib/security/supabase-target-policy';
 import { Client } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import { EXPOSED_SCHEMAS, collectFunctions } from '../../scripts/lib/acl-snapshot.mjs';
@@ -73,6 +74,7 @@ describe.skipIf(!hasEnv)('Lot S4 — routines SECURITY DEFINER exécutables par 
   });
 
   it('toute routine SECURITY DEFINER exécutable par authenticated figure dans la liste blanche', async () => {
+    assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
     pg = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
     await pg.connect();
     const functions = await collectFunctions(pg, EXPOSED_SCHEMAS);
@@ -90,6 +92,7 @@ describe.skipIf(!hasEnv)('Lot S4 — routines SECURITY DEFINER exécutables par 
   });
 
   it('toute routine SECURITY DEFINER de la liste blanche porte un search_path explicite dans proconfig', async () => {
+    assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
     pg = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
     await pg.connect();
     const functions = await collectFunctions(pg, EXPOSED_SCHEMAS);

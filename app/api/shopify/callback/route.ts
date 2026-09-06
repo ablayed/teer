@@ -4,8 +4,8 @@ import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import { verifyState } from '@/lib/shopify/state';
 import type { Database } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
-import { createClient } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -31,7 +31,7 @@ function getRequiredEnv(name: string): string {
 }
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(
+  return createProtectedSupabaseClient(
     getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
     getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
     {

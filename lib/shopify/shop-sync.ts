@@ -10,8 +10,9 @@ import {
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import { getValidShopAccessToken } from '@/lib/shopify/token';
 import type { Database, Tables } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 type ShopRow = Tables<'shop'>;
 type SupabaseAdminClient = SupabaseClient<Database>;
@@ -28,9 +29,13 @@ type SyncShopOrdersResult =
   | { ok: false; errorCode: 'no_shop' | 'sync_failed' | 'token_error' };
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function logSyncError(prefix: string, error: unknown, _payload?: unknown) {

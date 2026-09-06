@@ -4,7 +4,8 @@ import { requireRole } from '@/lib/actions/safe-action';
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import { env } from '@/lib/env';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -25,9 +26,13 @@ const upsertOrderDeliveryAddressSchema = z.object({
 });
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function nullableText(value: string | undefined): string | null {

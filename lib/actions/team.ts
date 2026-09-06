@@ -5,6 +5,7 @@ import { sendTeamInvitationEmail } from '@/lib/email/team-invitation';
 import { env } from '@/lib/env';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { generateInvitationToken, hashInvitationToken } from '@/lib/team/invitation-token';
 import {
   canChangeMemberRole,
@@ -13,7 +14,7 @@ import {
   isTeamRole,
 } from '@/lib/team/permissions';
 import { getRequestStoreId } from '@/lib/workspace/store';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -84,9 +85,13 @@ type DriverRow = Pick<
 >;
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function normalizeEmail(email: string): string {

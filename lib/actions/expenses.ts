@@ -3,14 +3,18 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
-import { createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 function createAdmin() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 const expensePayloadSchema = z.object({

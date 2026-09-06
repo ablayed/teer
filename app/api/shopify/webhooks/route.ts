@@ -17,7 +17,7 @@ import {
 } from '@/lib/shopify/webhook-core';
 import { verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
 import type { Database } from '@/lib/supabase/database.types';
-import { createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { after } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -33,7 +33,7 @@ function createSupabaseAdminClient() {
     return null;
   }
 
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
+  return createProtectedSupabaseClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

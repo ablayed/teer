@@ -20,6 +20,7 @@
 // uniquement createWebhookToken (jamais de rotation en effet de bord d'une mutation automatique).
 
 import { createClient } from '@supabase/supabase-js';
+import { assertMaintenanceSupabaseHttpTarget } from '../lib/security/supabase-target-policy.ts';
 import { ROTATION_GRACE_MS, rotateWebhookToken } from './lib/webhook-token-provisioning.mjs';
 
 function log(...args) {
@@ -41,15 +42,21 @@ if (!storeConnectionId) {
   process.exit(1);
 }
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const url = process.env.L3_MAINTENANCE_SUPABASE_URL;
+const serviceRoleKey = process.env.L3_MAINTENANCE_SUPABASE_SERVICE_ROLE_KEY;
+const allowedTarget = process.env.L3_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN;
 
 if (!url || !serviceRoleKey) {
-  logError(
-    'l3-generate-webhook-token: NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY requis.',
-  );
+  logError('l3-generate-webhook-token: configuration de maintenance dédiée requise.');
   process.exit(1);
 }
+
+assertMaintenanceSupabaseHttpTarget({
+  target: url,
+  variableName: 'L3_MAINTENANCE_SUPABASE_URL',
+  allowedTarget,
+  allowedVariableName: 'L3_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN',
+});
 
 const admin = createClient(url, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },

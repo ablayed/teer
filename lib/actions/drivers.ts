@@ -13,9 +13,10 @@ import { driverIdFilter, getStoreDriverIds } from '@/lib/drivers/store-scope';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
 import { fetchAllPostgrestRows } from '@/lib/supabase/pagination';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestStoreId } from '@/lib/workspace/store';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -29,9 +30,13 @@ function postStockMovementRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) 
 }
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 // Sets the courier's PHYSICAL stock for a product to an absolute value ("le

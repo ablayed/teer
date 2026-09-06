@@ -42,6 +42,7 @@
 // seule — ce script n'écrit rien).
 
 import { createClient } from '@supabase/supabase-js';
+import { assertMaintenanceSupabaseHttpTarget } from '../lib/security/supabase-target-policy.ts';
 import { ADMIN_API_TOPICS } from './lib/webhook-subscription-plan.mjs';
 
 const OPERATIONAL_TOPICS = new Set(ADMIN_API_TOPICS.map((t) => t.rest));
@@ -56,15 +57,21 @@ function logError(...args) {
   console.error(...args);
 }
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const url = process.env.L2_MAINTENANCE_SUPABASE_URL;
+const serviceRoleKey = process.env.L2_MAINTENANCE_SUPABASE_SERVICE_ROLE_KEY;
+const allowedTarget = process.env.L2_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN;
 
 if (!url || !serviceRoleKey) {
-  logError(
-    'l2-consistency-check: NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY requis.',
-  );
+  logError('l2-consistency-check: configuration de maintenance dédiée requise.');
   process.exit(1);
 }
+
+assertMaintenanceSupabaseHttpTarget({
+  target: url,
+  variableName: 'L2_MAINTENANCE_SUPABASE_URL',
+  allowedTarget,
+  allowedVariableName: 'L2_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN',
+});
 
 const admin = createClient(url, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },

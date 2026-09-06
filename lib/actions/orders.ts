@@ -39,10 +39,11 @@ import {
 import { PcdAccessControlError, consumePcdQuota } from '@/lib/security/pcd-access-controls';
 import { resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, Tables, TablesUpdate } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
 import { getRequestStoreId } from '@/lib/workspace/store';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -165,9 +166,13 @@ export type OrderCallTimelineEvent = {
 export type OrderTimelineEvent = OrderTransitionTimelineEvent | OrderCallTimelineEvent;
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function asTypedSupabaseClient(client: unknown): SupabaseServerClient {

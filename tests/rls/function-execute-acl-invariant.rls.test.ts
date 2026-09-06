@@ -1,3 +1,4 @@
+import { assertPostgresTarget } from '@/lib/security/supabase-target-policy';
 import { Client } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -82,6 +83,7 @@ let rows: FnRow[] = [];
 
 async function loadRows(): Promise<FnRow[]> {
   if (rows.length > 0) return rows;
+  assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
   pg = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
   await pg.connect();
   const { rows: r } = await pg.query<FnRow>(

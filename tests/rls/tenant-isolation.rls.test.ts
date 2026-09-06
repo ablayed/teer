@@ -1,3 +1,4 @@
+import { assertPostgresTarget } from '@/lib/security/supabase-target-policy';
 import type { Database } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
 import { Client } from 'pg';
@@ -128,6 +129,7 @@ afterEach(async () => {
 
 describe.skipIf(!hasEnv)('Tenant isolation — sweep structurel + comportemental', () => {
   it('chaque table tenant a RLS FORCED, des policies tenant-scopées (ou déni) et un WITH CHECK en écriture', async () => {
+    assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
     const pg = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
     await pg.connect();
     try {

@@ -32,6 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
+import { assertPostgresTarget } from '../lib/security/supabase-target-policy.ts';
 import { BASELINE_SCHEMAS, collectAclSnapshot } from './lib/acl-snapshot.mjs';
 
 const { Client } = pg;
@@ -81,6 +82,7 @@ function stableStringify(value) {
 }
 
 async function main() {
+  assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
   const client = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
   await client.connect();
 

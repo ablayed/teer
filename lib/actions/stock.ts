@@ -4,8 +4,9 @@ import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { parseItemsummary, resolveAndInsertOrderLines } from '@/lib/stock/order-line-resolution';
 import type { Database } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { getRequestStoreId } from '@/lib/workspace/store';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -54,13 +55,17 @@ export async function resolveActiveStoreProduct(
 }
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 async function getMerchantAccountId(userId: string): Promise<string | null> {
-  const supabase = createClient<Database>(
+  const supabase = createProtectedSupabaseClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY,
     { auth: { autoRefreshToken: false, persistSession: false } },

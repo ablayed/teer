@@ -11,10 +11,11 @@ import {
   isRowLowStock,
 } from '@/lib/stock/stock-catalog-facts';
 import type { Database, Tables } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
 import { getRequestStoreId } from '@/lib/workspace/store';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -86,9 +87,13 @@ type BundleConfigErrorCode =
   | 'update_failed';
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function asTypedSupabaseClient(client: unknown): SupabaseServerClient {

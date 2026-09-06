@@ -1,8 +1,8 @@
 import { isIP } from 'node:net';
 import { env } from '@/lib/env';
 import type { Database } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
-import { createClient } from '@supabase/supabase-js';
 import { headers } from 'next/headers';
 
 type ConsentDocumentType = 'cgu' | 'privacy';
@@ -18,9 +18,13 @@ type MissingConsentDocument = ConsentDocument & {
 };
 
 function createAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 function normalizeIpAddress(candidate: string | null) {

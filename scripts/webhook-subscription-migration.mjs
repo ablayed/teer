@@ -77,6 +77,7 @@
 // (vérification d'expiration, persistance du nouveau couple) de lib/shopify/token.ts — jamais son
 // contenu cryptographique, qui reste entièrement délégué aux fonctions importées.
 import { createClient } from '@supabase/supabase-js';
+import { assertMaintenanceSupabaseHttpTarget } from '../lib/security/supabase-target-policy.ts';
 import { SHOPIFY_APP_ENV_KEYS } from '../lib/shopify/app-registry-sources.ts';
 import { decryptToken, encryptToken } from '../lib/shopify/crypto.ts';
 import { shopifyGraphQL } from '../lib/shopify/graphql.ts';
@@ -205,15 +206,21 @@ if (wantsRotate && (!rotateConnectionId || rotateConnectionId.startsWith('--')))
 const mode = wantsPlan ? 'plan' : wantsApply ? 'apply' : 'rotate';
 
 // ── Env : Supabase ───────────────────────────────────────────────────────────────────────
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.WEBHOOK_MIGRATION_SUPABASE_URL;
+const serviceRoleKey = process.env.WEBHOOK_MIGRATION_SUPABASE_SERVICE_ROLE_KEY;
+const allowedTarget = process.env.WEBHOOK_MIGRATION_SUPABASE_ALLOWED_ORIGIN;
 
 if (!supabaseUrl || !serviceRoleKey) {
-  logError(
-    'webhook-subscription-migration: NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY requis.',
-  );
+  logError('webhook-subscription-migration: configuration de maintenance dédiée requise.');
   process.exit(1);
 }
+
+assertMaintenanceSupabaseHttpTarget({
+  target: supabaseUrl,
+  variableName: 'WEBHOOK_MIGRATION_SUPABASE_URL',
+  allowedTarget,
+  allowedVariableName: 'WEBHOOK_MIGRATION_SUPABASE_ALLOWED_ORIGIN',
+});
 
 // ── Env : URL publique dédiée ────────────────────────────────────────────────────────────
 // Jamais une URL en dur. Refus explicite, jamais un repli silencieux sur une valeur devinée.

@@ -30,8 +30,8 @@ import {
   toJson,
 } from '@/lib/shopify/webhook-core';
 import type { Database } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
-import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,7 +44,7 @@ function createSupabaseAdminClient() {
     return null;
   }
 
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
+  return createProtectedSupabaseClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

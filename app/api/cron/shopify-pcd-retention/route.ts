@@ -6,7 +6,7 @@ import {
   previewShopifyPcdRetention,
 } from '@/lib/shopify/pcd-retention';
 import type { Database } from '@/lib/supabase/database.types';
-import { createClient } from '@supabase/supabase-js';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -36,7 +36,7 @@ function createAdminClient() {
   if (!supabaseUrl || !serviceRoleKey) {
     return null;
   }
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
+  return createProtectedSupabaseClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

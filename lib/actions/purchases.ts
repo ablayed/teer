@@ -15,10 +15,11 @@ import {
 import { computeEta, formatEtaDate } from '@/lib/purchases/eta';
 import { allocateFees } from '@/lib/purchases/fee-allocation';
 import type { Database, Json } from '@/lib/supabase/database.types';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestStoreId } from '@/lib/workspace/store';
 import * as Sentry from '@sentry/nextjs';
-import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -33,9 +34,13 @@ function asTypedSupabaseClient(client: unknown): SupabaseServerClient {
 }
 
 function createSupabaseAdminClient() {
-  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createProtectedSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
 }
 
 // receive_purchase_lot est SECURITY DEFINER avec garde de rôle NULL-safe (0043) :

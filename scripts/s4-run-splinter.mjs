@@ -54,6 +54,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from 'pg';
+import { assertPostgresTarget } from '../lib/security/supabase-target-policy.ts';
 
 const TRIGGER_EXCLUDED_RULES = new Set([
   '0028_anon_security_definer_function_executable',
@@ -112,6 +113,7 @@ const SPLINTER_DIR = resolve(import.meta.dirname, '../supabase/security/splinter
 const dbUrl =
   process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 
+assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
 const client = new pg.Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
 await client.connect();
 
