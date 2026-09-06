@@ -2,6 +2,14 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 
+if (process.env.E2E_EXTERNAL_SERVER === '1') {
+  process.stderr.write(
+    "test:e2e:shopify est suspendue : la configuration du build servi n'est pas attestée. Sa remise en service relève d'ENV-01D ; l'intégration Shopify du produit n'est pas affectée.",
+  );
+  process.exitCode = 1;
+  process.exit();
+}
+
 const isWindows = process.platform === 'win32';
 const nodeCommand = process.execPath;
 const playwrightCli = 'node_modules/@playwright/test/cli.js';

@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import {
+  assertE2ERunnerTarget,
   assertPostgresTarget,
   assertSupabaseHttpTarget,
 } from '@/lib/security/supabase-target-policy';
@@ -24,6 +26,62 @@ function serialiseError(error: unknown): string {
 }
 
 describe('politique de cible Supabase', () => {
+  describe('destination du runner E2E', () => {
+    it.each(['http://localhost:3000', 'https://127.0.0.1:3443'])(
+      'autorise une destination loopback %s',
+      (target) => {
+        expect(() => assertE2ERunnerTarget({ target, externalServer: false })).not.toThrow();
+      },
+    );
+
+    it.each(['https://e2e-distant-sentinelle.example.test', 'ftp://localhost:3000', 'pas-une-url'])(
+      'refuse la destination %s sans divulguer sa valeur',
+      (target) => {
+        expect(() => assertE2ERunnerTarget({ target, externalServer: false })).toThrow(/E2E_URL/);
+
+        try {
+          assertE2ERunnerTarget({ target, externalServer: false });
+        } catch (error) {
+          expect(serialiseError(error)).not.toContain(target);
+        }
+      },
+    );
+
+    it('refuse le serveur externe avant toute autre configuration', () => {
+      expect(() =>
+        assertE2ERunnerTarget({ target: 'http://localhost:3000', externalServer: true }),
+      ).toThrow(/E2E_EXTERNAL_SERVER: destination externe interdite/);
+    });
+
+    it('suspend le harnais Shopify avant son démarrage de serveur', () => {
+      const result = spawnSync(process.execPath, ['scripts/test-shopify-webhooks.mjs'], {
+        cwd: process.cwd(),
+        env: { ...process.env, E2E_EXTERNAL_SERVER: '1' },
+        encoding: 'utf8',
+      });
+      const output = `${result.stdout}${result.stderr}`;
+
+      expect(result.status).toBe(1);
+      expect(output).toContain('test:e2e:shopify est suspendue');
+      expect(output).toContain("l'intégration Shopify du produit n'est pas affectée");
+      expect(output).not.toContain('E2E server readiness timeout');
+    });
+
+    it('charge une configuration loopback avec serveur géré non réutilisable', async () => {
+      vi.resetModules();
+      process.env.E2E_EXTERNAL_SERVER = undefined;
+      process.env.E2E_URL = 'http://localhost:3000';
+
+      const { default: config } = await import('../../../playwright.config');
+
+      expect(config.use?.baseURL).toBe('http://localhost:3000');
+      expect(config.webServer).toMatchObject({
+        reuseExistingServer: false,
+        url: 'http://localhost:3000',
+      });
+    });
+  });
+
   it('bloque la fabrique navigateur avant toute creation de client', async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://projet-http-sentinelle.example.test';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'cle-synthetique';

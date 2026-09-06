@@ -1,6 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
-import { assertSupabaseHttpTarget } from './lib/security/supabase-target-policy';
+import {
+  assertE2ERunnerTarget,
+  assertSupabaseHttpTarget,
+} from './lib/security/supabase-target-policy';
 import {
   SHOPIFY_KOBA_CLIENT_ID_FALLBACK,
   SHOPIFY_KOBA_HMAC_SECRET_FALLBACK,
@@ -81,6 +84,10 @@ process.env.ENABLE_PRIMITIVES_DEMO = '1';
 
 const isCI = !!process.env.CI;
 const externalServer = process.env.E2E_EXTERNAL_SERVER === '1';
+assertE2ERunnerTarget({
+  target: process.env.E2E_URL ?? 'http://localhost:3000',
+  externalServer,
+});
 
 export default defineConfig({
   testDir: 'tests',
@@ -125,7 +132,7 @@ export default defineConfig({
             ? 'node node_modules/next/dist/bin/next start'
             : 'node node_modules/next/dist/bin/next dev',
         url: 'http://localhost:3000',
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: false,
         stdout: 'pipe',
         stderr: 'pipe',
         timeout: 180_000,
