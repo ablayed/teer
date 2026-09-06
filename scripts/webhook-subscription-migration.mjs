@@ -98,6 +98,7 @@ import {
   scopeShopQuery,
   subscriptionsByGraphqlTopic,
   validateShopDomainSelection,
+  withPlanFailure,
 } from './lib/webhook-subscription-plan.mjs';
 import {
   createWebhookToken,
@@ -141,12 +142,14 @@ async function getValidAccessToken(admin, shop, app) {
 }
 
 function getPlanAccessToken(shop) {
-  return resolveAccessTokenForMode({
-    mode: 'plan',
-    shop,
-    decrypt: decryptToken,
-    refreshBufferMs: REFRESH_BUFFER_MS,
-  });
+  return withPlanFailure('token_decryption_failure', () =>
+    resolveAccessTokenForMode({
+      mode: 'plan',
+      shop,
+      decrypt: decryptToken,
+      refreshBufferMs: REFRESH_BUFFER_MS,
+    }),
+  );
 }
 
 function log(...args) {
@@ -342,6 +345,10 @@ async function loadActiveConnections(shopDomain) {
   return { connections: [connectionSelection.connection], shopById, tokenByConnection };
 }
 
+export async function loadPlanActiveConnections(shopDomain) {
+  return withPlanFailure('db_read_failure', () => loadActiveConnections(shopDomain));
+}
+
 // ── Admin API ────────────────────────────────────────────────────────────────────────────
 const WEBHOOK_SUBSCRIPTIONS_QUERY = `#graphql
   query WebhookSubscriptionsInventory($first: Int!) {
@@ -398,6 +405,10 @@ async function listSubscriptions(shopDomain, accessToken) {
   return data.webhookSubscriptions.edges.map((e) => e.node);
 }
 
+async function listPlanSubscriptions(shopDomain, accessToken) {
+  return withPlanFailure('shopify_read_failure', () => listSubscriptions(shopDomain, accessToken));
+}
+
 export async function planConnection({ connection, shop, app, knownToken }) {
   const tokenResult = await getPlanAccessToken(shop);
 
@@ -405,7 +416,7 @@ export async function planConnection({ connection, shop, app, knownToken }) {
     return { connection, shop, app, blocked: true, reason: tokenResult.reason, topics: [] };
   }
 
-  const subscriptions = await listSubscriptions(shop.shop_domain, tokenResult.accessToken);
+  const subscriptions = await listPlanSubscriptions(shop.shop_domain, tokenResult.accessToken);
   const byTopic = subscriptionsByGraphqlTopic(subscriptions);
   const ourOrigin = baseUrl.origin;
   const hasLocalToken = Boolean(knownToken && !knownToken.revoked_at);
@@ -841,8 +852,11 @@ async function main() {
     return;
   }
 
-  const { connections, shopById, tokenByConnection } =
-    await loadActiveConnections(selectedShopDomain);
+  const activeConnections =
+    mode === 'plan'
+      ? await loadPlanActiveConnections(selectedShopDomain)
+      : await loadActiveConnections(selectedShopDomain);
+  const { connections, shopById, tokenByConnection } = activeConnections;
 
   if (connections.length === 0) {
     log('webhook-subscription-migration: aucune store_connection Shopify active — rien à faire.');
@@ -896,9 +910,13 @@ async function main() {
   process.exit(failedCount > 0 ? 1 : 0);
 }
 
+export function reportControlledFailure(error) {
+  logError(`webhook-subscription-migration: échec contrôlé (${controlledErrorMessage(error)}).`);
+}
+
 if (process.env.NODE_ENV !== 'test') {
   main().catch((error) => {
-    logError(`webhook-subscription-migration: échec contrôlé (${controlledErrorMessage(error)}).`);
+    reportControlledFailure(error);
     process.exit(1);
   });
 }

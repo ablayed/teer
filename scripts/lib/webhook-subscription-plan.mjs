@@ -178,35 +178,31 @@ export function scopeActiveConnectionQuery(query, shopId) {
   return query.eq('platform', 'shopify').eq('status', 'active').eq('shop_id', shopId);
 }
 
-function serializeErrorShape(error, seen = new WeakSet()) {
-  if (error === null || typeof error !== 'object') {
-    return error;
-  }
-  if (seen.has(error)) {
-    return '[circular]';
-  }
-  seen.add(error);
+const PLAN_FAILURE_CODES = new Set([
+  'db_read_failure',
+  'token_decryption_failure',
+  'shopify_read_failure',
+  'unknown_failure',
+]);
 
-  const shape = {};
-  for (const key of Object.getOwnPropertyNames(error)) {
-    shape[key] = serializeErrorShape(error[key], seen);
+export async function withPlanFailure(code, operation) {
+  try {
+    return await operation();
+  } catch {
+    const tagged = new Error('plan stage failed');
+    tagged.code = PLAN_FAILURE_CODES.has(code) ? code : 'unknown_failure';
+    throw tagged;
   }
-  if (!Object.hasOwn(shape, 'name')) shape.name = error.name;
-  if (!Object.hasOwn(shape, 'message')) shape.message = error.message;
-  if (error.cause !== undefined && !Object.hasOwn(shape, 'cause')) {
-    shape.cause = serializeErrorShape(error.cause, seen);
-  }
-  return shape;
 }
 
 export function controlledErrorMessage(error) {
-  // Serialize the complete error shape for classification, but never return it. Error values can
-  // contain access tokens, opaque webhook URLs, or provider response details.
-  const shape = serializeErrorShape(error);
-  const name =
-    shape && typeof shape === 'object' && typeof shape.name === 'string' ? shape.name : '';
-  const knownKinds = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError']);
-  return `cause=${knownKinds.has(name) ? name.toLowerCase() : 'maintenance_failure'}`;
+  let code;
+  try {
+    code = error && typeof error === 'object' ? error.code : undefined;
+  } catch {
+    code = undefined;
+  }
+  return `cause=${PLAN_FAILURE_CODES.has(code) ? code : 'unknown_failure'}`;
 }
 
 export function maskSensitiveText(value) {
