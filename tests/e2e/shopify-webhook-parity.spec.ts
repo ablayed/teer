@@ -232,10 +232,9 @@ async function waitForOrderSnapshot(
 
 // product n'a PAS de colonne `status` (trouvé en debug local : 42703 column does not exist) —
 // la colonne réelle est `is_active` (booléen). Note pré-existante, hors périmètre de ce lot :
-// mapShopifyVariantToProductInsert (lib/shopify/products-sync.ts) compare
-// `productNode.status === 'ACTIVE'` (enum GraphQL majuscule) alors que le payload REST webhook
-// porte un statut minuscule ('active') — is_active vaut donc TOUJOURS false sur ce chemin,
-// legacy comme opaque identiquement (bug partagé, pas un défaut de parité).
+// mapShopifyVariantToProductInsert (lib/shopify/products-sync.ts) normalise désormais
+// les statuts GraphQL et REST avant la comparaison : `active` et `ACTIVE` sont actifs,
+// tandis que `draft` et `archived` restent inactifs.
 type ProductSnapshot = { title: string; is_active: boolean };
 
 type ProductIdentitySnapshot = {
