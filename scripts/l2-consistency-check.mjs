@@ -41,8 +41,7 @@
 // Nécessite NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (local ou linked, en lecture
 // seule — ce script n'écrit rien).
 
-import { createClient } from '@supabase/supabase-js';
-import { assertMaintenanceSupabaseHttpTarget } from '../lib/security/supabase-target-policy.ts';
+import { createMaintenanceSupabaseClient } from './lib/maintenance-supabase-client.mjs';
 import { ADMIN_API_TOPICS } from './lib/webhook-subscription-plan.mjs';
 
 const OPERATIONAL_TOPICS = new Set(ADMIN_API_TOPICS.map((t) => t.rest));
@@ -66,15 +65,12 @@ if (!url || !serviceRoleKey) {
   process.exit(1);
 }
 
-assertMaintenanceSupabaseHttpTarget({
+const admin = createMaintenanceSupabaseClient({
   target: url,
   variableName: 'L2_MAINTENANCE_SUPABASE_URL',
+  serviceRoleKey,
   allowedTarget,
   allowedVariableName: 'L2_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN',
-});
-
-const admin = createClient(url, serviceRoleKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
 });
 
 async function fetchAll(table, select) {

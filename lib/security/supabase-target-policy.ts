@@ -16,6 +16,7 @@ export type SupabaseHttpTargetInput = Readonly<{
   serverTarget?: string | undefined;
   publicTarget?: string | undefined;
   allowedOrigins?: readonly string[] | undefined;
+  requireExactAllowedOrigin?: boolean | undefined;
   vercel?: string | undefined;
   vercelEnvironment?: string | undefined;
 }>;
@@ -23,13 +24,6 @@ export type SupabaseHttpTargetInput = Readonly<{
 export type PostgresTargetInput = Readonly<{
   target: string | undefined;
   variableName: string;
-}>;
-
-export type MaintenanceSupabaseHttpTargetInput = Readonly<{
-  target: string | undefined;
-  variableName: string;
-  allowedTarget: string | undefined;
-  allowedVariableName: string;
 }>;
 
 function refusal(message: string): never {
@@ -107,6 +101,9 @@ export function assertSupabaseHttpTarget(input: SupabaseHttpTargetInput): void {
   }
 
   if (target.targetClass === 'loopback') {
+    if (input.requireExactAllowedOrigin) {
+      refusal(`${input.variableName}: cible loopback interdite`);
+    }
     return;
   }
 
@@ -128,17 +125,6 @@ export function assertSupabaseHttpTarget(input: SupabaseHttpTargetInput): void {
   }
 
   refusal(`${input.variableName}: cible distante interdite`);
-}
-
-/** Controle un canal de maintenance explicite, distinct des fabriques applicatives. */
-export function assertMaintenanceSupabaseHttpTarget(
-  input: MaintenanceSupabaseHttpTargetInput,
-): void {
-  const target = parseTarget(input.target, input.variableName, ['https:']);
-  const allowed = parseTarget(input.allowedTarget, input.allowedVariableName, ['https:']);
-  if (!sameTarget(target, allowed)) {
-    refusal(`${input.variableName}: cible distante interdite`);
-  }
 }
 
 /** Controle une cible PostgreSQL ordinaire avant toute construction de client. */

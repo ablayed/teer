@@ -156,6 +156,8 @@ jobs:
       # Lot S4 — inventaire justifié des références à SUPABASE_SERVICE_ROLE_KEY,
       # cf. scripts/s4-check-service-role-inventory.mjs.
       - run: pnpm security:service-role-inventory:check
+      - run: pnpm security:test-postgres-boundary:check
+      - run: pnpm security:maintenance-import-boundary:check
 
   # Lot L1 — le backfill de 0142 s'exécute UNE SEULE FOIS en production ; un
   # `db reset --local` ordinaire ne l'exerce jamais (supabase/seed.sql ne

@@ -1,11 +1,10 @@
-import { assertPostgresTarget } from '@/lib/security/supabase-target-policy';
 import {
   DSAR_TEST_AUDIT_FAILURE_HEADER,
   SHOPIFY_DSAR_BUCKET,
   isDsarAuditFailureTestHookEnabled,
 } from '@/lib/shopify/dsar';
 import { type Page, expect, test } from '@playwright/test';
-import { Client } from 'pg';
+import { createTestPostgresClient } from '../helpers/postgres-client';
 import { assertLocalSupabase } from './helpers/assert-local-supabase';
 import {
   type AdminClient,
@@ -234,8 +233,9 @@ async function expectArtifactDownload(
 async function ageAuthSession(userId: string): Promise<void> {
   const dbUrl =
     process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
-  assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
-  const client = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
+  const client = createTestPostgresClient(dbUrl, 'SUPABASE_DB_URL', {
+    connectionTimeoutMillis: 10_000,
+  });
   await client.connect();
   try {
     await client.query('update auth.users set last_sign_in_at = $1 where id = $2', [

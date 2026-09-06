@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { SHOPIFY_APP_ENV_KEYS } from '../lib/shopify/app-registry-sources.ts';
+import { decryptToken, encryptToken } from '../lib/shopify/crypto.ts';
+import { shopifyGraphQL } from '../lib/shopify/graphql.ts';
+import { refreshAccessToken } from '../lib/shopify/oauth.ts';
 // ============================================================================
 // Phase 2 — Clôture : outil de bascule des abonnements webhook Shopify vers l'URL
 // opaque par installation (Lot L3, migration 0143).
@@ -76,12 +80,7 @@
 // dépôt les utilise. `getValidAccessToken` plus bas reproduit UNIQUEMENT l'orchestration
 // (vérification d'expiration, persistance du nouveau couple) de lib/shopify/token.ts — jamais son
 // contenu cryptographique, qui reste entièrement délégué aux fonctions importées.
-import { createClient } from '@supabase/supabase-js';
-import { assertMaintenanceSupabaseHttpTarget } from '../lib/security/supabase-target-policy.ts';
-import { SHOPIFY_APP_ENV_KEYS } from '../lib/shopify/app-registry-sources.ts';
-import { decryptToken, encryptToken } from '../lib/shopify/crypto.ts';
-import { shopifyGraphQL } from '../lib/shopify/graphql.ts';
-import { refreshAccessToken } from '../lib/shopify/oauth.ts';
+import { createMaintenanceSupabaseClient } from './lib/maintenance-supabase-client.mjs';
 import {
   ADMIN_API_TOPICS,
   APP_LEVEL_ONLY_TOPICS,
@@ -215,9 +214,10 @@ if (!supabaseUrl || !serviceRoleKey) {
   process.exit(1);
 }
 
-assertMaintenanceSupabaseHttpTarget({
+const admin = createMaintenanceSupabaseClient({
   target: supabaseUrl,
   variableName: 'WEBHOOK_MIGRATION_SUPABASE_URL',
+  serviceRoleKey,
   allowedTarget,
   allowedVariableName: 'WEBHOOK_MIGRATION_SUPABASE_ALLOWED_ORIGIN',
 });
@@ -279,10 +279,6 @@ if (appsByClientId.size === 0) {
   );
   process.exit(1);
 }
-
-const admin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
 
 function targetUrl(publicId, secret) {
   return `${rawBaseUrl}${INGEST_PATH_PREFIX}${publicId}.${secret}`;

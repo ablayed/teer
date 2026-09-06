@@ -18,8 +18,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
-import { Client as PgClient } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
+import { createTestPostgresClient } from '../helpers/postgres-client';
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -470,7 +470,7 @@ describe('0132 — parité avec l implémentation de référence', () => {
 
     // Une SEULE requête : les deux côtés partagent le même `now()`, donc tout écart
     // restant est imputable à la reconstruction ancrée, et à rien d'autre.
-    const pg = new PgClient({ connectionString: dbUrl });
+    const pg = createTestPostgresClient(dbUrl);
     await pg.connect();
     try {
       await pg.query(`select set_config('request.jwt.claim.sub', $1, false)`, [t.userId]);
@@ -1101,8 +1101,8 @@ describe('0132 — concurrence', () => {
         'Conc A',
       );
 
-      const a = new PgClient({ connectionString: dbUrl });
-      const b = new PgClient({ connectionString: dbUrl });
+      const a = createTestPostgresClient(dbUrl);
+      const b = createTestPostgresClient(dbUrl);
       await a.connect();
       await b.connect();
 
@@ -1331,7 +1331,7 @@ describe('0132 — garde de plan', () => {
   runIf('la page par nom pagine AVANT tout enrichissement', async () => {
     const t = await createTenant('plan-guard');
 
-    const pg = new PgClient({ connectionString: dbUrl });
+    const pg = createTestPostgresClient(dbUrl);
     await pg.connect();
     try {
       // Volume semé en SQL, pas via HTTP : il faut dépasser le point où un balayage
@@ -1399,7 +1399,7 @@ describe('0132 — garde de plan', () => {
       await createOrder(t.admin, t.merchantAccountId, t.defaultShop, id, 'REFUSEE');
     }
 
-    const pg = new PgClient({ connectionString: dbUrl });
+    const pg = createTestPostgresClient(dbUrl);
     await pg.connect();
     try {
       await pg.query(`select set_config('request.jwt.claim.sub', $1, false)`, [t.userId]);

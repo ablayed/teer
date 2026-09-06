@@ -1,9 +1,9 @@
 import {
-  assertMaintenanceSupabaseHttpTarget,
   assertPostgresTarget,
   assertSupabaseHttpTarget,
 } from '@/lib/security/supabase-target-policy';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { assertMaintenanceSupabaseHttpTarget } from '../../../scripts/lib/supabase-maintenance-target.mjs';
 
 const createBrowserClient = vi.fn(() => ({ marker: 'client-cree' }));
 vi.mock('@supabase/ssr', () => ({ createBrowserClient }));
@@ -180,5 +180,16 @@ describe('politique de cible Supabase', () => {
         allowedVariableName: 'L2_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN',
       }),
     ).toThrow(/L2_MAINTENANCE_SUPABASE_URL: cible absente/);
+  });
+
+  it('refuse une cible loopback pour le canal de maintenance dédié', () => {
+    expect(() =>
+      assertMaintenanceSupabaseHttpTarget({
+        target: 'http://127.0.0.1:54321',
+        variableName: 'L2_MAINTENANCE_SUPABASE_URL',
+        allowedTarget: 'https://maintenance-synthetique.example.test',
+        allowedVariableName: 'L2_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN',
+      }),
+    ).toThrow(/cible loopback interdite/);
   });
 });

@@ -1,8 +1,7 @@
-import { assertPostgresTarget } from '@/lib/security/supabase-target-policy';
 import type { Database } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
-import { Client } from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createTestPostgresClient } from '../helpers/postgres-client';
 
 // Phase 9 / Stage 6 — Garantie SYSTÉMATIQUE d'isolation tenant.
 //
@@ -129,8 +128,9 @@ afterEach(async () => {
 
 describe.skipIf(!hasEnv)('Tenant isolation — sweep structurel + comportemental', () => {
   it('chaque table tenant a RLS FORCED, des policies tenant-scopées (ou déni) et un WITH CHECK en écriture', async () => {
-    assertPostgresTarget({ target: dbUrl, variableName: 'SUPABASE_DB_URL' });
-    const pg = new Client({ connectionString: dbUrl, connectionTimeoutMillis: 10_000 });
+    const pg = createTestPostgresClient(dbUrl, 'SUPABASE_DB_URL', {
+      connectionTimeoutMillis: 10_000,
+    });
     await pg.connect();
     try {
       const { rows: tenantTables } = await pg.query<{

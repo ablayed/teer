@@ -19,8 +19,7 @@
 // webhook-subscription-migration.mjs --apply, lui, n'appelle JAMAIS rotateWebhookToken —
 // uniquement createWebhookToken (jamais de rotation en effet de bord d'une mutation automatique).
 
-import { createClient } from '@supabase/supabase-js';
-import { assertMaintenanceSupabaseHttpTarget } from '../lib/security/supabase-target-policy.ts';
+import { createMaintenanceSupabaseClient } from './lib/maintenance-supabase-client.mjs';
 import { ROTATION_GRACE_MS, rotateWebhookToken } from './lib/webhook-token-provisioning.mjs';
 
 function log(...args) {
@@ -51,15 +50,12 @@ if (!url || !serviceRoleKey) {
   process.exit(1);
 }
 
-assertMaintenanceSupabaseHttpTarget({
+const admin = createMaintenanceSupabaseClient({
   target: url,
   variableName: 'L3_MAINTENANCE_SUPABASE_URL',
+  serviceRoleKey,
   allowedTarget,
   allowedVariableName: 'L3_MAINTENANCE_SUPABASE_ALLOWED_ORIGIN',
-});
-
-const admin = createClient(url, serviceRoleKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
 });
 
 async function main() {
