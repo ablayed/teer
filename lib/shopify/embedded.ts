@@ -1,5 +1,5 @@
-import { getDefaultShopifyAppOrNull } from '@/lib/shopify/apps';
+import { getDefaultShopifyAppOrNull, getShopifyAppByLabel } from '@/lib/shopify/apps';
 
-export function getShopifyAppOrNullForEmbedded() {
-  return getDefaultShopifyAppOrNull();
+export function getShopifyAppOrNullForEmbedded(label?: string) {
+  return label === undefined ? getDefaultShopifyAppOrNull() : getShopifyAppByLabel(label);
 }

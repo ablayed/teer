@@ -19,4 +19,9 @@ export const SHOPIFY_APP_ENV_KEYS = [
     clientIdKey: 'SHOPIFY_KOBA_API_KEY',
     clientSecretKey: 'SHOPIFY_KOBA_API_SECRET',
   },
+  {
+    label: 'teer-public',
+    clientIdKey: 'SHOPIFY_TEER_PUBLIC_API_KEY',
+    clientSecretKey: 'SHOPIFY_TEER_PUBLIC_API_SECRET',
+  },
 ] as const;

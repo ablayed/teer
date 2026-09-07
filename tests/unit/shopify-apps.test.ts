@@ -17,15 +17,27 @@ const TEER_KOBA = {
   clientId: 'koba_client',
   clientSecret: 'koba_secret',
 };
+const TEER_PUBLIC = {
+  label: 'teer-public' as const,
+  clientId: 'public_client_sentinel',
+  clientSecret: 'public_secret_sentinel',
+};
 
 describe('createShopifyAppRegistry', () => {
-  it('routes each client_id to the matching app config (Dev, Pilote, Marchand, Koba)', () => {
-    const registry = createShopifyAppRegistry([TEER_DEV, TEER_PILOTE, TEER_MARCHAND, TEER_KOBA]);
+  it('routes each client_id to the matching app config, including Teer Public', () => {
+    const registry = createShopifyAppRegistry([
+      TEER_DEV,
+      TEER_PILOTE,
+      TEER_MARCHAND,
+      TEER_KOBA,
+      TEER_PUBLIC,
+    ]);
 
     const dev = registry.getByClientId('dev_client');
     const pilote = registry.getByClientId('4a2cd2a0befe5d828e67b436edad7d5d');
     const marchand = registry.getByClientId('marchand_client');
     const koba = registry.getByClientId('koba_client');
+    const publicApp = registry.getByClientId('public_client_sentinel');
 
     expect(dev?.label).toBe('teer-dev');
     expect(dev?.clientSecret).toBe('dev_secret');
@@ -35,13 +47,26 @@ describe('createShopifyAppRegistry', () => {
     expect(marchand?.clientSecret).toBe('marchand_secret');
     expect(koba?.label).toBe('teer-koba');
     expect(koba?.clientSecret).toBe('koba_secret');
+    expect(publicApp?.label).toBe('teer-public');
+    expect(publicApp?.clientSecret).toBe('public_secret_sentinel');
     expect(dev?.clientSecret).not.toBe(pilote?.clientSecret);
     expect(dev?.clientSecret).not.toBe(marchand?.clientSecret);
     expect(dev?.clientSecret).not.toBe(koba?.clientSecret);
     expect(pilote?.clientSecret).not.toBe(marchand?.clientSecret);
     expect(pilote?.clientSecret).not.toBe(koba?.clientSecret);
     expect(marchand?.clientSecret).not.toBe(koba?.clientSecret);
-    expect(registry.all()).toHaveLength(4);
+    expect(registry.all()).toHaveLength(5);
+  });
+
+  it('whitelists labels independently from credential provisioning', () => {
+    const registry = createShopifyAppRegistry([
+      TEER_DEV,
+      { label: 'teer-public', clientId: undefined, clientSecret: undefined },
+    ]);
+
+    expect(registry.hasLabel('teer-public')).toBe(true);
+    expect(registry.getByLabel('teer-public')).toBeNull();
+    expect(registry.hasLabel('teer-public-inconnu')).toBe(false);
   });
 
   it('rejects an unknown client_id', () => {

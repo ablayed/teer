@@ -7,6 +7,7 @@ type EmbeddedSurfaceProps = {
   clientId: string | null;
   host: string | null;
   supportEmail: string | null;
+  appLabel?: string;
 };
 
 type SurfaceState =
@@ -82,7 +83,12 @@ function stateLabel(state: SurfaceState): string {
   }
 }
 
-export function EmbeddedShopifySurface({ clientId, host, supportEmail }: EmbeddedSurfaceProps) {
+export function EmbeddedShopifySurface({
+  clientId,
+  host,
+  supportEmail,
+  appLabel,
+}: EmbeddedSurfaceProps) {
   const [state, setState] = useState<SurfaceState>({ kind: 'loading' });
   const validatedHost = useMemo(() => (host ? decodeHost(host) : null), [host]);
 
@@ -192,7 +198,7 @@ export function EmbeddedShopifySurface({ clientId, host, supportEmail }: Embedde
         : null;
   const installHref =
     state.kind === 'not_configured'
-      ? `/api/shopify/embedded/install?shop=${encodeURIComponent(state.domain)}${host ? `&host=${encodeURIComponent(host)}` : ''}`
+      ? `/api/shopify/embedded/install?shop=${encodeURIComponent(state.domain)}${host ? `&host=${encodeURIComponent(host)}` : ''}${appLabel ? `&app_label=${encodeURIComponent(appLabel)}` : ''}`
       : null;
 
   return (
