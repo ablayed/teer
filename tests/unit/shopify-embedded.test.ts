@@ -19,6 +19,22 @@ describe('Shopify embedded review surface', () => {
     expect(surface).not.toContain('access_token');
   });
 
+  it('exposes a generic labelled entry without changing the default entry', () => {
+    const labelledPage = read('app/shopify/embedded/[appLabel]/page.tsx');
+    const installRoute = read('app/api/shopify/embedded/install/route.ts');
+    const publicConfig = read('shopify.app.teer-public.toml');
+
+    expect(labelledPage).toContain('getShopifyAppOrNullForEmbedded(appLabel)');
+    expect(installRoute).toContain("searchParams.get('app_label')");
+    expect(installRoute).toContain("searchParams.set('client_id', selectedApp.clientId)");
+    expect(read('app/shopify/embedded/page.tsx')).toContain('getShopifyAppOrNullForEmbedded()');
+    expect(publicConfig).toContain('client_id = "__A_RENSEIGNER__"');
+    expect(publicConfig).toContain(
+      'application_url = "https://teer-dev.vercel.app/shopify/embedded/teer-public"',
+    );
+    expect(publicConfig).not.toContain('[[webhooks.subscriptions]]');
+  });
+
   it('uses a dedicated Shopify frame policy and keeps the rest of the app unembeddable', () => {
     expect(cspRegimeForPath('/shopify/embedded')).toBe('embedded');
     expect(cspRegimeForPath('/tableau')).toBe('app');

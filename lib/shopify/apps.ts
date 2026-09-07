@@ -39,6 +39,14 @@ export function getShopifyAppByClientId(
   return REGISTRY.getByClientId(clientId);
 }
 
+export function getShopifyAppByLabel(label: string | null | undefined): ShopifyAppConfig | null {
+  return REGISTRY.getByLabel(label);
+}
+
+export function isKnownShopifyAppLabel(label: string | null | undefined): boolean {
+  return REGISTRY.hasLabel(label);
+}
+
 // App par défaut (Teer Dev) : rétrocompatibilité pour l'install publique et le fallback.
 // Lève si aucune app n'est configurée (déploiement sans credentials Shopify).
 export function getDefaultShopifyApp(): ShopifyAppConfig {

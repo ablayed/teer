@@ -11,7 +11,12 @@
 
 import { SHOPIFY_REQUIRED_SCOPES } from '@/lib/shopify/oauth';
 
-export type ShopifyAppLabel = 'teer-dev' | 'teer-pilote' | 'teer-marchand' | 'teer-koba';
+export type ShopifyAppLabel =
+  | 'teer-dev'
+  | 'teer-pilote'
+  | 'teer-marchand'
+  | 'teer-koba'
+  | 'teer-public';
 
 export type ShopifyAppConfig = {
   clientId: string;
@@ -33,6 +38,8 @@ const DEFAULT_SCOPES = SHOPIFY_REQUIRED_SCOPES.join(',');
 export type ShopifyAppRegistry = {
   // Config de l'app correspondant au client_id, ou null si inconnu/non enregistré.
   getByClientId(clientId: string | null | undefined): ShopifyAppConfig | null;
+  getByLabel(label: string | null | undefined): ShopifyAppConfig | null;
+  hasLabel(label: string | null | undefined): boolean;
   // App par défaut (Teer Dev si présente, sinon la première enregistrée), ou null si aucune.
   getDefault(): ShopifyAppConfig | null;
   // Toutes les apps enregistrées (pour itérer, ex. credentials sortants par boutique).
@@ -47,6 +54,7 @@ export function createShopifyAppRegistry(
   sources: readonly ShopifyAppEnvSource[],
 ): ShopifyAppRegistry {
   const byClientId = new Map<string, ShopifyAppConfig>();
+  const knownLabels = new Set<string>(sources.map((source) => source.label));
   const ordered: ShopifyAppConfig[] = [];
 
   for (const source of sources) {
@@ -73,6 +81,13 @@ export function createShopifyAppRegistry(
   return {
     getByClientId(clientId) {
       return clientId ? (byClientId.get(clientId) ?? null) : null;
+    },
+    getByLabel(label) {
+      if (!label) return null;
+      return ordered.find((app) => app.label === label) ?? null;
+    },
+    hasLabel(label) {
+      return Boolean(label && knownLabels.has(label));
     },
     getDefault() {
       return defaultApp;

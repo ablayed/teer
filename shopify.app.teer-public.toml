@@ -1,0 +1,23 @@
+# Configuration préparatoire APP-02 — ne pas publier sans renseigner le client_id et vérifier
+# la configuration complète dans le Dev Dashboard. L'URL diffère volontairement de la version
+# active teer-public-1.2 ; cet arbitrage est hors périmètre de cette PR.
+client_id = "__A_RENSEIGNER__"
+name = "Teer Public"
+application_url = "https://teer-dev.vercel.app/shopify/embedded/teer-public"
+embedded = true
+
+[access_scopes]
+scopes = "read_customers,read_orders,read_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://teer-dev.vercel.app/api/shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-04"
+
+# Aucun abonnement déclaré dans la vue active relevée pour Teer Public.
+# Extensions : non vérifiées dans APP-02 ; aucune déclaration ajoutée.
