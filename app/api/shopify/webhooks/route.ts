@@ -3,7 +3,12 @@
 // métier au cœur partagé (lib/shopify/webhook-core.ts) — le cœur ne lit ni en-tête ni jeton ni
 // URL, il reçoit une boutique déjà résolue.
 import { checkRateLimit } from '@/lib/security/rate-limit';
-import { getRegisteredShopifyApps, getShopifyAppForShop } from '@/lib/shopify/apps';
+import {
+  getDefaultShopifyAppOrNull,
+  getRegisteredShopifyApps,
+  getShopifyAppByClientId,
+  getShopifyAppForShop,
+} from '@/lib/shopify/apps';
 import {
   type WebhookShopRow,
   finishWebhookStatus,
@@ -15,7 +20,7 @@ import {
   runResolvedWebhookEvent,
   toJson,
 } from '@/lib/shopify/webhook-core';
-import { verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
+import { verifyWebhookHmac, verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
 import type { Database } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { after } from 'next/server';
@@ -291,11 +296,19 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseAdminClient();
 
-  // Multi-app : on route le secret HMAC vers l'app émettrice. La boutique mémorise shopify_client_id
-  // à l'install → on l'utilise (lookup par le header x-shopify-shop-domain, valeur non fiable mais
-  // sans risque : un mauvais domaine sélectionne le mauvais secret → l'HMAC échoue → 401).
-  // Boutique inconnue de la base (conformité, désinstallée, jamais installée) → on essaie TOUS les
-  // secrets enregistrés pour rester vérifié sur les DEUX apps.
+  let payload: unknown = null;
+  try {
+    // Le corps est lu avant l'HMAC uniquement pour choisir la boutique et donc le secret candidat.
+    // Il reste non vérifié et ne doit servir à aucune action métier avant la vérification ci-dessous.
+    payload = JSON.parse(rawBody) as unknown;
+  } catch {
+    // Le comportement historique pour un JSON invalide reste décidé après l'authentification.
+  }
+
+  // Multi-app : pour les topics dont le corps signé porte le domaine, la boutique du corps est la
+  // seule source pour choisir l'app. Un domaine connu avec un client_id non enregistré n'a donc
+  // aucun secret candidat. Si aucune boutique ne peut être résolue, on conserve le fallback
+  // historique afin que gdpr_shop_not_found reste produit après validation HMAC, sans traitement.
   const registeredSecrets = getRegisteredShopifyApps().map((app) => app.clientSecret);
   const fallbackSecrets =
     registeredSecrets.length > 0 ? registeredSecrets : [process.env.SHOPIFY_API_SECRET ?? ''];
@@ -303,10 +316,39 @@ export async function POST(request: Request) {
   const headerShop =
     supabase && shopDomain ? await getShopByDomain({ shopDomain, supabase }) : null;
   const headerApp = headerShop ? getShopifyAppForShop(headerShop.shopify_client_id) : null;
-  const hmacSecrets = headerApp ? [headerApp.clientSecret] : fallbackSecrets;
+
+  const bodySignedDomain = isSignedShopDomainTopic(topic)
+    ? resolveSignedShopDomain(null, payload)
+    : { ok: false as const, reason: 'missing' as const };
+  const bodyShopDomain = bodySignedDomain.ok ? bodySignedDomain.shopDomain : null;
+  const bodyShop =
+    supabase && bodyShopDomain
+      ? await getShopByDomain({ shopDomain: bodyShopDomain, supabase })
+      : null;
+  const bodyApp = bodyShop
+    ? bodyShop.shopify_client_id
+      ? getShopifyAppByClientId(bodyShop.shopify_client_id)
+      : getDefaultShopifyAppOrNull()
+    : null;
+  const bodyShopKnownButAppUnknown = Boolean(bodyShop && !bodyApp);
+
+  const hmacSecrets = isSignedShopDomainTopic(topic)
+    ? bodyShopKnownButAppUnknown
+      ? []
+      : bodyApp
+        ? [bodyApp.clientSecret]
+        : fallbackSecrets
+    : headerApp
+      ? [headerApp.clientSecret]
+      : fallbackSecrets;
 
   // HMAC vérifié AVANT tout traitement.
-  if (!verifyWebhookHmacAnySecret(rawBody, hmacHeader, hmacSecrets)) {
+  const hmacValid =
+    hmacSecrets.length > 0 &&
+    (isSignedShopDomainTopic(topic) && bodyApp
+      ? verifyWebhookHmac(rawBody, hmacHeader, bodyApp.clientSecret)
+      : verifyWebhookHmacAnySecret(rawBody, hmacHeader, hmacSecrets));
+  if (!hmacValid) {
     logWebhookError('[webhook] invalid hmac', { topic });
     return new Response(null, { status: 401 });
   }
@@ -321,11 +363,8 @@ export async function POST(request: Request) {
     return ok();
   }
 
-  let payload: unknown;
-  try {
-    payload = JSON.parse(rawBody) as unknown;
-  } catch (error) {
-    logWebhookError('[webhook] invalid json payload', { error, topic });
+  if (payload === null) {
+    logWebhookError('[webhook] invalid json payload', { topic });
     return ok();
   }
 
