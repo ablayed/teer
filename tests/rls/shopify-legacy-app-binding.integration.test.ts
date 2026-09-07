@@ -31,7 +31,8 @@ const SHOPIFY_ENV_KEYS = [
 
 type AdminClient = SupabaseClient<Database>;
 type PostHandler = (request: Request) => Promise<Response>;
-type Topic = 'customers/data_request' | 'customers/redact' | 'shop/redact';
+type GdprTopic = 'customers/data_request' | 'customers/redact' | 'shop/redact';
+type Topic = GdprTopic | 'app/uninstalled';
 type Scenario = 'header-absent' | 'header-unknown' | 'positive' | 'uninstalled';
 
 type Fixture = {
@@ -268,9 +269,9 @@ async function getEvent(admin: AdminClient, webhookId: string): Promise<EventRow
 
 async function assertTopicEffect(
   fixture: Fixture,
-  topic: Topic,
+  topic: GdprTopic,
   shouldProcess: boolean,
-  event: EventRow,
+  event: EventRow | null,
 ): Promise<void> {
   const { data: customer } = await fixture.admin
     .from('customer')
@@ -339,15 +340,15 @@ async function assertTopicEffect(
   }
 
   if (shouldProcess) {
+    if (!event) throw new Error('expected a processed webhook event');
     expect(event.status).toBe('done');
     expect(event.last_error_code).toBeNull();
   } else {
-    expect(event.status).toBe('terminal');
-    expect(event.last_error_code).toBe('gdpr_shop_domain_mismatch');
+    expect(event).toBeNull();
   }
 }
 
-describe('CONF-01C — liaison app validante / boutique sur le endpoint legacy', () => {
+describe('CONF-01D — liaison app validante / boutique sur le endpoint legacy', () => {
   beforeAll(async () => {
     configureFictitiousApps();
     supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -389,14 +390,64 @@ describe('CONF-01C — liaison app validante / boutique sur le endpoint legacy',
               header,
             }),
           );
-          expect(response.status).toBe(200);
+          expect(response.status).toBe(shouldProcess ? 200 : 401);
           await waitForAfterCallbacks();
-          const event = await getEvent(admin, webhookId);
+          const { data: event, error: eventError } = await admin
+            .from('webhook_event')
+            .select('id, status, last_error_code')
+            .eq('shopify_webhook_id', webhookId)
+            .maybeSingle();
+          if (eventError) throw eventError;
           await assertTopicEffect(fixture, topic, shouldProcess, event);
         } finally {
           await cleanupFixture(fixture);
         }
       },
     );
+  });
+
+  it('app/uninstalled : le secret de la boutique du corps autorise le parcours legacy', async () => {
+    const admin = createClient<Database>(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const fixture = await createFixture(admin, 'positive', false);
+    const webhookId = `conf-01c-app-uninstalled-${crypto.randomUUID()}`;
+
+    try {
+      const response = await postWebhook(
+        buildRequest({
+          topic: 'app/uninstalled',
+          shopDomain: fixture.shopDomain,
+          customerExternalId: fixture.customerExternalId,
+          webhookId,
+          secret: APP_B_SECRET,
+          header: 'shop',
+        }),
+      );
+      expect(response.status).toBe(200);
+      await waitForAfterCallbacks();
+      const event = await getEvent(admin, webhookId);
+      expect(event.status).toBe('done');
+      expect(event.last_error_code).toBeNull();
+
+      const { data: shop, error: shopError } = await admin
+        .from('shop')
+        .select('status')
+        .eq('id', fixture.shopId)
+        .single();
+      if (shopError) throw shopError;
+      expect(shop.status).toBe('uninstalled');
+
+      const { count: auditCount, error: auditError } = await admin
+        .from('audit_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', fixture.merchantAccountId)
+        .eq('action', 'shopify.app_uninstalled')
+        .eq('resource_id', fixture.shopId);
+      if (auditError) throw auditError;
+      expect(auditCount).toBe(1);
+    } finally {
+      await cleanupFixture(fixture);
+    }
   });
 });

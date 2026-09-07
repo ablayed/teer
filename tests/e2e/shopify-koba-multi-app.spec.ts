@@ -549,7 +549,7 @@ test('shop/redact : corps signé pour B (teer-pilote), en-tête forgé vers A (t
       webhookId,
       body: { shop_domain: shopDomainB }, // corps réellement signé pour l'ATTAQUANT (teer-pilote)
       triggeredAt: '2026-08-24T10:00:00Z',
-      hmacSecret: KOBA_SECRET, // le HMAC est routé sur l'app de l'en-tête (A → teer-koba)
+      hmacSecret: PILOTE_SECRET, // HMAC valide pour B ; seul le header forge l'identité A
     });
     // La réponse HTTP est toujours 2xx (traitement dans after()) : ne rien en déduire du statut.
     expect(res.status()).toBe(200);
