@@ -258,6 +258,136 @@ l'unique preuve valable, exactement comme les préflights de production des lots
 
 ---
 
+## Option D — bascule d'app (KOBA → Teer Public), GETGET SN
+
+> Distinct de la « Séquence complète » ci-dessus : celle-ci bascule un même app entre l'ancien
+> endpoint (en-tête) et le nouvel endpoint (jeton opaque). Ce qui suit bascule **l'app
+> elle-même** (KOBA → Teer Public) pour une boutique donnée — nécessite d'abord la libération
+> d'identité d'app posée par ce lot (`lib/shopify/app-release-write.ts`,
+> `releaseShopAppAction`), seul chemin de code qui remet `shop.shopify_client_id`/
+> `store_connection.platform_app_id` à NULL pour une boutique déjà possédée par une app (cf.
+> rapport de diagnostic KOBA→Teer Public, `lib/shopify/app-switch-guard.ts` refuse toute autre
+> tentative). Ce document décrit la séquence rendue exécutable ; il ne l'exécute pas — aucune
+> bascule réelle de GETGET SN n'est effectuée par ce lot.
+
+### Deux gestes de synchronisation distincts — jamais interchangeables
+
+Mesuré par lecture directe, pas supposé :
+
+| | Synchronisation manuelle (bouton « Synchroniser maintenant », `syncShopOrders`) | Réconciliation (cron `shopify-reconcile`, `reconcileShopOrders`) |
+|---|---|---|
+| Déclenchement | Geste explicite du marchand (`lib/actions/shops.ts#syncShopAction`) | Planifié quotidien, ou invocation manuelle de `reconcileShopOrders` |
+| Commandes | `SHOPIFY_ORDERS_QUERY` (`lib/shopify/orders-sync.ts:11-13`) — `orders(first: 50, sortKey: CREATED_AT, reverse: true)`, **une seule page** (`lib/shopify/shop-sync.ts:128-133`, `cursor: null`, aucune boucle) — **aucune borne temporelle**, seulement les 50 commandes les plus récentes par date de création |
+| Produits | `syncProductsForShop` interne — **catalogue complet**, paginé jusqu'à épuisement, jamais borné dans le temps ; additif seulement, **ne désactive jamais un produit absent de la réponse Shopify** (dette nommée ci-dessous) | Ne touche jamais les produits |
+| Commandes — mécanisme | idem réconciliation (même `persistShopifyOrder`) | Bulk export Admin API filtré `updated_at:>='<shop.last_reconciled_at>'` (`lib/shopify/bulk.ts:15-16`) — **borné et complet** (bulk operation Shopify, pas de plafond de page côté REST) |
+| Déduplication commandes | `persistShopifyOrder` : résolution `(shop_id, shopify_order_id)` avant écriture, filet index unique `orders_shop_shopify_order_unique_idx` (migration `0037`) — **prouvée par test, rejeu séquentiel et concurrent** : `tests/rls/shopify-reconcile-dedup.rls.test.ts` (2/2 verts, vérifié dans ce lot) | même mécanisme, même preuve |
+| Avance `shop.last_reconciled_at` | **Non** | **Oui** (`computeNextReconcileCursor`, fail-safe : n'avance jamais au-delà d'un échec) |
+
+**Ne jamais présenter la synchronisation manuelle comme un rattrapage borné** — elle ne l'est pas
+(50 commandes récentes, catalogue complet mais non déduit des suppressions). Seule la
+réconciliation (cron ou invocation manuelle de `reconcileShopOrders`) est un rattrapage borné et
+complet, et seulement pour `orders/*`.
+
+### Fenêtre gelée — règle et sa limite
+
+La bascule est réalisée pendant une fenêtre convenue à l'avance avec GETGET SN, hors activité si
+possible.
+
+- **La fenêtre commence AVANT l'enregistrement du watermark**, jamais après — le watermark n'a de
+  sens que si aucune activité n'a pu s'intercaler entre le début du gel et sa capture.
+- Du début de la fenêtre jusqu'à la confirmation des 9 abonnements Teer Public : **aucune
+  création, modification ou suppression de produit**, **aucun remboursement émis** côté Shopify
+  Admin.
+- Toute demande de remboursement reçue pendant le créneau est **conservée par le marchand**,
+  exécutée seulement après la remise en service complète.
+- **Le gel des suppressions de produit n'est PAS techniquement vérifiable** — rien dans ce dépôt
+  ne peut prouver après coup qu'aucun produit n'a été supprimé (un produit supprimé disparaît
+  simplement de la réponse Shopify, cf. dette ci-dessous). Il repose **uniquement sur
+  l'engagement opérationnel du marchand**, confirmé par écrit après la fenêtre — jamais présenté
+  comme vérifié techniquement.
+- `refunds/create` n'est **pas rattrapable automatiquement** (aucune réconciliation n'existe pour
+  ce topic, cf. gotcha existant plus haut dans ce document) — d'où le gel strict plutôt qu'une
+  tolérance « on rattrapera après ».
+- `bulk_operations/finish` ne transporte aucune donnée métier propre (déclenche une
+  resynchronisation, ne porte rien à geler pour lui-même).
+
+### Séquence
+
+1. **Convenir de la fenêtre avec GETGET SN.** Hors activité si possible.
+2. **Début de la fenêtre gelée** — avant toute autre étape.
+3. **Dernière réconciliation KOBA** : exécuter `reconcileShopOrders` (cron ou invocation directe)
+   pour GETGET SN et **vérifier son résultat** (`result.ok === true`, `failedCount === 0`). Le
+   `shop.last_reconciled_at` qui en résulte devient **naturellement** le point de départ du
+   rattrapage post-bascule — **aucune écriture manuelle de watermark n'est autorisée**.
+4. **Désinstaller KOBA** depuis Shopify Admin (côté marchand, hors de ce dépôt).
+5. **Attendre la réception et le traitement de `app/uninstalled`** — vérifier `shop.status =
+   'uninstalled'` **et** `access_token_encrypted IS NULL` **et** `refresh_token_encrypted IS
+   NULL` (les trois colonnes, désormais toutes nullées par `processAppUninstalledCore`, corrigé
+   dans ce lot — `access_token_encrypted` ne l'était pas auparavant).
+6. **Owner déclenche l'action « Libérer la boutique pour une nouvelle application Shopify »**
+   (`/parametres`, onglet Boutiques, visible uniquement quand la boutique est désinstallée sans
+   credential restant) — remet `shop.shopify_client_id` et `store_connection.platform_app_id` à
+   NULL, révoque l'éventuel jeton webhook opaque KOBA.
+7. **Installer et rattacher Teer Public** (flux embarqué App Bridge existant,
+   `performShopifyEmbeddedLink` → `app/api/shopify/embedded/session/route.ts`).
+8. **Rouvrir l'app embarquée** pour obtenir un ID token frais et terminer le token exchange
+   (`completeCredentialsLink`) — confirmer `shopify_client_id`/`platform_app_id` = Teer Public.
+9. **Owner déclenche explicitement le bouton « Synchroniser maintenant »** — **l'onboarding
+   n'appelle jamais `syncProductsForShop` automatiquement** (mesuré : aucun appel dans
+   `app/api/shopify/embedded/session/route.ts`, seul le callback OAuth legacy — inutilisable par
+   Teer Public — le fait). Sans ce geste explicite, le catalogue reste celui hérité de KOBA.
+10. `node scripts/webhook-subscription-migration.mjs --plan --shop-domain <domaine GETGET SN>` —
+    relu avant tout `--apply`.
+11. `--apply` (première bascule pour cette connexion — `'provision'`, aucun jeton local encore
+    posé après l'étape 6) — crée les 9 abonnements Teer Public vers l'URL opaque.
+12. **Vérifier** chaque topic/subscription ID/callback URL (relecture automatique de l'outil,
+    `verifyAndCleanup`).
+13. **Rattrapage borné** : `reconcileShopOrders` pour GETGET SN, depuis le `last_reconciled_at`
+    capturé à l'étape 3 — rattrape uniquement les commandes créées/modifiées pendant la fenêtre de
+    coupure. **Ne couvre ni les produits ni les remboursements** (dette nommée ci-dessous).
+14. **Vérification post-fenêtre — action manuelle de l'opérateur muni d'un accès Shopify Admin
+    API, jamais une action de cet agent :**
+    1. relever les créations/modifications de produits horodatées dans la fenêtre (Shopify Admin) ;
+    2. relever les remboursements émis dans cette même fenêtre (Shopify Admin) ;
+    3. comparer les remboursements Shopify relevés aux remboursements enregistrés côté Tëër ;
+    4. consigner les résultats.
+
+    Résultats attendus, tous les trois :
+    - **zéro** remboursement Shopify émis pendant la fenêtre ;
+    - **zéro** création ou modification de produit non répercutée côté Tëër (comparaison
+      horodatage par horodatage — les suppressions ne peuvent pas être vérifiées par cette
+      méthode, cf. dette) ;
+    - **confirmation écrite du marchand** qu'aucune suppression de produit n'a eu lieu pendant la
+      fenêtre.
+
+    **Si l'un de ces résultats n'est pas obtenu : la bascule n'est PAS déclarée terminée.** Ne
+    jamais corriger directement la base de données, ne jamais improviser une saisie manuelle de
+    remboursement ou de produit manquant — rapporter l'écart et ouvrir une procédure de
+    récupération séparée, documentée indépendamment.
+15. Retirer les credentials KOBA résiduels (aucun n'est censé rester après l'étape 6 — vérification
+    de clôture, pas une nouvelle action).
+
+### Rollback
+
+Symétrique : désinstaller Teer Public → attendre son `app/uninstalled` → libérer son identité par
+le même chemin contrôlé (étape 6, appliqué à Teer Public) → réinstaller KOBA (flux OAuth legacy,
+`/api/shopify/install`) → recréer ses abonnements → synchroniser depuis le watermark de rollback
+(même discipline qu'à l'étape 3/13, jamais une écriture manuelle de curseur).
+
+### Dettes nommées, non bloquantes pour ce pilote
+
+- **Rattrapage automatisé de `refunds/create`** : aucune réconciliation n'existe pour ce topic.
+  Mitigé pour ce pilote par le gel strict des remboursements pendant la fenêtre (ci-dessus), pas
+  résolu structurellement.
+- **Réconciliation complète du catalogue produit, avec désactivation des produits absents** :
+  `syncProductsForShop`/`persistShopifyProducts` est un import additif (insert/update par
+  `shopify_variant_id`), jamais un diff complet contre l'état existant — un produit supprimé chez
+  Shopify n'est jamais désactivé côté Tëër. Mitigé pour ce pilote par le gel des suppressions
+  (engagement opérationnel, non vérifiable techniquement) et la comparaison manuelle
+  créations/modifications de l'étape 14.
+
+---
+
 ## Hors périmètre de ce runbook
 
 Câblage des écritures métier complètes sur le nouvel endpoint (Verrou 0 — lot séparé) · preuve de
