@@ -151,12 +151,14 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
     expect(captureException).not.toHaveBeenCalled();
   });
 
-  it('renvoie uninstalled quand le statut est uninstalled, app inchangée', async () => {
+  it('réinstallation actionnable : uninstalled + ID token frais relance le token exchange (jamais /api/shopify/install), retombe ready au succès', async () => {
     harness.shop = {
+      id: 'shop-reinstall',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: PUBLIC_APP.clientId,
       status: 'uninstalled',
-      access_token_encrypted: 'encrypted-token-sentinel',
+      access_token_encrypted: 'stale-encrypted-token-sentinel',
+      merchant_account_id: 'tenant-sentinel',
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
@@ -166,8 +168,39 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
     const response = await GET(buildRequest());
     const body = await response.json();
 
-    expect(body.status).toBe('uninstalled');
-    expect(body.nextAction).toBe('reinstall');
+    expect(body.status).toBe('ready');
+    expect(harness.shopUpdateCalls).toHaveLength(1);
+    // L'ancien access_token_encrypted n'est jamais relu ni transmis à Shopify — seul le nouvel
+    // ID token (déjà vérifié) sert de subject_token ; la ligne est écrasée par le nouveau couple.
+    expect(harness.shopUpdateCalls[0]).toMatchObject({
+      access_token_encrypted: 'encrypted-fresh-access-token',
+      status: 'active',
+    });
+  });
+
+  it('réinstallation : un échec de token exchange ne bloque jamais sur un état ready trompeur (link_retry, statut inchangé côté écriture)', async () => {
+    harness.shop = {
+      id: 'shop-reinstall',
+      shop_domain: 'shared-domain.myshopify.com',
+      shopify_client_id: PUBLIC_APP.clientId,
+      status: 'uninstalled',
+      access_token_encrypted: 'stale-encrypted-token-sentinel',
+      merchant_account_id: 'tenant-sentinel',
+      installed_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-02T00:00:00.000Z',
+      last_reconciled_at: null,
+    };
+    harness.tokenExchangeShouldFail = true;
+
+    const { GET } = await import('@/app/api/shopify/embedded/session/route');
+    const response = await GET(buildRequest());
+    const body = await response.json();
+
+    expect(body).toEqual({
+      status: 'link_retry',
+      shop: { domain: 'shared-domain.myshopify.com' },
+    });
+    expect(harness.shopUpdateCalls).toHaveLength(0);
   });
 
   it('renvoie not_configured quand aucune ligne shop n’existe pour ce domaine', async () => {

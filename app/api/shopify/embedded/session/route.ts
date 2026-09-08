@@ -156,12 +156,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'invalid_shop_status' }, { status: 500 });
   }
 
-  // Rattachement en attente de credentials (écrit par l'écran de confirmation, `shop.status`
-  // déjà 'active', `access_token_encrypted` NULL — état représentable sans migration, cf. rapport
-  // de préflight). Le token exchange n'a besoin de rien d'autre qu'un ID token frais (celui-ci
-  // même, déjà vérifié ci-dessus) et de cette ligne, qui sait déjà à qui elle appartient —
-  // rattachement et échange n'ont jamais à tenir dans le même aller-retour.
-  if (shop.status === 'active' && !shop.access_token_encrypted) {
+  // Deux cas déclenchent un (ré)échange de token, tous deux avec un ID token frais (celui-ci
+  // même, déjà vérifié ci-dessus) et une ligne `shop` qui sait déjà à qui elle appartient —
+  // rattachement/réinstallation et échange n'ont jamais à tenir dans le même aller-retour :
+  //   - rattachement en attente : `status` déjà 'active', `access_token_encrypted` NULL (écrit
+  //     par l'écran de confirmation, état représentable sans migration, cf. rapport de préflight) ;
+  //   - réinstallation (webhook `app/uninstalled` déjà reçu, `status='uninstalled'`) : Teer Public
+  //     n'a AUCUN chemin par `/api/shopify/install` (refusé, cf. app/api/shopify/install/route.ts)
+  //     — la réinstallation redevient actionnable simplement en rouvrant l'app dans Shopify Admin,
+  //     qui recharge cette même surface avec un nouvel ID token. L'ancien access_token_encrypted
+  //     n'est jamais réutilisé : il n'est lu nulle part sur ce chemin, seulement écrasé au succès.
+  if ((shop.status === 'active' && !shop.access_token_encrypted) || shop.status === 'uninstalled') {
     const linked = await completeCredentialsLink(admin, shop, app, token, verification.shopDomain);
     if (!linked.ok) {
       return NextResponse.json({
@@ -225,6 +230,7 @@ async function completeCredentialsLink(
       access_token_expires_at: tokenResponse.accessTokenExpiresAt?.toISOString() ?? null,
       refresh_token_expires_at: tokenResponse.refreshTokenExpiresAt?.toISOString() ?? null,
       scopes: tokenResponse.scope,
+      status: 'active',
       updated_at: now,
     })
     .eq('id', shop.id)
