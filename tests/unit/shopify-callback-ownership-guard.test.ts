@@ -23,11 +23,20 @@ type ConnectionRow = {
   [key: string]: unknown;
 };
 
+type WriteCall = { payload: Record<string, unknown>; filters: Array<[string, unknown]> };
+
 const harness = vi.hoisted(() => ({
   shops: [] as ShopRow[],
   connections: [] as ConnectionRow[],
   nextId: 0,
   onAfterGuardRead: null as (() => void) | null,
+  // Capture les payloads/filtres RÉELLEMENT transmis au client Supabase (pas seulement l'état
+  // final) — c'est ce qui prouve que `merchant_account_id` est structurellement absent des
+  // colonnes d'update, indépendamment de ce que le filtre laisse ensuite passer ou non.
+  shopInsertCalls: [] as Array<{ payload: Record<string, unknown> }>,
+  shopUpdateCalls: [] as WriteCall[],
+  connectionInsertCalls: [] as Array<{ payload: Record<string, unknown> }>,
+  connectionUpdateCalls: [] as WriteCall[],
 }));
 
 function freshId(prefix: string): string {
@@ -112,27 +121,31 @@ vi.mock('@/lib/supabase/protected-client', () => ({
               },
             }),
           }),
-          insert: (payload: Record<string, unknown>) => ({
-            select: () => ({
-              single: async () => {
-                const domain = payload.shop_domain as string;
-                if (harness.shops.some((s) => s.shop_domain === domain)) {
-                  return {
-                    data: null,
-                    error: {
-                      code: '23505',
-                      message: 'duplicate key value violates shop_shop_domain_key',
-                    },
-                  };
-                }
-                const row = { id: freshId('shop'), ...payload } as ShopRow;
-                harness.shops.push(row);
-                return { data: { id: row.id }, error: null };
-              },
-            }),
-          }),
+          insert: (payload: Record<string, unknown>) => {
+            harness.shopInsertCalls.push({ payload });
+            return {
+              select: () => ({
+                single: async () => {
+                  const domain = payload.shop_domain as string;
+                  if (harness.shops.some((s) => s.shop_domain === domain)) {
+                    return {
+                      data: null,
+                      error: {
+                        code: '23505',
+                        message: 'duplicate key value violates shop_shop_domain_key',
+                      },
+                    };
+                  }
+                  const row = { id: freshId('shop'), ...payload } as ShopRow;
+                  harness.shops.push(row);
+                  return { data: { id: row.id }, error: null };
+                },
+              }),
+            };
+          },
           update: (payload: Record<string, unknown>) => {
             const filters: Array<[string, unknown]> = [];
+            harness.shopUpdateCalls.push({ payload, filters });
             const builder = {
               eq(column: string, value: unknown) {
                 filters.push([column, value]);
@@ -158,8 +171,9 @@ vi.mock('@/lib/supabase/protected-client', () => ({
 
       if (table === 'store_connection') {
         return {
-          insert: (payload: Record<string, unknown>) =>
-            (async () => {
+          insert: (payload: Record<string, unknown>) => {
+            harness.connectionInsertCalls.push({ payload });
+            return (async () => {
               const key = `${payload.platform}:${payload.external_identifier}`;
               const exists = harness.connections.some(
                 (c) => `${c.platform}:${c.external_identifier}` === key,
@@ -174,9 +188,11 @@ vi.mock('@/lib/supabase/protected-client', () => ({
               }
               harness.connections.push({ id: freshId('conn'), ...payload } as ConnectionRow);
               return { error: null };
-            })(),
+            })();
+          },
           update: (payload: Record<string, unknown>) => {
             const filters: Array<[string, unknown]> = [];
+            harness.connectionUpdateCalls.push({ payload, filters });
             const builder = {
               eq(column: string, value: unknown) {
                 filters.push([column, value]);
@@ -222,6 +238,10 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
     harness.shops.length = 0;
     harness.connections.length = 0;
     harness.onAfterGuardRead = null;
+    harness.shopInsertCalls.length = 0;
+    harness.shopUpdateCalls.length = 0;
+    harness.connectionInsertCalls.length = 0;
+    harness.connectionUpdateCalls.length = 0;
     exchangeCodeForToken.mockClear();
     captureException.mockClear();
     captureMessage.mockClear();
@@ -242,6 +262,12 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
     });
     expect(harness.connections).toHaveLength(1);
     expect(harness.connections[0]).toMatchObject({ merchant_account_id: TENANT_A });
+    // Anti-divergence : le merchant_account_id du payload d'insert store_connection est bien
+    // celui validé par la garde (payload.merchantAccountId, même variable que pour `shop`),
+    // jamais une valeur relue séparément de la session Tëër — la clé unique (platform,
+    // external_identifier) ne contenant pas le tenant, un insert n'a pas d'autre barrière.
+    expect(harness.connectionInsertCalls).toHaveLength(1);
+    expect(harness.connectionInsertCalls[0].payload.merchant_account_id).toBe(TENANT_A);
   });
 
   it('met à jour la boutique existante en reconnexion sur le même tenant', async () => {
@@ -263,6 +289,57 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
       merchant_account_id: TENANT_A,
       shopify_client_id: APP.clientId,
     });
+  });
+
+  it('reconnexion complète (shop ET store_connection déjà existants, même tenant) : les deux ' +
+    'updates sont structurellement incapables de réassigner merchant_account_id', async () => {
+    harness.shops.push({
+      id: 'shop-existing',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: 'old-client',
+    });
+    harness.connections.push({
+      id: 'conn-existing',
+      platform: 'shopify',
+      external_identifier: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shop_id: 'shop-existing',
+      platform_app_id: 'old-client',
+    });
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    const response = await GET(buildRequest());
+
+    expect(response.status).toBe(307);
+
+    // shop.update : merchant_account_id absent des colonnes écrites, présent uniquement
+    // comme filtre WHERE — aux côtés de `id`, pas à sa place.
+    expect(harness.shopUpdateCalls).toHaveLength(1);
+    expect(harness.shopUpdateCalls[0].payload).not.toHaveProperty('merchant_account_id');
+    expect(harness.shopUpdateCalls[0].filters).toContainEqual(['id', 'shop-existing']);
+    expect(harness.shopUpdateCalls[0].filters).toContainEqual(['merchant_account_id', TENANT_A]);
+
+    // store_connection.update : même discipline, sur sa propre clé (platform,
+    // external_identifier) — merchant_account_id n'y figure que comme filtre.
+    expect(harness.connectionUpdateCalls).toHaveLength(1);
+    expect(harness.connectionUpdateCalls[0].payload).not.toHaveProperty('merchant_account_id');
+    expect(harness.connectionUpdateCalls[0].filters).toContainEqual(['platform', 'shopify']);
+    expect(harness.connectionUpdateCalls[0].filters).toContainEqual([
+      'external_identifier',
+      SHOP_DOMAIN,
+    ]);
+    expect(harness.connectionUpdateCalls[0].filters).toContainEqual([
+      'merchant_account_id',
+      TENANT_A,
+    ]);
+
+    // `shop` : la décision de garde choisit insert XOR update — aucun insert tenté ici.
+    expect(harness.shopInsertCalls).toHaveLength(0);
+    // `store_connection` : le chemin route.ts tente TOUJOURS l'insert en premier (contrairement
+    // à `shop`) ; ici il échoue en 23505 (ligne déjà existante) et retombe sur l'update guardé
+    // ci-dessus — c'est cet insert tenté-puis-refusé qui est attendu, pas son absence.
+    expect(harness.connectionInsertCalls).toHaveLength(1);
   });
 
   it("refuse AVANT l'échange de code une boutique déjà possédée par un autre tenant — aucune " +
