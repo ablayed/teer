@@ -1,20 +1,35 @@
-import { env } from '@/lib/env';
-import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
+import { ShopifyAppIdentityMismatchError } from '@/lib/shopify/app-identity-errors';
+import { getShopifyAppByClientId } from '@/lib/shopify/apps';
 import {
   extractShopifySessionAudience,
   verifyShopifySessionToken,
 } from '@/lib/shopify/session-token';
 import type { Database } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
+import * as Sentry from '@sentry/nextjs';
 import { type NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// `process.env` direct, jamais `lib/env.ts` : ce module valide TOUTES les variables serveur au
+// chargement (Zod), ce qui force un environnement de test complet pour importer ne serait-ce
+// qu'une fonction pure d'un fichier qui l'importe transitivement (cf. CLAUDE.md). Même choix que
+// `app/api/shopify/callback/route.ts`.
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} is required for the Shopify embedded session route`);
+  }
+
+  return value;
+}
+
 function createSupabaseAdminClient() {
   return createProtectedSupabaseClient(
-    env.NEXT_PUBLIC_SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY,
+    getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
     {
       auth: { autoRefreshToken: false, persistSession: false },
     },
@@ -94,10 +109,17 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const configuredClientId =
-    shop.shopify_client_id ?? getDefaultShopifyAppOrNull()?.clientId ?? null;
-  if (configuredClientId !== app.clientId) {
-    return NextResponse.json({ error: 'shop_app_mismatch' }, { status: 403 });
+  // Confrontation stricte : l'app ayant vérifié l'ID token (`app.clientId`) doit être
+  // exactement celle enregistrée sur la boutique. AUCUN repli implicite vers une app "par
+  // défaut" quand `shopify_client_id` est absent — une boutique legacy sans client_id est un
+  // désaccord, jamais une présomption Teer Dev. Divergence → jamais `ready`, aucune identité
+  // historique (label, client_id, tenant) dans la réponse publique ; seule une capture Sentry
+  // interne porte un code stable (jamais déduit du texte de message).
+  if (shop.shopify_client_id !== app.clientId) {
+    Sentry.captureException(new ShopifyAppIdentityMismatchError(), {
+      tags: { route: 'shopify.embedded.session', reason: 'app_identity_mismatch' },
+    });
+    return NextResponse.json({ status: 'app_identity_mismatch' as const });
   }
 
   if (shop.status !== 'active' && shop.status !== 'uninstalled') {
