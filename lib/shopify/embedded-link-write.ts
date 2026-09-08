@@ -1,0 +1,176 @@
+// APP-03 / Lot 2 — cœur métier du rattachement Teer Public embarqué, isolé de next-safe-action
+// (pas de 'use server', pas de dépendance à `ctx` du safe-action client) pour rester
+// unitairement testable en appelant la fonction directement, comme
+// `performTransitionForContext` (lib/actions/transitions.ts) sépare déjà orchestration et wrapper.
+//
+// Écrit uniquement sur appel explicite (jamais sur GET — l'appelant, une server action `'use
+// server'`, est lui-même déclenché par un POST de formulaire). Deux gardes distinctes, dans cet
+// ordre : (1) bascule d'app — une boutique déjà possédée par une autre app est refusée MÊME pour
+// le même tenant (lib/shopify/app-switch-guard.ts, nouveau) ; (2) propriété par tenant —
+// `decideShopOwnership` (lib/shopify/ownership-guard.ts, APP-03/Lot 1), réutilisée telle quelle,
+// jamais une seconde garde de tenant. `store_connection` n'est PAS créée ici — seule `shop` porte
+// l'association en attente (`access_token_encrypted` reste NULL) ; `store_connection` devient
+// active après le token exchange (app/api/shopify/embedded/session/route.ts).
+import {
+  ShopifyAppSwitchRefusedError,
+  ShopifyPublicLegacyRouteRefusedError,
+} from '@/lib/shopify/app-identity-errors';
+import { decideShopAppSwitch } from '@/lib/shopify/app-switch-guard';
+import { getShopifyAppByClientId } from '@/lib/shopify/apps';
+import { buildShopifyEmbeddedAppUrl } from '@/lib/shopify/embedded-host';
+import { verifyEmbeddedLinkIntent } from '@/lib/shopify/embedded-link-intent';
+import { decideShopOwnership } from '@/lib/shopify/ownership-guard';
+import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
+import type { createSupabaseServerClient } from '@/lib/supabase/server';
+import * as Sentry from '@sentry/nextjs';
+
+// `process.env` direct, jamais `lib/env.ts` (cf. app/api/shopify/embedded/session/route.ts) :
+// reste unitairement testable sans environnement serveur complet.
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} is required for the Shopify embedded link write`);
+  }
+
+  return value;
+}
+
+function createSupabaseAdminClient() {
+  return createProtectedSupabaseClient(
+    getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
+}
+
+export type ShopifyEmbeddedLinkInput = {
+  intent: string;
+  merchantAccountId: string;
+};
+
+export type ShopifyEmbeddedLinkContext = {
+  userId: string;
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+};
+
+export type ShopifyEmbeddedLinkResult =
+  | { ok: true; redirectUrl: string }
+  | {
+      ok: false;
+      errorCode:
+        | 'intent_invalid'
+        | 'app_unknown'
+        | 'not_a_member'
+        | 'app_switch_refused'
+        | 'ownership_refused'
+        | 'write_failed'
+        | 'destination_unavailable';
+    };
+
+export async function performShopifyEmbeddedLink(
+  input: ShopifyEmbeddedLinkInput,
+  ctx: ShopifyEmbeddedLinkContext,
+): Promise<ShopifyEmbeddedLinkResult> {
+  const intent = verifyEmbeddedLinkIntent(input.intent);
+  if (!intent) {
+    return { ok: false, errorCode: 'intent_invalid' };
+  }
+
+  const app = getShopifyAppByClientId(intent.clientId);
+  if (!app) {
+    return { ok: false, errorCode: 'app_unknown' };
+  }
+
+  // Teer Public n'a de valeur que sur ce chemin ; un state legacy ne peut structurellement pas
+  // arriver ici (verifyEmbeddedLinkIntent le rejette déjà), mais on garde le garde-fou nommé.
+  if (app.label !== 'teer-public') {
+    Sentry.captureException(new ShopifyPublicLegacyRouteRefusedError(), {
+      tags: { action: 'shopify.embedded_link', reason: 'unexpected_app_label' },
+    });
+    return { ok: false, errorCode: 'app_unknown' };
+  }
+
+  const { data: membership, error: membershipError } = await ctx.supabase
+    .from('merchant_member')
+    .select('id')
+    .eq('user_id', ctx.userId)
+    .eq('merchant_account_id', input.merchantAccountId)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return { ok: false, errorCode: 'not_a_member' };
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data: existingShop, error: existingShopError } = await admin
+    .from('shop')
+    .select('id, merchant_account_id, shopify_client_id')
+    .eq('shop_domain', intent.shopDomain)
+    .maybeSingle();
+
+  if (existingShopError) {
+    return { ok: false, errorCode: 'write_failed' };
+  }
+
+  const appSwitchDecision = decideShopAppSwitch(existingShop, app.clientId);
+  if (appSwitchDecision.kind === 'refuse') {
+    Sentry.captureException(new ShopifyAppSwitchRefusedError(), {
+      tags: { action: 'shopify.embedded_link', reason: 'app_switch_refused' },
+    });
+    return { ok: false, errorCode: 'app_switch_refused' };
+  }
+
+  const ownershipDecision = decideShopOwnership(existingShop, input.merchantAccountId);
+  if (ownershipDecision.kind === 'refuse') {
+    Sentry.captureMessage('shopify_embedded_link_ownership_guard_refused', {
+      level: 'warning',
+      tags: { action: 'shopify.embedded_link', reason: 'ownership_mismatch' },
+    });
+    return { ok: false, errorCode: 'ownership_refused' };
+  }
+
+  const now = new Date().toISOString();
+
+  if (ownershipDecision.kind === 'insert') {
+    const { error: insertError } = await admin.from('shop').insert({
+      merchant_account_id: input.merchantAccountId,
+      shop_domain: intent.shopDomain,
+      shopify_client_id: app.clientId,
+      status: 'active',
+      access_token_encrypted: null,
+      display_name: intent.shopDomain,
+    });
+
+    if (insertError) {
+      Sentry.captureException(insertError, {
+        tags: { action: 'shopify.embedded_link', reason: 'shop_insert_failed' },
+      });
+      return { ok: false, errorCode: 'write_failed' };
+    }
+  } else {
+    // update : jamais `merchant_account_id` dans le payload, seulement comme filtre WHERE —
+    // même discipline que le callback OAuth legacy (APP-03 / Lot 1).
+    const { error: updateError } = await admin
+      .from('shop')
+      .update({ shopify_client_id: app.clientId, status: 'active', updated_at: now })
+      .eq('id', ownershipDecision.shopId)
+      .eq('merchant_account_id', input.merchantAccountId);
+
+    if (updateError) {
+      Sentry.captureException(updateError, {
+        tags: { action: 'shopify.embedded_link', reason: 'shop_update_failed' },
+      });
+      return { ok: false, errorCode: 'write_failed' };
+    }
+  }
+
+  const redirectUrl = buildShopifyEmbeddedAppUrl(intent.host, app.clientId);
+  if (!redirectUrl) {
+    return { ok: false, errorCode: 'destination_unavailable' };
+  }
+
+  return { ok: true, redirectUrl };
+}
