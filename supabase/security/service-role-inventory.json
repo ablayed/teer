@@ -24,8 +24,8 @@
     "file": "app/api/shopify/callback/route.ts",
     "boundaryType": "oauth-state-and-hmac",
     "boundaryFile": "app/api/shopify/callback/route.ts",
-    "boundaryLine": 82,
-    "boundaryDetail": "verifyOAuthHmac(searchParams, clientSecret) — plus verifyState(stateCookie) at line 55 confronting the callback's `state` query param against the signed cookie payload's nonce (line 61)."
+    "boundaryLine": 83,
+    "boundaryDetail": "verifyOAuthHmac(searchParams, clientSecret) — plus verifyState(stateCookie) at line 56 confronting the callback's `state` query param against the signed cookie payload's nonce (line 62). Admin client (createSupabaseAdminClient) is constructed at line 97, after both checks and after the ownership guard's decision (APP-03 / Lot 1) but still before any write."
   },
   {
     "file": "app/api/shopify/embedded/session/route.ts",
