@@ -21,12 +21,17 @@ export async function getShopConnection(shopId?: string): Promise<ShopConnection
   // Phase 13 : un marchand multi-boutiques a plusieurs `shop` actifs. On retourne
   // la plus ancienne comme boutique représentative (sert au booléen « a une
   // boutique » et au contrôle de scope) ; `maybeSingle()` lèverait sur 2+ lignes.
+  // APP-03/Lot 2 : une boutique `active` sans access_token_encrypted (rattachement embarqué en
+  // attente du token exchange) n'est PAS une connexion Shopify exploitable — l'exclure ici pour
+  // que l'appelant (/commandes) affiche « aucune boutique » plutôt que « aucune commande » avec un
+  // bouton de synchronisation actionnable qui échouerait silencieusement à l'usage.
   let shopQuery = supabase
     .from('shop')
     .select('shop_domain, scopes, status, installed_at')
     .eq('merchant_account_id', merchantAccount.id)
     .eq('store_kind', 'shopify')
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .not('access_token_encrypted', 'is', null);
   if (shopId) shopQuery = shopQuery.eq('id', shopId);
   const { data, error } = await shopQuery
     .order('installed_at', { ascending: true })

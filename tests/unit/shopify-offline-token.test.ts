@@ -1,5 +1,9 @@
 import { encryptToken } from '@/lib/shopify/crypto';
-import { exchangeCodeForToken, refreshAccessToken } from '@/lib/shopify/oauth';
+import {
+  exchangeCodeForToken,
+  exchangeIdTokenForOfflineToken,
+  refreshAccessToken,
+} from '@/lib/shopify/oauth';
 import { type ShopTokenRow, getValidShopAccessToken } from '@/lib/shopify/token';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -81,6 +85,53 @@ describe('Shopify offline expiring tokens', () => {
       grant_type: 'refresh_token',
       refresh_token: 'synthetic-refresh',
     });
+  });
+
+  it('sends the exact token-exchange request (URL, URN, expiring) from a session ID token', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        access_token: 'synthetic-offline-access',
+        expires_in: 3600,
+        refresh_token: 'synthetic-offline-refresh',
+        refresh_token_expires_in: 7_776_000,
+        scope: 'read_customers,read_orders,read_products',
+      }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const result = await exchangeIdTokenForOfflineToken({
+      shop: 'public-shop.myshopify.com',
+      clientId: 'public-client-sentinel',
+      clientSecret: 'public-secret-sentinel',
+      idToken: 'fresh-id-token-sentinel',
+    });
+
+    expect(result.accessToken).toBe('synthetic-offline-access');
+    const [url, request] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://public-shop.myshopify.com/admin/oauth/access_token');
+    expect(request.method).toBe('POST');
+    expect(JSON.parse(String(request.body))).toEqual({
+      client_id: 'public-client-sentinel',
+      client_secret: 'public-secret-sentinel',
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      subject_token: 'fresh-id-token-sentinel',
+      subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+      requested_token_type: 'urn:shopify:params:oauth:token-type:offline-access-token',
+      expiring: '1',
+    });
+  });
+
+  it('propage un échec de token exchange (statut HTTP non-ok) sans faire planter silencieusement', async () => {
+    globalThis.fetch = vi.fn(async () => new Response('', { status: 401 })) as typeof fetch;
+
+    await expect(
+      exchangeIdTokenForOfflineToken({
+        shop: 'public-shop.myshopify.com',
+        clientId: 'public-client-sentinel',
+        clientSecret: 'public-secret-sentinel',
+        idToken: 'rejected-id-token',
+      }),
+    ).rejects.toThrow();
   });
 
   it('serializes concurrent refreshes per shop and uses an optimistic old-token match', async () => {

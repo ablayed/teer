@@ -31,8 +31,8 @@
     "file": "app/api/shopify/embedded/session/route.ts",
     "boundaryType": "session-token-verification",
     "boundaryFile": "app/api/shopify/embedded/session/route.ts",
-    "boundaryLine": 61,
-    "boundaryDetail": "verifyShopifySessionToken(token, { clientId, clientSecret }) — signature+claims checked before any shop row is read via the admin client."
+    "boundaryLine": 88,
+    "boundaryDetail": "verifyShopifySessionToken(token, { clientId, clientSecret }) — signature+claims checked before any shop row is read via the admin client. APP-03/Lot 2 adds an inline token-exchange completion (completeCredentialsLink) reached only after the pre-existing app-identity confrontation (shop.shopify_client_id === app.clientId) — same admin client, no new unguarded write path."
   },
   {
     "file": "app/api/shopify/ingest/[token]/route.ts",
@@ -115,8 +115,8 @@
     "file": "lib/actions/shops.ts",
     "boundaryType": "server-action-role-check",
     "boundaryFile": "lib/actions/shops.ts",
-    "boundaryLine": 91,
-    "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (87, 129), disconnectShopAction = requireRole('owner') (151). Confirmed by direct grep, 3 exports, all gated."
+    "boundaryLine": 79,
+    "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (79, 126), disconnectShopAction = requireRole('owner') (148). Confirmed by direct grep, 3 exports, all gated. (APP-03/Lot 2 correctif : shopStatus() extrait vers lib/shopify/shop-status.ts, module pur sans env/Supabase — décalage de lignes sans effet sur la garde elle-même.)"
   },
   {
     "file": "lib/actions/stock.ts",
@@ -182,6 +182,13 @@
     "boundaryDetail": "Same S1D-4 forbidden-name list (client-bundle check), referenced by name only — does not construct a client."
   },
   {
+    "file": "lib/shopify/embedded-link-write.ts",
+    "boundaryType": "membership-role-check-and-two-guards",
+    "boundaryFile": "lib/shopify/embedded-link-write.ts",
+    "boundaryLine": 131,
+    "boundaryDetail": "performShopifyEmbeddedLink: verifyEmbeddedLinkIntent (signed continuation, line 91) then a membership+role check via ctx.supabase (RLS-respecting, merchant_member filtered on ctx.userId + input.merchantAccountId, line 111-127 — refuses any role outside owner/manager, named 'insufficient_role', reproducing shop_insert/shop_update's own RLS rule explicitly rather than relying on it alone) before the admin client is constructed (line 131, used ONLY for the initial global read — detecting a shop owned by another tenant, invisible under RLS). Two more guards run before any write: decideShopAppSwitch (line 143) and decideShopOwnership (line 151, APP-03/Lot 1, reused unmodified). The insert/update themselves use ctx.supabase (RLS-respecting), not admin: root cause of the earlier PostgREST 42501 identified by definitive A/B measurement — INSERT...RETURNING fails the shop_select visibility check (is_shop_member_of) before the AFTER INSERT trigger (shop_seed_memberships, migration 0126) has created the shop_member row in the same transaction; a plain .insert() without .select() never exercises that check and succeeds, leaving the trigger to seed shop_member with the correct role. Proven against real Postgres/RLS (not mocked): tests/rls/shopify-embedded-link-rls.rls.test.ts."
+  },
+  {
     "file": "lib/shopify/dsar.ts",
     "boundaryType": "NONE",
     "boundaryFile": "lib/shopify/dsar.ts",
@@ -193,6 +200,6 @@
     "boundaryType": "NONE",
     "boundaryFile": "lib/shopify/shop-sync.ts",
     "boundaryLine": 30,
-    "boundaryDetail": "syncShopOrders() is called from two actions with DIFFERENT guard status: lib/actions/shops.ts:129 (syncShopAction, requireRole('owner','manager') — gated) AND lib/actions/shopify.ts:43 (syncOrdersAction, authActionClient only, NO requireRole — reachable by any authenticated member including agent). Tenant scoping itself (merchantAccountId from getMerchantAccount(), shopId from getRequestStoreId(), both server-derived, never client-supplied) is not at issue — the missing ROLE gate is. Arbitrage ouvert, voir docs/security/s4-rapport.md — S4 ne tranche pas si un agent doit pouvoir déclencher cette synchronisation."
+    "boundaryDetail": "syncShopOrders() is called from two actions with DIFFERENT guard status: lib/actions/shops.ts:126 (syncShopAction, requireRole('owner','manager') — gated) AND lib/actions/shopify.ts:48 (syncOrdersAction, authActionClient only, NO requireRole — reachable by any authenticated member including agent). Tenant scoping itself (merchantAccountId from getMerchantAccount(), shopId from getRequestStoreId(), both server-derived, never client-supplied) is not at issue — the missing ROLE gate is. Arbitrage ouvert, voir docs/security/s4-rapport.md — S4 ne tranche pas si un agent doit pouvoir déclencher cette synchronisation."
   }
 ]

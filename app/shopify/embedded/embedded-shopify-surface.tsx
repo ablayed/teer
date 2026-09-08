@@ -23,7 +23,9 @@ type SurfaceState =
       };
       nextAction: 'open_cockpit' | 'reinstall';
     }
-  | { kind: 'not_configured'; domain: string };
+  | { kind: 'not_configured'; domain: string; loginUrl: string | null; appLabel: string | null }
+  | { kind: 'not_configured_closed'; domain: string }
+  | { kind: 'link_retry'; domain: string };
 
 type ShopifyBridge = {
   config: { apiKey: string; host: string };
@@ -76,8 +78,12 @@ function stateLabel(state: SurfaceState): string {
       return 'Prête';
     case 'not_configured':
       return 'Non configurée';
+    case 'not_configured_closed':
+      return 'Indisponible';
     case 'uninstalled':
       return 'Désinstallée';
+    case 'link_retry':
+      return 'En attente';
     case 'error':
       return 'Erreur';
   }
@@ -113,13 +119,20 @@ export function EmbeddedShopifySurface({
       }
 
       try {
-        bridge.config = { apiKey: clientId, host: host ?? '' };
+        // Aucune configuration JS manuelle ici : la clé API vient du meta `shopify-api-key`
+        // (rendu avant le script CDN, cf. embedded-app-shell.tsx) — App Bridge s'auto-configure
+        // depuis ce meta et le contexte de navigation. Une seule source de configuration, jamais
+        // une seconde assignée ici en parallèle et potentiellement divergente.
         const token = await bridge.idToken();
         if (!token) {
           throw new Error('missing_session_token');
         }
 
-        const response = await fetch('/api/shopify/embedded/session', {
+        const sessionUrl = new URL('/api/shopify/embedded/session', window.location.origin);
+        if (host) {
+          sessionUrl.searchParams.set('host', host);
+        }
+        const response = await fetch(sessionUrl, {
           headers: { Authorization: `Bearer ${token}` },
           cache: 'no-store',
         });
@@ -134,7 +147,7 @@ export function EmbeddedShopifySurface({
         }
 
         const record = payload as Record<string, unknown>;
-        if (record.status === 'not_configured') {
+        const recordDomain = (): string => {
           const shop = record.shop;
           const domain =
             shop && typeof shop === 'object' && !Array.isArray(shop)
@@ -143,7 +156,35 @@ export function EmbeddedShopifySurface({
           if (typeof domain !== 'string') {
             throw new Error('embedded_session_invalid_shop');
           }
-          if (!cancelled) setState({ kind: 'not_configured', domain });
+          return domain;
+        };
+
+        if (record.status === 'not_configured') {
+          const domain = recordDomain();
+          const loginUrl = typeof record.loginUrl === 'string' ? record.loginUrl : null;
+          const responseAppLabel = typeof record.appLabel === 'string' ? record.appLabel : null;
+
+          // Teer Public n'a AUCUN chemin de repli legacy (/api/shopify/embedded/install mène à
+          // /api/shopify/install, refusé pour cette app) : sans loginUrl (host absent/invalide),
+          // l'état est fermé et nommé — jamais un lien qui mènerait à un refus serveur silencieux
+          // ou remettrait l'utilisateur sur le parcours in-iframe que ce lot retire.
+          if (responseAppLabel === 'teer-public' && !loginUrl) {
+            if (!cancelled) setState({ kind: 'not_configured_closed', domain });
+            return;
+          }
+
+          if (!cancelled) {
+            setState({ kind: 'not_configured', domain, loginUrl, appLabel: responseAppLabel });
+          }
+          return;
+        }
+
+        // `link_retry` (rattachement/réinstallation en cours, token exchange pas encore abouti) :
+        // état fermé, pas d'action utilisateur — App Bridge redemandera un ID token frais au
+        // prochain chargement (rechargement ou retour dans Shopify Admin).
+        if (record.status === 'link_retry') {
+          const domain = recordDomain();
+          if (!cancelled) setState({ kind: 'link_retry', domain });
           return;
         }
 
@@ -197,7 +238,7 @@ export function EmbeddedShopifySurface({
         ? state.shop.domain
         : null;
   const installHref =
-    state.kind === 'not_configured'
+    state.kind === 'not_configured' && !state.loginUrl
       ? `/api/shopify/embedded/install?shop=${encodeURIComponent(state.domain)}${host ? `&host=${encodeURIComponent(host)}` : ''}${appLabel ? `&app_label=${encodeURIComponent(appLabel)}` : ''}`
       : null;
 
@@ -250,12 +291,51 @@ export function EmbeddedShopifySurface({
                 Shopify a ouvert Tëër, mais cette boutique n’est pas encore associée. L’association
                 nécessite une action explicite avec votre compte Tëër.
               </p>
-              <Link
-                className="inline-flex min-h-12 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-text"
-                href={installHref ?? '#'}
-              >
-                Associer Tëër et installer
-              </Link>
+              {state.loginUrl ? (
+                <button
+                  type="button"
+                  className="inline-flex min-h-12 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-text"
+                  onClick={() => {
+                    // Sortie top-level obligatoire (documentée par Shopify pour App Home) : un
+                    // clic in-iframe resterait piégé — /connexion refuse structurellement d'être
+                    // rendue en iframe (frame-ancestors 'none'). `open` est celui patché par App
+                    // Bridge dans ce contexte, jamais `window.top.location` directement.
+                    open(state.loginUrl ?? '#', '_top');
+                  }}
+                >
+                  Associer Tëër et installer
+                </button>
+              ) : (
+                <Link
+                  className="inline-flex min-h-12 items-center justify-center rounded-md bg-accent px-4 text-sm font-semibold text-text"
+                  href={installHref ?? '#'}
+                >
+                  Associer Tëër et installer
+                </Link>
+              )}
+            </div>
+          ) : null}
+
+          {state.kind === 'not_configured_closed' ? (
+            <div className="mt-4 space-y-4">
+              <p className="text-lg font-semibold">{state.domain}</p>
+              <p className="text-sm leading-6 text-danger" role="alert">
+                Le rattachement de cette boutique est indisponible pour le moment.
+              </p>
+              <p className="text-sm leading-6 text-muted">
+                Rechargez cette page depuis Shopify Admin. Si le problème persiste, contactez le
+                support.
+              </p>
+            </div>
+          ) : null}
+
+          {state.kind === 'link_retry' ? (
+            <div className="mt-4 space-y-4">
+              <p className="text-lg font-semibold">{state.domain}</p>
+              <p className="text-sm leading-6 text-muted">
+                Le rattachement de cette boutique est en cours de finalisation. Rechargez cette page
+                dans quelques instants.
+              </p>
             </div>
           ) : null}
 

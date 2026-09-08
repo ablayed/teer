@@ -182,3 +182,44 @@ export async function refreshAccessToken({
 
   return parseTokenResponse(await response.json());
 }
+
+type ExchangeIdTokenForOfflineTokenInput = {
+  shop: string;
+  clientId: string;
+  clientSecret: string;
+  idToken: string;
+};
+
+// APP-03 / Lot 2 — additif : token exchange (RFC 8693) pour obtenir un access token OFFLINE
+// expirant depuis l'ID token de session (App Bridge), pour Teer Public. Ne touche ni
+// exchangeCodeForToken ni refreshAccessToken (flux OAuth `code` legacy, apps historiques
+// inchangées). `shop` est déjà un domaine complet validé (xxx.myshopify.com) — jamais reconstruit
+// ici. `expiring=1` est requis explicitement : Shopify renvoie par défaut (`expiring` absent) un
+// token OFFLINE non expirant, sans refresh_token — incompatible avec le modèle expirant déjà en
+// place (`lib/shopify/token.ts`, refresh proactif).
+export async function exchangeIdTokenForOfflineToken({
+  shop,
+  clientId,
+  clientSecret,
+  idToken,
+}: ExchangeIdTokenForOfflineTokenInput): Promise<TokenResponse> {
+  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      subject_token: idToken,
+      subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+      requested_token_type: 'urn:shopify:params:oauth:token-type:offline-access-token',
+      expiring: '1',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Shopify token exchange (id_token) failed with status ${response.status}`);
+  }
+
+  return parseTokenResponse(await response.json());
+}

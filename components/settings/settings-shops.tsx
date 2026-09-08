@@ -8,7 +8,15 @@ import {
   syncShopAction,
 } from '@/lib/actions/shops';
 import { formatDateAbsolute, formatDateRelative } from '@/lib/format/date';
-import { AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Store, Unplug } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  RefreshCw,
+  Store,
+  Unplug,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
@@ -260,6 +268,14 @@ function statusView(
     };
   }
 
+  if (shop.status === 'incomplete') {
+    return {
+      className: 'border-warning/30 bg-warning/15 text-text',
+      icon: Clock,
+      label: t('status.incomplete'),
+    };
+  }
+
   return {
     className: 'border-success/30 bg-success text-white',
     icon: CheckCircle2,
@@ -332,6 +348,12 @@ function ShopCard({
                 {shop.reason === 'token_expired' ? t('reasons.tokenExpired') : t('reasons.generic')}
               </p>
               <p className="mt-3 text-sm text-muted">{t('reasons.reconnectInstructions')}</p>
+            </div>
+          ) : null}
+
+          {shop.status === 'incomplete' ? (
+            <div className="rounded-md border border-warning/30 bg-warning/15 p-3 text-sm">
+              <p className="text-text">{t('reasons.incomplete')}</p>
             </div>
           ) : null}
 

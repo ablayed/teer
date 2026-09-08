@@ -1,4 +1,5 @@
 import { getMerchantAccount } from '@/lib/actions/merchant';
+import { ShopifyPublicLegacyRouteRefusedError } from '@/lib/shopify/app-identity-errors';
 import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { buildAuthorizeUrl, validateShopDomain } from '@/lib/shopify/oauth';
 import { generateNonce, signState } from '@/lib/shopify/state';
@@ -65,6 +66,16 @@ export async function GET(request: NextRequest) {
       tags: { route: 'shopify.install' },
     });
     return NextResponse.json({ error: 'missing_shopify_app' }, { status: 500 });
+  }
+
+  // Teer Public n'a aucun chemin par le flux OAuth `code` legacy — seul le token exchange
+  // embarqué (App Bridge) l'installe (cf. app/api/shopify/embedded/session/route.ts). Refus
+  // fermé, jamais un repli silencieux vers une autre app du registre.
+  if (app.label === 'teer-public') {
+    Sentry.captureException(new ShopifyPublicLegacyRouteRefusedError(), {
+      tags: { route: 'shopify.install' },
+    });
+    return NextResponse.json({ error: 'teer_public_not_supported' }, { status: 400 });
   }
 
   const requestUrl = new URL(request.url);
