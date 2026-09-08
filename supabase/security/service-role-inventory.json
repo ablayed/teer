@@ -186,7 +186,7 @@
     "boundaryType": "membership-check-and-two-guards",
     "boundaryFile": "lib/shopify/embedded-link-write.ts",
     "boundaryLine": 103,
-    "boundaryDetail": "performShopifyEmbeddedLink: verifyEmbeddedLinkIntent (signed continuation, line 77) then a membership check via ctx.supabase (RLS-respecting, merchant_member filtered on ctx.userId + input.merchantAccountId, line 96-101) before the admin client is constructed (line 107). Two more guards run before any write: decideShopAppSwitch (line 119) and decideShopOwnership (line 127, APP-03/Lot 1, reused unmodified)."
+    "boundaryDetail": "performShopifyEmbeddedLink: verifyEmbeddedLinkIntent (signed continuation, line 77) then a membership check via ctx.supabase (RLS-respecting, merchant_member filtered on ctx.userId + input.merchantAccountId, line 96-101) before the admin client is constructed (line 107). Two more guards run before any write: decideShopAppSwitch (line 119) and decideShopOwnership (line 127, APP-03/Lot 1, reused unmodified). The insert/update themselves use `admin`, not ctx.supabase: a switch to the RLS-respecting client was attempted and reverted after reproducing a PostgREST-specific RLS-evaluation failure on shop_insert for a legitimate owner (raw SQL and RPC calls to the same policy function succeed under the identical JWT; only the PostgREST-mediated INSERT fails) — cause unidentified, documented in the function's own comment."
   },
   {
     "file": "lib/shopify/dsar.ts",

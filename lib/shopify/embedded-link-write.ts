@@ -134,6 +134,15 @@ export async function performShopifyEmbeddedLink(
 
   const now = new Date().toISOString();
 
+  // Écriture via `admin` (service-role) — PAS `ctx.supabase`. Un basculement vers le client
+  // RLS-respecting a été tenté et abandonné : preuve reproductible que l'INSERT échoue sous
+  // PostgREST (42501, "new row violates row-level security policy") pour un owner légitime, alors
+  // que la MÊME vérification réussit en SQL direct et que la RPC current_member_role(), appelée
+  // avec le même JWT, renvoie correctement 'owner' — écart net entre l'évaluation RLS au sein
+  // d'un INSERT PostgREST et son équivalent SQL/RPC sur ce stack, cause non identifiée. Basculer
+  // aurait cassé le rattachement pour TOUT utilisateur, y compris légitime — une régression,
+  // jamais une seconde barrière. Reste défendu par les deux gardes applicatives ci-dessus
+  // (bascule d'app, propriété par tenant) plus les prédicats de fermeture de course ci-dessous.
   if (ownershipDecision.kind === 'insert') {
     const { error: insertError } = await admin.from('shop').insert({
       merchant_account_id: input.merchantAccountId,
@@ -152,15 +161,25 @@ export async function performShopifyEmbeddedLink(
     }
   } else {
     // update : jamais `merchant_account_id` dans le payload, seulement comme filtre WHERE —
-    // même discipline que le callback OAuth legacy (APP-03 / Lot 1).
-    const { error: updateError } = await admin
+    // même discipline que le callback OAuth legacy (APP-03 / Lot 1). Prédicat supplémentaire sur
+    // `shopify_client_id` (la valeur lue par la garde de bascule d'app ci-dessus, `.is()` pour
+    // NULL) : ferme la course où une autre requête réassignerait la boutique entre la lecture de
+    // garde et cette écriture — 0 ligne modifiée (course) est alors un échec fermé (`.select().
+    // maybeSingle()` renvoie `null`), jamais un succès silencieux.
+    let updateQuery = admin
       .from('shop')
       .update({ shopify_client_id: app.clientId, status: 'active', updated_at: now })
       .eq('id', ownershipDecision.shopId)
       .eq('merchant_account_id', input.merchantAccountId);
+    updateQuery =
+      existingShop?.shopify_client_id === null
+        ? updateQuery.is('shopify_client_id', null)
+        : updateQuery.eq('shopify_client_id', existingShop?.shopify_client_id ?? app.clientId);
 
-    if (updateError) {
-      Sentry.captureException(updateError, {
+    const { data: updatedShop, error: updateError } = await updateQuery.select('id').maybeSingle();
+
+    if (updateError || !updatedShop) {
+      Sentry.captureException(updateError ?? new Error('shopify_embedded_link_update_no_row'), {
         tags: { action: 'shopify.embedded_link', reason: 'shop_update_failed' },
       });
       return { ok: false, errorCode: 'write_failed' };

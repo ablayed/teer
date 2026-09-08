@@ -112,13 +112,16 @@ export async function GET(request: NextRequest) {
   }
 
   if (!shop) {
-    // La continuation n'est émise que si `host` est présent ET valide — sans elle, aucune
-    // destination Shopify Admin n'est constructible en fin de parcours (cf. buildShopifyEmbeddedAppUrl) ;
-    // on renvoie alors `not_configured` sans `loginUrl`, le client affiche un état fermé plutôt
-    // que de démarrer un rattachement qui ne pourrait jamais revenir dans Shopify Admin.
+    // Le nouveau parcours de continuation (jeton signé + retour top-level) n'a de sens QUE pour
+    // Teer Public — c'est le seul chemin sans `/api/shopify/install` (refusé pour Teer Public,
+    // cf. app/api/shopify/install/route.ts). Les apps historiques gardent leur lien legacy
+    // inchangé (rendu côté client). La continuation n'est émise que si `host` est en plus présent
+    // ET valide — sans elle, aucune destination Shopify Admin n'est constructible en fin de
+    // parcours (cf. buildShopifyEmbeddedAppUrl) ; le client doit alors afficher un état fermé,
+    // jamais un repli vers le lien legacy que ce lot retire précisément pour Teer Public.
     const rawHost = request.nextUrl.searchParams.get('host');
     const loginUrl =
-      rawHost && decodeShopifyEmbeddedHost(rawHost)
+      app.label === 'teer-public' && rawHost && decodeShopifyEmbeddedHost(rawHost)
         ? (() => {
             const intent = signEmbeddedLinkIntent({
               shopDomain: verification.shopDomain,
@@ -135,6 +138,7 @@ export async function GET(request: NextRequest) {
       status: 'not_configured' as const,
       shop: { domain: verification.shopDomain },
       nextAction: 'associate_teer' as const,
+      appLabel: app.label,
       ...(loginUrl ? { loginUrl } : {}),
     });
   }
@@ -184,6 +188,7 @@ type LinkableShopRow = {
   id: string;
   shop_domain: string;
   merchant_account_id: string;
+  shopify_client_id: string | null;
 };
 
 async function completeCredentialsLink(
@@ -220,6 +225,12 @@ async function completeCredentialsLink(
   }
 
   const now = new Date().toISOString();
+  // Prédicats fermant la course entre la lecture de garde (confrontation d'identité d'app,
+  // ci-dessus dans GET) et cette écriture : reprend les valeurs autoritatives sur lesquelles la
+  // décision a été prise (tenant + app attendue), pas seulement `id`. Une bascule concurrente
+  // (ex. un autre rattachement a changé shopify_client_id ou le tenant entre-temps) fait
+  // disparaître la ligne cible du WHERE — `.single()` échoue alors avec `PGRST116` (0 ligne),
+  // traité ci-dessous comme un échec fermé, jamais un succès silencieux.
   const { data: updatedShop, error: updateError } = await admin
     .from('shop')
     .update({
@@ -234,6 +245,8 @@ async function completeCredentialsLink(
       updated_at: now,
     })
     .eq('id', shop.id)
+    .eq('merchant_account_id', shop.merchant_account_id)
+    .eq('shopify_client_id', app.clientId)
     .select('shop_domain, installed_at, updated_at, last_reconciled_at')
     .single();
 

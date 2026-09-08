@@ -23,7 +23,8 @@ type SurfaceState =
       };
       nextAction: 'open_cockpit' | 'reinstall';
     }
-  | { kind: 'not_configured'; domain: string; loginUrl: string | null }
+  | { kind: 'not_configured'; domain: string; loginUrl: string | null; appLabel: string | null }
+  | { kind: 'not_configured_closed'; domain: string }
   | { kind: 'link_retry'; domain: string };
 
 type ShopifyBridge = {
@@ -77,6 +78,8 @@ function stateLabel(state: SurfaceState): string {
       return 'Prête';
     case 'not_configured':
       return 'Non configurée';
+    case 'not_configured_closed':
+      return 'Indisponible';
     case 'uninstalled':
       return 'Désinstallée';
     case 'link_retry':
@@ -159,7 +162,20 @@ export function EmbeddedShopifySurface({
         if (record.status === 'not_configured') {
           const domain = recordDomain();
           const loginUrl = typeof record.loginUrl === 'string' ? record.loginUrl : null;
-          if (!cancelled) setState({ kind: 'not_configured', domain, loginUrl });
+          const responseAppLabel = typeof record.appLabel === 'string' ? record.appLabel : null;
+
+          // Teer Public n'a AUCUN chemin de repli legacy (/api/shopify/embedded/install mène à
+          // /api/shopify/install, refusé pour cette app) : sans loginUrl (host absent/invalide),
+          // l'état est fermé et nommé — jamais un lien qui mènerait à un refus serveur silencieux
+          // ou remettrait l'utilisateur sur le parcours in-iframe que ce lot retire.
+          if (responseAppLabel === 'teer-public' && !loginUrl) {
+            if (!cancelled) setState({ kind: 'not_configured_closed', domain });
+            return;
+          }
+
+          if (!cancelled) {
+            setState({ kind: 'not_configured', domain, loginUrl, appLabel: responseAppLabel });
+          }
           return;
         }
 
@@ -222,7 +238,7 @@ export function EmbeddedShopifySurface({
         ? state.shop.domain
         : null;
   const installHref =
-    state.kind === 'not_configured'
+    state.kind === 'not_configured' && !state.loginUrl
       ? `/api/shopify/embedded/install?shop=${encodeURIComponent(state.domain)}${host ? `&host=${encodeURIComponent(host)}` : ''}${appLabel ? `&app_label=${encodeURIComponent(appLabel)}` : ''}`
       : null;
 
@@ -297,6 +313,19 @@ export function EmbeddedShopifySurface({
                   Associer Tëër et installer
                 </Link>
               )}
+            </div>
+          ) : null}
+
+          {state.kind === 'not_configured_closed' ? (
+            <div className="mt-4 space-y-4">
+              <p className="text-lg font-semibold">{state.domain}</p>
+              <p className="text-sm leading-6 text-danger" role="alert">
+                Le rattachement de cette boutique est indisponible pour le moment.
+              </p>
+              <p className="text-sm leading-6 text-muted">
+                Rechargez cette page depuis Shopify Admin. Si le problème persiste, contactez le
+                support.
+              </p>
             </div>
           ) : null}
 
