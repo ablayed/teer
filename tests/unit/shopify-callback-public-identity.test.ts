@@ -58,7 +58,14 @@ vi.mock('@/lib/supabase/protected-client', () => ({
     from(table: string) {
       if (table === 'shop') {
         return {
-          upsert(payload: Record<string, unknown>) {
+          // Aucune boutique préexistante dans ce harnais : la garde de propriété
+          // (decideShopOwnership) résout toujours vers 'insert' ici.
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+          insert(payload: Record<string, unknown>) {
             harness.shops.push(payload);
             return {
               select: () => ({
@@ -71,7 +78,7 @@ vi.mock('@/lib/supabase/protected-client', () => ({
 
       if (table === 'store_connection') {
         return {
-          upsert: async (payload: Record<string, unknown>) => {
+          insert: async (payload: Record<string, unknown>) => {
             harness.connections.push(payload);
             return { error: null };
           },
