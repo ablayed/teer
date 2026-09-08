@@ -31,8 +31,8 @@
     "file": "app/api/shopify/embedded/session/route.ts",
     "boundaryType": "session-token-verification",
     "boundaryFile": "app/api/shopify/embedded/session/route.ts",
-    "boundaryLine": 61,
-    "boundaryDetail": "verifyShopifySessionToken(token, { clientId, clientSecret }) — signature+claims checked before any shop row is read via the admin client."
+    "boundaryLine": 88,
+    "boundaryDetail": "verifyShopifySessionToken(token, { clientId, clientSecret }) — signature+claims checked before any shop row is read via the admin client. APP-03/Lot 2 adds an inline token-exchange completion (completeCredentialsLink) reached only after the pre-existing app-identity confrontation (shop.shopify_client_id === app.clientId) — same admin client, no new unguarded write path."
   },
   {
     "file": "app/api/shopify/ingest/[token]/route.ts",
@@ -180,6 +180,13 @@
     "boundaryFile": "lib/security/s1d4-boundaries.ts",
     "boundaryLine": 13,
     "boundaryDetail": "Same S1D-4 forbidden-name list (client-bundle check), referenced by name only — does not construct a client."
+  },
+  {
+    "file": "lib/shopify/embedded-link-write.ts",
+    "boundaryType": "membership-check-and-two-guards",
+    "boundaryFile": "lib/shopify/embedded-link-write.ts",
+    "boundaryLine": 103,
+    "boundaryDetail": "performShopifyEmbeddedLink: verifyEmbeddedLinkIntent (signed continuation, line 77) then a membership check via ctx.supabase (RLS-respecting, merchant_member filtered on ctx.userId + input.merchantAccountId, line 96-101) before the admin client is constructed (line 107). Two more guards run before any write: decideShopAppSwitch (line 119) and decideShopOwnership (line 127, APP-03/Lot 1, reused unmodified)."
   },
   {
     "file": "lib/shopify/dsar.ts",
