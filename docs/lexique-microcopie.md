@@ -90,6 +90,19 @@ support). Un code émis par le serveur et absent de la liste reconnue retombe su
 `reason === 'token_expired'` — un jeton valide peut manquer `read_products` (scope ajouté
 après une première connexion). Les deux messages ne se substituent jamais l'un à l'autre.
 
+## Statut « Connexion incomplète » (Lot APP-03)
+
+Nouveau statut `ShopListItem.status === 'incomplete'` (`settings.shops.status.incomplete` /
+`reasons.incomplete`) : une boutique `store_kind='shopify'`, `status='active'` mais sans
+`access_token_encrypted` (rattachement embarqué en attente du token exchange, cf.
+`app/api/shopify/embedded/session/route.ts`). Libellé retenu explicitement : **« Connexion
+incomplète »**, jamais « en attente » — cet état ne distingue pas un parcours simplement
+interrompu (l'utilisateur reviendra) d'un échange définitivement échoué ; « en attente » aurait
+promis une résolution automatique non garantie. Distinct de `error` (jeton expiré, action de
+reconnexion requise) et de `uninstalled` (déconnexion explicite) — ni erreur ni action utilisateur
+attendue, juste un fait constaté. Jamais confondu avec `store_kind='manual'` (sans token par
+conception, correctement affiché `connected`).
+
 ## Page de démonstration retirée (Lot F2-bis)
 
 `app/(app)/dev/finance-foundations/page.tsx` (données 100 % fictives, hors navigation réelle) a

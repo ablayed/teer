@@ -693,6 +693,7 @@
       "status": {
         "connected": "Connectée",
         "error": "Erreur",
+        "incomplete": "Connexion incomplète",
         "syncing": "Synchronisation…",
         "uninstalled": "Déconnectée"
       },
@@ -700,6 +701,7 @@
         "tokenExpired": "Le jeton Shopify a expiré. Réinstallez Tëër depuis Shopify Admin pour relancer la synchronisation.",
         "reconnectInstructions": "La réinstallation doit être initiée depuis Shopify Admin ; Tëër ne demande pas de domaine ici.",
         "generic": "La connexion Shopify doit être vérifiée.",
+        "incomplete": "L’association de cette boutique n’a pas encore abouti.",
         "productsScopeRequired": "Cette boutique doit être reconnectée pour autoriser la synchronisation du catalogue produit Shopify.",
         "productsScopeInstructions": "Réinstallez ou réautorisez Tëër depuis Shopify Admin pour mettre à jour cette autorisation."
       },

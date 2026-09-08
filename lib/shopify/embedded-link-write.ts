@@ -4,9 +4,13 @@
 // `performTransitionForContext` (lib/actions/transitions.ts) sépare déjà orchestration et wrapper.
 //
 // Écrit uniquement sur appel explicite (jamais sur GET — l'appelant, une server action `'use
-// server'`, est lui-même déclenché par un POST de formulaire). Deux gardes distinctes, dans cet
-// ordre : (1) bascule d'app — une boutique déjà possédée par une autre app est refusée MÊME pour
-// le même tenant (lib/shopify/app-switch-guard.ts, nouveau) ; (2) propriété par tenant —
+// server'`, est lui-même déclenché par un POST de formulaire). Trois gardes distinctes, dans cet
+// ordre : (1) rôle marchand autoritatif — owner/manager uniquement, lu explicitement et jamais
+// supposé (la garde applicative doit reproduire la règle RLS `shop_insert`/`shop_update`, pas la
+// tenir pour acquise, puisque l'écriture elle-même passe par un client authentifié où cette règle
+// s'applique déjà, mais où une régression future de l'un des deux côtés ne doit pas être le seul
+// filet) ; (2) bascule d'app — une boutique déjà possédée par une autre app est refusée MÊME pour
+// le même tenant (lib/shopify/app-switch-guard.ts) ; (3) propriété par tenant —
 // `decideShopOwnership` (lib/shopify/ownership-guard.ts, APP-03/Lot 1), réutilisée telle quelle,
 // jamais une seconde garde de tenant. `store_connection` n'est PAS créée ici — seule `shop` porte
 // l'association en attente (`access_token_encrypted` reste NULL) ; `store_connection` devient
@@ -46,6 +50,8 @@ function createSupabaseAdminClient() {
   );
 }
 
+const WRITE_ROLES = new Set(['owner', 'manager']);
+
 export type ShopifyEmbeddedLinkInput = {
   intent: string;
   merchantAccountId: string;
@@ -64,6 +70,7 @@ export type ShopifyEmbeddedLinkResult =
         | 'intent_invalid'
         | 'app_unknown'
         | 'not_a_member'
+        | 'insufficient_role'
         | 'app_switch_refused'
         | 'ownership_refused'
         | 'write_failed'
@@ -74,6 +81,13 @@ export async function performShopifyEmbeddedLink(
   input: ShopifyEmbeddedLinkInput,
   ctx: ShopifyEmbeddedLinkContext,
 ): Promise<ShopifyEmbeddedLinkResult> {
+  // Cast TS uniquement, appliqué une fois : `createServerClient` (@supabase/ssr) et `createClient`
+  // (@supabase/supabase-js) exposent des signatures génériques incompatibles pour le MÊME type
+  // `Database` sur `.select()` à plusieurs colonnes / `.insert()` / `.update()` (friction connue
+  // entre les deux paquets) — objet runtime identique à `ctx.supabase`, aucune conséquence sur
+  // l'application RLS (déterminée par le JWT porté par le client, jamais par son typage TS).
+  const rlsClient = ctx.supabase as unknown as ReturnType<typeof createSupabaseAdminClient>;
+
   const intent = verifyEmbeddedLinkIntent(input.intent);
   if (!intent) {
     return { ok: false, errorCode: 'intent_invalid' };
@@ -93,15 +107,25 @@ export async function performShopifyEmbeddedLink(
     return { ok: false, errorCode: 'app_unknown' };
   }
 
-  const { data: membership, error: membershipError } = await ctx.supabase
+  const { data: membership, error: membershipError } = await rlsClient
     .from('merchant_member')
-    .select('id')
+    .select('id, role')
     .eq('user_id', ctx.userId)
     .eq('merchant_account_id', input.merchantAccountId)
     .maybeSingle();
 
   if (membershipError || !membership) {
     return { ok: false, errorCode: 'not_a_member' };
+  }
+
+  // Rôle autoritatif lu explicitement, jamais supposé — motif récurrent du projet : une règle
+  // portée par RLS (shop_insert/shop_update, owner/manager uniquement) devient inopérante dès
+  // qu'un chemin l'écrit en service-role ; ici l'écriture passe par ctx.supabase (RLS-respecting,
+  // voir plus bas) donc RLS l'applique déjà, mais cette garde reproduit la règle plutôt que de
+  // dépendre uniquement de RLS pour la faire respecter — code d'échec nommé, distinct de
+  // 'not_a_member' (un agent EST membre, mais n'a pas le rôle requis).
+  if (!WRITE_ROLES.has(membership.role)) {
+    return { ok: false, errorCode: 'insufficient_role' };
   }
 
   const admin = createSupabaseAdminClient();
@@ -134,17 +158,22 @@ export async function performShopifyEmbeddedLink(
 
   const now = new Date().toISOString();
 
-  // Écriture via `admin` (service-role) — PAS `ctx.supabase`. Un basculement vers le client
-  // RLS-respecting a été tenté et abandonné : preuve reproductible que l'INSERT échoue sous
-  // PostgREST (42501, "new row violates row-level security policy") pour un owner légitime, alors
-  // que la MÊME vérification réussit en SQL direct et que la RPC current_member_role(), appelée
-  // avec le même JWT, renvoie correctement 'owner' — écart net entre l'évaluation RLS au sein
-  // d'un INSERT PostgREST et son équivalent SQL/RPC sur ce stack, cause non identifiée. Basculer
-  // aurait cassé le rattachement pour TOUT utilisateur, y compris légitime — une régression,
-  // jamais une seconde barrière. Reste défendu par les deux gardes applicatives ci-dessus
-  // (bascule d'app, propriété par tenant) plus les prédicats de fermeture de course ci-dessous.
+  // L'écriture passe par `ctx.supabase` (RLS-respecting), jamais `admin` — seule la lecture
+  // globale ci-dessus (détecter une boutique d'un autre tenant, invisible sous RLS) a besoin du
+  // service-role. shop_insert/shop_update (owner/manager) deviennent une seconde barrière
+  // indépendante, en plus de la garde de rôle explicite ci-dessus et des deux gardes applicatives.
+  //
+  // Root cause identifiée (mesure définitive, deux inserts identiques comparés) : un `INSERT ...
+  // RETURNING` échoue en 42501 tant qu'aucune ligne `shop_member` n'existe pour (shop, user) — la
+  // visibilité RETURNING est vérifiée via la policy shop_select (`is_shop_member_of`), avant que
+  // le trigger `shop_seed_memberships` (AFTER INSERT ON shop, déjà en place — migration 0126) ait
+  // pu créer cette ligne. Un `.insert()` SANS `.select()` n'exerce jamais cette vérification et
+  // réussit normalement, laissant le trigger peupler shop_member (avec le rôle exact du marchand,
+  // via `merchant_member`) dans la même transaction — jamais une boutique orpheline invisible.
+  // L'UPDATE (reconnexion) n'a pas ce problème : shop_member existe déjà depuis la création
+  // initiale de la boutique, donc `.select()` y reste sûr.
   if (ownershipDecision.kind === 'insert') {
-    const { error: insertError } = await admin.from('shop').insert({
+    const { error: insertError } = await rlsClient.from('shop').insert({
       merchant_account_id: input.merchantAccountId,
       shop_domain: intent.shopDomain,
       shopify_client_id: app.clientId,
@@ -164,9 +193,9 @@ export async function performShopifyEmbeddedLink(
     // même discipline que le callback OAuth legacy (APP-03 / Lot 1). Prédicat supplémentaire sur
     // `shopify_client_id` (la valeur lue par la garde de bascule d'app ci-dessus, `.is()` pour
     // NULL) : ferme la course où une autre requête réassignerait la boutique entre la lecture de
-    // garde et cette écriture — 0 ligne modifiée (course) est alors un échec fermé (`.select().
-    // maybeSingle()` renvoie `null`), jamais un succès silencieux.
-    let updateQuery = admin
+    // garde et cette écriture — 0 ligne modifiée (course, ou refus RLS) est alors un échec fermé
+    // (`.select().maybeSingle()` renvoie `null`), jamais un succès silencieux.
+    let updateQuery = rlsClient
       .from('shop')
       .update({ shopify_client_id: app.clientId, status: 'active', updated_at: now })
       .eq('id', ownershipDecision.shopId)

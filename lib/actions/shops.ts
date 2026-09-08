@@ -2,6 +2,7 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
+import { shopStatus } from '@/lib/shopify/shop-status';
 import { syncShopOrders } from '@/lib/shopify/shop-sync';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
@@ -10,6 +11,7 @@ import { z } from 'zod';
 
 type ShopRow = Pick<
   Tables<'shop'>,
+  | 'access_token_encrypted'
   | 'access_token_expires_at'
   | 'id'
   | 'installed_at'
@@ -17,6 +19,7 @@ type ShopRow = Pick<
   | 'scopes'
   | 'shop_domain'
   | 'status'
+  | 'store_kind'
   | 'updated_at'
 >;
 
@@ -27,7 +30,7 @@ export type ShopListItem = {
   lastSyncAt: string | null;
   reason: 'token_expired' | null;
   scopes: string;
-  status: 'connected' | 'error' | 'uninstalled';
+  status: 'connected' | 'error' | 'incomplete' | 'uninstalled';
 };
 
 function createSupabaseAdminClient() {
@@ -38,21 +41,6 @@ function createSupabaseAdminClient() {
       auth: { autoRefreshToken: false, persistSession: false },
     },
   );
-}
-
-function shopStatus(shop: ShopRow): Pick<ShopListItem, 'reason' | 'status'> {
-  if (shop.status === 'uninstalled') {
-    return { reason: null, status: 'uninstalled' };
-  }
-
-  if (
-    shop.access_token_expires_at &&
-    new Date(shop.access_token_expires_at).getTime() <= Date.now()
-  ) {
-    return { reason: 'token_expired', status: 'error' };
-  }
-
-  return { reason: null, status: 'connected' };
 }
 
 async function getLastSyncByShopId(
@@ -96,7 +84,7 @@ export const listShopsAction = requireRole('owner', 'manager')
     const { data, error } = await admin
       .from('shop')
       .select(
-        'id, merchant_account_id, shop_domain, scopes, status, installed_at, updated_at, access_token_expires_at',
+        'id, merchant_account_id, shop_domain, scopes, status, store_kind, installed_at, updated_at, access_token_encrypted, access_token_expires_at',
       )
       .eq('merchant_account_id', ctx.member.merchantAccountId)
       .order('installed_at', { ascending: false });
@@ -115,7 +103,12 @@ export const listShopsAction = requireRole('owner', 'manager')
       ok: true as const,
       currentRole: ctx.member.role,
       shops: shops.map((shop): ShopListItem => {
-        const status = shopStatus(shop);
+        const status = shopStatus({
+          status: shop.status,
+          storeKind: shop.store_kind,
+          accessTokenEncrypted: shop.access_token_encrypted,
+          accessTokenExpiresAt: shop.access_token_expires_at,
+        });
 
         return {
           id: shop.id,

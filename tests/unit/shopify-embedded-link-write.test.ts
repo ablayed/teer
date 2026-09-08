@@ -1,13 +1,15 @@
-// APP-03 / Lot 2 — cœur métier du rattachement embarqué : deux gardes (bascule d'app, propriété
-// par tenant), écriture pending (jamais store_connection ici), jamais un write sur intent invalide.
+// APP-03 / Lot 2 — cœur métier du rattachement embarqué : rôle marchand autoritatif, deux gardes
+// (bascule d'app, propriété par tenant), écriture pending (jamais store_connection ici), jamais un
+// write sur intent invalide.
 //
-// L'écriture (insert/update) passe par `admin` (service-role), pas par `ctx.supabase`. Un
-// basculement vers le client RLS-respecting a été tenté puis abandonné (voir le commentaire dans
-// embedded-link-write.ts) : preuve reproductible que shop_insert échoue sous PostgREST pour un
-// owner légitime alors que la même vérification réussit en SQL direct et via RPC — un écart de
-// comportement PostgREST/RLS non résolu sur ce stack, cause non identifiée. Basculer aurait cassé
-// le rattachement pour tout utilisateur, y compris légitime. `ctx.supabase` ne sert donc ici qu'à
-// la vérification d'appartenance (merchant_member), RLS-respecting par construction.
+// L'écriture (insert/update) passe par `ctx.supabase` (RLS-respecting) — `admin` (service-role)
+// ne sert plus qu'à la lecture globale initiale (détecter une boutique d'un autre tenant,
+// invisible sous RLS). Root cause de l'échec RLS précédemment observé, identifiée par mesure
+// définitive (deux inserts identiques comparés) : un `INSERT ... RETURNING` échoue tant qu'aucune
+// ligne `shop_member` n'existe pour (shop, user) — le trigger `shop_seed_memberships` (AFTER
+// INSERT ON shop, déjà en place, migration 0126) la crée dans la même transaction, mais après que
+// la visibilité RETURNING a déjà été vérifiée. Un `.insert()` SANS `.select()` n'exerce jamais
+// cette vérification. Preuve réelle (Postgres + RLS, pas mockée) : tests/rls/shopify-embedded-link-rls.rls.test.ts.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PUBLIC_APP = {
@@ -26,7 +28,7 @@ type ShopRow = {
 
 const harness = vi.hoisted(() => ({
   shops: [] as ShopRow[],
-  membership: null as { id: string } | null,
+  membership: null as { id: string; role: string } | null,
   nextId: 0,
   shopInsertCalls: [] as Array<Record<string, unknown>>,
   shopUpdateCalls: [] as Array<{
@@ -34,11 +36,6 @@ const harness = vi.hoisted(() => ({
     filters: Array<[string, unknown, 'eq' | 'is']>;
   }>,
   onAfterGuardRead: null as (() => void) | null,
-  // Compteur explicite (pas une preuve par effet de bord) : la mock `store_connection` répond
-  // normalement plutôt que de faire planter le test si jamais accédée — un test qui prouve
-  // l'absence d'écriture en faisant lever une exception se casse silencieusement au premier
-  // élargissement du faux client (ex. quelqu'un ajoute plus tard un accès légitime à une AUTRE
-  // table et le throw générique masquerait alors un vrai accès à store_connection).
   storeConnectionWriteCount: 0,
 }));
 
@@ -55,23 +52,17 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: (...args: unknown[]) => captureMessage(...args),
 }));
 
+// `admin` (service-role) ne sert plus QU'à la lecture globale initiale — tout insert/update ici
+// serait un symptôme de régression (écriture repassée en service-role, contournant la seconde
+// barrière RLS que ctx.supabase fournit désormais réellement).
 vi.mock('@/lib/supabase/protected-client', () => ({
   createProtectedSupabaseClient: vi.fn(() => ({
     from(table: string) {
       if (table === 'store_connection') {
         return {
-          insert: (_payload: Record<string, unknown>) => {
+          insert: () => {
             harness.storeConnectionWriteCount += 1;
             return Promise.resolve({ error: null });
-          },
-          update: (_payload: Record<string, unknown>) => {
-            harness.storeConnectionWriteCount += 1;
-            const builder = {
-              eq: () => builder,
-              // biome-ignore lint/suspicious/noThenProperty: thenable délibéré (PostgrestFilterBuilder réel, awaitable sans .select())
-              then: (resolve: (result: { error: null }) => void) => resolve({ error: null }),
-            };
-            return builder;
           },
         };
       }
@@ -96,35 +87,11 @@ vi.mock('@/lib/supabase/protected-client', () => ({
             },
           }),
         }),
-        insert: (payload: Record<string, unknown>) => {
-          harness.shopInsertCalls.push(payload);
-          harness.shops.push({ ...(payload as ShopRow), id: `shop-${++harness.nextId}` });
-          return Promise.resolve({ error: null });
+        insert: () => {
+          throw new Error('admin.insert must never be called — write goes through ctx.supabase');
         },
-        update: (payload: Record<string, unknown>) => {
-          const filters: Array<[string, unknown, 'eq' | 'is']> = [];
-          const builder = {
-            eq(column: string, value: unknown) {
-              filters.push([column, value, 'eq']);
-              return builder;
-            },
-            is(column: string, value: unknown) {
-              filters.push([column, value, 'is']);
-              return builder;
-            },
-            select: () => ({
-              maybeSingle: async () => {
-                harness.shopUpdateCalls.push({ payload, filters });
-                const row = harness.shops.find((s) =>
-                  filters.every(([column, value]) => s[column] === value),
-                );
-                if (!row) return { data: null, error: null };
-                Object.assign(row, payload);
-                return { data: { id: row.id }, error: null };
-              },
-            }),
-          };
-          return builder;
+        update: () => {
+          throw new Error('admin.update must never be called — write goes through ctx.supabase');
         },
       };
     },
@@ -134,16 +101,55 @@ vi.mock('@/lib/supabase/protected-client', () => ({
 function fakeSupabase() {
   return {
     from: (table: string) => {
-      if (table !== 'merchant_member') throw new Error(`unexpected ctx table ${table}`);
-      return {
-        select: () => ({
-          eq: () => ({
+      if (table === 'merchant_member') {
+        return {
+          select: () => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: harness.membership, error: null }),
+              eq: () => ({
+                maybeSingle: async () => ({ data: harness.membership, error: null }),
+              }),
             }),
           }),
-        }),
-      };
+        };
+      }
+
+      if (table === 'shop') {
+        return {
+          // Pas de .select() enchaîné (fidèle au code réel) : l'insert renvoie seulement `error`.
+          insert: (payload: Record<string, unknown>) => {
+            harness.shopInsertCalls.push(payload);
+            harness.shops.push({ ...(payload as ShopRow), id: `shop-${++harness.nextId}` });
+            return Promise.resolve({ error: null });
+          },
+          update: (payload: Record<string, unknown>) => {
+            const filters: Array<[string, unknown, 'eq' | 'is']> = [];
+            const builder = {
+              eq(column: string, value: unknown) {
+                filters.push([column, value, 'eq']);
+                return builder;
+              },
+              is(column: string, value: unknown) {
+                filters.push([column, value, 'is']);
+                return builder;
+              },
+              select: () => ({
+                maybeSingle: async () => {
+                  harness.shopUpdateCalls.push({ payload, filters });
+                  const row = harness.shops.find((s) =>
+                    filters.every(([column, value]) => s[column] === value),
+                  );
+                  if (!row) return { data: null, error: null };
+                  Object.assign(row, payload);
+                  return { data: { id: row.id }, error: null };
+                },
+              }),
+            };
+            return builder;
+          },
+        };
+      }
+
+      throw new Error(`unexpected ctx table ${table}`);
     },
     // biome-ignore lint/suspicious/noExplicitAny: fake client, shape not exercised beyond `from`.
   } as any;
@@ -154,7 +160,7 @@ const VALID_HOST = Buffer.from('admin.shopify.com/store/acme-shop', 'utf8').toSt
 describe('performShopifyEmbeddedLink', () => {
   beforeEach(async () => {
     harness.shops = [];
-    harness.membership = { id: 'membership-sentinel' };
+    harness.membership = { id: 'membership-sentinel', role: 'owner' };
     harness.nextId = 0;
     harness.shopInsertCalls = [];
     harness.shopUpdateCalls = [];
@@ -204,7 +210,32 @@ describe('performShopifyEmbeddedLink', () => {
     expect(harness.shopInsertCalls).toHaveLength(0);
   });
 
-  it('insère une ligne shop pending (access_token_encrypted NULL) quand aucune boutique n’existe, et n’écrit jamais store_connection', async () => {
+  it("refuse sans écriture, code nommé distinct, quand l'utilisateur est membre mais 'agent' (rôle insuffisant)", async () => {
+    harness.membership = { id: 'membership-sentinel', role: 'agent' };
+    const intent = await signIntent();
+    const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
+    const result = await performShopifyEmbeddedLink(
+      { intent, merchantAccountId: 'tenant-a' },
+      { userId: 'user-a', supabase: fakeSupabase() },
+    );
+
+    expect(result).toEqual({ ok: false, errorCode: 'insufficient_role' });
+    expect(harness.shopInsertCalls).toHaveLength(0);
+  });
+
+  it("autorise un rôle 'manager', pas seulement 'owner'", async () => {
+    harness.membership = { id: 'membership-sentinel', role: 'manager' };
+    const intent = await signIntent();
+    const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
+    const result = await performShopifyEmbeddedLink(
+      { intent, merchantAccountId: 'tenant-a' },
+      { userId: 'user-a', supabase: fakeSupabase() },
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('insère une ligne shop pending (access_token_encrypted NULL) via ctx.supabase, sans .select() enchaîné, et n’écrit jamais store_connection', async () => {
     const intent = await signIntent();
     const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
     const result = await performShopifyEmbeddedLink(
@@ -224,9 +255,6 @@ describe('performShopifyEmbeddedLink', () => {
       status: 'active',
       access_token_encrypted: null,
     });
-    // Compteur explicite (pas une preuve par effet de bord du faux client) : zéro écriture
-    // store_connection à l'état pending — elle ne devient active qu'après le token exchange
-    // (app/api/shopify/embedded/session/route.ts).
     expect(harness.storeConnectionWriteCount).toBe(0);
   });
 
@@ -276,7 +304,7 @@ describe('performShopifyEmbeddedLink', () => {
     );
   });
 
-  it('met à jour (reconnexion) avec prédicat sur shopify_client_id, sans jamais inclure merchant_account_id dans le payload', async () => {
+  it('met à jour (reconnexion) via ctx.supabase, avec prédicat sur shopify_client_id, sans jamais inclure merchant_account_id dans le payload', async () => {
     harness.shops.push({
       id: 'shop-existing',
       shop_domain: 'acme-shop.myshopify.com',
