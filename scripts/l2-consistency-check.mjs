@@ -26,7 +26,7 @@
 // une limite qui s'active seulement quand des abonnements Shopify RÉELS basculent vers l'URL
 // opaque (Temps 1 du runbook, pas encore fait) ET que le Temps 2 (refus des topics opérationnels
 // sur l'ancien endpoint) est franchi — à partir de là, plus aucune NOUVELLE ligne webhook_event
-// n'arrive pour les 9 topics opérationnels sur le chemin qui reste actif (l'URL opaque écrit
+// n'arrive pour les 8 topics opérationnels sur le chemin qui reste actif (l'URL opaque écrit
 // pourtant bien webhook_event, mais legacy — la seule source que ce script attendait pour ces
 // topics avant la bascule réelle — n'en reçoit plus). Un « PASS » lu vite à ce moment-là serait
 // trompeur pour la même raison qu'avant : `diffs.length === 0` resterait vrai non pas parce que
@@ -34,8 +34,11 @@
 // La section « post-bascule » de la sortie ci-dessous rend ce fait visible à chaque exécution
 // plutôt que de le laisser implicite : un compte croissant y est ATTENDU et NORMAL après le
 // Temps 1 réel, jamais un signal d'échec. Ce script reste pleinement significatif pour
-// l'historique et pour les 3 topics de conformité GDPR, qui continuent d'alimenter webhook_event
-// indéfiniment (jamais souscriptibles via l'Admin API, cf. runbook).
+// l'historique et pour les QUATRE topics restés au niveau app — les 3 topics de conformité GDPR
+// et `app/uninstalled` — qui continuent d'alimenter webhook_event indéfiniment (cf. runbook).
+// `OPERATIONAL_TOPICS` dérive d'ADMIN_API_TOPICS : `app/uninstalled` en étant sorti, une ligne
+// ingestion_event de ce topic sans webhook_event correspondant redevient un VRAI écart à
+// instruire, et non un compte « normal après le Temps 1 ». C'est le comportement voulu.
 //
 // Usage : node scripts/l2-consistency-check.mjs
 // Nécessite NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (local ou linked, en lecture

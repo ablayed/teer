@@ -48,11 +48,16 @@ describe('Shopify embedded review surface', () => {
     expect(installRoute).toContain("searchParams.get('app_label')");
     expect(installRoute).toContain("searchParams.set('client_id', selectedApp.clientId)");
     expect(read('app/shopify/embedded/page.tsx')).toContain('getShopifyAppOrNullForEmbedded()');
-    expect(publicConfig).toContain('client_id = "__A_RENSEIGNER__"');
+    // APP-02 laissait ici un `client_id` à renseigner, une URL `*.vercel.app` et AUCUN
+    // abonnement — les trois assertions décrivaient un fichier préparatoire. Le lot APP-TOML les
+    // remplace par les valeurs de la version active `teer-public-2`. Ce qui compte POUR CE test,
+    // c'est le lien entre le TOML et la route embarquée étiquetée : l'`application_url` doit
+    // pointer sur `/shopify/embedded/teer-public`. Le contenu des abonnements et le partage 4 / 8
+    // sont verrouillés ailleurs — tests/unit/shopify/teer-public-app-config.test.ts.
+    expect(publicConfig).toContain('client_id = "86c612a670ee04fe488426f442037605"');
     expect(publicConfig).toContain(
-      'application_url = "https://teer-dev.vercel.app/shopify/embedded/teer-public"',
+      'application_url = "https://www.teerafrik.com/shopify/embedded/teer-public"',
     );
-    expect(publicConfig).not.toContain('[[webhooks.subscriptions]]');
   });
 
   it('uses a dedicated Shopify frame policy and keeps the rest of the app unembeddable', () => {

@@ -12,6 +12,8 @@ export interface AdminApiTopic {
 
 export const ADMIN_API_TOPICS: AdminApiTopic[];
 export const APP_LEVEL_ONLY_TOPICS: string[];
+export const APP_LEVEL_BY_DECISION_TOPICS: string[];
+export const APP_LEVEL_TOPICS: string[];
 export const INGEST_PATH_PREFIX: string;
 
 export type SelectionResult = { ok: true; shopDomain: string } | { ok: false; reason: string };
