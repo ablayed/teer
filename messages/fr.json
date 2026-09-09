@@ -714,9 +714,15 @@
         "submit": "Déconnecter",
         "confirm": "Déconnecter cette boutique de Tëër ?"
       },
+      "release": {
+        "action": "Libérer la boutique pour une nouvelle application Shopify",
+        "confirm": "Cette boutique ne sera pas désinstallée dans Shopify — seule son association à cette application Tëër sera retirée. Les abonnements webhooks de cette application cesseront de recevoir quoi que ce soit et devront être recréés pour la nouvelle application. Continuer ?",
+        "helper": "Disponible uniquement une fois la boutique entièrement désinstallée, sans identifiant ni jeton Shopify restants."
+      },
       "notices": {
         "synced": "{count, plural, =0 {Aucune commande synchronisée.} one {# commande synchronisée.} other {# commandes synchronisées.}}",
-        "disconnected": "Boutique déconnectée."
+        "disconnected": "Boutique déconnectée.",
+        "appReleased": "Application libérée. Vous pouvez désormais rattacher une nouvelle application Shopify."
       },
       "messages": {
         "connected": "Boutique connectée avec succès !"

@@ -103,6 +103,26 @@ reconnexion requise) et de `uninstalled` (déconnexion explicite) — ni erreur 
 attendue, juste un fait constaté. Jamais confondu avec `store_kind='manual'` (sans token par
 conception, correctement affiché `connected`).
 
+## Action « Libérer la boutique pour une nouvelle application Shopify » (Lot APP-03 correctif 3)
+
+`settings.shops.release.*` — libellé imposé verbatim par le mandat, jamais reformulé. Visible
+uniquement `owner`, uniquement sur une boutique `uninstalled` sans `shopify_client_id`/credential
+resterait exploitable (`ShopListItem.canReleaseApp`, calculé côté lecture — la décision faisant
+foi reste `decideAppRelease`, revérifiée à l'écriture, jamais présumée par la lecture seule).
+
+Deux exigences de contenu non négociables dans `release.confirm` (avant toute confirmation) :
+1. dire explicitement que l'opération **ne désinstalle pas** l'app côté Shopify — sinon un
+   marchand pourrait croire l'action réversible via une simple réinstallation Shopify, alors que
+   côté Shopify rien n'a changé ;
+2. dire ce qui est **perdu** : les abonnements webhooks de l'ancienne app cessent de recevoir quoi
+   que ce soit et devront être recréés pour la nouvelle — jamais seulement ce que l'opération ne
+   fait pas, aussi ce qu'elle rend nécessaire ensuite.
+
+Jamais de texte suggérant une bascule active→active (l'action n'existe que sur une boutique déjà
+désinstallée — `decideShopAppSwitch`, lib/shopify/app-switch-guard.ts, reste la seule garde pour
+une boutique encore active, et `release.action` ne s'affiche jamais dans ce cas). Vouvoiement,
+comme le reste de `settings.shops.*`.
+
 ## Page de démonstration retirée (Lot F2-bis)
 
 `app/(app)/dev/finance-foundations/page.tsx` (données 100 % fictives, hors navigation réelle) a

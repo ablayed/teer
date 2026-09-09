@@ -108,15 +108,26 @@ export async function resolveShopLenient(
   return data as WebhookShopRow | null;
 }
 
-// Résolution ACTIVE UNIQUEMENT — miroir exact de getActiveShopByDomain / du select inline de
-// handleBulkFinishWebhook (status='active' aux deux). Utilisée pour orders/*, products/*,
-// refunds/create, bulk_operations/finish.
+// Résolution ACTIVE ET EXPLOITABLE — utilisée pour orders/*, products/*, refunds/create,
+// bulk_operations/finish. `status='active'` seul ne suffit pas : le rattachement embarqué
+// (APP-03/Lot 2, `lib/shopify/embedded-link-write.ts`) écrit `status='active'` AVANT le token
+// exchange, `access_token_encrypted` restant NULL le temps de l'association en attente — un état
+// délibérément représentable (cf. `lib/shopify/shop-status.ts`, qui l'exclut déjà côté UI sous le
+// libellé « connexion incomplète », et `lib/actions/shopify.ts#getShopConnection`, qui l'exclut
+// déjà côté lecture `/commandes`). Avant ce correctif, seul ce module ignorait la distinction :
+// un webhook signé par l'app en cours de rattachement, sur une boutique dans cet état, était
+// accepté et intégralement traité (persistShopifyOrder/persistShopifyProductWebhook n'exigent
+// aucun jeton) — écriture métier réelle sur une boutique qui n'a pas terminé son OAuth.
 export async function resolveShopActive(
   supabase: AdminClient,
   locator: WebhookShopLocator,
 ): Promise<WebhookShopRow | null> {
   const { data, error } = await applyLocator(
-    supabase.from('shop').select('*').eq('status', 'active'),
+    supabase
+      .from('shop')
+      .select('*')
+      .eq('status', 'active')
+      .not('access_token_encrypted', 'is', null),
     locator,
   ).maybeSingle();
 
@@ -131,6 +142,13 @@ export async function resolveShopActive(
   return data as WebhookShopRow | null;
 }
 
+// Exception au filtre `access_token_encrypted` de `resolveShopActive` : liste FERMÉE et NOMMÉE,
+// jamais une condition dérivée. `app/uninstalled` doit rester traitable même sur une boutique déjà
+// sans credentials (c'est précisément l'état qu'il produit) ; les 3 topics GDPR doivent rester
+// traitables quel que soit le statut (une demande de conformité reste légale même désinstallée).
+// Le runbook de bascule (docs/security/webhook-subscription-bascule-runbook.md) dépend
+// structurellement de app/uninstalled restant atteignable ici — un refus qui s'y étendrait
+// bloquerait la désinstallation elle-même, donc toute la séquence de libération d'identité d'app.
 const LENIENT_TOPICS = new Set([
   'app/uninstalled',
   'customers/data_request',
@@ -662,9 +680,20 @@ async function processProductCore({
   }
 }
 
-// app/uninstalled : marque UNIQUEMENT cette boutique + révoque ses tokens (le refresh + les
+// app/uninstalled : marque UNIQUEMENT cette boutique + révoque ses tokens (access + refresh + les
 // expirations) → sa sync s'arrête (les selects filtrent status='active'). Défense en profondeur :
 // id + merchant_account_id + shop_domain, jamais une seule colonne.
+//
+// `access_token_encrypted` était auparavant OMIS de cette écriture (seuls `refresh_token_encrypted`
+// et les deux `*_expires_at` étaient nettoyés) — trouvé en écrivant la garde de libération
+// d'identité d'app (lib/shopify/app-release-guard.ts) : sa précondition « aucun credential
+// exploitable » (`access_token_encrypted IS NULL`) ne pouvait jamais être satisfaite après une
+// désinstallation réelle, puisque rien ne nullait cette colonne. Aucun appelant ne dépend de sa
+// persistance après désinstallation : tous les lecteurs de `access_token_encrypted`
+// (`getValidShopAccessToken`, `lib/shopify/token.ts`) ne sont atteints qu'après un filtre
+// `status='active'` en amont (`lib/shopify/shop-sync.ts#getShop`,
+// `app/api/cron/shopify-reconcile/route.ts`, et désormais `resolveShopActive` ci-dessus) — nuller
+// cette colonne ici ne change leur comportement pour aucune boutique déjà désinstallée.
 async function processAppUninstalledCore({
   supabase,
   shop,
@@ -677,6 +706,7 @@ async function processAppUninstalledCore({
     .update({
       status: 'uninstalled',
       uninstalled_at: new Date().toISOString(),
+      access_token_encrypted: null,
       refresh_token_encrypted: null,
       access_token_expires_at: null,
       refresh_token_expires_at: null,

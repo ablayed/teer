@@ -5,6 +5,7 @@ import {
   type ShopListItem,
   disconnectShopAction,
   listShopsAction,
+  releaseShopAppAction,
   syncShopAction,
 } from '@/lib/actions/shops';
 import { formatDateAbsolute, formatDateRelative } from '@/lib/format/date';
@@ -79,9 +80,11 @@ export function SettingsShops({ currentRole }: SettingsShopsProps) {
   const listShops = useAction(listShopsAction);
   const syncShop = useAction(syncShopAction);
   const disconnectShop = useAction(disconnectShopAction);
+  const releaseShopApp = useAction(releaseShopAppAction);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncingShopId, setSyncingShopId] = useState<string | null>(null);
+  const [releasingShopId, setReleasingShopId] = useState<string | null>(null);
   const data = listShops.result.data?.ok ? listShops.result.data : null;
   // Retour du flux OAuth Shopify (callback/install route.ts), déplacé ici depuis
   // l'ancienne page /boutiques — désormais une simple redirection vers cet onglet.
@@ -174,6 +177,23 @@ export function SettingsShops({ currentRole }: SettingsShopsProps) {
     fail();
   }
 
+  async function onReleaseApp(shopId: string) {
+    if (!window.confirm(t('release.confirm'))) {
+      return;
+    }
+
+    setReleasingShopId(shopId);
+    const result = await releaseShopApp.executeAsync({ shopId });
+    setReleasingShopId(null);
+
+    if (result?.data?.ok) {
+      refresh(t('notices.appReleased'));
+      return;
+    }
+
+    fail();
+  }
+
   return (
     <div className="space-y-6">
       {oauthBanners}
@@ -235,9 +255,12 @@ export function SettingsShops({ currentRole }: SettingsShopsProps) {
         {shops.map((shop) => (
           <ShopCard
             canDisconnect={isOwner}
+            canReleaseApp={isOwner && shop.canReleaseApp}
+            isReleasingApp={releasingShopId === shop.id}
             isSyncing={syncingShopId === shop.id}
             key={shop.id}
             onDisconnect={() => onDisconnect(shop.id)}
+            onReleaseApp={() => onReleaseApp(shop.id)}
             onSync={() => onSync(shop.id)}
             shop={shop}
             t={t}
@@ -285,15 +308,21 @@ function statusView(
 
 function ShopCard({
   canDisconnect,
+  canReleaseApp,
+  isReleasingApp,
   isSyncing,
   onDisconnect,
+  onReleaseApp,
   onSync,
   shop,
   t,
 }: {
   canDisconnect: boolean;
+  canReleaseApp: boolean;
+  isReleasingApp: boolean;
   isSyncing: boolean;
   onDisconnect: () => void;
+  onReleaseApp: () => void;
   onSync: () => void;
   shop: ShopListItem;
   t: ReturnType<typeof useTranslations<'settings.shops'>>;
@@ -357,6 +386,10 @@ function ShopCard({
             </div>
           ) : null}
 
+          {shop.status === 'uninstalled' && canReleaseApp ? (
+            <p className="text-sm text-muted">{t('release.helper')}</p>
+          ) : null}
+
           {needsProductScope ? (
             <div className="rounded-md border border-warning/30 bg-warning/15 p-3 text-sm">
               <p className="text-warning">{t('reasons.productsScopeRequired')}</p>
@@ -376,6 +409,16 @@ function ShopCard({
           {canDisconnect ? (
             <Button onClick={onDisconnect} type="button" variant="destructive">
               {t('disconnect.submit')}
+            </Button>
+          ) : null}
+          {canReleaseApp ? (
+            <Button
+              disabled={isReleasingApp}
+              onClick={onReleaseApp}
+              type="button"
+              variant="secondary"
+            >
+              {t('release.action')}
             </Button>
           ) : null}
         </div>

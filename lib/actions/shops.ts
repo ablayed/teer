@@ -2,6 +2,7 @@
 
 import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
+import { performShopifyAppRelease } from '@/lib/shopify/app-release-write';
 import { shopStatus } from '@/lib/shopify/shop-status';
 import { syncShopOrders } from '@/lib/shopify/shop-sync';
 import type { Database, Tables } from '@/lib/supabase/database.types';
@@ -16,8 +17,10 @@ type ShopRow = Pick<
   | 'id'
   | 'installed_at'
   | 'merchant_account_id'
+  | 'refresh_token_encrypted'
   | 'scopes'
   | 'shop_domain'
+  | 'shopify_client_id'
   | 'status'
   | 'store_kind'
   | 'updated_at'
@@ -31,6 +34,10 @@ export type ShopListItem = {
   reason: 'token_expired' | null;
   scopes: string;
   status: 'connected' | 'error' | 'incomplete' | 'uninstalled';
+  // Libération d'identité d'app (APP-03/Lot 2 correctif 3, §3) : n'a de sens que sur une boutique
+  // `uninstalled` qui porte encore une app — jamais affiché/actionnable en dehors de cet état,
+  // recalculé côté écriture par `decideAppRelease`, jamais présumé côté lecture.
+  canReleaseApp: boolean;
 };
 
 function createSupabaseAdminClient() {
@@ -84,7 +91,7 @@ export const listShopsAction = requireRole('owner', 'manager')
     const { data, error } = await admin
       .from('shop')
       .select(
-        'id, merchant_account_id, shop_domain, scopes, status, store_kind, installed_at, updated_at, access_token_encrypted, access_token_expires_at',
+        'id, merchant_account_id, shop_domain, scopes, status, store_kind, installed_at, updated_at, access_token_encrypted, access_token_expires_at, shopify_client_id, refresh_token_encrypted',
       )
       .eq('merchant_account_id', ctx.member.merchantAccountId)
       .order('installed_at', { ascending: false });
@@ -118,6 +125,13 @@ export const listShopsAction = requireRole('owner', 'manager')
           reason: status.reason,
           scopes: shop.scopes,
           status: status.status,
+          // Reflet de lecture uniquement — la décision faisant foi reste `decideAppRelease`, revérifiée
+          // à l'écriture. N'affiche l'action que dans l'état où elle peut réellement aboutir.
+          canReleaseApp:
+            status.status === 'uninstalled' &&
+            Boolean(shop.shopify_client_id) &&
+            !shop.access_token_encrypted &&
+            !shop.refresh_token_encrypted,
         };
       }),
     };
@@ -180,6 +194,29 @@ export const disconnectShopAction = requireRole('owner')
 
     if (auditError) {
       return { ok: false as const, errorCode: 'disconnect_failed' as const };
+    }
+
+    revalidatePath('/parametres');
+    revalidatePath('/boutiques');
+
+    return { ok: true as const };
+  });
+
+// APP-03 / Lot 2 correctif 3, §3 — libération contrôlée d'identité d'app Shopify. `requireRole
+// ('owner')` refuse manager/agent/non-membre AVANT tout appel à `performShopifyAppRelease` (qui
+// revérifie indépendamment rôle + tenant, cf. son en-tête) ; `disconnectShopAction`
+// ci-dessus reste une action DISTINCTE (déconnexion locale, ne touche pas l'identité d'app).
+export const releaseShopAppAction = requireRole('owner')
+  .metadata({ actionName: 'shops.release_app', section: 'shops' })
+  .inputSchema(z.object({ shopId: z.string().uuid() }))
+  .action(async ({ ctx, parsedInput }) => {
+    const result = await performShopifyAppRelease(
+      { shopId: parsedInput.shopId },
+      { userId: ctx.user.id, supabase: ctx.supabase },
+    );
+
+    if (!result.ok) {
+      return { ok: false as const, errorCode: result.errorCode };
     }
 
     revalidatePath('/parametres');
