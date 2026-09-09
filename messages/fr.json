@@ -354,6 +354,12 @@
         "title": "Retrait excédentaire",
         "item": "Le livreur n'a que {current} unité(s) de « {product} » en main ; {qty} unité(s) en trop demandées."
       }
+    },
+    "settlements": {
+      "title": "Versements globaux",
+      "subtitle": "Tous les versements enregistrés, tous les livreurs du compte, du plus récent au plus ancien.",
+      "scopeNoteAllShops": "Cette liste reste volontairement toutes boutiques confondues : le cash d'un livreur est indivisible, même lorsqu'il sert plusieurs boutiques. Le parc de livreurs ci-dessus, lui, est filtré sur la boutique active.",
+      "empty": "Aucun versement enregistré pour le moment."
     }
   },
   "definitionCard": {

@@ -133,3 +133,27 @@ Les gardes qui s'appuyaient sur elle ont été reportées sur ces écrans réels
 - Chiffres tabulaires (`Amount`, `tabular-nums`) : `tests/e2e/lot-u1f-tabular-nums.spec.ts`, désormais sur la Fiche arrivage.
 - Contrat de fermeture de `DetailPanel` (croix/Échap/clic extérieur/focus, desktop et mobile) : `tests/e2e/detail-panel-close-contract.spec.ts`, désormais sur `ProductDetailPanel` (`/produits`).
 - Vouvoiement sans exception : `tests/unit/ui/no-tutoiement-finance-components.test.ts`, liste mise à jour vers les écrans réels.
+
+## Portée des versements sur `/livreurs` (Lot UX-VERS-01)
+
+**« Tous livreurs confondus » est retiré.** La formulation datait d'avant `0133` : à l'époque,
+la portée locataire était la seule possible, et « confondus » n'opposait donc rien. Depuis
+`0133`, la même page filtre son **parc de livreurs** sur la boutique active (`getStoreDriverIds`)
+alors que la liste des versements reste locataire — un livreur absent du parc pouvait apparaître
+dans les versements sans que rien ne l'explique. Le sous-titre nomme désormais la portée :
+« tous les livreurs du compte ».
+
+**Ce n'est pas un défaut de portée, et il ne faut pas le « corriger ».** Le cash d'un livreur est
+indivisible : un livreur sert réellement deux boutiques et remet une enveloppe unique (mesure
+production consignée dans `0133`, lignes 30-32). `finance_kpis` laisse pour la même raison
+`cash_chez_livreurs` cross-boutiques (`0064`, lignes 12-14). `cash_settlement`,
+`settlement_allocation` et `settlement_shortfall` n'ont donc volontairement aucune colonne
+`shop_id`, et n'ont pas à en recevoir : un versement qui couvre des commandes de deux boutiques
+est un cas réel, sans bonne réponse.
+
+**Indice conditionnel, jamais permanent** (`livreurs.settlements.scopeNoteAllShops`) : la mention
+« toutes boutiques confondues » n'apparaît que si le compte possède plus d'une boutique — même
+règle que `/finances`, qui n'affiche `kpis.cashDriversAllShops` que lorsqu'un filtre boutique est
+actif. Un marchand mono-boutique ne lit pas une précision qui n'oppose rien chez lui. Décision
+d'affichage isolée dans `lib/drivers/settlement-scope.ts` (module pur) et verrouillée par
+`tests/unit/drivers/settlement-scope.test.ts`.

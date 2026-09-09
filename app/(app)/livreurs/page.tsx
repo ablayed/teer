@@ -13,12 +13,13 @@ import {
   getDriverSettlementHistory,
   getDriverStockOnHand,
 } from '@/lib/actions/drivers';
+import { shouldShowSettlementScopeNote } from '@/lib/drivers/settlement-scope';
 import { driverIdFilter, getStoreDriverIds } from '@/lib/drivers/store-scope';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { getRequestStoreId } from '@/lib/workspace/store';
+import { getRequestStoreId, getWorkspaceStores } from '@/lib/workspace/store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LockKeyhole } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -54,7 +55,10 @@ async function getCurrentMember() {
 }
 
 export default async function LivreursPage({ searchParams }: LivreursPageProps) {
-  const nav = await getTranslations('nav');
+  const [nav, tSettlements] = await Promise.all([
+    getTranslations('nav'),
+    getTranslations('livreurs.settlements'),
+  ]);
   const params = await searchParams;
   const storeId = await getRequestStoreId();
   if (!storeId) {
@@ -176,6 +180,14 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
   }
 
   const globalHistory = await getAllSettlementHistory();
+  // `getWorkspaceStores` est memoisée par requête (React.cache) et a déjà été
+  // appelée par `getRequestStoreId` ci-dessus : ce décompte ne coûte aucun
+  // aller-retour supplémentaire. Même univers que le sélecteur de /finances —
+  // `shop_select` (0126) est scopée membre-de-boutique.
+  const workspaceStores = await getWorkspaceStores();
+  const showSettlementScopeNote = shouldShowSettlementScopeNote(
+    workspaceStores.filter((store) => store.merchantAccountId === merchantAccountId).length,
+  );
 
   return (
     <main className="space-y-6" id="main">
@@ -196,12 +208,13 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
       />
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Versements globaux</h2>
-        <p className="text-sm text-muted">
-          Tous les versements enregistrés, tous livreurs confondus, du plus récent au plus ancien.
-        </p>
+        <h2 className="text-lg font-semibold">{tSettlements('title')}</h2>
+        <p className="text-sm text-muted">{tSettlements('subtitle')}</p>
+        {showSettlementScopeNote ? (
+          <p className="text-sm text-muted">{tSettlements('scopeNoteAllShops')}</p>
+        ) : null}
         <SettlementHistoryTable
-          emptyLabel="Aucun versement enregistré pour le moment."
+          emptyLabel={tSettlements('empty')}
           rows={globalHistory.ok ? globalHistory.rows : []}
           showDriver
         />
