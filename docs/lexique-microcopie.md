@@ -157,3 +157,15 @@ règle que `/finances`, qui n'affiche `kpis.cashDriversAllShops` que lorsqu'un f
 actif. Un marchand mono-boutique ne lit pas une précision qui n'oppose rien chez lui. Décision
 d'affichage isolée dans `lib/drivers/settlement-scope.ts` (module pur) et verrouillée par
 `tests/unit/drivers/settlement-scope.test.ts`.
+
+**Même règle sur `/finances`, carte « Livreurs concernés ».** Sa valeur vient de
+`cash_aging(p_merchant)` (`0017`, ligne 183), qui n'a jamais eu de paramètre boutique : le
+compteur est toujours locataire, exactement comme `cash_chez_livreurs` de la carte voisine. Cette
+voisine basculait déjà sur `kpis.cashDriversAllShops` sous filtre boutique actif, « Livreurs
+concernés » non — deux libellés contradictoires à un centimètre l'un de l'autre sur le même
+écran. La variante `kpis.driversConcernedAllShopsTitle` applique désormais le même suffixe, au mot
+près, sous la même condition. **Les deux surfaces partagent une seule décision d'affichage**
+(`shouldShowTenantCashScopeNote`, contexte discriminé par surface) : elles se rétrécissent
+différemment — `/livreurs` par son parc toujours filtré depuis `0133`, `/finances` par son
+sélecteur `?shop=` — mais la règle « dire la portée seulement là où la vue environnante est plus
+étroite que le chiffre » est unique et ne doit pas être réimplémentée par surface.

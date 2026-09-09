@@ -13,7 +13,7 @@ import {
   getDriverSettlementHistory,
   getDriverStockOnHand,
 } from '@/lib/actions/drivers';
-import { shouldShowSettlementScopeNote } from '@/lib/drivers/settlement-scope';
+import { shouldShowTenantCashScopeNote } from '@/lib/drivers/settlement-scope';
 import { driverIdFilter, getStoreDriverIds } from '@/lib/drivers/store-scope';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
@@ -185,9 +185,12 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
   // aller-retour supplémentaire. Même univers que le sélecteur de /finances —
   // `shop_select` (0126) est scopée membre-de-boutique.
   const workspaceStores = await getWorkspaceStores();
-  const showSettlementScopeNote = shouldShowSettlementScopeNote(
-    workspaceStores.filter((store) => store.merchantAccountId === merchantAccountId).length,
-  );
+  const showSettlementScopeNote = shouldShowTenantCashScopeNote({
+    accessibleShopCount: workspaceStores.filter(
+      (store) => store.merchantAccountId === merchantAccountId,
+    ).length,
+    surface: 'livreurs',
+  });
 
   return (
     <main className="space-y-6" id="main">

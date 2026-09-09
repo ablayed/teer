@@ -25,6 +25,7 @@ import {
   getPurchaseLotPageData,
   getPurchaseLotProfitability,
 } from '@/lib/actions/purchases';
+import { shouldShowTenantCashScopeNote } from '@/lib/drivers/settlement-scope';
 import { fetchFinanceDriverCostReport } from '@/lib/finance/driver-cost';
 import { buildDriverSettlements } from '@/lib/finance/driver-settlements';
 import {
@@ -450,8 +451,15 @@ async function GlobalTabContent({
           label={t('kpis.rto')}
           value={`${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(kpis.taux_refus)} %`}
         />
+        {/* `driversConcerned` vient de `cash_aging(p_merchant)` (0017:183), qui n'a
+            jamais eu de paramètre boutique : ce compteur est TOUJOURS locataire,
+            comme `cash_chez_livreurs` juste au-dessus. Même règle et même
+            condition d'affichage que `kpis.cashDriversAllShops` — la portée est
+            dite sous filtre actif, jamais changée. */}
         {kpiCard(
-          t('kpis.driversConcernedTitle'),
+          shouldShowTenantCashScopeNote({ shopFilterActive: isShopFiltered, surface: 'finances' })
+            ? t('kpis.driversConcernedAllShopsTitle')
+            : t('kpis.driversConcernedTitle'),
           new Intl.NumberFormat('fr-FR').format(driversConcerned),
           <Amount amountMinor={kpis.cash_chez_livreurs} />,
         )}

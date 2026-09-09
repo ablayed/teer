@@ -936,6 +936,7 @@
       "cashDriversGlobal": "Cash total chez tous les livreurs",
       "driversConcerned": "{count, plural, =0 {Aucun livreur concerné} one {# livreur concerné} other {# livreurs concernés}}",
       "driversConcernedTitle": "Livreurs concernés",
+      "driversConcernedAllShopsTitle": "Livreurs concernés (toutes boutiques)",
       "margin": "Marge brute estimée",
       "grossMargin": "Marge brute",
       "grossMarginDescReal": "CA net − coût des produits vendus (≠ résultat net)",
