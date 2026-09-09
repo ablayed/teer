@@ -6,7 +6,6 @@ const redirect = vi.fn((url: string) => {
   throw new Error(`REDIRECT:${url}`);
 });
 vi.mock('next/navigation', () => ({ redirect: (url: string) => redirect(url) }));
-vi.mock('next/script', () => ({ default: () => null }));
 vi.mock('@/app/shopify/embedded/embedded-shopify-surface', () => ({
   EmbeddedShopifySurface: () => null,
 }));

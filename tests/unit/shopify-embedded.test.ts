@@ -1,9 +1,13 @@
-import { readFileSync } from 'node:fs';
+﻿import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildCspHeader, cspRegimeForPath } from '@/lib/security/csp';
 import { describe, expect, it } from 'vitest';
 
 const read = (file: string) => readFileSync(resolve(file), 'utf8');
+
+// Retire les commentaires pour n'assertionner que le code exÃ©cutÃ©, jamais la documentation.
+const stripComments = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 
 describe('Shopify embedded review surface', () => {
   it('is configured as embedded and loads App Bridge before the surface, meta key before the script', () => {
@@ -13,9 +17,23 @@ describe('Shopify embedded review surface', () => {
 
     expect(config).toContain('embedded = true');
     expect(config).toContain('application_url = "https://teer-dev.vercel.app/shopify/embedded"');
-    expect(shell.indexOf('shopify-api-key')).toBeLessThan(shell.indexOf('app-bridge.js'));
-    expect(shell.indexOf('app-bridge.js')).toBeLessThan(shell.indexOf('<EmbeddedShopifySurface'));
-    expect(shell).toContain('strategy="beforeInteractive"');
+    // Assertions portÃ©es par le CODE seul, commentaires retirÃ©s : le shell DOCUMENTE en toutes
+    // lettres pourquoi `next/script` est proscrit ici, et une interdiction mesurÃ©e sur le fichier
+    // brut se retournerait contre sa propre documentation (constatÃ© en CI).
+    const shellCode = stripComments(shell);
+    expect(shellCode.indexOf('shopify-api-key')).toBeLessThan(shellCode.indexOf('app-bridge.js'));
+    expect(shellCode.indexOf('app-bridge.js')).toBeLessThan(
+      shellCode.indexOf('<EmbeddedShopifySurface'),
+    );
+    // `next/script` est INTERDIT pour App Bridge : `strategy=beforeInteractive` n'Ã©met aucun
+    // <script> dans le HTML servi par l'App Router (preload + poussÃ©e `__next_s` injectÃ©e par le
+    // runtime) â€” donc `document.currentScript` nul et `async` vrai, les deux conditions qu'App
+    // Bridge rejette. Cette assertion textuelle ferme la porte ; le contrat rÃ©el (attributs du tag
+    // servi, ordre, nonce CSP) est mesurÃ© sur le HTML HTTP dans
+    // tests/e2e/shopify-koba-multi-app.spec.ts â€” un test de texte ne peut pas voir un attribut
+    // ajoutÃ© au rendu, c'est prÃ©cisÃ©ment ce qui a laissÃ© passer la rÃ©gression.
+    expect(shellCode).not.toContain('next/script');
+    expect(shellCode).not.toContain('beforeInteractive');
     expect(surface).not.toContain('SHOPIFY_API_SECRET');
     expect(surface).not.toContain('access_token');
     expect(surface).not.toContain('bridge.config');
@@ -41,9 +59,9 @@ describe('Shopify embedded review surface', () => {
     expect(cspRegimeForPath('/shopify/embedded')).toBe('embedded');
     expect(cspRegimeForPath('/shopify/embedded/teer-public')).toBe('embedded');
     expect(cspRegimeForPath('/tableau')).toBe('app');
-    // L'écran de confirmation de rattachement est délibérément TOP-LEVEL uniquement (retour
-    // depuis /connexion après sortie de l'iframe) — jamais embarquable, même si son chemin
-    // commence par "/shopify/embedded" en préfixe textuel.
+    // L'Ã©cran de confirmation de rattachement est dÃ©libÃ©rÃ©ment TOP-LEVEL uniquement (retour
+    // depuis /connexion aprÃ¨s sortie de l'iframe) â€” jamais embarquable, mÃªme si son chemin
+    // commence par "/shopify/embedded" en prÃ©fixe textuel.
     expect(cspRegimeForPath('/shopify/embedded-link')).toBe('app');
 
     const embeddedCsp = buildCspHeader({ regime: 'embedded', isDev: false, nonce: 'synthetic' });
