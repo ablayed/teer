@@ -578,3 +578,103 @@ test('shop/redact : corps signé pour B (teer-pilote), en-tête forgé vers A (t
     await admin.auth.admin.deleteUser(attacker.userId);
   }
 });
+
+// --- App Bridge : contrat du tag <script>, mesuré sur le HTML RÉELLEMENT SERVI ------------------
+//
+// Smoke test réel sur teer-public-smoke.myshopify.com (2026-09-09) : l'installation et le
+// rattachement fonctionnaient, mais App Bridge refusait de s'initialiser —
+//   « The script tag loading App Bridge has `async` »
+//   « Uncaught Error: Shopify's App Bridge must be included as the first <script> tag … »
+//
+// Cause : `next/script` avec `strategy="beforeInteractive"` n'émet AUCUN <script> dans le HTML
+// servi par l'App Router. Il émet un <link rel=preload> plus une poussée `self.__next_s`, que le
+// runtime Next transforme en script injecté côté client — donc `document.currentScript` nul ET
+// `async` vrai, les deux conditions qu'App Bridge rejette (auto-validation lue directement dans
+// app-bridge.js : throw sur currentScript nul / async / defer / src hors CDN Shopify ; l'ordre
+// « premier script du document » n'y est qu'un console.warn, filtré sur les scripts BLOQUANTS).
+//
+// Le test précédent (tests/unit/shopify-embedded.test.ts) lisait le TEXTE du .tsx : il ne pouvait
+// structurellement pas voir un attribut ajouté par Next au rendu. D'où ces assertions sur le HTML
+// servi par HTTP réel.
+//
+// LIMITE consignée, non corrigeable dans l'App Router : Next émet ses propres bundles
+// (`/_next/static/…`) dans le <head> avant tout contenu de page — App Bridge ne peut donc jamais
+// être littéralement le premier <script> du document. Ce n'est pas la condition d'échec : tous
+// ces bundles sont `async` sauf `polyfills.js` (noModule), et le contrôle dur d'App Bridge ne
+// porte que sur ses propres attributs. On épingle donc ce qui est vrai ET suffisant : aucun script
+// hors bundles Next ne le précède, et il précède la surface (<main>).
+const APP_BRIDGE_SRC = 'https://cdn.shopify.com/shopifycloud/app-bridge.js';
+
+function assertAppBridgeScriptContract(
+  html: string,
+  cspHeader: string,
+  { expectMeta }: { expectMeta: boolean },
+) {
+  const scriptTags: string[] = html.match(/<script\b[^>]*>/g) ?? [];
+  const appBridgeTags = scriptTags.filter((tag) => tag.includes(APP_BRIDGE_SRC));
+
+  // 1. Un tag <script> littéral, présent dans le HTML servi — jamais une injection runtime.
+  expect(appBridgeTags).toHaveLength(1);
+  const tag = appBridgeTags[0] ?? '';
+  expect(html).not.toContain('__next_s');
+  expect(tag).toContain(`src="${APP_BRIDGE_SRC}"`);
+
+  // 2. Aucun des trois attributs qui font échouer l'auto-validation d'App Bridge.
+  expect(tag).not.toMatch(/\basync\b/);
+  expect(tag).not.toMatch(/\bdefer\b/);
+  expect(tag).not.toMatch(/\btype=/);
+
+  // 3. Nonce CSP : le régime « embedded » est nonce + 'strict-dynamic' (lib/security/csp.ts), qui
+  //    fait ignorer `https:` aux navigateurs récents. Sans nonce sur ce tag, le CDN Shopify est
+  //    bloqué en production alors que tout paraît correct localement.
+  const nonceMatch = tag.match(/nonce="([^"]+)"/);
+  expect(nonceMatch).not.toBeNull();
+  expect(cspHeader).toContain(`'nonce-${nonceMatch?.[1]}'`);
+
+  // 4. Ordre : le meta shopify-api-key précède le script (contrat Shopify), le script précède la
+  //    surface, et aucun script étranger aux bundles Next ne le précède.
+  const scriptIndex = html.indexOf(tag);
+  if (expectMeta) {
+    const metaIndex = html.indexOf('<meta name="shopify-api-key"');
+    expect(metaIndex).toBeGreaterThan(-1);
+    expect(metaIndex).toBeLessThan(scriptIndex);
+  }
+  expect(scriptIndex).toBeLessThan(html.indexOf('<main'));
+  for (const precedingTag of scriptTags.slice(0, scriptTags.indexOf(tag))) {
+    expect(precedingTag).toMatch(/src="\/_next\/static\//);
+  }
+}
+
+test.describe('App Bridge — tag <script> bloquant, mesuré sur le HTML servi', () => {
+  test('surface par défaut (/shopify/embedded) : le tag App Bridge est servi sans async, defer ni type', async ({
+    request,
+  }) => {
+    test.skip(
+      !hasDevAppEnv,
+      "SHOPIFY_API_KEY/SECRET manquants localement — sans eux teer-dev ne s'enregistre pas et le meta shopify-api-key est absent.",
+    );
+    const response = await request.get('/shopify/embedded?embedded=1');
+    expect(response.status()).toBe(200);
+    assertAppBridgeScriptContract(
+      await response.text(),
+      response.headers()['content-security-policy'] ?? '',
+      { expectMeta: true },
+    );
+  });
+
+  test('surface étiquetée (/shopify/embedded/[appLabel]) : même contrat, même tag', async ({
+    request,
+  }) => {
+    test.skip(
+      !hasMultiAppEnv,
+      'Credentials multi-app absents — voir hasMultiAppEnv (toujours présents en CI).',
+    );
+    const response = await request.get('/shopify/embedded/teer-koba?embedded=1');
+    expect(response.status()).toBe(200);
+    const html = await response.text();
+    assertAppBridgeScriptContract(html, response.headers()['content-security-policy'] ?? '', {
+      expectMeta: true,
+    });
+    expect(html).toContain(`<meta name="shopify-api-key" content="${KOBA_CLIENT_ID}"`);
+  });
+});

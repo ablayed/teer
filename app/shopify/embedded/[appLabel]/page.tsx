@@ -1,5 +1,6 @@
 import { publicEnv } from '@/lib/env';
 import { getShopifyAppOrNullForEmbedded } from '@/lib/shopify/embedded';
+import { headers } from 'next/headers';
 import { EmbeddedAppShell } from '../embedded-app-shell';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,7 @@ export default async function EmbeddedAppPage({ params, searchParams }: Embedded
   const { appLabel } = await params;
   const query = await searchParams;
   const app = getShopifyAppOrNullForEmbedded(appLabel);
+  const nonce = (await headers()).get('x-nonce');
 
   return (
     <EmbeddedAppShell
@@ -20,6 +22,7 @@ export default async function EmbeddedAppPage({ params, searchParams }: Embedded
       host={query.host}
       embedded={query.embedded}
       supportEmail={publicEnv.NEXT_PUBLIC_SUPPORT_EMAIL ?? null}
+      nonce={nonce}
       appLabel={appLabel}
     />
   );
