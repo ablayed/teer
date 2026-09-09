@@ -264,13 +264,29 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
     expect(JSON.stringify(body)).not.toContain('koba_client_sentinel');
     expect(JSON.stringify(body)).not.toContain(PUBLIC_APP.clientId);
     expect(JSON.stringify(body)).not.toContain('shared-domain.myshopify.com');
+    // Aucun lien d'installation offert, et aucune ecriture : le correctif du cas NULL ci-dessus
+    // ne doit jamais degrader ce refus en simple avertissement.
+    expect(body).not.toHaveProperty('loginUrl');
+    expect(body).not.toHaveProperty('nextAction');
+    expect(harness.shopUpdateCalls).toHaveLength(0);
+    expect(harness.connectionInsertCalls).toHaveLength(0);
   });
 
-  it('refuse en fermé quand shopify_client_id est NULL (boutique legacy) — jamais de repli implicite vers une app par défaut', async () => {
+  // Défaut mesuré en production sur le chemin de l'étape 8 du runbook option D : une boutique
+  // libérée par l'action owner (shopify_client_id NULL, store_connection.platform_app_id NULL,
+  // status 'uninstalled', credentials NULL) était irrattachable — cette route répondait
+  // app_identity_mismatch, que la surface embarquée ne sait pas nommer et rend en erreur fermée
+  // (« Impossible de vérifier l'installation Shopify »). NULL veut dire « aucune app rattachée »,
+  // jamais « une autre app » : c'est le motif `is distinct from` du projet. La PR #199 avait
+  // verrouillé l'inverse par un test — celui-ci le remplace, il ne s'y ajoute pas.
+  it('boutique libérée (shopify_client_id NULL) : état invitant au rattachement, jamais app_identity_mismatch', async () => {
     harness.shop = {
+      id: 'shop-released',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: null,
-      status: 'active',
+      status: 'uninstalled',
+      access_token_encrypted: null,
+      merchant_account_id: 'tenant-sentinel',
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
@@ -280,7 +296,49 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
     const response = await GET(buildRequest());
     const body = await response.json();
 
-    expect(body).toEqual({ status: 'app_identity_mismatch' });
+    expect(response.status).toBe(200);
+    expect(body.status).toBe('not_configured');
+    expect(body.status).not.toBe('app_identity_mismatch');
+    expect(body.shop.domain).toBe('shared-domain.myshopify.com');
+    expect(body.nextAction).toBe('associate_teer');
+    // Réponse strictement identique à celle d'une boutique inconnue : le client n'a aucun état
+    // supplémentaire à connaître, et rien de la ligne résiduelle n'est exposé.
+    expect(body).not.toHaveProperty('shop.installedAt');
+    // Aucun échange de token ni écriture tant que le rattachement n'a pas été confirmé par un
+    // utilisateur authentifié — l'invitation n'est pas un rattachement.
+    expect(harness.shopUpdateCalls).toHaveLength(0);
+    expect(harness.connectionInsertCalls).toHaveLength(0);
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  it('boutique libérée : l’invitation est réellement actionnable (loginUrl signée quand host est valide)', async () => {
+    harness.shop = {
+      id: 'shop-released',
+      shop_domain: 'shared-domain.myshopify.com',
+      shopify_client_id: null,
+      status: 'uninstalled',
+      access_token_encrypted: null,
+      merchant_account_id: 'tenant-sentinel',
+      installed_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-02T00:00:00.000Z',
+      last_reconciled_at: null,
+    };
+    const validHost = Buffer.from('admin.shopify.com/store/shared-domain', 'utf8').toString(
+      'base64url',
+    );
+
+    const { GET } = await import('@/app/api/shopify/embedded/session/route');
+    const request = new NextRequest(
+      `http://localhost:3000/api/shopify/embedded/session?host=${validHost}`,
+      { headers: { authorization: 'Bearer synthetic-session-token' } },
+    );
+    const response = await GET(request);
+    const body = await response.json();
+
+    expect(body.status).toBe('not_configured');
+    expect(typeof body.loginUrl).toBe('string');
+    const redirectTo = decodeURIComponent(body.loginUrl.split('redirectTo=')[1]);
+    expect(redirectTo).toContain('/shopify/embedded-link?intent=');
   });
 
   it('capture une exception interne avec un code stable, jamais déduit du texte du message', async () => {

@@ -111,14 +111,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'shop_lookup_failed' }, { status: 500 });
   }
 
-  if (!shop) {
-    // Le nouveau parcours de continuation (jeton signé + retour top-level) n'a de sens QUE pour
-    // Teer Public — c'est le seul chemin sans `/api/shopify/install` (refusé pour Teer Public,
-    // cf. app/api/shopify/install/route.ts). Les apps historiques gardent leur lien legacy
-    // inchangé (rendu côté client). La continuation n'est émise que si `host` est en plus présent
-    // ET valide — sans elle, aucune destination Shopify Admin n'est constructible en fin de
-    // parcours (cf. buildShopifyEmbeddedAppUrl) ; le client doit alors afficher un état fermé,
-    // jamais un repli vers le lien legacy que ce lot retire précisément pour Teer Public.
+  // Le nouveau parcours de continuation (jeton signé + retour top-level) n'a de sens QUE pour
+  // Teer Public — c'est le seul chemin sans `/api/shopify/install` (refusé pour Teer Public,
+  // cf. app/api/shopify/install/route.ts). Les apps historiques gardent leur lien legacy
+  // inchangé (rendu côté client). La continuation n'est émise que si `host` est en plus présent
+  // ET valide — sans elle, aucune destination Shopify Admin n'est constructible en fin de
+  // parcours (cf. buildShopifyEmbeddedAppUrl) ; le client doit alors afficher un état fermé,
+  // jamais un repli vers le lien legacy que ce lot retire précisément pour Teer Public.
+  const notConfiguredResponse = () => {
     const rawHost = request.nextUrl.searchParams.get('host');
     const loginUrl =
       app.label === 'teer-public' && rawHost && decodeShopifyEmbeddedHost(rawHost)
@@ -141,14 +141,35 @@ export async function GET(request: NextRequest) {
       appLabel: app.label,
       ...(loginUrl ? { loginUrl } : {}),
     });
+  };
+
+  if (!shop) {
+    return notConfiguredResponse();
+  }
+
+  // `shopify_client_id` NULL signifie « aucune app rattachée », JAMAIS « une autre app ». C'est
+  // exactement l'état que produit la libération d'identité par le propriétaire
+  // (lib/shopify/app-release-write.ts : shop.shopify_client_id → NULL, store_connection
+  // .platform_app_id → NULL, status → 'uninstalled', credentials NULL) — état que le rattachement
+  // sait déjà accueillir (`decideShopAppSwitch` renvoie `ok` sur NULL, et
+  // `performShopifyEmbeddedLink` écrit avec un prédicat `.is('shopify_client_id', null)`
+  // explicite). Le traiter comme une divergence rendait toute boutique libérée irrattachable :
+  // les deux gardes divergeaient sur le même état. La boutique repart donc de l'état qui INVITE
+  // au rattachement, exactement comme une boutique inconnue — le parcours qui suit reste gardé
+  // par le rôle marchand, la bascule d'app et la propriété par tenant, jamais par cette réponse.
+  // Motif projet : `is distinct from` plutôt que `<>` — un NULL n'est pas une valeur discordante.
+  if (shop.shopify_client_id === null) {
+    return notConfiguredResponse();
   }
 
   // Confrontation stricte : l'app ayant vérifié l'ID token (`app.clientId`) doit être
   // exactement celle enregistrée sur la boutique. AUCUN repli implicite vers une app "par
-  // défaut" quand `shopify_client_id` est absent — une boutique legacy sans client_id est un
-  // désaccord, jamais une présomption Teer Dev. Divergence → jamais `ready`, aucune identité
-  // historique (label, client_id, tenant) dans la réponse publique ; seule une capture Sentry
-  // interne porte un code stable (jamais déduit du texte de message).
+  // défaut" — une boutique portant le client_id d'une AUTRE app est un désaccord, jamais une
+  // présomption. Divergence → jamais `ready`, jamais `not_configured` (aucun lien d'installation
+  // offert), aucune identité historique (label, client_id, tenant, domaine) dans la réponse
+  // publique ; seule une capture Sentry interne porte un code stable (jamais déduit du texte de
+  // message). C'est la protection contre l'écrasement des credentials d'une app historique
+  // (ex. KOBA) — le cas NULL traité juste au-dessus ne l'affaiblit pas.
   if (shop.shopify_client_id !== app.clientId) {
     Sentry.captureException(new ShopifyAppIdentityMismatchError(), {
       tags: { route: 'shopify.embedded.session', reason: 'app_identity_mismatch' },
