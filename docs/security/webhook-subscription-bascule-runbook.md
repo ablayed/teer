@@ -71,7 +71,7 @@ pas encore ces fonctions) — ni cassée, ni contournée, juste hors chemin.
 **3. `scripts/l2-consistency-check.mjs` — devient VACUEUSEMENT vert pour les topics opérationnels
 après le Temps 1, pas cassé mais trompeur.** Ce script joint `ingestion_event` aux lignes de
 `webhook_event` par `delivery_id`, en itérant sur `webhook_event`. Après le Temps 1, plus aucune
-nouvelle ligne `webhook_event` n'est créée pour les 9 topics opérationnels (Verrou 0-bis point de
+nouvelle ligne `webhook_event` n'est créée pour les 8 topics opérationnels (Verrou 0-bis point de
 départ) — le script n'a donc plus rien de nouveau à joindre pour eux : `joined` cesse de croître,
 `diffs.length` reste à 0 non pas parce que tout concorde, mais parce qu'il n'y a plus rien à
 comparer. Une lecture rapide de sa sortie (« PASS — aucun écart ») resterait fausse par silence
@@ -168,12 +168,12 @@ pour toujours. « Plus aucun topic opérationnel actif ne cible l'ancien endpoin
 côté abonnements Shopify (Étape 1) — mais le **code** de résolution par en-tête
 (`resolveSignedShopDomain`, `app/api/shopify/webhooks/route.ts`) doit rester vivant pour les 9
 topics opérationnels le temps d'absorber les réessais en vol au moment du swap, puis être
-explicitement désactivé pour ces 9 topics seulement.
+explicitement désactivé pour ces 8 topics seulement.
 
 | Temps | Action | Critère de vérification | Retour arrière |
 |---|---|---|---|
-| **1 — Jour J** | `--apply`/`--rotate-token` bascule les 9 abonnements Admin-API vers l'URL opaque. Le chemin en-tête de l'ancien endpoint reste **actif** pour les 9 topics opérationnels (code inchangé). | (a) Relecture intégrée à l'outil (`verifyAndCleanup`) : exactement 1 abonnement par topic, pointant vers le jeton courant — déjà automatique. (b) Confirmation manuelle qu'au moins une livraison réelle arrive dans `ingestion_event` pour la boutique pilote, sur au moins un topic à fort volume (`orders/updated` typiquement). | `webhookSubscriptionUpdate` inverse (nouvelle → ancienne URL) via le même outil ou manuellement. **Ne redirige PAS** les événements déjà déclenchés pendant que la nouvelle adresse était active (fait établi #2 ci-dessus, symétrique) — ceux-ci continuent leur cycle de réessai (jusqu'à 4h) contre le nouvel endpoint : le nouvel endpoint doit donc rester joignable (même dégradé) au moins 4h après un rollback, pas être coupé net. |
-| **2 — J + marge** | Le code de `app/api/shopify/webhooks/route.ts` **refuse** les 9 topics opérationnels (401, même verdict indifférencié que le nouvel endpoint) — garde explicite par topic, pas une suppression de code. Les 3 topics GDPR restent servis **sans aucun changement**, indéfiniment. | Requête en lecture seule contre `webhook_event` : **zéro** ligne dont `topic` ∈ {9 topics opérationnels} et `received_at` postérieur à l'instant du swap Étape 1, sur toute la durée de la marge retenue — mesuré, pas supposé (cf. section suivante). | Retirer la garde de refus (revert du commit/feature flag) — sans risque : elle ne fait que rouvrir un chemin que plus rien n'utilise activement au moment où on la retire (le critère de vérification l'a confirmé avant d'agir). |
+| **1 — Jour J** | `--apply`/`--rotate-token` bascule les 8 abonnements Admin-API vers l'URL opaque. Le chemin en-tête de l'ancien endpoint reste **actif** pour les 8 topics opérationnels (code inchangé). | (a) Relecture intégrée à l'outil (`verifyAndCleanup`) : exactement 1 abonnement par topic, pointant vers le jeton courant — déjà automatique. (b) Confirmation manuelle qu'au moins une livraison réelle arrive dans `ingestion_event` pour la boutique pilote, sur au moins un topic à fort volume (`orders/updated` typiquement). | `webhookSubscriptionUpdate` inverse (nouvelle → ancienne URL) via le même outil ou manuellement. **Ne redirige PAS** les événements déjà déclenchés pendant que la nouvelle adresse était active (fait établi #2 ci-dessus, symétrique) — ceux-ci continuent leur cycle de réessai (jusqu'à 4h) contre le nouvel endpoint : le nouvel endpoint doit donc rester joignable (même dégradé) au moins 4h après un rollback, pas être coupé net. |
+| **2 — J + marge** | Le code de `app/api/shopify/webhooks/route.ts` **refuse** les 8 topics opérationnels (401, même verdict indifférencié que le nouvel endpoint) — garde explicite par topic, pas une suppression de code. Les 3 topics GDPR restent servis **sans aucun changement**, indéfiniment. | Requête en lecture seule contre `webhook_event` : **zéro** ligne dont `topic` ∈ {8 topics opérationnels} et `received_at` postérieur à l'instant du swap Étape 1, sur toute la durée de la marge retenue — mesuré, pas supposé (cf. section suivante). | Retirer la garde de refus (revert du commit/feature flag) — sans risque : elle ne fait que rouvrir un chemin que plus rien n'utilise activement au moment où on la retire (le critère de vérification l'a confirmé avant d'agir). |
 
 **L'exception de sécurité de Phase 1 n'est fermée qu'à l'issue du Temps 2, jamais au Jour J.**
 C'est **cette** date — celle où le refus opérationnel sur l'ancien endpoint est en place et
@@ -203,7 +203,7 @@ pas si un cas réel peut légèrement le dépasser (jitter réseau, files intern
 
 **Marge retenue : 24 heures — explicitement arbitraire, pas déduite d'une source Shopify au-delà
 du chiffre de 4h lui-même.** Raisonnement : maintenir le chemin en-tête vivant plus longtemps que
-nécessaire ne coûte rien (le code existe déjà, ne sert qu'aux 9 topics opérationnels le temps de
+nécessaire ne coûte rien (le code existe déjà, ne sert qu'aux 8 topics opérationnels le temps de
 la fenêtre, et le retirer est une opération triviale et réversible) — alors que le couper trop tôt
 risquerait de refuser un réessai tardif et légitime. 24h est un multiple rond (×6 de la borne
 documentée) choisi pour ce confort, rien de plus précis. Si un futur porteur veut resserrer ce
@@ -218,7 +218,7 @@ from public.webhook_event
 where topic in (
   'orders/create', 'orders/updated', 'orders/cancelled', 'orders/fulfilled',
   'products/create', 'products/update', 'refunds/create',
-  'bulk_operations/finish', 'app/uninstalled'
+  'bulk_operations/finish'
 )
 and received_at > '<instant exact du swap Étape 1, UTC>'
 group by topic
@@ -249,7 +249,7 @@ l'unique preuve valable, exactement comme les préflights de production des lots
 6. Attendre la marge retenue (24h, cf. ci-dessus).
 7. **Temps 2 — vérification** : exécuter la requête `webhook_event` ci-dessus. Zéro ligne → passer
    à l'étape 8. Sinon → attendre, ré-exécuter, ne pas avancer.
-8. **Temps 2 — action** : livrer la garde de refus des 9 topics opérationnels sur l'ancien
+8. **Temps 2 — action** : livrer la garde de refus des 8 topics opérationnels sur l'ancien
    endpoint (lot de code séparé, hors de ce document — un `revoke`-équivalent au niveau routage,
    jamais une suppression du code GDPR).
 9. Consigner dans `CLAUDE.md` : la fermeture de l'exception de sécurité de Phase 1, **datée de
@@ -295,7 +295,7 @@ possible.
 
 - **La fenêtre commence AVANT l'enregistrement du watermark**, jamais après — le watermark n'a de
   sens que si aucune activité n'a pu s'intercaler entre le début du gel et sa capture.
-- Du début de la fenêtre jusqu'à la confirmation des 9 abonnements Teer Public : **aucune
+- Du début de la fenêtre jusqu'à la confirmation des 8 abonnements Teer Public : **aucune
   création, modification ou suppression de produit**, **aucun remboursement émis** côté Shopify
   Admin.
 - Toute demande de remboursement reçue pendant le créneau est **conservée par le marchand**,
@@ -313,6 +313,12 @@ possible.
 
 ### Séquence
 
+0. **Prérequis, hors fenêtre : la configuration de l'app Teer Public est publiée.**
+   `shopify.app.teer-public.toml` déployé et *released* selon `docs/shopify/teer-public-app-config.md`
+   — quatre abonnements au niveau app (3 GDPR + `app/uninstalled`), vérifiés dans le Dev Dashboard.
+   **Sans cette publication, l'étape 5 ci-dessous ne peut pas se produire** : aucun
+   `app/uninstalled` ne serait livré, `shop.status` resterait figé, et l'étape 6 (libération
+   d'identité) resterait inaccessible — elle n'apparaît que sur une boutique désinstallée.
 1. **Convenir de la fenêtre avec GETGET SN.** Hors activité si possible.
 2. **Début de la fenêtre gelée** — avant toute autre étape.
 3. **Dernière réconciliation KOBA** : exécuter `reconcileShopOrders` (cron ou invocation directe)
@@ -320,8 +326,9 @@ possible.
    `shop.last_reconciled_at` qui en résulte devient **naturellement** le point de départ du
    rattrapage post-bascule — **aucune écriture manuelle de watermark n'est autorisée**.
 4. **Désinstaller KOBA** depuis Shopify Admin (côté marchand, hors de ce dépôt).
-5. **Attendre la réception et le traitement de `app/uninstalled`** — vérifier `shop.status =
-   'uninstalled'` **et** `access_token_encrypted IS NULL` **et** `refresh_token_encrypted IS
+5. **Attendre la réception et le traitement de `app/uninstalled`** — livré sur l'endpoint
+   historique `/api/shopify/webhooks` (abonnement de niveau app, jamais opaque, jamais dupliqué :
+   voir étape 0) — vérifier `shop.status = 'uninstalled'` **et** `access_token_encrypted IS NULL` **et** `refresh_token_encrypted IS
    NULL` (les trois colonnes, désormais toutes nullées par `processAppUninstalledCore`, corrigé
    dans ce lot — `access_token_encrypted` ne l'était pas auparavant).
 6. **Owner déclenche l'action « Libérer la boutique pour une nouvelle application Shopify »**
@@ -339,7 +346,7 @@ possible.
 10. `node scripts/webhook-subscription-migration.mjs --plan --shop-domain <domaine GETGET SN>` —
     relu avant tout `--apply`.
 11. `--apply` (première bascule pour cette connexion — `'provision'`, aucun jeton local encore
-    posé après l'étape 6) — crée les 9 abonnements Teer Public vers l'URL opaque.
+    posé après l'étape 6) — crée les 8 abonnements métier Teer Public vers l'URL opaque. **Jamais `app/uninstalled`** : il reste déclaré au niveau app dans `shopify.app.teer-public.toml` et servi par l'endpoint historique — le souscrire ici produirait une double livraison invisible à l'outil (voir `docs/shopify/teer-public-app-config.md` §2).
 12. **Vérifier** chaque topic/subscription ID/callback URL (relecture automatique de l'outil,
     `verifyAndCleanup`).
 13. **Rattrapage borné** : `reconcileShopOrders` pour GETGET SN, depuis le `last_reconciled_at`

@@ -1,9 +1,17 @@
-# Configuration préparatoire APP-02 — ne pas publier sans renseigner le client_id et vérifier
-# la configuration complète dans le Dev Dashboard. L'URL diffère volontairement de la version
-# active teer-public-1.2 ; cet arbitrage est hors périmètre de cette PR.
-client_id = "__A_RENSEIGNER__"
+# Configuration de l'app publique « Teer Public ».
+#
+# VALEURS REPRISES À L'IDENTIQUE DE LA VERSION ACTIVE `teer-public-2` — confirmées par le
+# porteur, jamais déduites : `client_id`, `application_url`, `redirect_urls`, `embedded`,
+# `use_legacy_install_flow` et surtout `scopes`. Toute divergence de portées déclencherait un
+# prompt de consentement chez le marchand et une régression sur la boutique déjà rattachée : ne
+# jamais « normaliser » l'ordre ou le contenu de `scopes` sans décision explicite.
+#
+# DÉPLOIEMENT : jamais `shopify app deploy` nu — voir docs/shopify/teer-public-app-config.md.
+# La commande DOIT porter `--no-release` : elle crée une version sans remplacer `teer-public-2`,
+# que le porteur publie ensuite depuis le Dev Dashboard après relecture du diff.
+client_id = "86c612a670ee04fe488426f442037605"
 name = "Teer Public"
-application_url = "https://teer-dev.vercel.app/shopify/embedded/teer-public"
+application_url = "https://www.teerafrik.com/shopify/embedded/teer-public"
 embedded = true
 
 [access_scopes]
@@ -13,11 +21,32 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://teer-dev.vercel.app/api/shopify/callback"
+  "https://www.teerafrik.com/api/shopify/callback"
 ]
 
 [webhooks]
 api_version = "2026-04"
 
-# Aucun abonnement déclaré dans la vue active relevée pour Teer Public.
-# Extensions : non vérifiées dans APP-02 ; aucune déclaration ajoutée.
+  # Les QUATRE abonnements au niveau app. Tous servis par l'endpoint historique signé par corps
+  # (`app/api/shopify/webhooks/route.ts`), jamais par l'URL opaque : un abonnement déclaré ici est
+  # app-scoped, donc invisible à la query Admin `webhookSubscriptions` (« Returns only shop-scoped
+  # subscriptions, not app-scoped subscriptions configured in TOML files »).
+  #
+  # Les HUIT topics métier (orders/*, products/*, refunds/create, bulk_operations/finish) ne sont
+  # volontairement PAS déclarés ici : ils sont créés PAR BOUTIQUE sur l'URL opaque pendant la
+  # bascule (`scripts/webhook-subscription-migration.mjs --apply`, étape 11 du runbook Option D).
+  # Les déclarer au niveau app produirait une double livraison invisible à l'outil.
+
+  # `app/uninstalled` est app-level par DÉCISION, pas par incapacité — il est bien souscriptible
+  # par l'Admin API. Le garder ici est ce qui rend le parcours désinstallation → libération
+  # d'identité opérationnel dès aujourd'hui, sans attendre WEBHOOK_PUBLIC_BASE_URL. Son corps
+  # porte une identité boutique signée, il reste donc couvert par `resolveSignedShopDomain`.
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "https://www.teerafrik.com/api/shopify/webhooks"
+
+  # Conformité GDPR : STRUCTURELLEMENT non souscriptibles par l'Admin API (absents de l'enum
+  # WebhookSubscriptionTopic). Le TOML est le seul endroit où ils peuvent exister.
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "https://www.teerafrik.com/api/shopify/webhooks"

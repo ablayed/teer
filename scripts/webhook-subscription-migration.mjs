@@ -57,14 +57,18 @@ import { refreshAccessToken } from '../lib/shopify/oauth.ts';
 //   malformée. Aucune URL de production en dur dans ce fichier.
 //   --shop-domain — domaine canonique *.myshopify.com obligatoire pour les trois modes.
 //
-// Topics : cf. scripts/lib/webhook-subscription-plan.mjs. Les trois topics de conformité GDPR
-// (customers/data_request, customers/redact, shop/redact) ne sont PAS souscriptibles via
-// webhookSubscriptionCreate (confirmé contre l'énumération WebhookSubscriptionTopic de l'API
-// Admin, qui ne les liste pas) — ils restent configurés au niveau app (Partner Dashboard / TOML)
-// et continuent de router vers l'ancien endpoint signé par corps
-// (app/api/shopify/webhooks/route.ts). app/uninstalled EST dans cette énumération et bascule donc
-// comme les autres — traité sur le nouvel endpoint (app/api/shopify/ingest/[token]/route.ts,
-// cf. rapport de session pour le correctif dédié).
+// Topics : cf. scripts/lib/webhook-subscription-plan.mjs. QUATRE topics restent déclarés au
+// niveau app (TOML / Partner Dashboard) et routent vers l'ancien endpoint signé par corps
+// (app/api/shopify/webhooks/route.ts) ; HUIT topics métier basculent par boutique vers l'URL
+// opaque. Deux raisons DISTINCTES à ce partage, à ne jamais fusionner :
+//   - les trois topics GDPR (customers/data_request, customers/redact, shop/redact) ne sont PAS
+//     souscriptibles via webhookSubscriptionCreate — absents de l'énumération
+//     WebhookSubscriptionTopic de l'Admin API ;
+//   - app/uninstalled EST dans cette énumération, mais reste app-level par DÉCISION : un
+//     abonnement déclaré en TOML est app-scoped, donc invisible à la query `webhookSubscriptions`
+//     (« Returns only shop-scoped subscriptions, not app-scoped subscriptions configured in TOML
+//     files », doc Admin GraphQL). Le souscrire aussi par boutique produirait une DOUBLE
+//     livraison que ni listSubscriptions ni verifyAndCleanup ne pourraient voir ni corriger.
 //
 // Discipline de secret : le jeton d'accès Admin API et le secret webhook généré par ce script ne
 // sortent jamais de la mémoire du processus. Toute URL affichée est masquée (segment de jeton
@@ -479,7 +483,7 @@ function printPlanReport(results) {
       );
     }
 
-    log('  Diff attendu (9 topics Admin-API + 3 hors périmètre) :');
+    log('  Diff attendu (8 topics Admin-API + 4 au niveau app, hors périmètre) :');
     for (const t of r.topics) {
       log(`    ${t.topic.padEnd(28)} -> ${t.action.padEnd(26)} ${t.detail}`);
     }
@@ -730,13 +734,13 @@ function printApplyReport(results) {
 }
 
 // ── --rotate-token ───────────────────────────────────────────────────────────────────────
-// Fait tourner le secret PUIS re-enregistre les 9 topics Admin-API en une seule passe synchrone
+// Fait tourner le secret PUIS re-enregistre les 8 topics Admin-API en une seule passe synchrone
 // (jamais étalé sur plusieurs runs futurs — « les abonnements sont recréés avant l'expiration de
 // l'ancien secret, jamais après »). L'ancien secret reste valide durant la fenêtre de grâce
 // (24h, cf. scripts/lib/webhook-token-provisioning.mjs) : si cette passe échoue en cours de
 // route, les topics déjà re-enregistrés restent valides et les topics non encore traités
 // continuent de fonctionner sur l'ancien secret jusqu'à expiration de la fenêtre — la
-// vérification finale par relecture couvre l'ensemble des 9 topics, pas seulement ceux qui
+// vérification finale par relecture couvre l'ensemble des 8 topics, pas seulement ceux qui
 // semblaient actionnables avant la rotation.
 async function rotateConnection(connectionId, shopDomain) {
   const selectedShop = await loadSelectedShop(shopDomain);
@@ -840,7 +844,7 @@ async function rotateConnection(connectionId, shopDomain) {
       "webhook-subscription-migration --rotate-token: ÉCHEC PARTIEL — les topics en échec restent sur l'ANCIEN secret (fenêtre de grâce 24h) ; ré-exécuter --rotate-token sur la même connexion avant expiration.",
     );
   } else {
-    log('webhook-subscription-migration --rotate-token: rotation confirmée sur les 9 topics.');
+    log('webhook-subscription-migration --rotate-token: rotation confirmée sur les 8 topics.');
   }
   process.exit(allOk ? 0 : 1);
 }
