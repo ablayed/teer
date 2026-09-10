@@ -1,4 +1,9 @@
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
+import {
+  defaultOrderCurrency,
+  isStaleOrderUpdate,
+  mapFlexibleOrderAddress,
+} from '@/lib/ingestion/order-normalization';
 import { isShopifyCustomerActivityRetained } from '@/lib/shopify/pcd-retention';
 import {
   parseItemsummary,
@@ -7,6 +12,8 @@ import {
 } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, TablesInsert, TablesUpdate } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+export { isStaleOrderUpdate as isStaleShopifyUpdate } from '@/lib/ingestion/order-normalization';
 
 export const SHOPIFY_ORDERS_QUERY = `
 query Orders($cursor: String) {
@@ -280,37 +287,8 @@ export function extractShopifyId(gid: string): string {
 // Garde hors-ordre : un webhook est périmé si son updated_at est antérieur ou égal à celui
 // déjà appliqué (shopify_updated_at stocké). Si l'un des deux manque, on n'a pas de quoi
 // décider → non périmé (on applique).
-export function isStaleShopifyUpdate(
-  incoming: string | null | undefined,
-  stored: string | null | undefined,
-): boolean {
-  if (!incoming || !stored) {
-    return false;
-  }
-  return Date.parse(incoming) <= Date.parse(stored);
-}
-
 // Adresse flexible (adressage sénégalais informel) : repère/quartier/ville, pas de code postal.
 // Construite depuis defaultAddress (préféré) ou l'adresse de livraison.
-export function mapFlexibleAddress(address: ShopifyAddress | null | undefined): Json | null {
-  if (!address) {
-    return null;
-  }
-
-  const raw = [address.address1, address.address2, address.city, address.province]
-    .filter((part): part is string => Boolean(part?.trim()))
-    .join(', ');
-
-  return {
-    raw: raw || null,
-    landmark: address.address2 ?? null,
-    quartier: null,
-    city: address.city ?? null,
-    region: address.province ?? null,
-    notes: null,
-  };
-}
-
 function joinName(
   first: string | null | undefined,
   last: string | null | undefined,
@@ -352,7 +330,7 @@ export function mapShopifyCustomer(
     last_name: customer.lastName ?? null,
     phone: rawPhone,
     phone_e164: rawPhone ? normalizeSenegalPhone(rawPhone) : null,
-    address: mapFlexibleAddress(flexibleSource),
+    address: mapFlexibleOrderAddress(flexibleSource),
     shipping_address: mapShippingAddress(node.shippingAddress),
     // Activité Shopify certaine : événement de commande observé par Shopify.
     // Ni le passage de sync ni updated_at local ne sont utilisés.
@@ -453,7 +431,7 @@ export function mapShopifyOrder(
     shopify_order_id: extractShopifyId(node.id),
     order_number: node.name,
     total_amount: parseAmount(money.amount),
-    currency: money.currencyCode ?? 'XOF',
+    currency: defaultOrderCurrency(money.currencyCode),
     financial_status: node.displayFinancialStatus,
     fulfillment_status: node.displayFulfillmentStatus,
     // Colonnes miroir de canal (distinctes des 4 dimensions, jamais l'état opérationnel).
@@ -651,7 +629,7 @@ export async function persistShopifyOrder({
 
     if (existingOrder) {
       // Garde hors-ordre : ignorer un webhook plus ancien que le dernier déjà appliqué.
-      if (isStaleShopifyUpdate(orderData.shopify_updated_at, existingOrder.shopify_updated_at)) {
+      if (isStaleOrderUpdate(orderData.shopify_updated_at, existingOrder.shopify_updated_at)) {
         return { ok: true, skipped: 'stale' };
       }
 

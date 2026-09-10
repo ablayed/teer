@@ -57,7 +57,7 @@ export async function resolveConnectionForWebhook(
       shopId: data.shop_id,
       platform: data.platform,
       platformAppId: data.platform_app_id,
-    } as unknown as import('@/lib/ingestion/canonical').ResolvedConnectionContext,
+    } as unknown as ResolvedConnectionContext,
   };
 }
 

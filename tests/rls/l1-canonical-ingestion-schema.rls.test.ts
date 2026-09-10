@@ -280,6 +280,8 @@ describe('Lot L1 — isolation RLS + contrôle positif', () => {
       const { data: ref, error: refError } = await admin
         .from('external_ref')
         .insert({
+          merchant_account_id: tenantA.merchantAccountId,
+          shop_id: shopA2,
           entity_type: 'order',
           entity_id: fakeEntityId,
           store_connection_id: connectionId,
@@ -420,6 +422,8 @@ describe('Lot L1 — contraintes structurelles (service-role, hors RLS)', () => 
       const admin = adminClient();
       const externalId = `shopify-order-uniq-${Date.now()}`;
       const { error: firstError } = await admin.from('external_ref').insert({
+        merchant_account_id: tenant.merchantAccountId,
+        shop_id: shop,
         entity_type: 'order',
         entity_id: randomUUID(),
         store_connection_id: connectionId,
@@ -428,6 +432,8 @@ describe('Lot L1 — contraintes structurelles (service-role, hors RLS)', () => 
       expect(firstError).toBeNull();
 
       const { error: secondError } = await admin.from('external_ref').insert({
+        merchant_account_id: tenant.merchantAccountId,
+        shop_id: shop,
         entity_type: 'order',
         entity_id: randomUUID(),
         store_connection_id: connectionId,

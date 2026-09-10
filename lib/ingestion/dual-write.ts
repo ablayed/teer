@@ -67,6 +67,8 @@ export async function linkExternalRef(
   input: LinkExternalRefInput,
 ): Promise<{ ok: true; alreadyLinked: boolean } | { ok: false; error: 'collision' | string }> {
   const { error } = await supabase.from('external_ref').insert({
+    merchant_account_id: input.ctx.merchantAccountId,
+    shop_id: input.ctx.shopId,
     store_connection_id: input.ctx.storeConnectionId,
     entity_type: input.entityType,
     external_id: input.externalId,
