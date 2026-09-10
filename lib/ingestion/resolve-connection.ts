@@ -38,6 +38,10 @@ export async function resolveConnectionForWebhook(
     return { ok: false, reason: 'unknown_connection' };
   }
 
+  if (data.status !== 'active') {
+    return { ok: false, reason: 'connection_inactive' };
+  }
+
   // Recoupement obligatoire : l'app qui a validé le HMAC doit correspondre au platform_app_id de
   // la connexion trouvée. Une connexion sans platform_app_id enregistré (jamais backfillée avec un
   // client_id connu) ne peut jamais être recoupée avec confiance → refus, jamais un laissez-passer.
@@ -53,7 +57,7 @@ export async function resolveConnectionForWebhook(
       shopId: data.shop_id,
       platform: data.platform,
       platformAppId: data.platform_app_id,
-    } as unknown as import('@/lib/ingestion/canonical').ResolvedConnectionContext,
+    } as unknown as ResolvedConnectionContext,
   };
 }
 

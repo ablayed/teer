@@ -647,7 +647,10 @@ export type Database = {
           entity_type: string;
           external_id: string;
           id: string;
-          store_connection_id: string;
+          merchant_account_id: string;
+          shop_id: string;
+          source_namespace: string | null;
+          store_connection_id: string | null;
         };
         Insert: {
           created_at?: string;
@@ -655,7 +658,10 @@ export type Database = {
           entity_type: string;
           external_id: string;
           id?: string;
-          store_connection_id: string;
+          merchant_account_id: string;
+          shop_id: string;
+          source_namespace?: string | null;
+          store_connection_id?: string | null;
         };
         Update: {
           created_at?: string;
@@ -663,15 +669,32 @@ export type Database = {
           entity_type?: string;
           external_id?: string;
           id?: string;
-          store_connection_id?: string;
+          merchant_account_id?: string;
+          shop_id?: string;
+          source_namespace?: string | null;
+          store_connection_id?: string | null;
         };
         Relationships: [
           {
-            foreignKeyName: 'external_ref_store_connection_id_fkey';
-            columns: ['store_connection_id'];
+            foreignKeyName: 'external_ref_connection_tenant_shop_fk';
+            columns: ['store_connection_id', 'merchant_account_id', 'shop_id'];
             isOneToOne: false;
             referencedRelation: 'store_connection';
-            referencedColumns: ['id'];
+            referencedColumns: ['id', 'merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'external_ref_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'external_ref_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
           },
         ];
       };
@@ -3426,6 +3449,21 @@ export type Database = {
           p_purchase_lot_line_id: string;
         };
         Returns: undefined;
+      };
+      create_csv_order: {
+        Args: {
+          p_currency: string;
+          p_customer_id: string;
+          p_items_summary: Json;
+          p_lines: Json;
+          p_merchant_account_id: string;
+          p_order_key: string;
+          p_order_number: string;
+          p_shipping_address: Json;
+          p_shop_id: string;
+          p_total_amount: number;
+        };
+        Returns: string;
       };
       current_member_role: { Args: { p_account: string }; Returns: string };
       current_shop_role: { Args: { p_shop_id: string }; Returns: string };

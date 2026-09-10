@@ -333,6 +333,23 @@
     {
       "aclIsDefault": false,
       "anonExec": false,
+      "args": "p_merchant_account_id uuid, p_shop_id uuid, p_customer_id uuid, p_order_key text, p_order_number text, p_total_amount numeric, p_currency text, p_items_summary jsonb, p_shipping_address jsonb, p_lines jsonb",
+      "authenticatedExec": false,
+      "key": "public.create_csv_order(p_merchant_account_id uuid, p_shop_id uuid, p_customer_id uuid, p_order_key text, p_order_number text, p_total_amount numeric, p_currency text, p_items_summary jsonb, p_shipping_address jsonb, p_lines jsonb)",
+      "name": "create_csv_order",
+      "owner": "postgres",
+      "parallelSafety": "unsafe",
+      "proaclSorted": "postgres=X/postgres,service_role=X/postgres",
+      "returnType": "uuid",
+      "schema": "public",
+      "searchPathConfig": "search_path=\"\"",
+      "securityDefiner": true,
+      "serviceRoleExec": true,
+      "volatility": "volatile"
+    },
+    {
+      "aclIsDefault": false,
+      "anonExec": false,
       "args": "p_account uuid",
       "authenticatedExec": true,
       "key": "public.current_member_role(p_account uuid)",

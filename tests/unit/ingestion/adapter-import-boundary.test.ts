@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // Phase 2 / Lot L2 — preuve #4 (frontière d'imports) : un module adaptateur ne peut PAS écrire.
@@ -9,7 +9,24 @@ import { describe, expect, it } from 'vitest';
 //
 // Modules couverts : tout ce qui compose le contrat PlatformConnector côté "adaptateur" (jamais la
 // couche applicative de résolution/écriture, qui EST autorisée à importer Supabase).
-const ADAPTER_MODULES = ['lib/ingestion/canonical.ts', 'lib/shopify/adapter.ts'];
+const PROJECT_ROOT = process.cwd();
+
+function discoverAdapterModules(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      return discoverAdapterModules(entryPath);
+    }
+    return entry.isFile() && entry.name === 'adapter.ts'
+      ? [relative(PROJECT_ROOT, entryPath).replaceAll('\\', '/')]
+      : [];
+  });
+}
+
+const ADAPTER_MODULES = [
+  'lib/ingestion/canonical.ts',
+  ...discoverAdapterModules(resolve(PROJECT_ROOT, 'lib')).sort(),
+];
 
 // Interdit : tout import de Supabase, d'une Server Action, ou d'un repository/écriture connu du
 // projet. Volontairement une allowlist de motifs plutôt qu'un parseur AST — cohérent avec le style
@@ -18,6 +35,9 @@ const ADAPTER_MODULES = ['lib/ingestion/canonical.ts', 'lib/shopify/adapter.ts']
 const FORBIDDEN_IMPORT_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /@supabase\/supabase-js/, label: '@supabase/supabase-js' },
   { pattern: /@\/lib\/supabase\/(server|client)/, label: 'lib/supabase/server|client' },
+  { pattern: /@\/lib\/supabase\/protected-client/, label: 'lib/supabase/protected-client' },
+  { pattern: /@\/lib\/env/, label: 'lib/env' },
+  { pattern: /@\/lib\/shopify\/apps/, label: 'lib/shopify/apps' },
   { pattern: /^\s*['"]use server['"]\s*;?\s*$/m, label: "'use server' directive" },
   { pattern: /@\/lib\/actions\//, label: 'lib/actions/* (Server Actions)' },
   {

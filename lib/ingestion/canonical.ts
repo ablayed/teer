@@ -26,6 +26,47 @@ export type CanonicalOrder = {
   readonly kind: 'order';
   readonly externalOrderId: string;
   readonly raw: unknown;
+  readonly data?: CanonicalOrderData;
+};
+
+export type CanonicalOrderAddress = {
+  readonly address1?: string | null;
+  readonly address2?: string | null;
+  readonly city?: string | null;
+  readonly province?: string | null;
+  readonly country?: string | null;
+  readonly zip?: string | null;
+};
+
+export type CanonicalOrderCustomer = {
+  readonly fullName: string | null;
+  readonly phone: string | null;
+  readonly address: CanonicalOrderAddress | null;
+};
+
+export type CanonicalOrderLine = {
+  readonly title: string;
+  readonly sku: string | null;
+  readonly quantity: number;
+  readonly unitAmount: number | null;
+  readonly productId: string | null;
+};
+
+export type CanonicalOrderData = {
+  readonly payloadVersion: string;
+  readonly eventAt: string;
+  readonly createdAt: string | null;
+  readonly updatedAt: string | null;
+  readonly orderNumber: string | null;
+  readonly totalAmount: number;
+  readonly currency: string | null;
+  readonly customer: CanonicalOrderCustomer;
+  readonly shippingAddress: CanonicalOrderAddress | null;
+  readonly lines: readonly CanonicalOrderLine[];
+};
+
+export type PersistableCanonicalOrder = CanonicalOrder & {
+  readonly data: CanonicalOrderData;
 };
 
 export type CanonicalProduct = {
@@ -63,6 +104,7 @@ export type CanonicalEnvelope =
 // est le test de frontière d'imports). Seul lib/ingestion/resolve-connection.ts (couche
 // applicative, jamais un adaptateur) sait produire une valeur de ce type.
 declare const RESOLVED_CONNECTION_BRAND: unique symbol;
+declare const RESOLVED_SHOP_BRAND: unique symbol;
 
 export type ResolvedConnectionContext = {
   readonly [RESOLVED_CONNECTION_BRAND]: true;
@@ -73,7 +115,13 @@ export type ResolvedConnectionContext = {
   readonly platformAppId: string | null;
 };
 
-export type ConnectionRefusalReason = 'unknown_connection' | 'app_mismatch';
+export type ResolvedShopContext = {
+  readonly [RESOLVED_SHOP_BRAND]: true;
+  readonly merchantAccountId: string;
+  readonly shopId: string;
+};
+
+export type ConnectionRefusalReason = 'unknown_connection' | 'app_mismatch' | 'connection_inactive';
 
 export type ResolveConnectionResult =
   | { ok: true; context: ResolvedConnectionContext }

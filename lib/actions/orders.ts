@@ -22,6 +22,9 @@ import {
 import { env } from '@/lib/env';
 import { cashCollectableMinor } from '@/lib/finance/cash';
 import { formatOrderAddress } from '@/lib/format/order-address';
+import { writeCsvCanonicalOrder } from '@/lib/ingestion/csv-order-engine';
+import { previewCsvOrderImport } from '@/lib/ingestion/csv-order-import';
+import { resolveShopContext } from '@/lib/ingestion/resolve-shop-context';
 import {
   type CallOutcome,
   callOutcomes,
@@ -1552,6 +1555,117 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       ok: true as const,
       orderId: order.id,
     };
+  });
+
+const csvImportInputSchema = z.object({
+  csvText: z.string().min(1).max(1_000_000),
+});
+
+async function resolveCsvImportContext(supabase: SupabaseServerClient, merchantAccountId: string) {
+  const requestStoreId = await getRequestStoreId();
+  if (!requestStoreId) return null;
+  const resolved = await resolveShopContext(supabase, {
+    merchantAccountId,
+    shopId: requestStoreId,
+  });
+  return resolved.ok ? resolved.context : null;
+}
+
+// `.in()` sérialise la liste dans l'URL GET : au-delà de la limite de la passerelle, la requête
+// échoue en 400 sur les gros fichiers seulement. Lots bornés ; order_key est lui-même plafonné
+// par la validation (MAX_ORDER_KEY_LENGTH). La prévisualisation reste indicative : l'écriture
+// re-vérifie et rend already_imported de façon autoritative.
+const CSV_ORDER_KEY_LOOKUP_BATCH = 50;
+
+async function importedCsvOrderKeys(
+  supabase: SupabaseServerClient,
+  merchantAccountId: string,
+  shopId: string,
+  keys: readonly string[],
+) {
+  const imported = new Set<string>();
+  for (let index = 0; index < keys.length; index += CSV_ORDER_KEY_LOOKUP_BATCH) {
+    const { data } = await supabase
+      .from('external_ref')
+      .select('external_id')
+      .eq('merchant_account_id', merchantAccountId)
+      .eq('shop_id', shopId)
+      .is('store_connection_id', null)
+      .eq('source_namespace', 'csv')
+      .eq('entity_type', 'order')
+      .in('external_id', keys.slice(index, index + CSV_ORDER_KEY_LOOKUP_BATCH));
+    for (const reference of data ?? []) imported.add(reference.external_id);
+  }
+  return imported;
+}
+
+/** Preview only: it parses and validates the file but deliberately writes nothing. */
+export const previewCsvOrderImportAction = requireRole('owner', 'manager', 'agent')
+  .metadata({ actionName: 'orders.preview_csv_import', section: 'orders' })
+  .inputSchema(csvImportInputSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    const context = await resolveCsvImportContext(supabase, ctx.member.merchantAccountId);
+    if (!context) return { ok: false as const, errorCode: 'shop_required' as const };
+
+    const preview = previewCsvOrderImport(parsedInput.csvText);
+    const imported = await importedCsvOrderKeys(
+      supabase,
+      context.merchantAccountId,
+      context.shopId,
+      preview.filter((item) => item.status === 'ready').map((item) => item.orderKey),
+    );
+    return {
+      ok: true as const,
+      orders: preview.map((item) =>
+        imported.has(item.orderKey) && item.status === 'ready'
+          ? {
+              ...item,
+              status: 'already_imported' as const,
+              errors: ['Commande déjà importée.'],
+              order: null,
+            }
+          : item,
+      ),
+    };
+  });
+
+/** Revalidates the submitted text and writes only whole, valid orders. */
+export const commitCsvOrderImportAction = requireRole('owner', 'manager', 'agent')
+  .metadata({ actionName: 'orders.commit_csv_import', section: 'orders' })
+  .inputSchema(csvImportInputSchema)
+  .action(async ({ ctx, parsedInput }) => {
+    const supabase = asTypedSupabaseClient(ctx.supabase);
+    // The store is resolved from the signed-in request before the privileged writer exists.
+    const context = await resolveCsvImportContext(supabase, ctx.member.merchantAccountId);
+    if (!context) return { ok: false as const, errorCode: 'shop_required' as const };
+
+    const admin = createSupabaseAdminClient();
+    const preview = previewCsvOrderImport(parsedInput.csvText);
+    const results: Array<{
+      orderKey: string;
+      status: 'imported' | 'invalid' | 'already_imported' | 'failed';
+    }> = [];
+    for (const item of preview) {
+      if (item.status !== 'ready' || !item.order) {
+        results.push({ orderKey: item.orderKey, status: 'invalid' });
+        continue;
+      }
+      const written = await writeCsvCanonicalOrder(admin, context, item.order);
+      results.push({
+        orderKey: item.orderKey,
+        status: written.ok
+          ? 'imported'
+          : written.code === 'already_imported'
+            ? 'already_imported'
+            : 'failed',
+      });
+    }
+    if (results.some((result) => result.status === 'imported')) {
+      revalidatePath('/commandes');
+      revalidatePath('/tableau');
+    }
+    return { ok: true as const, results };
   });
 
 export const transitionOrderStatusAction = requireRole('owner', 'manager', 'agent')
