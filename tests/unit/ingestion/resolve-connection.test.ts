@@ -49,6 +49,18 @@ const CONNECTION_ROW: StoreConnectionRow = {
   status: 'active',
 };
 
+describe('connexion webhook inactive', () => {
+  it("refuse avant le recoupement d'application", async () => {
+    const admin = fakeAdmin({ data: { ...CONNECTION_ROW, status: 'uninstalled' }, error: null });
+    const result = await resolveConnectionForWebhook(
+      admin,
+      { platformAppId: 'app-a', externalConnectionId: 'shop.myshopify.com', payload: null },
+      { platform: 'shopify' },
+    );
+    expect(result).toEqual({ ok: false, reason: 'connection_inactive' });
+  });
+});
+
 describe('Lot L2 — resolveConnectionForWebhook', () => {
   it('preuve #2 : connexion inconnue → refus explicite', async () => {
     const admin = fakeAdmin({ data: null, error: null });

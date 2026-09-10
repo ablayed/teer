@@ -73,7 +73,7 @@ export type ResolvedConnectionContext = {
   readonly platformAppId: string | null;
 };
 
-export type ConnectionRefusalReason = 'unknown_connection' | 'app_mismatch';
+export type ConnectionRefusalReason = 'unknown_connection' | 'app_mismatch' | 'connection_inactive';
 
 export type ResolveConnectionResult =
   | { ok: true; context: ResolvedConnectionContext }
