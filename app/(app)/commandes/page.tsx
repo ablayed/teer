@@ -1,3 +1,4 @@
+import { CsvOrderImport } from '@/components/orders/csv-order-import';
 import { NewOrderForm } from '@/components/orders/new-order-form';
 import { OrdersBoardProvider } from '@/components/orders/orders-board-context';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
@@ -136,6 +137,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
           </div>
           <div className="flex flex-col gap-3 sm:items-end">
             <NewOrderForm products={productOptions} shops={shopOptions} />
+            <CsvOrderImport />
             <SyncOrdersButton hasShop={Boolean(shopConnection)} />
           </div>
         </div>
