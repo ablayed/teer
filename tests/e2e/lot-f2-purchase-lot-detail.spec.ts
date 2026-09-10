@@ -624,12 +624,28 @@ test.describe('Lot F2 — fiche arrivage (412px)', () => {
       // carte liste (jamais depuis ce panneau — le transport se corrige au
       // niveau du lot, pas de la rentabilité), et le tiroir mobile (vaul)
       // intercepte les clics sur la liste sous-jacente tant qu'il est ouvert.
-      // Clic extérieur (zone scrim) plutôt que la croix : Playwright ne
-      // parvient pas à stabiliser un clic réel sur le bouton `Fermer` du
-      // tiroir mobile (vaul) sur ce panneau — le clic extérieur est la voie
-      // de fermeture déjà éprouvée ailleurs sur mobile (cf. ProductDetailPanel
-      // ci-dessus) et n'est jamais lui-même sous ce doute de stabilité.
-      await page.mouse.click(10, 10);
+      //
+      // Dette (j) : ce clic extérieur échouait par intermittence. Le tiroir,
+      // non borné en hauteur (1 521 px pour 915 px d'écran), recouvrait au
+      // repos TOUT l'écran, (10, 10) compris : le clic ne fermait que s'il
+      // partait avant que l'animation d'entrée n'amène le haut du tiroir
+      // au-dessus de ce point. Garde géométrique, indépendante du moment du
+      // clic : au repos (ancré en bas), le panneau laisse le point hors de
+      // lui, et le fond du tiroir le recouvre — sans quoi le clic ci-dessous
+      // ne prouverait plus « un toucher hors du panneau le ferme ».
+      const gesturePoint = { x: 10, y: 10 };
+      const viewport = page.viewportSize();
+      const panelBox = await panel.boundingBox();
+      const backdropBox = await page.locator('[data-vaul-overlay]').boundingBox();
+      if (!viewport || !panelBox || !backdropBox) {
+        throw new Error('Géométrie du tiroir mobile introuvable');
+      }
+      expect(viewport.height - panelBox.height).toBeGreaterThan(gesturePoint.y);
+      expect(backdropBox.x).toBeLessThanOrEqual(gesturePoint.x);
+      expect(backdropBox.y).toBeLessThanOrEqual(gesturePoint.y);
+      expect(backdropBox.x + backdropBox.width).toBeGreaterThan(gesturePoint.x);
+      expect(backdropBox.y + backdropBox.height).toBeGreaterThan(gesturePoint.y);
+      await page.mouse.click(gesturePoint.x, gesturePoint.y);
       await expect(panel).toHaveCount(0);
 
       await page.getByRole('button', { name: 'Corriger' }).click();

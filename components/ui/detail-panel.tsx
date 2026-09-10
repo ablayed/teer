@@ -129,7 +129,15 @@ export function DetailPanel({
         if (!v) onClose();
       }}
     >
-      <DrawerContent className={cn('bg-surface pb-[env(safe-area-inset-bottom)]', className)}>
+      {/* `max-h-[90dvh]` : sans hauteur bornée, un contenu plus haut que l'écran (fiche
+          rentabilité d'un arrivage : 1 521 px mesurés pour un écran de 915 px) poussait le
+          tiroir au-delà du haut de l'écran — en-tête et croix hors d'atteinte, et plus
+          aucune zone hors du panneau à toucher pour le fermer. Borné, le contenu défile
+          dans la zone `overflow-y-auto` ci-dessous. Même borne que PeriodPicker et
+          WhatsAppComposeSheet. */}
+      <DrawerContent
+        className={cn('max-h-[90dvh] bg-surface pb-[env(safe-area-inset-bottom)]', className)}
+      >
         <div className="flex items-center justify-between px-4 py-3">
           <DrawerTitle className="text-base font-semibold">{title}</DrawerTitle>
           <DrawerClose asChild>
