@@ -3070,6 +3070,129 @@ export type Database = {
           },
         ];
       };
+      store_connection_credential: {
+        Row: {
+          access_token_encrypted: string | null;
+          access_token_expires_at: string | null;
+          consumer_key_encrypted: string | null;
+          consumer_secret_encrypted: string | null;
+          created_at: string;
+          id: string;
+          key_id: string | null;
+          key_permissions: string | null;
+          merchant_account_id: string;
+          refresh_token_encrypted: string | null;
+          refresh_token_expires_at: string | null;
+          revoked_at: string | null;
+          scheme: string;
+          shop_id: string;
+          store_connection_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          access_token_encrypted?: string | null;
+          access_token_expires_at?: string | null;
+          consumer_key_encrypted?: string | null;
+          consumer_secret_encrypted?: string | null;
+          created_at?: string;
+          id?: string;
+          key_id?: string | null;
+          key_permissions?: string | null;
+          merchant_account_id: string;
+          refresh_token_encrypted?: string | null;
+          refresh_token_expires_at?: string | null;
+          revoked_at?: string | null;
+          scheme: string;
+          shop_id: string;
+          store_connection_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          access_token_encrypted?: string | null;
+          access_token_expires_at?: string | null;
+          consumer_key_encrypted?: string | null;
+          consumer_secret_encrypted?: string | null;
+          created_at?: string;
+          id?: string;
+          key_id?: string | null;
+          key_permissions?: string | null;
+          merchant_account_id?: string;
+          refresh_token_encrypted?: string | null;
+          refresh_token_expires_at?: string | null;
+          revoked_at?: string | null;
+          scheme?: string;
+          shop_id?: string;
+          store_connection_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_connection_credential_connection_tenant_fk';
+            columns: ['store_connection_id', 'merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'store_connection';
+            referencedColumns: ['id', 'merchant_account_id', 'shop_id'];
+          },
+        ];
+      };
+      store_connection_intent: {
+        Row: {
+          consumed_at: string | null;
+          created_at: string;
+          created_by_member_id: string;
+          expires_at: string;
+          external_identifier: string;
+          id: string;
+          merchant_account_id: string;
+          platform: string;
+          shop_id: string;
+        };
+        Insert: {
+          consumed_at?: string | null;
+          created_at?: string;
+          created_by_member_id: string;
+          expires_at: string;
+          external_identifier: string;
+          id?: string;
+          merchant_account_id: string;
+          platform: string;
+          shop_id: string;
+        };
+        Update: {
+          consumed_at?: string | null;
+          created_at?: string;
+          created_by_member_id?: string;
+          expires_at?: string;
+          external_identifier?: string;
+          id?: string;
+          merchant_account_id?: string;
+          platform?: string;
+          shop_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_connection_intent_created_by_member_id_fkey';
+            columns: ['created_by_member_id'];
+            isOneToOne: false;
+            referencedRelation: 'merchant_member';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_connection_intent_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'organization_consolidated_operations';
+            referencedColumns: ['merchant_account_id', 'shop_id'];
+          },
+          {
+            foreignKeyName: 'store_connection_intent_shop_tenant_fk';
+            columns: ['merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'shop';
+            referencedColumns: ['merchant_account_id', 'id'];
+          },
+        ];
+      };
       store_connection_resource_receipt: {
         Row: {
           created_at: string;
@@ -3099,6 +3222,109 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'store_connection';
             referencedColumns: ['id'];
+          },
+        ];
+      };
+      store_connection_sync_state: {
+        Row: {
+          attempt: number;
+          completed_at: string | null;
+          id: string;
+          last_error_code: string | null;
+          last_page_observed: number;
+          merchant_account_id: string;
+          shop_id: string;
+          status: string;
+          store_connection_id: string;
+          updated_at: string;
+          window_end: string;
+          window_start: string;
+        };
+        Insert: {
+          attempt?: number;
+          completed_at?: string | null;
+          id?: string;
+          last_error_code?: string | null;
+          last_page_observed?: number;
+          merchant_account_id: string;
+          shop_id: string;
+          status?: string;
+          store_connection_id: string;
+          updated_at?: string;
+          window_end: string;
+          window_start: string;
+        };
+        Update: {
+          attempt?: number;
+          completed_at?: string | null;
+          id?: string;
+          last_error_code?: string | null;
+          last_page_observed?: number;
+          merchant_account_id?: string;
+          shop_id?: string;
+          status?: string;
+          store_connection_id?: string;
+          updated_at?: string;
+          window_end?: string;
+          window_start?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_connection_sync_state_connection_tenant_fk';
+            columns: ['store_connection_id', 'merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'store_connection';
+            referencedColumns: ['id', 'merchant_account_id', 'shop_id'];
+          },
+        ];
+      };
+      store_connection_webhook_subscription: {
+        Row: {
+          created_at: string;
+          delivery_token_hash: string;
+          id: string;
+          merchant_account_id: string;
+          provider_subscription_id: string | null;
+          secret_encrypted: string;
+          shop_id: string;
+          status: string;
+          store_connection_id: string;
+          topic: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          delivery_token_hash: string;
+          id?: string;
+          merchant_account_id: string;
+          provider_subscription_id?: string | null;
+          secret_encrypted: string;
+          shop_id: string;
+          status?: string;
+          store_connection_id: string;
+          topic: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          delivery_token_hash?: string;
+          id?: string;
+          merchant_account_id?: string;
+          provider_subscription_id?: string | null;
+          secret_encrypted?: string;
+          shop_id?: string;
+          status?: string;
+          store_connection_id?: string;
+          topic?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_connection_webhook_subscription_connection_tenant_fk';
+            columns: ['store_connection_id', 'merchant_account_id', 'shop_id'];
+            isOneToOne: false;
+            referencedRelation: 'store_connection';
+            referencedColumns: ['id', 'merchant_account_id', 'shop_id'];
           },
         ];
       };
@@ -3497,6 +3723,21 @@ export type Database = {
           p_success: boolean;
         };
         Returns: boolean;
+      };
+      finalize_woocommerce_connection: {
+        Args: {
+          p_consumer_key_encrypted: string;
+          p_consumer_secret_encrypted: string;
+          p_intent_id: string;
+          p_key_id: string;
+          p_key_permissions: string;
+          p_scheme: string;
+          p_verified_identity: string;
+        };
+        Returns: {
+          result_code: string;
+          store_connection_id: string;
+        }[];
       };
       finance_kpis: {
         Args: {
@@ -4095,6 +4336,22 @@ export type Database = {
           toutes: number;
           valide: number;
         }[];
+      };
+      persist_connection_order: {
+        Args: {
+          p_customer: Json;
+          p_delivery_id: string;
+          p_lines: Json;
+          p_merchant_account_id: string;
+          p_order: Json;
+          p_ordering_signal: string;
+          p_platform: string;
+          p_resource_external_id: string;
+          p_shop_id: string;
+          p_store_connection_id: string;
+          p_topic: string;
+        };
+        Returns: string;
       };
       post_stock_movement: {
         Args: {

@@ -18,6 +18,7 @@ type WriteIngestionEventInput = {
   resourceKind: CanonicalEnvelope['kind'] | null;
   resourceExternalId: string | null;
   status: 'processing' | 'retryable' | 'terminal' | 'done';
+  lastErrorCode?: string | null;
   triggeredAt: string | null;
 };
 
@@ -35,6 +36,7 @@ export async function writeIngestionEvent(
     resource_kind: input.resourceKind,
     resource_external_id: input.resourceExternalId,
     status: input.status,
+    last_error_code: input.lastErrorCode ?? null,
     triggered_at: input.triggeredAt,
   });
 

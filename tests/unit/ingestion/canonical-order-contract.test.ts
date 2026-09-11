@@ -68,6 +68,7 @@ describe('contrat canonique de commande', () => {
     expect(casts).toEqual([
       'lib/ingestion/resolve-connection.ts',
       'lib/ingestion/resolve-connection.ts',
+      'lib/ingestion/resolve-connection.ts',
       'lib/ingestion/resolve-shop-context.ts',
     ]);
   });

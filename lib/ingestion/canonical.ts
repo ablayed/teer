@@ -39,6 +39,8 @@ export type CanonicalOrderAddress = {
 };
 
 export type CanonicalOrderCustomer = {
+  /** Identifiant fournisseur, quand le fournisseur distingue un client enregistré d'un invité. */
+  readonly externalId?: string | null;
   readonly fullName: string | null;
   readonly phone: string | null;
   readonly address: CanonicalOrderAddress | null;
@@ -60,6 +62,9 @@ export type CanonicalOrderData = {
   readonly orderNumber: string | null;
   readonly totalAmount: number;
   readonly currency: string | null;
+  /** Statuts du canal, distincts des quatre dimensions opérationnelles Tëër. */
+  readonly financialStatus?: string | null;
+  readonly fulfillmentStatus?: string | null;
   readonly customer: CanonicalOrderCustomer;
   readonly shippingAddress: CanonicalOrderAddress | null;
   readonly lines: readonly CanonicalOrderLine[];

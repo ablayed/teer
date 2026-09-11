@@ -61,6 +61,53 @@ export async function resolveConnectionForWebhook(
   };
 }
 
+export type ResolvedWooCommerceConnection = {
+  readonly context: ResolvedConnectionContext;
+  readonly externalIdentifier: string;
+};
+
+export type ResolveWooCommerceConnectionResult =
+  | { readonly ok: true; readonly connection: ResolvedWooCommerceConnection }
+  | { readonly ok: false; readonly reason: 'unknown_connection' | 'connection_inactive' };
+
+/**
+ * Résout l'unique contexte d'une connexion WooCommerce déjà sélectionnée par l'abonnement.
+ * Aucun identifiant de compte, de boutique ou d'identité ne provient de la requête fournisseur.
+ */
+export async function resolveWooCommerceConnectionById(
+  supabase: AdminClient,
+  connectionId: string,
+): Promise<ResolveWooCommerceConnectionResult> {
+  const { data, error } = await supabase
+    .from('store_connection')
+    .select(
+      'id, merchant_account_id, shop_id, platform, platform_app_id, external_identifier, status',
+    )
+    .eq('id', connectionId)
+    .maybeSingle();
+
+  if (error || !data || data.platform !== 'woocommerce') {
+    return { ok: false, reason: 'unknown_connection' };
+  }
+  if (data.status !== 'active') {
+    return { ok: false, reason: 'connection_inactive' };
+  }
+
+  return {
+    ok: true,
+    connection: {
+      externalIdentifier: data.external_identifier,
+      context: {
+        storeConnectionId: data.id,
+        merchantAccountId: data.merchant_account_id,
+        shopId: data.shop_id,
+        platform: data.platform,
+        platformAppId: data.platform_app_id,
+      } as unknown as ResolvedConnectionContext,
+    },
+  };
+}
+
 // ============================================================================
 // Phase 2 / Lot L3 (périmètre réduit) — résolution par jeton d'URL opaque.
 // ============================================================================
