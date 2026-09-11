@@ -49,6 +49,20 @@
     "boundaryDetail": "verifyWebhookHmacAnySecret(rawBody, hmacHeader, hmacSecrets) — plus resolveSignedShopDomain (line 178) confronting the signed body's shop_domain against the unsigned header (incident cross-tenant, 23 août 2026)."
   },
   {
+    "file": "app/api/woocommerce/callback/route.ts",
+    "boundaryType": "opaque-intent-and-credential-verification",
+    "boundaryFile": "app/api/woocommerce/callback/route.ts",
+    "boundaryLine": 117,
+    "boundaryDetail": "The callback parses a bounded strict payload and resolves the opaque WooCommerce intent before the service-role client is used for finalization; provider credentials and canonical identity are verified by WooCommerceClient before any write."
+  },
+  {
+    "file": "app/api/woocommerce/webhooks/[token]/route.ts",
+    "boundaryType": "webhook-token-and-hmac",
+    "boundaryFile": "app/api/woocommerce/webhooks/[token]/route.ts",
+    "boundaryLine": 126,
+    "boundaryDetail": "The service-role client is used only to resolve the opaque delivery-token hash to a candidate subscription; the raw-body size guard, secret decryption, HMAC check, active status, connection resolution, source and topic confrontation all precede payload adaptation and the common order RPC."
+  },
+  {
     "file": "lib/actions/address.ts",
     "boundaryType": "server-action-role-check",
     "boundaryFile": "lib/actions/address.ts",
@@ -138,6 +152,27 @@
     "boundaryFile": "lib/actions/transitions.ts",
     "boundaryLine": 546,
     "boundaryDetail": "performTransition = requireRole('owner','manager','agent') — CLAUDE.md's canonical write gate for order state (rule #7). Admin client used only for the audit_log insert inside performTransitionForContext, after canTransition() has already run."
+  },
+  {
+    "file": "lib/actions/woocommerce.ts",
+    "boundaryType": "server-action-role-check",
+    "boundaryFile": "lib/actions/woocommerce.ts",
+    "boundaryLine": 54,
+    "boundaryDetail": "All WooCommerce connection actions are requireRole('owner','manager'); the service-role client is constructed only after that authenticated membership gate and is used for the service-role-only connector tables."
+  },
+  {
+    "file": "lib/woocommerce/subscriptions.ts",
+    "boundaryType": "caller-server-action-role-check",
+    "boundaryFile": "lib/actions/woocommerce.ts",
+    "boundaryLine": 247,
+    "boundaryDetail": "provisionWooCommerceSubscriptions is called only by completeWooCommerceConnectionAction, whose requireRole('owner','manager') gate is at line 247; the library receives an already-authorized connection id and uses the service-role client for connector tables and provider provisioning."
+  },
+  {
+    "file": "lib/woocommerce/sync.ts",
+    "boundaryType": "caller-server-action-role-check",
+    "boundaryFile": "lib/actions/woocommerce.ts",
+    "boundaryLine": 247,
+    "boundaryDetail": "synchronizeWooCommerceOrders is called only by completeWooCommerceConnectionAction, whose requireRole('owner','manager') gate is at line 247; all persistence is scoped from the resolved connection and uses the common order RPC."
   },
   {
     "file": "lib/env.ts",

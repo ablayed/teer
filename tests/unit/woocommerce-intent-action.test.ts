@@ -5,6 +5,7 @@ const harness = vi.hoisted(() => ({
   resolveShopContext: vi.fn(),
   adminInsert: vi.fn(),
   adminClientCreated: vi.fn(),
+  existingConnection: null as { id: string; external_identifier: string } | null,
 }));
 
 vi.mock('@/lib/actions/safe-action', () => ({
@@ -37,6 +38,19 @@ vi.mock('@/lib/supabase/protected-client', () => ({
     harness.adminClientCreated();
     return {
       from: (table: string) => {
+        if (table === 'store_connection') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: async () => ({ data: harness.existingConnection, error: null }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
         if (table !== 'store_connection_intent') throw new Error('unexpected table');
         return {
           insert: (payload: Record<string, unknown>) => {
@@ -88,6 +102,7 @@ describe('création de l’intention WooCommerce', () => {
     });
     harness.adminInsert.mockReset();
     harness.adminClientCreated.mockReset();
+    harness.existingConnection = null;
   });
 
   it('résout le contexte avec le client utilisateur et persiste uniquement une intention opaque', async () => {
@@ -152,6 +167,34 @@ describe('création de l’intention WooCommerce', () => {
     });
 
     expect(result).toEqual({ ok: false, errorCode: 'callback_url_not_secure' });
+    expect(harness.adminInsert).not.toHaveBeenCalled();
+  });
+
+  it('refuse un changement d’URL sans parcours explicite de libération', async () => {
+    harness.existingConnection = {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      external_identifier: 'https://ancienne-boutique.example.test',
+    };
+    const { createWooCommerceConnectionIntentAction } = await import('@/lib/actions/woocommerce');
+    const result = await (
+      createWooCommerceConnectionIntentAction as unknown as (input: unknown) => Promise<unknown>
+    )({
+      ctx: {
+        user: { id: 'user-sentinel' },
+        supabase: userClient(),
+        member: {
+          id: 'member-sentinel',
+          merchantAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          role: 'owner',
+        },
+      },
+      parsedInput: {
+        shopId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        shopUrl: 'https://nouvelle-boutique.example.test',
+      },
+    });
+
+    expect(result).toEqual({ ok: false, errorCode: 'shop_url_change_requires_review' });
     expect(harness.adminInsert).not.toHaveBeenCalled();
   });
 });

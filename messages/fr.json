@@ -733,6 +733,48 @@
       "messages": {
         "connected": "Boutique connectée avec succès !"
       },
+      "woocommerce": {
+        "title": "Connecter une boutique WooCommerce",
+        "description": "Connectez votre boutique WooCommerce pour importer vos commandes dans Tëër.",
+        "empty": "Aucune boutique WooCommerce n’est disponible dans ce compte.",
+        "fields": {
+          "shop": "Boutique Tëër",
+          "url": "URL de la boutique",
+          "urlHint": "L’URL est vérifiée à chaque connexion. Elle peut changer uniquement via un parcours explicite.",
+          "missingFields": "Sélectionnez une boutique et renseignez son URL."
+        },
+        "actions": {
+          "connect": "Connecter WooCommerce",
+          "reauthorize": "Réautoriser les clés",
+          "retry": "Reprendre",
+          "inProgress": "Reprise en cours…"
+        },
+        "status": {
+          "active": "Opérationnelle",
+          "provisioning": "Provisionnement en cours",
+          "needs_reauth": "Réautorisation nécessaire",
+          "uninstalled": "Déconnectée"
+        },
+        "sync": {
+          "completed": "Synchronisation initiale terminée.",
+          "running": "Synchronisation en cours — page {page} observée.",
+          "failed": "La synchronisation doit être reprise.",
+          "notStarted": "Synchronisation initiale non démarrée."
+        },
+        "reasons": {
+          "provisioning": "Les abonnements de commandes sont encore vérifiés. La boutique ne sera opérationnelle qu’après leur confirmation.",
+          "needsReauth": "Les clés WooCommerce sont invalides ou révoquées. Réautorisez la boutique pour reprendre.",
+          "shopUrlChange": "Un changement d’URL nécessite un parcours explicite et tracé."
+        },
+        "notices": {
+          "ready": "Connexion vérifiée et synchronisation relancée."
+        },
+        "errors": {
+          "missingFields": "Sélectionnez une boutique et renseignez son URL.",
+          "connectionFailed": "La connexion n’a pas pu être démarrée. Vérifiez l’URL puis réessayez.",
+          "retryFailed": "La reprise n’a pas abouti. Réessayez dans quelques instants."
+        }
+      },
       "errors": {
         "invalid_shop": "Le domaine de la boutique est invalide.",
         "invalid_state": "La session de connexion a expiré. Réessayez.",
