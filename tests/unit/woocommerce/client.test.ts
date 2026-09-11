@@ -31,12 +31,20 @@ function clientWith(
 ) {
   const targets: PinnedHttpsTarget[] = [];
   const resolver = vi.fn(async () => [publicAddress] as const);
-  const transport = vi.fn(async (target: PinnedHttpsTarget, _headers, _deadline) => {
-    targets.push(target);
-    const next = responses.shift();
-    if (!next) throw new Error('test transport exhausted');
-    return next;
-  });
+  const transport = vi.fn(
+    async (
+      target: PinnedHttpsTarget,
+      _headers,
+      _deadline,
+      _method?: 'GET' | 'POST',
+      _body?: string,
+    ) => {
+      targets.push(target);
+      const next = responses.shift();
+      if (!next) throw new Error('test transport exhausted');
+      return next;
+    },
+  );
   return {
     client: new WooCommerceClient({
       baseUrl: 'https://Shop.Example.test/wordpress/',
@@ -70,6 +78,24 @@ describe('WooCommerce REST client', () => {
     expect(setup.transport.mock.calls[0]?.[1]).toMatchObject({
       Authorization: `Basic ${Buffer.from('ck_private:cs_private').toString('base64')}`,
       Accept: 'application/json',
+    });
+  });
+
+  it('envoie une création JSON en POST avec la credential Basic explicite', async () => {
+    const setup = clientWith([response(201, '{"id":1}')]);
+    await expect(
+      setup.client.writeJson('wp-json/wc/v3/webhooks', {
+        topic: 'order.created',
+        delivery_url: 'https://app.example.test/api/woocommerce/webhooks/token',
+        secret: 'hmac-secret-sentinel',
+      }),
+    ).resolves.toEqual({ id: 1 });
+    expect(setup.transport.mock.calls[0]?.[2]).toBeDefined();
+    expect(setup.transport.mock.calls[0]?.[3]).toBe('POST');
+    expect(setup.transport.mock.calls[0]?.[4]).toContain('hmac-secret-sentinel');
+    expect(setup.transport.mock.calls[0]?.[1]).toMatchObject({
+      'Content-Type': 'application/json',
+      Authorization: `Basic ${Buffer.from('ck_private:cs_private').toString('base64')}`,
     });
   });
 

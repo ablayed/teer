@@ -60,6 +60,8 @@ export type WooCommerceTransport = (
   target: PinnedHttpsTarget,
   headers: Readonly<Record<string, string>>,
   deadline: number,
+  method?: 'GET' | 'POST',
+  body?: string,
 ) => Promise<WooCommerceHttpResponse>;
 
 export type PinnedLookup = (
@@ -225,6 +227,8 @@ async function requestPinnedHttps(
   headers: Readonly<Record<string, string>>,
   deadline: number,
   maxResponseBytes: number,
+  method: 'GET' | 'POST' = 'GET',
+  body?: string,
 ): Promise<WooCommerceHttpResponse> {
   return withDeadline(
     new Promise<WooCommerceHttpResponse>((resolve, reject) => {
@@ -234,7 +238,7 @@ async function requestPinnedHttps(
           hostname: target.hostname,
           port: target.port,
           path: `${target.url.pathname}${target.url.search}`,
-          method: 'GET',
+          method,
           headers,
           agent: false,
           servername: target.hostname,
@@ -258,7 +262,7 @@ async function requestPinnedHttps(
         reject(new WooCommerceClientError('timeout'));
       });
       request.once('error', () => reject(new WooCommerceClientError('upstream_error')));
-      request.end();
+      request.end(body);
     }),
     deadline,
   );
@@ -291,11 +295,15 @@ export class WooCommerceClient {
     this.maxRedirects = options.maxRedirects ?? WOO_MAX_REDIRECTS;
     this.transport =
       options.transport ??
-      ((target, headers, deadline) =>
-        requestPinnedHttps(target, headers, deadline, this.maxResponseBytes));
+      ((target, headers, deadline, method, body) =>
+        requestPinnedHttps(target, headers, deadline, this.maxResponseBytes, method, body));
   }
 
-  async readJson(relativePath: string): Promise<unknown> {
+  private async requestJson(
+    relativePath: string,
+    method: 'GET' | 'POST',
+    payload?: unknown,
+  ): Promise<unknown> {
     const deadline = Date.now() + this.timeoutMs;
     let currentUrl = joinBasePath(this.baseUrl, relativePath);
     let redirects = 0;
@@ -314,13 +322,15 @@ export class WooCommerceClient {
         throw new WooCommerceClientError('dns_failed');
       });
       let response: WooCommerceHttpResponse;
+      const requestBody = payload === undefined ? undefined : JSON.stringify(payload);
+      const headers: Record<string, string> = {
+        Authorization: this.authorization,
+        Accept: 'application/json',
+      };
+      if (requestBody !== undefined) headers['Content-Type'] = 'application/json';
       try {
         response = await withDeadline(
-          this.transport(
-            target,
-            { Authorization: this.authorization, Accept: 'application/json' },
-            deadline,
-          ),
+          this.transport(target, headers, deadline, method, requestBody),
           deadline,
         );
       } catch (error) {
@@ -372,6 +382,14 @@ export class WooCommerceClient {
       }
       return body;
     }
+  }
+
+  async readJson(relativePath: string): Promise<unknown> {
+    return this.requestJson(relativePath, 'GET');
+  }
+
+  async writeJson(relativePath: string, payload: unknown): Promise<unknown> {
+    return this.requestJson(relativePath, 'POST', payload);
   }
 
   async readIdentity(expectedIdentity: string): Promise<WooCommerceIdentityProof> {
