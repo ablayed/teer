@@ -157,6 +157,21 @@ export function validateEnvironmentSafety(values: EnvironmentVariables): void {
     }
   }
 
+  if (!isAes256GcmKey(values.CONNECTOR_CREDENTIALS_ENCRYPTION_KEY)) {
+    issues.push('CONNECTOR_CREDENTIALS_ENCRYPTION_KEY:64-hex-required');
+  }
+
+  if (isPresent(values.CONNECTOR_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS)) {
+    if (!isAes256GcmKey(values.CONNECTOR_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS)) {
+      issues.push('CONNECTOR_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS:64-hex-required');
+    } else if (
+      values.CONNECTOR_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS ===
+      values.CONNECTOR_CREDENTIALS_ENCRYPTION_KEY
+    ) {
+      issues.push('CONNECTOR_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS:must-differ');
+    }
+  }
+
   const upstashUrl = values.UPSTASH_REDIS_REST_URL;
   if (!isPresent(upstashUrl) || !isSecurePublicUrl(upstashUrl)) {
     issues.push('UPSTASH_REDIS_REST_URL:https-required');

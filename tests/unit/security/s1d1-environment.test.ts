@@ -19,6 +19,7 @@ function productionEnvironment(overrides: Record<string, string | undefined> = {
     RESEND_FROM_EMAIL: 'Tëër <no-reply@app.teer.example.com>',
     CRON_SECRET: 'production-cron-secret',
     SHOPIFY_TOKEN_ENCRYPTION_KEY: activeKey,
+    CONNECTOR_CREDENTIALS_ENCRYPTION_KEY: activeKey,
     UPSTASH_REDIS_REST_URL: 'https://redis.upstash.io',
     UPSTASH_REDIS_REST_TOKEN: 'production-upstash-token',
     ...overrides,
@@ -58,6 +59,12 @@ describe('S1D-1 production environment validation', () => {
       ),
     ).toThrow(/SHOPIFY_TOKEN_ENCRYPTION_KEY:64-hex-required/);
 
+    expect(() =>
+      validateEnvironmentSafety(
+        productionEnvironment({ CONNECTOR_CREDENTIALS_ENCRYPTION_KEY: unsafeValue }),
+      ),
+    ).toThrow(/CONNECTOR_CREDENTIALS_ENCRYPTION_KEY:64-hex-required/);
+
     try {
       validateEnvironmentSafety(
         productionEnvironment({ SHOPIFY_TOKEN_ENCRYPTION_KEY: unsafeValue }),
@@ -65,6 +72,14 @@ describe('S1D-1 production environment validation', () => {
     } catch (error) {
       expect(String(error)).not.toContain(unsafeValue);
     }
+  });
+
+  it('refuse le démarrage de production sans la clé générique des credentials', () => {
+    expect(() =>
+      validateEnvironmentSafety(
+        productionEnvironment({ CONNECTOR_CREDENTIALS_ENCRYPTION_KEY: undefined }),
+      ),
+    ).toThrow(/CONNECTOR_CREDENTIALS_ENCRYPTION_KEY:64-hex-required/);
   });
 
   it('rejects incomplete secret pairs and test-only modes in production', () => {
