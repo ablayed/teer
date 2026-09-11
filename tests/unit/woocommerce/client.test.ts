@@ -81,6 +81,28 @@ describe('WooCommerce REST client', () => {
     });
   });
 
+  it('expose les compteurs WordPress avec la réponse JSON de pagination', async () => {
+    const setup = clientWith([
+      {
+        status: 200,
+        body: '[]',
+        headers: {
+          'content-type': 'application/json',
+          'x-wp-total': '12',
+          'x-wp-totalpages': '1',
+        },
+      },
+    ]);
+    await expect(setup.client.readJsonWithHeaders('wp-json/wc/v3/orders?page=1')).resolves.toEqual({
+      data: [],
+      headers: {
+        'content-type': 'application/json',
+        'x-wp-total': '12',
+        'x-wp-totalpages': '1',
+      },
+    });
+  });
+
   it('envoie une création JSON en POST avec la credential Basic explicite', async () => {
     const setup = clientWith([response(201, '{"id":1}')]);
     await expect(

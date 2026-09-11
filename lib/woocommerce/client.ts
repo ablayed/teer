@@ -56,6 +56,11 @@ export type WooCommerceHttpResponse = {
   readonly body: string;
 };
 
+export type WooCommerceJsonResponse = {
+  readonly data: unknown;
+  readonly headers: IncomingHttpHeaders;
+};
+
 export type WooCommerceTransport = (
   target: PinnedHttpsTarget,
   headers: Readonly<Record<string, string>>,
@@ -303,7 +308,7 @@ export class WooCommerceClient {
     relativePath: string,
     method: 'GET' | 'POST',
     payload?: unknown,
-  ): Promise<unknown> {
+  ): Promise<WooCommerceJsonResponse> {
     const deadline = Date.now() + this.timeoutMs;
     let currentUrl = joinBasePath(this.baseUrl, relativePath);
     let redirects = 0;
@@ -380,16 +385,20 @@ export class WooCommerceClient {
       if (!classification.ok) {
         throw new WooCommerceClientError(classification.code, response.status);
       }
-      return body;
+      return { data: body, headers: response.headers };
     }
   }
 
   async readJson(relativePath: string): Promise<unknown> {
+    return (await this.requestJson(relativePath, 'GET')).data;
+  }
+
+  async readJsonWithHeaders(relativePath: string): Promise<WooCommerceJsonResponse> {
     return this.requestJson(relativePath, 'GET');
   }
 
   async writeJson(relativePath: string, payload: unknown): Promise<unknown> {
-    return this.requestJson(relativePath, 'POST', payload);
+    return (await this.requestJson(relativePath, 'POST', payload)).data;
   }
 
   async readIdentity(expectedIdentity: string): Promise<WooCommerceIdentityProof> {
