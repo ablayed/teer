@@ -150,6 +150,7 @@ describe('actions état et reprise WooCommerce', () => {
 
     expect(result).toEqual({
       ok: true,
+      canCreateNewShop: false,
       shops: [
         {
           id: shopId,

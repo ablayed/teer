@@ -59,6 +59,15 @@ function renderConnections(connection: Record<string, unknown>) {
   );
 }
 
+function renderEmptyConnections() {
+  harness.listResult = { ok: true, canCreateNewShop: true, shops: [], connections: [] };
+  return render(
+    <NextIntlClientProvider locale="fr" messages={messages}>
+      <WooCommerceConnections currentRole="owner" />
+    </NextIntlClientProvider>,
+  );
+}
+
 afterEach(() => cleanup());
 
 describe('état visible des connexions WooCommerce', () => {
@@ -66,6 +75,15 @@ describe('état visible des connexions WooCommerce', () => {
     harness.listExecute.mockReset();
     harness.createExecuteAsync.mockReset();
     harness.completeExecuteAsync.mockReset();
+  });
+
+  it('propose la première connexion sans sélection de boutique et masque le domaine synthétique', () => {
+    renderEmptyConnections();
+
+    expect(screen.getByLabelText('URL de la boutique')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Connecter WooCommerce' })).toBeTruthy();
+    expect(document.body.textContent).not.toContain('woocommerce-');
+    expect(document.body.textContent).not.toContain('.internal');
   });
 
   it('affiche opérationnelle seulement quand les deux abonnements sont actifs', () => {

@@ -28,6 +28,7 @@ export function WooCommerceConnections({ currentRole }: { currentRole: string })
   const data = list.result.data?.ok ? list.result.data : null;
   const shops = data?.shops ?? [];
   const connections = data?.connections ?? [];
+  const canCreateNewShop = data?.canCreateNewShop ?? false;
   const connectionByShop = useMemo(
     () => new Map(connections.map((connection) => [connection.shopId, connection])),
     [connections],
@@ -56,19 +57,23 @@ export function WooCommerceConnections({ currentRole }: { currentRole: string })
   async function startConnection() {
     setNotice(null);
     setError(null);
-    if (!selectedShopId || !shopUrl.trim()) {
+    if ((!canCreateNewShop && !selectedShopId) || !shopUrl.trim()) {
       setError(t('errors.missingFields'));
       return;
     }
     const result = await createIntent.executeAsync({
-      shopId: selectedShopId,
+      ...(selectedShopId ? { shopId: selectedShopId } : {}),
       shopUrl: shopUrl.trim(),
     });
     if (result?.data?.ok) {
       window.location.assign(result.data.authorizeUrl);
       return;
     }
-    setError(t('errors.connectionFailed'));
+    setError(
+      result?.data?.errorCode === 'existing_shop_required'
+        ? t('errors.existingShopRequired')
+        : t('errors.connectionFailed'),
+    );
   }
 
   async function retryConnection(connection: WooCommerceConnectionListItem) {
@@ -112,23 +117,25 @@ export function WooCommerceConnections({ currentRole }: { currentRole: string })
         </p>
       ) : null}
 
-      {shops.length > 0 ? (
+      {canCreateNewShop || shops.length > 0 ? (
         <div className="grid gap-4 rounded-md border border-border bg-canvas p-4 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:items-end">
-          <div className="space-y-2">
-            <Label htmlFor="woocommerce-shop">{t('fields.shop')}</Label>
-            <select
-              className="h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 focus:border-accent"
-              id="woocommerce-shop"
-              onChange={(event) => setSelectedShopId(event.target.value)}
-              value={selectedShopId}
-            >
-              {shops.map((shop) => (
-                <option key={shop.id} value={shop.id}>
-                  {shop.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
+          {shops.length > 0 ? (
+            <div className="space-y-2">
+              <Label htmlFor="woocommerce-shop">{t('fields.shop')}</Label>
+              <select
+                className="h-12 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text shadow-1 focus:border-accent"
+                id="woocommerce-shop"
+                onChange={(event) => setSelectedShopId(event.target.value)}
+                value={selectedShopId}
+              >
+                {shops.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="woocommerce-url">{t('fields.url')}</Label>
             <Input
