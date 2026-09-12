@@ -737,6 +737,7 @@
         "title": "Gérez vos boutiques connectées",
         "description": "Connectez votre boutique WooCommerce pour importer vos commandes dans Tëër. Vous serez redirigé vers WooCommerce pour autoriser Tëër.",
         "empty": "Aucune boutique WooCommerce connectée.",
+        "loading": "Chargement des connexions WooCommerce…",
         "fields": {
           "shop": "Boutique Tëër",
           "url": "URL de la boutique",
@@ -747,6 +748,7 @@
           "connect": "Connecter WooCommerce",
           "reauthorize": "Réautoriser les clés",
           "retry": "Reprendre",
+          "retryLoad": "Réessayer",
           "inProgress": "Reprise en cours…"
         },
         "status": {
@@ -773,7 +775,8 @@
           "missingFields": "Renseignez l’URL de votre boutique WooCommerce.",
           "connectionFailed": "La connexion n’a pas pu être démarrée. Vérifiez l’URL puis réessayez.",
           "retryFailed": "La reprise n’a pas abouti. Réessayez dans quelques instants.",
-          "existingShopRequired": "Une boutique WooCommerce est déjà connectée. Utilisez sa reprise ou sa réautorisation."
+          "existingShopRequired": "Une boutique WooCommerce est déjà connectée. Utilisez sa reprise ou sa réautorisation.",
+          "loadFailed": "Vos connexions WooCommerce n’ont pas pu être chargées. Réessayez dans quelques instants."
         }
       },
       "errors": {
