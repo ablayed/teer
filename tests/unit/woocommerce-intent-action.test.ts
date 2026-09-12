@@ -5,7 +5,7 @@ const harness = vi.hoisted(() => ({
   resolveShopContext: vi.fn(),
   adminInsert: vi.fn(),
   adminClientCreated: vi.fn(),
-  existingConnection: null as { id: string; external_identifier: string } | null,
+  existingConnection: null as { id: string; shop_id?: string; external_identifier: string } | null,
 }));
 
 vi.mock('@/lib/actions/safe-action', () => ({
@@ -42,11 +42,11 @@ vi.mock('@/lib/supabase/protected-client', () => ({
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  eq: () => ({
-                    maybeSingle: async () => ({ data: harness.existingConnection, error: null }),
+                eq: () =>
+                  Promise.resolve({
+                    data: harness.existingConnection ? [harness.existingConnection] : [],
+                    error: null,
                   }),
-                }),
               }),
             }),
           };
@@ -133,6 +133,7 @@ describe('création de l’intention WooCommerce', () => {
     });
     expect(harness.adminInsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        target_kind: 'existing_shop',
         platform: 'woocommerce',
         external_identifier: 'https://store.example.test/wordpress',
         created_by_member_id: 'member-sentinel',
@@ -143,6 +144,34 @@ describe('création de l’intention WooCommerce', () => {
     expect(authorizeUrl.pathname).toBe('/wordpress/wc-auth/v1/authorize');
     expect(authorizeUrl.searchParams.get('user_id')).toBe('33333333-3333-4333-8333-333333333333');
     expect(harness.adminClientCreated).toHaveBeenCalledOnce();
+  });
+
+  it('crée une intention new_shop sans sélectionner une boutique existante', async () => {
+    const { createWooCommerceConnectionIntentAction } = await import('@/lib/actions/woocommerce');
+    const result = await (
+      createWooCommerceConnectionIntentAction as unknown as (input: unknown) => Promise<unknown>
+    )({
+      ctx: {
+        user: { id: 'user-sentinel' },
+        supabase: userClient(),
+        member: {
+          id: 'member-sentinel',
+          merchantAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          role: 'manager',
+        },
+      },
+      parsedInput: { shopUrl: 'https://new-store.example.test' },
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(harness.resolveShopContext).not.toHaveBeenCalled();
+    expect(harness.adminInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target_kind: 'new_shop',
+        merchant_account_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        shop_id: null,
+      }),
+    );
   });
 
   it('refuse de fabriquer un callback WooCommerce non HTTPS', async () => {
@@ -170,9 +199,36 @@ describe('création de l’intention WooCommerce', () => {
     expect(harness.adminInsert).not.toHaveBeenCalled();
   });
 
+  it('refuse directement une intention new_shop si le compte a déjà une connexion WooCommerce', async () => {
+    harness.existingConnection = {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      shop_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      external_identifier: 'https://store.example.test',
+    };
+    const { createWooCommerceConnectionIntentAction } = await import('@/lib/actions/woocommerce');
+    const result = await (
+      createWooCommerceConnectionIntentAction as unknown as (input: unknown) => Promise<unknown>
+    )({
+      ctx: {
+        user: { id: 'user-sentinel' },
+        supabase: userClient(),
+        member: {
+          id: 'member-sentinel',
+          merchantAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          role: 'owner',
+        },
+      },
+      parsedInput: { shopUrl: 'https://another-store.example.test' },
+    });
+
+    expect(result).toEqual({ ok: false, errorCode: 'existing_shop_required' });
+    expect(harness.adminInsert).not.toHaveBeenCalled();
+  });
+
   it('refuse un changement d’URL sans parcours explicite de libération', async () => {
     harness.existingConnection = {
       id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      shop_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       external_identifier: 'https://ancienne-boutique.example.test',
     };
     const { createWooCommerceConnectionIntentAction } = await import('@/lib/actions/woocommerce');

@@ -15,7 +15,7 @@ import { z } from 'zod';
 const intentLifetimeMs = 10 * 60 * 1000;
 
 const createIntentSchema = z.object({
-  shopId: z.string().uuid(),
+  shopId: z.string().uuid().optional(),
   shopUrl: z.string().trim().min(1).max(2048),
 });
 
@@ -62,40 +62,50 @@ export const createWooCommerceConnectionIntentAction = requireRole('owner', 'man
       return { ok: false as const, errorCode: 'invalid_shop_url' as const };
     }
 
-    // This resolution intentionally uses the authenticated user's client. It proves the caller's
-    // shop scope before a service-role client is created for the service-role-only intent table.
     const userClient = ctx.supabase as unknown as SupabaseClient<Database>;
-    const resolved = await resolveShopContext(userClient, {
-      merchantAccountId: ctx.member.merchantAccountId,
-      shopId: parsedInput.shopId,
-    });
-    if (!resolved.ok) {
-      return { ok: false as const, errorCode: 'shop_not_found' as const };
-    }
-
-    const { data: shop, error: shopError } = await userClient
-      .from('shop')
-      .select('store_kind')
-      .eq('id', resolved.context.shopId)
-      .eq('merchant_account_id', resolved.context.merchantAccountId)
-      .maybeSingle();
-    if (shopError || !shop || shop.store_kind !== 'woocommerce') {
-      return { ok: false as const, errorCode: 'shop_not_woocommerce' as const };
-    }
-
     const admin = createSupabaseAdminClient();
-    const { data: existingConnection, error: connectionError } = await admin
+    const { data: wooConnections, error: connectionError } = await admin
       .from('store_connection')
-      .select('id, external_identifier')
-      .eq('merchant_account_id', resolved.context.merchantAccountId)
-      .eq('shop_id', resolved.context.shopId)
-      .eq('platform', 'woocommerce')
-      .maybeSingle();
+      .select('id, shop_id, external_identifier')
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .eq('platform', 'woocommerce');
     if (connectionError) {
       return { ok: false as const, errorCode: 'connection_lookup_failed' as const };
     }
+
+    const existingConnection = parsedInput.shopId
+      ? wooConnections?.find((connection) => connection.shop_id === parsedInput.shopId)
+      : null;
     if (existingConnection && existingConnection.external_identifier !== externalIdentifier) {
       return { ok: false as const, errorCode: 'shop_url_change_requires_review' as const };
+    }
+
+    if (!parsedInput.shopId && wooConnections && wooConnections.length > 0) {
+      return { ok: false as const, errorCode: 'existing_shop_required' as const };
+    }
+
+    let targetShopId: string | null = null;
+    if (parsedInput.shopId) {
+      // This resolution intentionally uses the authenticated user's client. It proves the caller's
+      // shop scope before a service-role client is used for the service-role-only intent table.
+      const resolved = await resolveShopContext(userClient, {
+        merchantAccountId: ctx.member.merchantAccountId,
+        shopId: parsedInput.shopId,
+      });
+      if (!resolved.ok) {
+        return { ok: false as const, errorCode: 'shop_not_found' as const };
+      }
+
+      const { data: shop, error: shopError } = await userClient
+        .from('shop')
+        .select('store_kind')
+        .eq('id', resolved.context.shopId)
+        .eq('merchant_account_id', resolved.context.merchantAccountId)
+        .maybeSingle();
+      if (shopError || !shop || shop.store_kind !== 'woocommerce') {
+        return { ok: false as const, errorCode: 'shop_not_woocommerce' as const };
+      }
+      targetShopId = resolved.context.shopId;
     }
 
     const callbackUrl = secureCallbackUrl();
@@ -107,8 +117,9 @@ export const createWooCommerceConnectionIntentAction = requireRole('owner', 'man
     const { data: intent, error: intentError } = await admin
       .from('store_connection_intent')
       .insert({
-        merchant_account_id: resolved.context.merchantAccountId,
-        shop_id: resolved.context.shopId,
+        merchant_account_id: ctx.member.merchantAccountId,
+        shop_id: targetShopId,
+        target_kind: targetShopId ? 'existing_shop' : 'new_shop',
         platform: 'woocommerce',
         external_identifier: externalIdentifier,
         created_by_member_id: ctx.member.id,
@@ -221,6 +232,7 @@ export const listWooCommerceConnectionsAction = requireRole('owner', 'manager')
           domain: shop.shop_domain,
         }),
       ),
+      canCreateNewShop: (connections ?? []).length === 0,
       connections: (connections ?? []).flatMap((connection): WooCommerceConnectionListItem[] => {
         const shop = shopById.get(connection.shop_id);
         if (!shop) return [];

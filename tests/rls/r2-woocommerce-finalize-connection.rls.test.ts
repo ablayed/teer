@@ -100,9 +100,9 @@ async function createIntent(
   const expiresAt = options.expiresAt ?? new Date(Date.now() + 5 * 60_000).toISOString();
   const { rows } = await client.query<{ id: string }>(
     `insert into public.store_connection_intent
-       (merchant_account_id, shop_id, platform, external_identifier, created_by_member_id,
+       (merchant_account_id, shop_id, target_kind, platform, external_identifier, created_by_member_id,
         expires_at, consumed_at, created_at)
-     values ($1, $2, 'woocommerce', $3, $4, $5, $6, $7)
+     values ($1, $2, 'existing_shop', 'woocommerce', $3, $4, $5, $6, $7)
      returning id`,
     [
       tenant.accountId,

@@ -3145,7 +3145,8 @@ export type Database = {
           id: string;
           merchant_account_id: string;
           platform: string;
-          shop_id: string;
+          shop_id: string | null;
+          target_kind: string;
         };
         Insert: {
           consumed_at?: string | null;
@@ -3156,7 +3157,8 @@ export type Database = {
           id?: string;
           merchant_account_id: string;
           platform: string;
-          shop_id: string;
+          shop_id?: string | null;
+          target_kind?: string;
         };
         Update: {
           consumed_at?: string | null;
@@ -3167,7 +3169,8 @@ export type Database = {
           id?: string;
           merchant_account_id?: string;
           platform?: string;
-          shop_id?: string;
+          shop_id?: string | null;
+          target_kind?: string;
         };
         Relationships: [
           {
