@@ -169,3 +169,29 @@ près, sous la même condition. **Les deux surfaces partagent une seule décisio
 différemment — `/livreurs` par son parc toujours filtré depuis `0133`, `/finances` par son
 sélecteur `?shop=` — mais la règle « dire la portée seulement là où la vue environnante est plus
 étroite que le chiffre » est unique et ne doit pas être réimplémentée par surface.
+
+## Trois états de lecture distincts sur Paramètres > Boutiques (Lot FIX-WOO-01)
+
+`settings.shops.woocommerce` porte désormais **trois microcopies mutuellement exclusives**, et la
+distinction est une décision, pas une commodité d'implémentation :
+
+| État | Chaîne | Ce qu'elle affirme |
+|---|---|---|
+| Lecture en cours | « Chargement des connexions WooCommerce… » (`loading`, `role="status"`) | rien n'est encore su |
+| Succès réellement vide | « Aucune boutique WooCommerce connectée. » (`empty`) | **un fait confirmé** : la lecture a abouti et ne renvoie rien |
+| Lecture échouée | « Vos connexions WooCommerce n'ont pas pu être chargées. Réessayez dans quelques instants. » (`errors.loadFailed`, `role="alert"` + bouton `actions.retryLoad` = « Réessayer ») | la lecture n'a pas abouti — l'état réel reste inconnu |
+
+**Pourquoi cette entrée existe.** `listWooCommerceConnectionsAction` triait `store_connection` sur
+une colonne inexistante (`updated_at`) : PostgREST répondait 400/42703, l'action renvoyait
+`list_failed`, et le composant réduisait cet échec à `[]`/`false` — donc à la microcopie de l'état
+vide. Le marchand lisait « Aucune boutique WooCommerce connectée » comme un **fait** alors que
+rien n'avait été lu, et le parcours de première connexion restait inaccessible sans qu'aucun écran
+ne le dise. Même contrat « manquant ≠ zéro » que « Coût manquant » et « Pas encore de CA encaissé
+sur cet arrivage » : **un état inconnu ne doit jamais emprunter la formulation d'un état connu.**
+
+**Règle générale, pas seulement WooCommerce** : un échec de lecture ne devient jamais `[]`, `null`
+ou `false` avant de choisir une microcopie. Le message d'échec reste générique et externe — aucun
+code SQL, aucun nom de colonne, aucun détail de requête n'est adressé au marchand (l'action ne
+renvoie déjà qu'un code opaque). « Réessayer » désigne la reprise d'une **lecture** échouée ;
+« Reprendre » (`actions.retry`) reste réservé à la reprise d'un **provisionnement ou d'une
+synchronisation** — les deux ne doivent pas être fusionnés.

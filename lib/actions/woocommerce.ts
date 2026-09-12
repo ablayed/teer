@@ -176,12 +176,21 @@ export const listWooCommerceConnectionsAction = requireRole('owner', 'manager')
       .order('display_name', { ascending: true });
     if (shopsError) return { ok: false as const, errorCode: 'list_failed' as const };
 
+    // `store_connection` n'a PAS de colonne `updated_at` — contrairement à toutes ses tables
+    // filles (`_credential`, `_sync_state`, `_webhook_subscription`), qui en ont une. Trier
+    // dessus faisait répondre PostgREST 400/42703 avant tout filtre de locataire : l'action
+    // renvoyait `list_failed` pour TOUS les comptes, et le composant rendait cette erreur comme
+    // « Aucune boutique WooCommerce connectée ». `created_at` est la seule colonne temporelle de
+    // cette table. L'ordre entre deux connexions de MÊME `created_at` n'est pas garanti : le tri
+    // n'est pas strictement total, ce qui exigerait un second critère (`id`). Sans conséquence
+    // ici — les deux cartes sont rendues dans les deux cas. À revoir si un jour l'ordre entre
+    // ex æquo porte une décision.
     const { data: connections, error: connectionsError } = await admin
       .from('store_connection')
       .select('id, shop_id, external_identifier, status')
       .eq('merchant_account_id', ctx.member.merchantAccountId)
       .eq('platform', 'woocommerce')
-      .order('updated_at', { ascending: false });
+      .order('created_at', { ascending: false });
     if (connectionsError) return { ok: false as const, errorCode: 'list_failed' as const };
 
     const connectionIds = (connections ?? []).map((connection) => connection.id);

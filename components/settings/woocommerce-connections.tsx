@@ -25,7 +25,14 @@ export function WooCommerceConnections({ currentRole }: { currentRole: string })
   const [error, setError] = useState<string | null>(null);
   const [busyConnectionId, setBusyConnectionId] = useState<string | null>(null);
 
-  const data = list.result.data?.ok ? list.result.data : null;
+  // Trois états strictement distincts — chargement, succès vide, échec — jamais aplatis sur la
+  // même microcopie. Le défaut fermé par ce lot venait exactement de cette confusion : une
+  // lecture refusée par PostgREST devenait `[]`/`false`, donc « Aucune boutique WooCommerce
+  // connectée ». Un échec n'emprunte plus jamais la formulation d'un résultat vide.
+  const outcome = list.result.data;
+  const data = outcome?.ok ? outcome : null;
+  const loadFailed = Boolean(outcome && !outcome.ok) || list.hasErrored;
+  const isLoading = list.isExecuting || (data === null && !loadFailed);
   const shops = data?.shops ?? [];
   const connections = data?.connections ?? [];
   const canCreateNewShop = data?.canCreateNewShop ?? false;
@@ -117,7 +124,24 @@ export function WooCommerceConnections({ currentRole }: { currentRole: string })
         </p>
       ) : null}
 
-      {canCreateNewShop || shops.length > 0 ? (
+      {isLoading ? (
+        <output className="block rounded-md border border-border bg-canvas p-4 text-sm text-muted">
+          {t('loading')}
+        </output>
+      ) : loadFailed ? (
+        // Message générique : l'action ne renvoie qu'un code opaque (`list_failed`), jamais un
+        // détail SQL ou un nom de colonne. La reprise relance la même lecture.
+        <div
+          className="space-y-3 rounded-md border border-danger/30 bg-danger-subtle p-4"
+          role="alert"
+        >
+          <p className="text-sm leading-6 text-danger">{t('errors.loadFailed')}</p>
+          <Button onClick={() => list.execute({})} type="button" variant="secondary">
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+            {t('actions.retryLoad')}
+          </Button>
+        </div>
+      ) : canCreateNewShop || shops.length > 0 ? (
         <div className="grid gap-4 rounded-md border border-border bg-canvas p-4 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] md:items-end">
           {shops.length > 0 ? (
             <div className="space-y-2">
