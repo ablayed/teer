@@ -4068,6 +4068,15 @@ export type Database = {
           expires_at: string;
         }[];
       };
+      link_shopify_embedded_shop: {
+        Args: {
+          p_client_id: string;
+          p_merchant_account_id: string;
+          p_shop_domain: string;
+          p_user_id: string;
+        };
+        Returns: string;
+      };
       list_customer_reliability: {
         Args: {
           p_limit?: number;
@@ -4485,6 +4494,10 @@ export type Database = {
       refresh_customer_reliability_projection: {
         Args: { p_customer_ids: string[] };
         Returns: number;
+      };
+      release_shopify_shop_app_identity: {
+        Args: { p_old_client_id: string; p_shop_id: string; p_user_id: string };
+        Returns: string;
       };
       replace_order_cart: {
         Args: { p_lines: Json; p_order_id: string };

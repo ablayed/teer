@@ -5,9 +5,12 @@
 // directement.
 //
 // Client utilisateur (RLS) partout où le schéma le permet : lecture de `shop` (policy
-// `shop_select`), lecture de `store_connection` (policy `store_connection_select`), écriture de
-// `shop.shopify_client_id` (policy `shop_update`, owner/manager — la garde applicative en amont
-// est déjà plus stricte, owner seul). Service-role UNIQUEMENT pour l'écriture de
+// `shop_select`), lecture de `store_connection` (policy `store_connection_select`).
+// `shop.shopify_client_id` ne s'écrit plus par le client utilisateur depuis SEC-SHOP-CLAIM-01
+// (0155 : `authenticated` n'a plus aucun privilège INSERT/UPDATE sur `shop`) : l'étape 3 passe
+// par `release_shopify_shop_app_identity`, réservée à `service_role`, qui réévalue sous verrou ce
+// que `shop_update` portait implicitement (rôle de boutique) en plus du rôle owner et du
+// compare-and-set. Service-role également pour l'écriture de
 // `store_connection` et `store_connection_webhook_token` — mesuré par lecture directe du catalogue
 // local (`\d public.store_connection` / `\d public.store_connection_webhook_token`) : aucune des
 // deux tables ne porte de policy INSERT/UPDATE pour `authenticated`, seule `store_connection_select`
@@ -16,8 +19,8 @@
 // et `completeCredentialsLink` qui écrivent déjà `store_connection` en service-role pour la même
 // raison structurelle.
 //
-// Ordre d'écriture, fail-closed, jamais transactionnel (aucune RPC n'existe pour cette opération —
-// en écrire une serait une migration, hors périmètre de ce mandat) :
+// Ordre d'écriture, fail-closed, jamais transactionnel sur l'ensemble (seule l'étape 3 est une RPC,
+// `release_shopify_shop_app_identity`, depuis 0155 ; les étapes 1, 2 et 4 restent séparées) :
 //   1. audit_log « tentative » — AVANT toute mutation, trace durable même si tout le reste échoue.
 //   2. store_connection.platform_app_id = NULL + révocation du jeton opaque s'il existe.
 //   3. shop.shopify_client_id = NULL — EN DERNIER : si l'étape 2 échoue, `shop` garde l'ancienne
@@ -243,21 +246,18 @@ export async function performShopifyAppRelease(
     return { ok: false, errorCode: 'write_failed' };
   }
 
-  // 3. shop.shopify_client_id -> NULL, EN DERNIER. Client RLS (policy shop_update le permet pour
-  // owner/manager ; la garde applicative ci-dessus est déjà plus stricte, owner seul).
-  const { data: updatedShop, error: shopUpdateError } = await rlsClient
-    .from('shop')
-    .update({ shopify_client_id: null, updated_at: new Date().toISOString() })
-    .eq('id', shop?.id as string)
-    .eq('merchant_account_id', merchantAccountId)
-    .eq('status', 'uninstalled')
-    .eq('shopify_client_id', oldClientId)
-    .select('id')
-    .maybeSingle();
+  // 3. shop.shopify_client_id -> NULL, EN DERNIER. RPC réservée à `service_role` (0155) : même
+  // compare-and-set (status uninstalled, ancienne app), sous verrou, avec le rôle owner sur le
+  // locataire de la LIGNE et le rôle de boutique que `shop_update` portait implicitement. Seul
+  // `released` est un succès ; toute autre réponse est un échec fermé.
+  const { data: releaseResult, error: releaseError } = await admin.rpc(
+    'release_shopify_shop_app_identity',
+    { p_user_id: ctx.userId, p_shop_id: shop?.id as string, p_old_client_id: oldClientId },
+  );
 
-  if (shopUpdateError || !updatedShop) {
+  if (releaseError || releaseResult !== 'released') {
     Sentry.captureException(
-      shopUpdateError ?? new Error('shopify_app_release_shop_update_no_row'),
+      releaseError ?? new Error(`shopify_app_release_shop_rpc_${releaseResult ?? 'no_result'}`),
       {
         tags: { action: 'shopify.app_release', reason: 'shop_update_failed' },
       },
