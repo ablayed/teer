@@ -2,14 +2,14 @@
 // (bascule d'app, propriété par tenant), écriture pending (jamais store_connection ici), jamais un
 // write sur intent invalide.
 //
-// L'écriture (insert/update) passe par `ctx.supabase` (RLS-respecting) — `admin` (service-role)
-// ne sert plus qu'à la lecture globale initiale (détecter une boutique d'un autre tenant,
-// invisible sous RLS). Root cause de l'échec RLS précédemment observé, identifiée par mesure
-// définitive (deux inserts identiques comparés) : un `INSERT ... RETURNING` échoue tant qu'aucune
-// ligne `shop_member` n'existe pour (shop, user) — le trigger `shop_seed_memberships` (AFTER
-// INSERT ON shop, déjà en place, migration 0126) la crée dans la même transaction, mais après que
-// la visibilité RETURNING a déjà été vérifiée. Un `.insert()` SANS `.select()` n'exerce jamais
-// cette vérification. Preuve réelle (Postgres + RLS, pas mockée) : tests/rls/shopify-embedded-link-rls.rls.test.ts.
+// SEC-SHOP-CLAIM-01 (0155) : `authenticated` n'a plus aucun privilège INSERT/UPDATE sur `shop`.
+// L'écriture passe par la RPC `link_shopify_embedded_shop`, appelée par le client service-role
+// avec l'utilisateur de la session serveur, le locataire demandé, et le domaine et l'app de
+// l'intention vérifiée. `ctx.supabase` ne sert plus qu'à lire l'appartenance : toute écriture sur
+// `shop` par ce client est ici une erreur. Les gardes applicatives refusent AVANT l'appel ; les
+// refus rendus par la RPC (course, rôle de boutique) sont relayés sous leur nom. Preuve réelle
+// (Postgres, privilèges, RPC) : tests/rls/sec-shop-claim-01-domain-preemption.rls.test.ts et
+// tests/rls/shopify-embedded-link-rls.rls.test.ts.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PUBLIC_APP = {
@@ -23,19 +23,13 @@ type ShopRow = {
   shop_domain: string;
   merchant_account_id: string;
   shopify_client_id: string | null;
-  [key: string]: unknown;
 };
 
 const harness = vi.hoisted(() => ({
   shops: [] as ShopRow[],
   membership: null as { id: string; role: string } | null,
-  nextId: 0,
-  shopInsertCalls: [] as Array<Record<string, unknown>>,
-  shopUpdateCalls: [] as Array<{
-    payload: Record<string, unknown>;
-    filters: Array<[string, unknown, 'eq' | 'is']>;
-  }>,
-  onAfterGuardRead: null as (() => void) | null,
+  rpcCalls: [] as Array<{ fn: string; args: Record<string, unknown> }>,
+  rpcResponse: null as { data: unknown; error: unknown } | null,
   storeConnectionWriteCount: 0,
 }));
 
@@ -52,11 +46,16 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: (...args: unknown[]) => captureMessage(...args),
 }));
 
-// `admin` (service-role) ne sert plus QU'à la lecture globale initiale — tout insert/update ici
-// serait un symptôme de régression (écriture repassée en service-role, contournant la seconde
-// barrière RLS que ctx.supabase fournit désormais réellement).
+// `admin` (service-role) : lecture globale de garde + RPC d'écriture. Aucun insert/update direct
+// sur `shop`, ni écriture de `store_connection` (créée seulement après l'échange de jeton).
 vi.mock('@/lib/supabase/protected-client', () => ({
   createProtectedSupabaseClient: vi.fn(() => ({
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      harness.rpcCalls.push({ fn, args });
+      if (harness.rpcResponse) return harness.rpcResponse;
+      const exists = harness.shops.some((s) => s.shop_domain === args.p_shop_domain);
+      return { data: exists ? 'updated' : 'inserted', error: null };
+    },
     from(table: string) {
       if (table === 'store_connection') {
         return {
@@ -71,27 +70,16 @@ vi.mock('@/lib/supabase/protected-client', () => ({
         select: () => ({
           eq: (_col: string, domain: string) => ({
             maybeSingle: async () => {
-              // Snapshot AVANT le hook : la lecture de garde doit voir l'état d'avant la course.
               const row = harness.shops.find((s) => s.shop_domain === domain) ?? null;
-              const snapshot = row
-                ? {
-                    id: row.id,
-                    merchant_account_id: row.merchant_account_id,
-                    shopify_client_id: row.shopify_client_id,
-                  }
-                : null;
-              const hook = harness.onAfterGuardRead;
-              harness.onAfterGuardRead = null;
-              hook?.();
-              return { data: snapshot, error: null };
+              return { data: row ? { ...row } : null, error: null };
             },
           }),
         }),
         insert: () => {
-          throw new Error('admin.insert must never be called — write goes through ctx.supabase');
+          throw new Error('admin.insert on shop must never be called — write goes through the RPC');
         },
         update: () => {
-          throw new Error('admin.update must never be called — write goes through ctx.supabase');
+          throw new Error('admin.update on shop must never be called — write goes through the RPC');
         },
       };
     },
@@ -113,43 +101,7 @@ function fakeSupabase() {
         };
       }
 
-      if (table === 'shop') {
-        return {
-          // Pas de .select() enchaîné (fidèle au code réel) : l'insert renvoie seulement `error`.
-          insert: (payload: Record<string, unknown>) => {
-            harness.shopInsertCalls.push(payload);
-            harness.shops.push({ ...(payload as ShopRow), id: `shop-${++harness.nextId}` });
-            return Promise.resolve({ error: null });
-          },
-          update: (payload: Record<string, unknown>) => {
-            const filters: Array<[string, unknown, 'eq' | 'is']> = [];
-            const builder = {
-              eq(column: string, value: unknown) {
-                filters.push([column, value, 'eq']);
-                return builder;
-              },
-              is(column: string, value: unknown) {
-                filters.push([column, value, 'is']);
-                return builder;
-              },
-              select: () => ({
-                maybeSingle: async () => {
-                  harness.shopUpdateCalls.push({ payload, filters });
-                  const row = harness.shops.find((s) =>
-                    filters.every(([column, value]) => s[column] === value),
-                  );
-                  if (!row) return { data: null, error: null };
-                  Object.assign(row, payload);
-                  return { data: { id: row.id }, error: null };
-                },
-              }),
-            };
-            return builder;
-          },
-        };
-      }
-
-      throw new Error(`unexpected ctx table ${table}`);
+      throw new Error(`unexpected ctx table ${table} — ctx.supabase never writes shop since 0155`);
     },
     // biome-ignore lint/suspicious/noExplicitAny: fake client, shape not exercised beyond `from`.
   } as any;
@@ -161,10 +113,8 @@ describe('performShopifyEmbeddedLink', () => {
   beforeEach(async () => {
     harness.shops = [];
     harness.membership = { id: 'membership-sentinel', role: 'owner' };
-    harness.nextId = 0;
-    harness.shopInsertCalls = [];
-    harness.shopUpdateCalls = [];
-    harness.onAfterGuardRead = null;
+    harness.rpcCalls = [];
+    harness.rpcResponse = null;
     harness.storeConnectionWriteCount = 0;
     captureException.mockClear();
     captureMessage.mockClear();
@@ -194,7 +144,7 @@ describe('performShopifyEmbeddedLink', () => {
     );
 
     expect(result).toEqual({ ok: false, errorCode: 'intent_invalid' });
-    expect(harness.shopInsertCalls).toHaveLength(0);
+    expect(harness.rpcCalls).toHaveLength(0);
   });
 
   it("refuse sans écriture quand l'utilisateur n'est pas membre du tenant demandé", async () => {
@@ -207,7 +157,7 @@ describe('performShopifyEmbeddedLink', () => {
     );
 
     expect(result).toEqual({ ok: false, errorCode: 'not_a_member' });
-    expect(harness.shopInsertCalls).toHaveLength(0);
+    expect(harness.rpcCalls).toHaveLength(0);
   });
 
   it("refuse sans écriture, code nommé distinct, quand l'utilisateur est membre mais 'agent' (rôle insuffisant)", async () => {
@@ -220,7 +170,7 @@ describe('performShopifyEmbeddedLink', () => {
     );
 
     expect(result).toEqual({ ok: false, errorCode: 'insufficient_role' });
-    expect(harness.shopInsertCalls).toHaveLength(0);
+    expect(harness.rpcCalls).toHaveLength(0);
   });
 
   it("autorise un rôle 'manager', pas seulement 'owner'", async () => {
@@ -233,9 +183,10 @@ describe('performShopifyEmbeddedLink', () => {
     );
 
     expect(result.ok).toBe(true);
+    expect(harness.rpcCalls).toHaveLength(1);
   });
 
-  it('insère une ligne shop pending (access_token_encrypted NULL) via ctx.supabase, sans .select() enchaîné, et n’écrit jamais store_connection', async () => {
+  it('écrit la ligne pending par la RPC service-role, avec utilisateur de session, locataire demandé, domaine et app de l’intention — jamais store_connection', async () => {
     const intent = await signIntent();
     const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
     const result = await performShopifyEmbeddedLink(
@@ -247,18 +198,21 @@ describe('performShopifyEmbeddedLink', () => {
       ok: true,
       redirectUrl: `https://admin.shopify.com/store/acme-shop/apps/${PUBLIC_APP.clientId}`,
     });
-    expect(harness.shopInsertCalls).toHaveLength(1);
-    expect(harness.shopInsertCalls[0]).toMatchObject({
-      merchant_account_id: 'tenant-a',
-      shop_domain: 'acme-shop.myshopify.com',
-      shopify_client_id: PUBLIC_APP.clientId,
-      status: 'active',
-      access_token_encrypted: null,
-    });
+    expect(harness.rpcCalls).toEqual([
+      {
+        fn: 'link_shopify_embedded_shop',
+        args: {
+          p_user_id: 'user-a',
+          p_merchant_account_id: 'tenant-a',
+          p_shop_domain: 'acme-shop.myshopify.com',
+          p_client_id: PUBLIC_APP.clientId,
+        },
+      },
+    ]);
     expect(harness.storeConnectionWriteCount).toBe(0);
   });
 
-  it('refuse en fermé, zéro écriture, quand la boutique appartient déjà à une autre app (même tenant)', async () => {
+  it('refuse en fermé, sans appel RPC, quand la boutique appartient déjà à une autre app (même tenant)', async () => {
     harness.shops.push({
       id: 'shop-koba',
       shop_domain: 'acme-shop.myshopify.com',
@@ -273,16 +227,14 @@ describe('performShopifyEmbeddedLink', () => {
     );
 
     expect(result).toEqual({ ok: false, errorCode: 'app_switch_refused' });
-    expect(harness.shopInsertCalls).toHaveLength(0);
-    expect(harness.shopUpdateCalls).toHaveLength(0);
-    expect(harness.shops[0].shopify_client_id).toBe('koba_client_sentinel');
+    expect(harness.rpcCalls).toHaveLength(0);
     expect(captureException).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'SHOPIFY_APP_SWITCH_REFUSED' }),
       expect.anything(),
     );
   });
 
-  it('refuse en fermé, zéro écriture, quand la boutique appartient à un autre tenant (garde de propriété réutilisée)', async () => {
+  it('refuse en fermé, sans appel RPC, quand la boutique appartient à un autre tenant (garde de propriété réutilisée)', async () => {
     harness.shops.push({
       id: 'shop-victim',
       shop_domain: 'acme-shop.myshopify.com',
@@ -297,48 +249,16 @@ describe('performShopifyEmbeddedLink', () => {
     );
 
     expect(result).toEqual({ ok: false, errorCode: 'ownership_refused' });
-    expect(harness.shopUpdateCalls).toHaveLength(0);
+    expect(harness.rpcCalls).toHaveLength(0);
     expect(captureMessage).toHaveBeenCalledWith(
       'shopify_embedded_link_ownership_guard_refused',
       expect.objectContaining({ tags: expect.objectContaining({ reason: 'ownership_mismatch' }) }),
     );
   });
 
-  it('met à jour (reconnexion) via ctx.supabase, avec prédicat sur shopify_client_id, sans jamais inclure merchant_account_id dans le payload', async () => {
+  it('reconnexion (même tenant, même app) et boutique libérée (client_id NULL) : RPC appelée, succès', async () => {
     harness.shops.push({
       id: 'shop-existing',
-      shop_domain: 'acme-shop.myshopify.com',
-      merchant_account_id: 'tenant-a',
-      shopify_client_id: PUBLIC_APP.clientId,
-    });
-    const intent = await signIntent();
-    const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
-    const result = await performShopifyEmbeddedLink(
-      { intent, merchantAccountId: 'tenant-a' },
-      { userId: 'user-a', supabase: fakeSupabase() },
-    );
-
-    expect(result.ok).toBe(true);
-    expect(harness.shopInsertCalls).toHaveLength(0);
-    expect(harness.shopUpdateCalls).toHaveLength(1);
-    expect(harness.storeConnectionWriteCount).toBe(0);
-    expect(harness.shopUpdateCalls[0].payload).not.toHaveProperty('merchant_account_id');
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual(['id', 'shop-existing', 'eq']);
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual([
-      'merchant_account_id',
-      'tenant-a',
-      'eq',
-    ]);
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual([
-      'shopify_client_id',
-      PUBLIC_APP.clientId,
-      'eq',
-    ]);
-  });
-
-  it('reconnexion avec shopify_client_id historiquement NULL : prédicat .is(null), pas .eq(null)', async () => {
-    harness.shops.push({
-      id: 'shop-legacy',
       shop_domain: 'acme-shop.myshopify.com',
       merchant_account_id: 'tenant-a',
       shopify_client_id: null,
@@ -351,45 +271,50 @@ describe('performShopifyEmbeddedLink', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual(['shopify_client_id', null, 'is']);
+    expect(harness.rpcCalls).toHaveLength(1);
+    expect(harness.storeConnectionWriteCount).toBe(0);
   });
 
-  it('refuse en fermé (fail-closed) si une bascule d’app concurrente survient entre la lecture de garde et l’update (course)', async () => {
-    harness.shops.push({
-      id: 'shop-raced',
-      shop_domain: 'acme-shop.myshopify.com',
-      merchant_account_id: 'tenant-a',
-      shopify_client_id: PUBLIC_APP.clientId,
-    });
-    // La lecture de garde (admin) voit shopify_client_id === PUBLIC_APP → les deux gardes
-    // autorisent ('update'). Juste après cette lecture — donc APRÈS la décision, AVANT
-    // l'écriture — une autre requête réassigne la ligne à une autre app. Le prédicat
-    // .eq('shopify_client_id', app.clientId) de l'update ne doit alors matcher aucune ligne.
-    harness.onAfterGuardRead = () => {
-      const row = harness.shops.find((s) => s.id === 'shop-raced');
-      if (row) row.shopify_client_id = 'koba_client_sentinel';
-    };
+  it.each([
+    'intent_invalid',
+    'not_a_member',
+    'insufficient_role',
+    'app_switch_refused',
+    'ownership_refused',
+  ])(
+    'refus nommé rendu par la RPC (course ou garde de boutique) : %s relayé tel quel, jamais un succès',
+    async (refusal) => {
+      harness.rpcResponse = { data: refusal, error: null };
+      const intent = await signIntent();
+      const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
+      const result = await performShopifyEmbeddedLink(
+        { intent, merchantAccountId: 'tenant-a' },
+        { userId: 'user-a', supabase: fakeSupabase() },
+      );
+
+      expect(result).toEqual({ ok: false, errorCode: refusal });
+    },
+  );
+
+  it.each([
+    { label: 'réponse inconnue', response: { data: 'write_failed', error: null } },
+    { label: 'réponse vide', response: { data: null, error: null } },
+    { label: 'erreur PostgREST', response: { data: null, error: { code: '42501' } } },
+  ])('échec fermé sur $label : write_failed + capture Sentry nommée', async ({ response }) => {
+    harness.rpcResponse = response;
     const intent = await signIntent();
     const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
-
     const result = await performShopifyEmbeddedLink(
       { intent, merchantAccountId: 'tenant-a' },
       { userId: 'user-a', supabase: fakeSupabase() },
     );
 
     expect(result).toEqual({ ok: false, errorCode: 'write_failed' });
-    expect(harness.shopUpdateCalls).toHaveLength(1);
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual([
-      'shopify_client_id',
-      PUBLIC_APP.clientId,
-      'eq',
-    ]);
-    // La ligne n'a JAMAIS été modifiée par cette écriture — elle porte toujours la valeur
-    // réassignée par la course, jamais celle que l'update tentait d'imposer.
-    expect(harness.shops[0].shopify_client_id).toBe('koba_client_sentinel');
     expect(captureException).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ tags: expect.objectContaining({ reason: 'shop_update_failed' }) }),
+      expect.anything(),
+      expect.objectContaining({
+        tags: expect.objectContaining({ reason: 'shop_link_rpc_failed' }),
+      }),
     );
   });
 });

@@ -1,7 +1,8 @@
 // APP-03 / Lot 2 (correctif) — preuve RÉELLE (Postgres + RLS, pas mockée) que le rattachement
 // embarqué fonctionne de bout en bout pour un owner légitime, qu'un agent du même tenant en est
-// refusé (rôle insuffisant, garde applicative), et que la boutique rattachée est visible/
-// modifiable par l'utilisateur qui l'a rattachée mais invisible pour un autre tenant.
+// refusé (rôle insuffisant, garde applicative), et que la boutique rattachée est visible
+// par l'utilisateur qui l'a rattachée (jamais modifiable par son client depuis 0155) mais invisible
+// pour un autre tenant.
 //
 // `getShopifyAppByClientId` est mocké (aucun vrai client_id Teer Public n'existe encore, cf.
 // CLAUDE.md — hors périmètre) : seule l'identité d'app est synthétique, tout le reste (Postgres,
@@ -92,7 +93,7 @@ function signIntentFor(shopDomain: string) {
 
 describe('performShopifyEmbeddedLink — preuve réelle RLS (Postgres)', () => {
   it.skipIf(!process.env.SUPABASE_SERVICE_ROLE_KEY)(
-    'owner : rattachement réussit, boutique visible/modifiable par lui, invisible pour un autre tenant ; agent : refusé sans écriture',
+    'owner : rattachement réussit, boutique visible (jamais modifiable par son client) par lui, invisible pour un autre tenant ; agent : refusé sans écriture',
     async () => {
       process.env.SHOPIFY_API_SECRET ||= 'rls-test-embedded-link-secret';
       const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
@@ -139,13 +140,14 @@ describe('performShopifyEmbeddedLink — preuve réelle RLS (Postgres)', () => {
         .maybeSingle();
       expect(visibleToOwner).not.toBeNull();
 
-      // Positif — modifiable : l'owner peut mettre à jour cette même boutique (shop_update :
-      // current_shop_role(id) in owner/manager, déjà seedé).
+      // SEC-SHOP-CLAIM-01 (0155) — assertion INVERSÉE par décision : aucune colonne de `shop`
+      // n'est modifiable par un client utilisateur, `display_name` compris. Avant 0155, ce même
+      // update réussissait ; aucun privilège n'est réaccordé pour satisfaire ce test.
       const { error: ownerUpdateError } = await owner.client
         .from('shop')
         .update({ display_name: 'Renommée par owner' })
         .eq('id', createdShop.id);
-      expect(ownerUpdateError).toBeNull();
+      expect(ownerUpdateError?.code).toBe('42501');
 
       // Négatif — un autre tenant (owner d'un compte marchand distinct) ne voit rien.
       const otherTenant = await createSignedInUser('rls-embedded-link-other-tenant');

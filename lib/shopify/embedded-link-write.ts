@@ -6,11 +6,11 @@
 // Écrit uniquement sur appel explicite (jamais sur GET — l'appelant, une server action `'use
 // server'`, est lui-même déclenché par un POST de formulaire). Trois gardes distinctes, dans cet
 // ordre : (1) rôle marchand autoritatif — owner/manager uniquement, lu explicitement et jamais
-// supposé (la garde applicative doit reproduire la règle RLS `shop_insert`/`shop_update`, pas la
-// tenir pour acquise, puisque l'écriture elle-même passe par un client authentifié où cette règle
-// s'applique déjà, mais où une régression future de l'un des deux côtés ne doit pas être le seul
-// filet) ; (2) bascule d'app — une boutique déjà possédée par une autre app est refusée MÊME pour
-// le même tenant (lib/shopify/app-switch-guard.ts) ; (3) propriété par tenant —
+// supposé, et réévalué par la RPC d'écriture (SEC-SHOP-CLAIM-01, 0155 : `authenticated` n'a
+// plus aucun privilège INSERT/UPDATE sur `shop`, l'écriture passe par
+// `link_shopify_embedded_shop`, réservée à `service_role`) ; (2) bascule d'app — une boutique
+// déjà possédée par une autre app est refusée MÊME pour le même tenant
+// (lib/shopify/app-switch-guard.ts) ; (3) propriété par tenant —
 // `decideShopOwnership` (lib/shopify/ownership-guard.ts, APP-03/Lot 1), réutilisée telle quelle,
 // jamais une seconde garde de tenant. `store_connection` n'est PAS créée ici — seule `shop` porte
 // l'association en attente (`access_token_encrypted` reste NULL) ; `store_connection` devient
@@ -51,6 +51,20 @@ function createSupabaseAdminClient() {
 }
 
 const WRITE_ROLES = new Set(['owner', 'manager']);
+
+// Refus nommés rendus par `link_shopify_embedded_shop` (0155) — la RPC réévalue sous verrou les
+// gardes déjà appliquées ci-dessous ; un refus à ce stade signale une course ou une garde que la
+// RLS portait implicitement (rôle de boutique). Toute autre valeur est un échec fermé.
+const LINK_REFUSALS = new Map<
+  string,
+  Extract<ShopifyEmbeddedLinkResult, { ok: false }>['errorCode']
+>([
+  ['intent_invalid', 'intent_invalid'],
+  ['not_a_member', 'not_a_member'],
+  ['insufficient_role', 'insufficient_role'],
+  ['app_switch_refused', 'app_switch_refused'],
+  ['ownership_refused', 'ownership_refused'],
+]);
 
 export type ShopifyEmbeddedLinkInput = {
   intent: string;
@@ -120,10 +134,10 @@ export async function performShopifyEmbeddedLink(
 
   // Rôle autoritatif lu explicitement, jamais supposé — motif récurrent du projet : une règle
   // portée par RLS (shop_insert/shop_update, owner/manager uniquement) devient inopérante dès
-  // qu'un chemin l'écrit en service-role ; ici l'écriture passe par ctx.supabase (RLS-respecting,
-  // voir plus bas) donc RLS l'applique déjà, mais cette garde reproduit la règle plutôt que de
-  // dépendre uniquement de RLS pour la faire respecter — code d'échec nommé, distinct de
-  // 'not_a_member' (un agent EST membre, mais n'a pas le rôle requis).
+  // qu'un chemin l'écrit en service-role ; c'est le cas ici depuis 0155 (écriture par une RPC
+  // réservée à `service_role`, voir plus bas) : la RPC réévalue ce rôle sous verrou, et cette
+  // garde refuse avant tout appel — code d'échec nommé, distinct de 'not_a_member' (un agent
+  // EST membre, mais n'a pas le rôle requis).
   if (!WRITE_ROLES.has(membership.role)) {
     return { ok: false, errorCode: 'insufficient_role' };
   }
@@ -156,63 +170,31 @@ export async function performShopifyEmbeddedLink(
     return { ok: false, errorCode: 'ownership_refused' };
   }
 
-  const now = new Date().toISOString();
+  // SEC-SHOP-CLAIM-01 (0155) — `authenticated` n'a plus AUCUN privilège INSERT/UPDATE sur
+  // `shop` : un client utilisateur pouvait y préempter le domaine d'une boutique étrangère avec le
+  // client_id de l'app publique, et la route de session écrivait ensuite le jeton de la victime
+  // dans cette ligne. L'écriture passe donc par une primitive réservée à `service_role`,
+  // `link_shopify_embedded_shop`, qui réévalue sous verrou, à partir de `ctx.userId` (session
+  // serveur) et de l'intention vérifiée, tout ce que la RLS portait implicitement : rôle marchand
+  // au moment de l'écriture, rôle de boutique sur une ligne existante, bascule d'app, propriété.
+  // Les gardes TS ci-dessus restent en place (défense en profondeur, refus nommés avant l'appel) ;
+  // le client utilisateur ne sert plus qu'à la lecture d'appartenance.
+  const { data: linkResult, error: linkError } = await admin.rpc('link_shopify_embedded_shop', {
+    p_user_id: ctx.userId,
+    p_merchant_account_id: input.merchantAccountId,
+    p_shop_domain: intent.shopDomain,
+    p_client_id: app.clientId,
+  });
 
-  // L'écriture passe par `ctx.supabase` (RLS-respecting), jamais `admin` — seule la lecture
-  // globale ci-dessus (détecter une boutique d'un autre tenant, invisible sous RLS) a besoin du
-  // service-role. shop_insert/shop_update (owner/manager) deviennent une seconde barrière
-  // indépendante, en plus de la garde de rôle explicite ci-dessus et des deux gardes applicatives.
-  //
-  // Root cause identifiée (mesure définitive, deux inserts identiques comparés) : un `INSERT ...
-  // RETURNING` échoue en 42501 tant qu'aucune ligne `shop_member` n'existe pour (shop, user) — la
-  // visibilité RETURNING est vérifiée via la policy shop_select (`is_shop_member_of`), avant que
-  // le trigger `shop_seed_memberships` (AFTER INSERT ON shop, déjà en place — migration 0126) ait
-  // pu créer cette ligne. Un `.insert()` SANS `.select()` n'exerce jamais cette vérification et
-  // réussit normalement, laissant le trigger peupler shop_member (avec le rôle exact du marchand,
-  // via `merchant_member`) dans la même transaction — jamais une boutique orpheline invisible.
-  // L'UPDATE (reconnexion) n'a pas ce problème : shop_member existe déjà depuis la création
-  // initiale de la boutique, donc `.select()` y reste sûr.
-  if (ownershipDecision.kind === 'insert') {
-    const { error: insertError } = await rlsClient.from('shop').insert({
-      merchant_account_id: input.merchantAccountId,
-      shop_domain: intent.shopDomain,
-      shopify_client_id: app.clientId,
-      status: 'active',
-      access_token_encrypted: null,
-      display_name: intent.shopDomain,
+  if (linkError || (linkResult !== 'inserted' && linkResult !== 'updated')) {
+    const refusal = linkError ? null : LINK_REFUSALS.get(linkResult ?? '');
+    if (refusal) {
+      return { ok: false, errorCode: refusal };
+    }
+    Sentry.captureException(linkError ?? new Error('shopify_embedded_link_rpc_failed'), {
+      tags: { action: 'shopify.embedded_link', reason: 'shop_link_rpc_failed' },
     });
-
-    if (insertError) {
-      Sentry.captureException(insertError, {
-        tags: { action: 'shopify.embedded_link', reason: 'shop_insert_failed' },
-      });
-      return { ok: false, errorCode: 'write_failed' };
-    }
-  } else {
-    // update : jamais `merchant_account_id` dans le payload, seulement comme filtre WHERE —
-    // même discipline que le callback OAuth legacy (APP-03 / Lot 1). Prédicat supplémentaire sur
-    // `shopify_client_id` (la valeur lue par la garde de bascule d'app ci-dessus, `.is()` pour
-    // NULL) : ferme la course où une autre requête réassignerait la boutique entre la lecture de
-    // garde et cette écriture — 0 ligne modifiée (course, ou refus RLS) est alors un échec fermé
-    // (`.select().maybeSingle()` renvoie `null`), jamais un succès silencieux.
-    let updateQuery = rlsClient
-      .from('shop')
-      .update({ shopify_client_id: app.clientId, status: 'active', updated_at: now })
-      .eq('id', ownershipDecision.shopId)
-      .eq('merchant_account_id', input.merchantAccountId);
-    updateQuery =
-      existingShop?.shopify_client_id === null
-        ? updateQuery.is('shopify_client_id', null)
-        : updateQuery.eq('shopify_client_id', existingShop?.shopify_client_id ?? app.clientId);
-
-    const { data: updatedShop, error: updateError } = await updateQuery.select('id').maybeSingle();
-
-    if (updateError || !updatedShop) {
-      Sentry.captureException(updateError ?? new Error('shopify_embedded_link_update_no_row'), {
-        tags: { action: 'shopify.embedded_link', reason: 'shop_update_failed' },
-      });
-      return { ok: false, errorCode: 'write_failed' };
-    }
+    return { ok: false, errorCode: 'write_failed' };
   }
 
   const redirectUrl = buildShopifyEmbeddedAppUrl(intent.host, app.clientId);
