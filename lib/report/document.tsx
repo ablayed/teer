@@ -30,6 +30,7 @@ type ReportLabels = {
   settled: string;
   shortfall: string;
   status: Record<string, string>;
+  statusSubtitle: string;
   statusTitle: string;
   total: string;
   trendTitle: string;
@@ -505,6 +506,13 @@ export function ReportDocument({
 
         <View style={styles.section}>
           <Text style={styles.h2}>{labels.statusTitle}</Text>
+          {/* Le montant de cette section est Sigma total_amount des commandes CREEES sur la
+              periode, par statut courant. Il ne coincide jamais avec le KPI
+              « Chiffre d'affaires » de la meme page, date sur cash_collected_at : la
+              section doit dire son axe pour ne pas se lire contre lui. */}
+          <Text style={[styles.muted, { fontSize: 8, marginBottom: 8, marginTop: -4 }]}>
+            {labels.statusSubtitle}
+          </Text>
           <StatusRows
             currency={currency}
             formatMoney={formatMoney}

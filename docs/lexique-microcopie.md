@@ -219,3 +219,38 @@ ne permet pas) : ni l'un ni l'autre ne serait factuellement vrai ici.
 `retiredTransitionActions` (`lib/domain/order-transition-actions.ts`) : la machine à états, le
 CHECK de `cod_status` et la RPC `transition_order` sont intacts, et les commandes déjà en
 REFUSEE gardent leur sortie (« Désannuler »).
+
+## Libellés qui annonçaient une portée fausse (Lot COHERENCE-01)
+
+**Dix libellés corrigés, aucun calcul touché.** La règle commune : un libellé qui annonce une
+fenêtre, un axe de date ou un périmètre doit annoncer **celui que le code applique réellement**.
+Quand le calcul est juste et le nom faux, c'est le nom qui bouge — jamais le calcul. Chaque ligne
+ci-dessous a été mesurée au catalogue, pas déduite du texte d'une migration
+(voir `docs/lexique-dates.md`).
+
+| Clé | Avant | Après | Pourquoi |
+|---|---|---|---|
+| `tableau.blocks.exceptions.rows.enLivraison` | « En cours de livraison (7 j) » | « En cours de livraison » | `get_dashboard_priority_counts` ne porte de fenêtre que sur sa branche `a_appeler` depuis `0149`. Le « (7 j) » était une **contradiction factuelle** : la fenêtre a été retirée parce qu'elle masquait 83 % de la population en production. |
+| `tableau.blocks.exceptions.rows.annuleesRetours` | « Annulées / Retours (7 j) » | « Annulées / Retours » | Même cas, même migration (masquait 93 %). |
+| `tableau.kpi.delta_hier` | « vs hier » | « vs 7 j précédents » | `get_dashboard_kpi` compare J-14→J-7 à J-7→J0 depuis `0076`, jamais la veille. **Clé actuellement non consommée** : `DeltaChip` (`components/kpi/KPICard.tsx`) ne rend qu'une flèche et un nombre, aucun texte de comparaison. La correction est donc **préventive** — elle empêche de câbler la phrase fausse plus tard — et **n'est pas un changement visible**. Ne pas la présenter comme tel. |
+| `tableau.kpi.taux_livraison` | « Taux livraison » | « Taux livraison (tout l'historique) » | La carte n'a **aucune** fenêtre (`0076`:109-136) et siège dans la même bande qu'« À appeler (7 j) » : sans la portée, rien ne distingue les deux. |
+| `tableau.kpi.taux_confirmation` | « Taux confirmation » | « Taux confirmation (30 j) » | Dénominateur borné à 30 jours (`0076`:92-107). Par symétrie avec « À appeler (7 j) ». |
+| `tableau.blocks.shopPerformance.amount` | *(colonne monétaire sans aucun libellé)* | « Montant commandé » | `get_dashboard_shop_performance` (`0129`:35) rend `sum(o.total_amount)` sur `created_at`, **sans aucun filtre de statut** : une commande annulée y contribue. **Jamais « CA ».** Le champ reste nommé `revenue` — c'est le nom rendu par la RPC **et** le champ TS (`lib/actions/dashboard.ts`:59) ; le renommer déclencherait une migration pour un mot. **On corrige le libellé affiché, pas le champ.** |
+| `livreurs.cash.collectedTotal` | « Collecté sur période » | « Collecté sur les commandes de la période » | `get_driver_cash_consolidation` (`0100`:103-112) borne sur **`orders.created_at`**, jamais `cash_collected_at`. L'axe est une décision datée et assumée (`0100`:17-24) ; c'est donc le libellé qui doit le dire. |
+| `livreurs.cash.cashOnHandPeriodDefinition` | avertissait de l'écart avec le solde live | + « le terme « collecté » est daté sur la date de CRÉATION de la commande » | La définition disait déjà qu'un versement peut couvrir des commandes hors période. Elle **ne disait pas** l'information qui manquait vraiment : du cash encaissé pendant la période est invisible si la commande est plus ancienne. |
+| `tableau.blocks.operationsEssentials.cancellationRateScope` | *(rien)* | « Sur les commandes créées dans la période, même sans issue » | Cohorte immature : le dénominateur inclut les commandes créées aujourd'hui qui n'ont encore aucune issue. Posé dans le `hint` (slot existant, même usage que `periodHint`), pas dans le libellé, pour ne pas déséquilibrer la grille. **Aucun indicateur de maturité n'a été ajouté** — celui du graphe voisin (`isMature`) est une fonctionnalité, pas une microcopie. |
+| `report.statusSubtitle` (PDF) | *(rien)* | « Commandes créées sur la période · montant commandé, jamais le CA encaissé » | `get_report_status_breakdown` (`0085`:104-116) rend un montant **légitime** sur `created_at` que `0119` a explicitement préservé. Le problème est de **cohabitation** : il se lit à deux centimètres du KPI « Chiffre d'affaires » de la même page, daté `cash_collected_at`, et les deux ne coïncident jamais. On nomme la section et la colonne, on ne touche pas le calcul. |
+
+**Ce qui n'a PAS été corrigé par un libellé, et pourquoi.** « Produits les plus vendus »
+(Tableau) et `get_top_products` (assistant) portaient un montant daté sur `created_at`, avec un
+périmètre incluant `CONFIRMEE`/`PROGRAMMEE`/`EN_LIVRAISON` — donc des commandes ni livrées ni
+payées. **Ce libellé ne se corrige pas** : le bloc doublait « CA par produit », qui répond à la
+même question et est juste. Les deux sont **retirés**, pas renommés. « Top produits » du rapport
+PDF (`get_report_top_products`, `0086`) est le même défaut **en pire** (aucun filtre de statut) et
+**reste en place** : un doublon retiré d'un écran et conservé dans un document est un écart, pas
+une clôture — il est nommé comme tel dans `docs/lexique-dates.md` §6.
+
+**Règle à retenir pour la suite.** Avant d'écrire « (7 j) », « sur période », « CA » ou
+« vendus » dans un libellé, vérifier au catalogue ce que la source applique réellement. Les
+libellés sont la première cause d'impression fausse chez le marchand, **avant** les calculs —
+et ils coûtent le moins cher à corriger.

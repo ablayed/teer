@@ -342,7 +342,11 @@ async function OperationsEssentialsSection({
             ) : undefined
           }
         />
+        {/* La cohorte est fenêtrée sur orders.created_at et son dénominateur inclut les
+            commandes encore sans issue : le libellé doit dire cette portée. Aucun indicateur
+            de maturité ici — ce serait une fonctionnalité, pas une microcopie. */}
         <EssentialMetricCard
+          hint={loss ? tOps('cancellationRateScope') : undefined}
           label={tOps('cancellationRate')}
           stateLabel={hasLossError ? tPeriodMetrics('error') : undefined}
           stateTone={hasLossError ? 'danger' : 'neutral'}
@@ -516,6 +520,7 @@ async function ShopPerformanceSection({
 
   return (
     <ShopPerformance
+      amountLabel={t('blocks.shopPerformance.amount')}
       connectedLabel={t('blocks.shopPerformance.connected')}
       currency={kpi?.currency ?? null}
       emptyLabel={t('blocks.shopPerformance.empty')}
