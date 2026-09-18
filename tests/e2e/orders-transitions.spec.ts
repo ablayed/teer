@@ -1478,6 +1478,89 @@ test('un agent ne voit que les actions legales sur une commande a appeler', asyn
   }
 });
 
+// ============================================================================
+// FIX-UI-REFUS-01 — retrait de l'action « Refuser par le client »
+//
+// L'absence côté agent était déjà couverte (test ci-dessus) : un agent n'a JAMAIS eu
+// ce droit, ce test ne mesurait donc que le RBAC. Ici on mesure le retrait lui-même,
+// sur le rôle qui l'avait : l'owner. Les deux profils mobiles de la CI (pixel-7 412 px,
+// iphone-14 390 px) exercent le même menu en tiroir Vaul, avec une entrée de moins.
+// ============================================================================
+
+test('FIX-UI-REFUS-01 - un owner ne voit plus « Refuser par le client » sur une commande a appeler, les autres actions restent', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('refus-retire-owner');
+  const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'A_APPELER');
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    // Rail d'actions rapides : asserté AVANT d'ouvrir « Actions » — sur mobile, le
+    // Drawer Vaul pose aria-hidden sur le reste de la page tant qu'il est ouvert.
+    await expect(page.getByRole('link', { name: 'Appeler' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Message client' })).toBeVisible();
+
+    // Action du stade actuel, promue en bouton direct.
+    await expect(menuItem(page, 'Programmer la livraison')).toBeVisible();
+
+    // Forme nommée : elle attend que l'un des deux états (bouton direct OU trigger
+    // « Actions ») soit réellement rendu avant de décider, là où la forme sans nom se
+    // contente d'un `waitFor` court sur le trigger et laisse le menu fermé en silence.
+    // Même ouverture que le test agent voisin, via le helper partagé (forme nommée :
+    // elle attend que l'un des deux états — bouton direct OU trigger « Actions » — soit
+    // réellement rendu avant de décider).
+    await openActionsMenu(page, 'À rappeler');
+
+    // Non-régression : le reste du menu est intact.
+    await expect(menuItem(page, 'À rappeler')).toBeVisible();
+    await expect(menuItem(page, 'Annuler la commande')).toBeVisible();
+
+    // Le fait central de ce test : les DEUX libellés de l'action retirée ont disparu.
+    await expect(menuItem(page, 'Refuser par le client')).toHaveCount(0);
+    await expect(menuItem(page, 'Refuser')).toHaveCount(0);
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
+test('FIX-UI-REFUS-01 - une commande deja REFUSEE affiche son libelle et peut encore avancer (desannuler)', async ({
+  page,
+}) => {
+  const fixture = await createOwnerFixture('refus-retire-existante');
+  // Seed via legacyStatusToDimensions('REFUSEE') : order_state='cancelled',
+  // delivery_state='failed' — exactement l'état que produisait « Refuser par le client ».
+  const orderId = await createOrder(fixture.admin, fixture.merchantAccountId, 'REFUSEE');
+
+  try {
+    await signIn(page, fixture.email, `/commandes/${orderId}`);
+
+    // Le libellé du STATUT reste lisible : le retrait porte sur l'action, jamais sur
+    // l'affichage d'une commande historique.
+    await expect(page.getByLabel('Refusée', { exact: true }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Et la commande n'est pas bloquée : « Désannuler » est sa seule sortie, elle est
+    // proposée et elle fonctionne.
+    await expect(menuItem(page, 'Refuser par le client')).toHaveCount(0);
+    await runDetailMenuAction(page, 'Désannuler');
+    await waitForOrderStatus(fixture.admin, orderId, 'A_APPELER');
+
+    const { data: order } = await fixture.admin
+      .from('orders')
+      .select('order_state, call_state, delivery_state, cash_state')
+      .eq('id', orderId)
+      .single();
+    expect(order?.order_state).toBe('open');
+    expect(order?.call_state).toBe('to_call');
+    expect(order?.delivery_state).toBe('unassigned');
+    expect(order?.cash_state).toBe('not_due');
+  } finally {
+    await cleanupUsers(fixture.admin, fixture.userIds);
+  }
+});
+
 test('Lot B - deconfirmer libere la reserve et disparait apres dispatch', async ({ page }) => {
   const fixture = await createOwnerFixture('lotb-deconfirm-ui');
   const productTitle = 'Produit Deconfirmer E2E';

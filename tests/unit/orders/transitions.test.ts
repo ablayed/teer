@@ -46,10 +46,11 @@ describe('server transition actions', () => {
       'invalider',
     ]);
     expect(getAllowedTransitionActions('LIVREE', 'agent')).toEqual([]);
+    // FIX-UI-REFUS-01 : « refuser » ne figure plus dans les actions offertes — retrait
+    // de surface, machine à états inchangée (cf. refusal-action-retired.test.ts).
     expect(getAllowedTransitionActions('CONFIRMEE', 'manager')).toEqual([
       'programmer',
       'annuler',
-      'refuser',
       'deconfirmer',
     ]);
   });
@@ -58,6 +59,10 @@ describe('server transition actions', () => {
     expect(getTransitionActionForTarget('CONFIRMEE', 'agent')).toBe('confirmer');
     expect(getTransitionActionForTarget('LIVREE', 'agent')).toBeNull();
     expect(getTransitionActionForTarget('LIVREE', 'manager')).toBe('livrer');
+    // FIX-UI-REFUS-01 : la résolution par cible est volontairement INCHANGÉE — c'est
+    // `performTransitionForContext` qui refuse l'action retirée, par un code nommé, pour
+    // que les quatre chemins d'appel (dont ceux qui résolvent par cible) renvoient le
+    // même refus. Cf. tests/unit/orders/refusal-action-retired.test.ts.
     expect(getTransitionActionForTarget('REFUSEE', 'owner')).toBe('refuser');
     expect(getTransitionActionForTarget('ANNULEE', 'owner')).toBe('annuler');
     // Lot B : les actions reverse ne sont jamais résolues par target (sinon

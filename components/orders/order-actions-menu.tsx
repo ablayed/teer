@@ -13,6 +13,7 @@ import { WhatsappComposeSheet } from '@/components/whatsapp/whatsapp-compose-she
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
 import {
   type TransitionAction,
+  isRetiredTransitionAction,
   visibleAllowedActions,
 } from '@/lib/domain/order-transition-actions';
 import type { WhatsappOrderData } from '@/lib/whatsapp/format';
@@ -54,12 +55,13 @@ function isPayloadDialogAction(action: TransitionAction): action is PayloadDialo
   );
 }
 
-// Ordre d'affichage du menu.
+// Ordre d'affichage du menu. FIX-UI-REFUS-01 : « refuser » n'y figure plus — l'action
+// est retirée de la surface (cf. `retiredTransitionActions`). La remettre ici ne la
+// ferait PAS réapparaître : `visibleActions` ne la contient plus.
 const transitionMenuOrder: TransitionAction[] = [
   'programmer',
   'reprogrammer',
   'annuler',
-  'refuser',
   'journaliser_appel',
   'confirmer',
   'deconfirmer',
@@ -73,12 +75,7 @@ const transitionMenuOrder: TransitionAction[] = [
   'desannuler',
 ];
 
-const destructiveActions = new Set<TransitionAction>([
-  'annuler',
-  'mark_returned',
-  'refuser',
-  'invalider',
-]);
+const destructiveActions = new Set<TransitionAction>(['annuler', 'mark_returned', 'invalider']);
 
 export function OrderActionsMenu({
   allowedActions,
@@ -105,20 +102,11 @@ export function OrderActionsMenu({
   const onTransitionSuccessRef = useRef(onTransitionSuccess);
 
   const visibleActions = visibleAllowedActions(allowedActions);
-  const isCallQueue = visibleActions.includes('journaliser_appel');
-  const transitionEntries = transitionMenuOrder
-    .filter((action) => visibleActions.includes(action))
-    .filter((action) => {
-      // "Refuser" reste hors scope pour une commande programmée — cf. CLAUDE.md
-      // (Lot 3 : Refuser en "En cours de livraison" n'est pas touché, ici même filtre
-      // conservé pour "scheduled"). "Déconfirmer" redevient visible sous le libellé
-      // "Déprogrammer" (cf. getTransitionLabel) : même action/légalité de dimensions,
-      // seul l'affichage change.
-      if (deliveryState === 'scheduled' && action === 'refuser') {
-        return false;
-      }
-      return true;
-    });
+  // FIX-UI-REFUS-01 — le filtre par surface qui masquait « Refuser » sur une commande
+  // programmée est retiré : il n'avait plus rien à masquer, l'action ne remontant plus
+  // du catalogue. « Déconfirmer » reste visible sous le libellé « Déprogrammer » pour
+  // ce même état (cf. getTransitionLabel) : même action, seul l'affichage change.
+  const transitionEntries = transitionMenuOrder.filter((action) => visibleActions.includes(action));
   const hasMenu = transitionEntries.length > 0;
   const canCall = phone !== null;
   // Sujet B (Lot 3) : le template client n'a de sens que pour une commande encore
@@ -197,8 +185,14 @@ export function OrderActionsMenu({
       return 'À rappeler';
     }
 
-    if (action === 'refuser' && isCallQueue) {
-      return 'Refuser par le client';
+    // FIX-UI-REFUS-01 — les deux libellés d'ACTION « Refuser par le client » (file
+    // d'appel) et « Refuser » (autres stades) sont retirés. Cette sortie anticipée
+    // narrow le type pour le switch ci-dessous, qui reste exhaustif SANS entrée pour
+    // l'action retirée : c'est le compilateur qui garantit désormais qu'aucun libellé
+    // ne subsiste. Le libellé du STATUT « Refusée » (`orderStatusLabels`,
+    // `CodStatusBadge`) est intact — il sert l'affichage, jamais l'action.
+    if (isRetiredTransitionAction(action)) {
+      return '';
     }
 
     switch (action) {
@@ -216,8 +210,6 @@ export function OrderActionsMenu({
         return 'Marquer retournée';
       case 'invalider':
         return 'Invalider';
-      case 'refuser':
-        return 'Refuser';
       case 'reprogrammer':
         return 'Reprogrammer';
       case 'annuler':

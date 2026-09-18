@@ -107,14 +107,17 @@ describe('order state dimensions', () => {
       }
     }
 
-    // refuser reste légal avant dispatch (trou préexistant Lot 3 sur "scheduled" hors
-    // scope de ce lot, non touché).
+    // FIX-UI-REFUS-01 : « refuser » n'est plus offerte AVANT dispatch non plus. Ce test
+    // asserait l'inverse ; il ne le complète pas, il le REMPLACE — l'ancienne assertion
+    // verrouillait l'offre que ce lot retire. La légalité dimensionnelle, elle, n'a pas
+    // bougé (cf. tests/unit/orders/refusal-action-retired.test.ts, qui mesure les deux
+    // faits séparément).
     expect(
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('A_APPELER'), 'owner'),
-    ).toContain('refuser');
+    ).not.toContain('refuser');
     expect(
       getAllowedTransitionActionsForDimensions(legacyStatusToDimensions('PROGRAMMEE'), 'owner'),
-    ).toContain('refuser');
+    ).not.toContain('refuser');
   });
 
   it('reprogrammer patch : ramène En cours de livraison à Programmée avec la nouvelle date (dimensions), orderState reste open', () => {

@@ -12,7 +12,9 @@ import type { OrderListItem } from '@/lib/actions/orders';
 import { performTransition } from '@/lib/actions/transitions';
 import type { OrderStatus } from '@/lib/domain/order-state-machine';
 import {
+  type SurfaceTransitionAction,
   type TransitionAction,
+  isRetiredTransitionAction,
   visibleAllowedActions,
 } from '@/lib/domain/order-transition-actions';
 import { cn } from '@/lib/utils';
@@ -57,7 +59,9 @@ const toneClasses: Record<KanbanColumnView['tone'], string> = {
   success: 'border-success/25 bg-success-subtle',
 };
 
-const actionLabels: Record<TransitionAction, string> = {
+// FIX-UI-REFUS-01 — plus aucune entrée pour « refuser » : le type `SurfaceTransitionAction`
+// exclut les actions retirées, donc le compilateur interdit d'en reposer le libellé ici.
+const actionLabels: Record<SurfaceTransitionAction, string> = {
   journaliser_appel: 'À rappeler',
   confirmer: 'Confirmer',
   programmer: 'Programmer la livraison',
@@ -66,12 +70,17 @@ const actionLabels: Record<TransitionAction, string> = {
   livrer: 'Marquer livree',
   mark_returned: 'Marquer retournée',
   annuler: 'Annuler',
-  refuser: 'Refuser',
   reprogrammer: 'Reprogrammer',
   deconfirmer: 'Déconfirmer',
   desannuler: 'Désannuler',
   invalider: 'Invalider',
 };
+
+// Une action retirée ne remonte plus de `getAllowedTransitionActionsForDimensions` :
+// cette branche est inatteignable et ne rend volontairement aucun libellé.
+function actionLabel(action: TransitionAction): string {
+  return isRetiredTransitionAction(action) ? '' : actionLabels[action];
+}
 
 const DesktopKanbanBoard = dynamic(
   () =>
@@ -285,7 +294,7 @@ function MobileTransitionMenu({
               role="menuitem"
               type="button"
             >
-              {actionLabels[action]}
+              {actionLabel(action)}
             </button>
           ))}
         </div>
