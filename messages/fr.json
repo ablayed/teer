@@ -422,12 +422,6 @@
       "empty": "Aucune livraison encaissée sur les 30 derniers jours."
     },
     "blocks": {
-      "topProducts": {
-        "title": "Produits les plus vendus",
-        "subtitle": "Commandes confirmées à livrées · période sélectionnée",
-        "empty": "Aucun produit vendu pour le moment.",
-        "units": "unités"
-      },
       "shopPerformance": {
         "title": "Performance par boutique",
         "subtitle": "Toutes commandes · période sélectionnée",

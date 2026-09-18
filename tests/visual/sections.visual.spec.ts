@@ -334,56 +334,6 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
     }
   });
 
-  test('tableau-top-products-spacing', async ({ page }) => {
-    const fixture = await createVisualFixture('tableau-top-products-spacing');
-
-    try {
-      await seedDashboardCashByProductVisualData(fixture, 3);
-      await signInToRoute(
-        page,
-        fixture.email,
-        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
-      );
-      await expect(page.getByTestId('tableau-top-products-card')).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByTestId('tableau-top-products-card')).toHaveCSS('opacity', '1');
-      await waitForFonts(page);
-      const card = page.getByTestId('tableau-top-products-card');
-      await card.scrollIntoViewIfNeeded();
-      await waitForStableLayout(card);
-
-      await expect(card).toHaveScreenshot('tableau-top-products-spacing.png');
-    } finally {
-      await cleanupVisualFixture(fixture);
-    }
-  });
-
-  test('tableau-card-width-top-products', async ({ page }, testInfo) => {
-    const fixture = await createVisualFixture('tableau-card-width-top-products');
-
-    try {
-      await seedDashboardCashByProductVisualData(fixture, 3);
-      await signInToRoute(
-        page,
-        fixture.email,
-        `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
-      );
-      const card = page.getByTestId('tableau-top-products-card');
-      await expect(card).toBeVisible({ timeout: 15_000 });
-      await expect(card).toHaveCSS('opacity', '1');
-      await waitForFonts(page);
-      await card.scrollIntoViewIfNeeded();
-      await waitForStableLayout(card);
-
-      await expectDashboardCardWidthToBeStable({
-        card,
-        expectedWidth: expectedDashboardCardWidth(testInfo.project.name),
-        page,
-      });
-    } finally {
-      await cleanupVisualFixture(fixture);
-    }
-  });
-
   test('finances', async ({ page }) => {
     const fixture = await createVisualFixture('finances');
 

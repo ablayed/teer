@@ -19,10 +19,22 @@ describe("catalogue d'outils IA — couche A (filtrage par rôle)", () => {
     const names = getToolsForRole('agent').map((t) => t.name);
     expect(names).toContain('get_order_status_summary');
     expect(names).toContain('get_low_stock');
-    expect(names).toContain('get_top_products');
     expect(names).toContain('get_customer_reliability');
     for (const restricted of [...OWNER_MANAGER_ONLY, ...OWNER_ONLY]) {
       expect(names).not.toContain(restricted);
+    }
+  });
+
+  // COHERENCE-01 — `get_top_products` a été RETIRÉ : il datait un montant de vente sur
+  // orders.created_at avec un périmètre incluant CONFIRMEE/PROGRAMMEE/EN_LIVRAISON, donc
+  // des commandes ni livrées ni payées. C'était le jumeau exact du bloc
+  // « Produits les plus vendus » du Tableau, retiré dans le même lot : les deux devaient
+  // partir ensemble, sinon le marchand obtenait en langage naturel le chiffre qu'on venait
+  // de masquer. Verrou d'ABSENCE, pour qu'il ne soit pas réintroduit sans décision.
+  it('ne réexpose get_top_products à AUCUN rôle (retiré par COHERENCE-01)', () => {
+    expect(IA_TOOL_CATALOG.map((t) => t.name)).not.toContain('get_top_products');
+    for (const role of ['owner', 'manager', 'agent'] as TeamRole[]) {
+      expect(getToolsForRole(role).map((t) => t.name)).not.toContain('get_top_products');
     }
   });
 

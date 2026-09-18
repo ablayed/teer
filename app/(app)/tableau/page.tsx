@@ -4,7 +4,6 @@ import { OrderExceptionsGrid } from '@/components/dashboard/OrderExceptionsGrid'
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { ShopPerformance } from '@/components/dashboard/ShopPerformance';
-import { TopProducts } from '@/components/dashboard/TopProducts';
 import { DeliveryRateTrend } from '@/components/dashboard/delivery-rate-trend';
 import { TableauCashByProductChart } from '@/components/dashboard/tableau-period-metrics';
 import { TableauPeriodPersistence } from '@/components/dashboard/tableau-period-persistence';
@@ -26,7 +25,6 @@ import {
   getRecentActivity,
   getRevenue30d,
   getShopPerformance,
-  getTopProducts,
 } from '@/lib/actions/dashboard';
 import { getDriversCashOnHandTotal } from '@/lib/actions/drivers';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
@@ -70,7 +68,7 @@ function displayNameFromMetadata(metadata: Record<string, unknown>): string {
 }
 
 // Dedup le fetch KPI partage entre le sous-titre, la bande KPI et les blocs
-// qui s'en servent pour la devise (revenue / top produits / boutiques).
+// qui s'en servent pour la devise (revenue / boutiques).
 const loadDashboardKpi = cache(getDashboardKpi);
 
 async function CallQueueSubtitle({ shopId }: { shopId: string | null }) {
@@ -473,35 +471,6 @@ async function RevenueSection({ shopId }: { shopId: string | null }) {
   );
 }
 
-async function TopProductsSection({
-  period,
-  shopId,
-}: {
-  period: TableauPeriodRange;
-  shopId: string | null;
-}) {
-  const [t, topProductsResult, kpiResult] = await Promise.all([
-    getTranslations('tableau'),
-    getTopProducts({ from: period.from, shopId, to: period.to }),
-    loadDashboardKpi(shopId),
-  ]);
-  const state = toMetricLoadState(topProductsResult, (items) => items.length === 0);
-  logMetricLoadError('top_products', state);
-  const kpi = kpiResult.ok ? kpiResult.data : null;
-
-  return (
-    <TopProducts
-      currency={kpi?.currency ?? null}
-      emptyLabel={t('blocks.topProducts.empty')}
-      errorLabel={t('dataUnavailable')}
-      state={state}
-      subtitle={t('blocks.topProducts.subtitle')}
-      title={t('blocks.topProducts.title')}
-      unitsLabel={t('blocks.topProducts.units')}
-    />
-  );
-}
-
 async function ShopPerformanceSection({
   period,
   shopId,
@@ -815,9 +784,6 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
               <CashByProductPeriodMetric period={period} shopId={selectedShopId} />
             </Suspense>
           ) : null}
-          <Suspense fallback={<CardListSkeleton rows={5} />} key={`top-${shopKey}-${periodKey}`}>
-            <TopProductsSection period={period} shopId={selectedShopId} />
-          </Suspense>
           {showFinancialMetrics ? (
             <Suspense
               fallback={<CardListSkeleton rows={5} />}
