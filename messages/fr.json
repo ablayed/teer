@@ -999,6 +999,7 @@
       "funnel": "Entonnoir COD (période)",
       "shops": "CA encaissé par boutique",
       "aging": "Cash-aging par livreur",
+      "agingScope": "Ancienneté financière, pas physique : comptée depuis la date de record comptable de la vente, qui peut être la date de livraison programmée. Les commandes dont cette date est inconnue sont exclues — leur montant reste compté dans « Cash chez les livreurs ».",
       "empty": "Aucune donnée à afficher."
     },
     "status": {

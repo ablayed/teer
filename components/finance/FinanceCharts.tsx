@@ -38,6 +38,10 @@ type AgingPoint = {
 
 type FinanceChartsProps = {
   aging: AgingPoint[];
+  // 0157 : l'ancienneté rendue par cash_aging est FINANCIÈRE (date de record comptable de la
+  // vente, héritable de scheduled_for), jamais physique, et elle exclut les dates inconnues.
+  // La carte doit le dire : c'est la moitié microcopie de la décision posée dans la migration.
+  agingScope: string;
   agingTitle: string;
   currency: string;
   emptyLabel: string;
@@ -65,14 +69,19 @@ function formatDate(value: string): string {
 
 function ChartCard({
   children,
+  subtitle,
   title,
 }: {
   children: React.ReactNode;
+  subtitle?: string;
   title: string;
 }) {
   return (
     <section className="min-h-[280px] rounded-lg border border-border bg-surface p-4 shadow-1 md:p-5">
-      <h2 className="mb-4 text-[15px] font-semibold">{title}</h2>
+      <div className="mb-4">
+        <h2 className="text-[15px] font-semibold">{title}</h2>
+        {subtitle ? <p className="mt-0.5 text-xs text-muted">{subtitle}</p> : null}
+      </div>
       {children}
     </section>
   );
@@ -84,6 +93,7 @@ function EmptyChart({ label }: { label: string }) {
 
 export function FinanceCharts({
   aging,
+  agingScope,
   agingTitle,
   currency,
   emptyLabel,
@@ -224,7 +234,7 @@ export function FinanceCharts({
         )}
       </ChartCard>
 
-      <ChartCard title={agingTitle}>
+      <ChartCard subtitle={agingScope} title={agingTitle}>
         {hasAging ? (
           <ResponsiveContainer height={240} width="100%">
             <BarChart data={aging}>

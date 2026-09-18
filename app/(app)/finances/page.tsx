@@ -489,6 +489,7 @@ async function GlobalTabContent({
 
       <FinanceChartsLoader
         aging={aging}
+        agingScope={t('charts.agingScope')}
         agingTitle={t('charts.aging')}
         currency="XOF"
         emptyLabel={t('charts.empty')}
