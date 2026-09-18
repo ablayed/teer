@@ -9,6 +9,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const labels = {
+  amountLabel: 'Montant commandé',
   connectedLabel: 'Connectée',
   currency: null,
   emptyLabel: 'Aucune boutique connectée.',
@@ -47,5 +48,14 @@ describe('ShopPerformance — TB-P0', () => {
     expect(screen.getByText('Boutique Dakar')).toBeTruthy();
     expect(screen.queryByText(labels.errorLabel)).toBeNull();
     expect(screen.queryByText(labels.emptyLabel)).toBeNull();
+  });
+
+  // COHERENCE-01 (M7) — la colonne monétaire était rendue SANS aucun libellé, donc lue
+  // comme un chiffre d'affaires alors qu'elle vaut Sigma total_amount de TOUTES les commandes
+  // créées, sans filtre de statut. Le libellé doit accompagner le montant.
+  it('mesure : le montant est accompagné de son libellé, jamais rendu nu', () => {
+    render(<ShopPerformance state={{ data: items, status: 'ready' }} {...labels} />);
+
+    expect(screen.getByText(labels.amountLabel)).toBeTruthy();
   });
 });

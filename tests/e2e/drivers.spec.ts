@@ -935,7 +935,9 @@ test('cash livreur: portee temporelle visible, pas de bandeau ecart, confirmatio
     await expect(page.getByRole('heading', { name: 'Ndeye Cash01' })).toBeVisible();
 
     // Noms de cartes arbitrés (plus d'ambiguïté "Cash total collecté" vs "(période)").
-    await expect(page.getByText('Collecté sur période', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Collecté sur les commandes de la période', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText('Cash chez le livreur sur période', { exact: true })).toBeVisible();
 
     // Portée visible sous CHAQUE montant, sans dépendre de "Définition".

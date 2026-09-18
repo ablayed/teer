@@ -252,6 +252,7 @@ export async function GET(request: Request) {
       REFUSEE: finance('status.REFUSEE'),
       TENTEE: finance('status.TENTEE'),
     },
+    statusSubtitle: t('statusSubtitle'),
     statusTitle: t('statusTitle'),
     total: t('total'),
     trendTitle: t('trendTitle'),

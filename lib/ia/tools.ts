@@ -7,35 +7,12 @@ import { type IaTool, type IaToolContext, type IaToolRunResult, defineTool } fro
 import type { TeamRole } from '@/lib/team/permissions';
 import { z } from 'zod';
 
-// Statuts comptés comme « vendus / en cours de livraison » pour le top produits.
-const SELLING_STATUSES: OrderStatus[] = ['CONFIRMEE', 'PROGRAMMEE', 'EN_LIVRAISON', 'LIVREE'];
 const DELIVERED_STATUS = 'LIVREE';
 const CANCELLED_STATUSES = new Set(['ANNULEE', 'REFUSEE']);
 
 function toNumber(value: unknown): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
-}
-
-function parseItemsSummary(
-  value: unknown,
-): Array<{ title: string; quantity: number; price: number }> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const items: Array<{ title: string; quantity: number; price: number }> = [];
-  for (const raw of value) {
-    if (typeof raw !== 'object' || raw === null) {
-      continue;
-    }
-    const record = raw as Record<string, unknown>;
-    const title = typeof record.title === 'string' ? record.title : null;
-    if (!title) {
-      continue;
-    }
-    items.push({ title, quantity: toNumber(record.quantity), price: toNumber(record.price) });
-  }
-  return items;
 }
 
 // ───────────────────────────── Outils v1 (non-finance) ─────────────────────
@@ -103,52 +80,6 @@ const getLowStock = defineTool({
       .sort((a, b) => a.qtyOnHand - b.qtyOnHand)
       .slice(0, 50);
     return { count: low.length, products: low };
-  },
-});
-
-// 3. Top produits par unités sur une période — tous rôles.
-// Le CA n'est exposé QU'AUX rôles owner/manager (agent : unités seulement).
-const getTopProducts = defineTool({
-  name: 'get_top_products',
-  description:
-    "Produits les plus commandés sur une période, classés par unités (commandes confirmées à livrées). Le chiffre d'affaires n'est disponible que pour owner/manager.",
-  allowedRoles: ['owner', 'manager', 'agent'],
-  inputSchema: z.object({
-    period: periodSchema,
-    limit: z.number().int().min(1).max(20).optional(),
-  }),
-  async execute(ctx, input) {
-    const { from, to } = resolvePeriod(input.period);
-    const limit = input.limit ?? 5;
-    const { data, error } = await ctx.supabase
-      .from('orders')
-      .select('items_summary')
-      .eq('merchant_account_id', ctx.merchantAccountId)
-      .in('cod_status', SELLING_STATUSES)
-      .gte('created_at', from)
-      .lte('created_at', to);
-    if (error) {
-      throw new Error('data_error');
-    }
-    const byTitle = new Map<string, { units: number; revenue: number }>();
-    for (const order of data ?? []) {
-      for (const item of parseItemsSummary(order.items_summary)) {
-        const current = byTitle.get(item.title) ?? { units: 0, revenue: 0 };
-        current.units += item.quantity;
-        current.revenue += item.quantity * item.price;
-        byTitle.set(item.title, current);
-      }
-    }
-    const showRevenue = ctx.role !== 'agent';
-    const products = [...byTitle.entries()]
-      .map(([name, agg]) => ({
-        name,
-        units: agg.units,
-        ...(showRevenue ? { revenue: agg.revenue } : {}),
-      }))
-      .sort((a, b) => b.units - a.units)
-      .slice(0, limit);
-    return { period: input.period, products };
   },
 });
 
@@ -405,7 +336,6 @@ const getNetProfit = defineTool({
 export const IA_TOOL_CATALOG: IaTool[] = [
   getOrderStatusSummary,
   getLowStock,
-  getTopProducts,
   getCustomerReliability,
   getRtoRate,
   getCancellationRate,

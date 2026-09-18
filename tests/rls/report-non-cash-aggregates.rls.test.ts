@@ -120,6 +120,7 @@ async function insertOrder(
       deliveryState: string;
       orderState: string;
     };
+    cashCollectedAt?: string;
     createdAt?: string;
     itemsSummary?: unknown;
     shopId?: string | null;
@@ -132,6 +133,7 @@ async function insertOrder(
     .from('orders')
     .insert({
       call_state: opts.dimensions.callState,
+      cash_collected_at: opts.cashCollectedAt ?? null,
       cash_state: opts.dimensions.cashState,
       created_at: createdAt,
       created_at_shopify: createdAt,
@@ -274,8 +276,14 @@ describe('get_report_status_breakdown (Lot 4, 0085)', () => {
 });
 
 describe('get_report_revenue_by_day (Lot 4, 0085)', () => {
+  // 0156 (COHERENCE-01) : le filtre ET le bucket portent désormais la MÊME expression,
+  // celle de finance_kpis.delivered_orders (0119:73) :
+  //   coalesce(cash_collected_at, max(ost.created_at LIVREE), updated_at)
+  // Avant 0156, le filtre était sur created_at et le bucket sur
+  // coalesce(updated_at, created_at) — deux axes pour une seule série, le repli vers
+  // created_at étant du code mort (updated_at est NOT NULL DEFAULT now() + trigger).
   skipIfNoServiceRole(
-    'bucket jour calendaire UTC de coalesce(updated_at,created_at), LIVREE uniquement',
+    'bucket jour calendaire UTC de la date de record, LIVREE uniquement',
     async () => {
       const { admin, email, merchantAccountId } = await createOwnerFixture('revenue-bucket');
       // 23h59 UTC un jour J → doit tomber dans le bucket J, pas J+1 (piège TZ classique).
@@ -309,8 +317,13 @@ describe('get_report_revenue_by_day (Lot 4, 0085)', () => {
     },
   );
 
+  // ASSERTION INVERSÉE PAR 0156, et c'est volontaire : la version antérieure de ce test
+  // VERROUILLAIT LE DÉFAUT. Elle affirmait « Filtre = created_at (dans la fenêtre), PAS la
+  // date de bucket : la commande reste comptée, sur un jour hors [from,to] — comportement
+  // actuel reproduit à l'identique », c'est-à-dire exactement les deux axes que 0156 ferme.
+  // Un test qui documente un défaut comme un contrat se REMPLACE, il ne se complète pas.
   skipIfNoServiceRole(
-    'commande créée dans la fenêtre mais mise à jour après `to` : reste comptée, bucket hors fenêtre',
+    'date de record hors fenetre : la commande n est PAS comptee (filtre et bucket = meme axe)',
     async () => {
       const { admin, email, merchantAccountId } = await createOwnerFixture('revenue-late-update');
       const from = new Date('2026-04-01T00:00:00.000Z');
@@ -332,10 +345,90 @@ describe('get_report_revenue_by_day (Lot 4, 0085)', () => {
       });
       if (error) throw error;
 
-      // Filtre = created_at (dans la fenêtre), PAS la date de bucket : la commande reste
-      // comptée, sur un jour hors [from,to] — comportement actuel reproduit à l'identique.
-      const bucket = (data ?? []).find((row) => row.day === '2026-04-15');
-      expect(bucket?.amount_minor).toBe(3000);
+      // Aucune ligne, et surtout AUCUN bucket hors [from, to] : une série ne peut plus
+      // porter un jour que sa propre fenêtre exclut.
+      expect((data ?? []).find((row) => row.day === '2026-04-15')).toBeUndefined();
+      expect((data ?? []).reduce((total, row) => total + row.amount_minor, 0)).toBe(0);
+    },
+  );
+
+  // Mesure POSITIVE du nouvel axe : cash_collected_at l'emporte sur updated_at. Sans elle,
+  // le cas ci-dessus passerait aussi avec un simple coalesce(updated_at, created_at).
+  skipIfNoServiceRole(
+    'cash_collected_at l emporte sur updated_at pour le bucket ET pour la fenetre',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('revenue-cash-axis');
+
+      await insertOrder(admin, merchantAccountId, {
+        // Date de record au 5 mai, dernière modification au 28 mai : avant 0156 la commande
+        // tombait au 28, et était filtrée sur sa création.
+        cashCollectedAt: new Date('2026-05-05T10:00:00.000Z').toISOString(),
+        createdAt: new Date('2026-05-01T08:00:00.000Z').toISOString(),
+        dimensions: LIVREE_DIMENSIONS,
+        totalAmount: 6000,
+        updatedAt: new Date('2026-05-28T08:00:00.000Z').toISOString(),
+      });
+
+      const client = await signIn(email);
+      const { data, error } = await client.rpc('get_report_revenue_by_day', {
+        p_from: new Date('2026-05-01T00:00:00.000Z').toISOString(),
+        p_merchant_id: merchantAccountId,
+        p_to: new Date('2026-05-10T00:00:00.000Z').toISOString(),
+      });
+      if (error) throw error;
+
+      expect((data ?? []).find((row) => row.day === '2026-05-05')?.amount_minor).toBe(6000);
+      expect((data ?? []).find((row) => row.day === '2026-05-28')).toBeUndefined();
+    },
+  );
+
+  // LA PROPRIÉTÉ pour laquelle 0156 existe : dans un seul document, le graphe « Tendance du
+  // CA livré » doit sommer au KPI « Chiffre d'affaires » posé juste au-dessus. Avant 0156,
+  // les deux étaient datés autrement et ne pouvaient ni s'additionner ni se recouper.
+  skipIfNoServiceRole(
+    'la serie somme exactement a finance_kpis.ca_livre sur la meme fenetre',
+    async () => {
+      const { admin, email, merchantAccountId } = await createOwnerFixture('revenue-vs-kpi');
+      const from = new Date('2026-06-01T00:00:00.000Z');
+      const to = new Date('2026-06-20T00:00:00.000Z');
+
+      // Une commande AVEC date de record, une SANS : le repli de finance_kpis est conservé
+      // par 0156 précisément pour que la seconde compte des DEUX côtés.
+      await insertOrder(admin, merchantAccountId, {
+        cashCollectedAt: new Date('2026-06-05T09:00:00.000Z').toISOString(),
+        createdAt: new Date('2026-06-02T09:00:00.000Z').toISOString(),
+        dimensions: LIVREE_DIMENSIONS,
+        totalAmount: 4000,
+      });
+      await insertOrder(admin, merchantAccountId, {
+        createdAt: new Date('2026-06-03T09:00:00.000Z').toISOString(),
+        dimensions: LIVREE_DIMENSIONS,
+        totalAmount: 2500,
+        updatedAt: new Date('2026-06-08T09:00:00.000Z').toISOString(),
+      });
+
+      const client = await signIn(email);
+      const [series, kpis] = await Promise.all([
+        client.rpc('get_report_revenue_by_day', {
+          p_from: from.toISOString(),
+          p_merchant_id: merchantAccountId,
+          p_to: to.toISOString(),
+        }),
+        client.rpc('finance_kpis', {
+          p_from: from.toISOString(),
+          p_merchant: merchantAccountId,
+          p_to: to.toISOString(),
+        }),
+      ]);
+      if (series.error) throw series.error;
+      if (kpis.error) throw kpis.error;
+
+      const seriesTotal = (series.data ?? []).reduce((total, row) => total + row.amount_minor, 0);
+      const caLivre = Number((kpis.data ?? [])[0]?.ca_livre ?? -1);
+
+      expect(seriesTotal).toBe(6500);
+      expect(caLivre).toBe(6500);
+      expect(seriesTotal).toBe(caLivre);
     },
   );
 

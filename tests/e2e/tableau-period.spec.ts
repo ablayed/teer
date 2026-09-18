@@ -341,7 +341,7 @@ test.describe('Tableau période + CA/livraisons', () => {
     await expect(page.getByTestId('tableau-cash-by-product-chart')).toBeVisible();
   });
 
-  test('owner : les trois blocs historiques suivent le preset de période', async ({ page }) => {
+  test('owner : les deux blocs historiques suivent le preset de période', async ({ page }) => {
     const { admin, email, merchantAccountId } = await createOwnerFixture('remaining-period');
     const shopId = await createShop(admin, merchantAccountId, `period-${Date.now()}.myshopify.com`);
     const recentProduct = await createProduct(admin, merchantAccountId, 'Produit période récent');
@@ -366,9 +366,6 @@ test.describe('Tableau période + CA/livraisons', () => {
 
     await signIn(page, email, `/s/${shopId}/tableau?period=90j`);
 
-    const topProducts = page.locator('section.rounded-lg').filter({
-      has: page.getByRole('heading', { name: 'Produits les plus vendus', exact: true }),
-    });
     const shopPerformance = page.locator('section.rounded-lg').filter({
       has: page.getByRole('heading', { name: 'Performance par boutique', exact: true }),
     });
@@ -376,8 +373,6 @@ test.describe('Tableau période + CA/livraisons', () => {
       has: page.getByRole('heading', { name: 'Répartition COD', exact: true }),
     });
 
-    await expect(topProducts).toContainText('Produit période récent');
-    await expect(topProducts).toContainText('Produit période ancien');
     await expect(shopPerformance).toContainText('2 commandes');
     await expect(codBreakdown).toContainText('2');
 
@@ -387,8 +382,6 @@ test.describe('Tableau période + CA/livraisons', () => {
       .click();
     await expect(page).toHaveURL(/\/tableau\?(?=[^#]*period=today)/);
 
-    await expect(topProducts).toContainText('Produit période récent');
-    await expect(topProducts).not.toContainText('Produit période ancien');
     await expect(shopPerformance).toContainText('1 commande');
     await expect(codBreakdown).toContainText('1');
   });

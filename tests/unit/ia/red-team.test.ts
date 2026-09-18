@@ -65,7 +65,9 @@ describe('red-team — surface stricte (anti-fabrication / outils figés)', () =
 
   it('des arguments hors enum sont rejetés (invalid_args), pas exécutés', async () => {
     const { ctx } = fakeContext('agent');
-    const result = await runTool(ctx, 'get_top_products', { period: 'depuis_toujours' });
+    // get_top_products a été retiré (COHERENCE-01) ; get_order_status_summary porte le même
+    // periodSchema et reste visible à l'agent, donc la mesure est identique.
+    const result = await runTool(ctx, 'get_order_status_summary', { period: 'depuis_toujours' });
     expect(result).toEqual({ ok: false, error: 'invalid_args' });
   });
 

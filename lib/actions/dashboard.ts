@@ -51,12 +51,6 @@ export type DashboardRevenue30dActionResult =
   | { ok: true; data: DashboardRevenue30d }
   | { ok: false; errorCode: 'not_found' | 'query_error' };
 
-export type DashboardTopProduct = {
-  name: string;
-  revenue: number;
-  units: number;
-};
-
 export type DashboardShopPerformance = {
   id: string;
   name: string;
@@ -228,45 +222,6 @@ function toDashboardDeliveriesByProduct(
       products,
       totalDeliveries: numberField(value, 'total_deliveries'),
     },
-  };
-}
-
-async function fetchTopProductsForUser({
-  from,
-  merchantAccountId,
-  shopId,
-  supabase,
-  to,
-}: {
-  from: Date;
-  merchantAccountId: string;
-  shopId?: string | null;
-  supabase: SupabaseServerClient;
-  to: Date;
-}): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
-  // Agrégation SQL non plafonnée (RPC 0080). L'ancienne version parsait items_summary côté JS
-  // sur les 500 commandes les plus récentes (.limit(500)) → top faux. La RPC agrège
-  // items_summary sur tout le périmètre (mêmes 4 statuts) et renvoie le top 5 déjà trié.
-  const { data, error } = await supabase.rpc('get_dashboard_top_products', {
-    p_from: from.toISOString(),
-    p_merchant_id: merchantAccountId,
-    ...(shopId ? { p_shop_id: shopId } : {}),
-    p_to: to.toISOString(),
-  });
-
-  if (error) {
-    return { ok: false, errorCode: 'query_error' };
-  }
-
-  return {
-    ok: true,
-    data: asRecordArray(data)
-      .map((row) => ({
-        name: stringField(row, 'name') ?? '',
-        units: numberField(row, 'units'),
-        revenue: numberField(row, 'revenue'),
-      }))
-      .filter((product) => product.name !== ''),
   };
 }
 
@@ -662,52 +617,6 @@ export const getRevenue30dAction = authActionClient
 
     return fetchRevenue30dForUser({ merchantAccountId: merchant.merchantAccountId, supabase });
   });
-
-export async function getTopProducts({
-  from,
-  shopId,
-  to,
-}: {
-  from: Date;
-  shopId?: string | null;
-  to: Date;
-}): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> {
-  const ctx = await getCachedDashboardContext();
-
-  if (!ctx.ok) {
-    return { ok: false, errorCode: 'not_found' };
-  }
-
-  return fetchTopProductsForUser({
-    from,
-    merchantAccountId: ctx.merchantAccountId,
-    shopId,
-    supabase: ctx.supabase,
-    to,
-  });
-}
-
-export const getTopProductsAction = authActionClient
-  .metadata({ actionName: 'dashboard.get_top_products', section: 'dashboard' })
-  .inputSchema(dashboardPeriodSchema)
-  .action(
-    async ({ ctx, parsedInput }): Promise<DashboardReadonlyActionResult<DashboardTopProduct[]>> => {
-      const supabase = asTypedSupabaseClient(ctx.supabase);
-      const merchant = await getMerchantAccountIdForUser({ supabase, userId: ctx.user.id });
-
-      if (!merchant.ok) {
-        return { ok: false, errorCode: 'not_found' };
-      }
-
-      return fetchTopProductsForUser({
-        from: new Date(parsedInput.from),
-        merchantAccountId: merchant.merchantAccountId,
-        shopId: parsedInput.shopId,
-        supabase,
-        to: new Date(parsedInput.to),
-      });
-    },
-  );
 
 export async function getShopPerformance({
   from,
