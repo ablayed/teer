@@ -177,11 +177,17 @@ test('recherche → détail → retour → mutation : compteurs frais (build pro
     await expect(visibleOrderRowTitle(page, 'Recherche Cible Unique')).toBeVisible();
     await expect(page.getByRole('button', { name: /^À appeler \(1\)/ })).toBeVisible();
 
-    // Mutation directe (sans dialog) depuis la liste sur la cible : « Refuser par le client »
-    // est l'action directe disponible pour une commande À appeler.
+    // Mutation directe (sans dialog) depuis la liste sur la cible. « À rappeler »
+    // (`journaliser_appel`) est l'action directe disponible pour une commande À appeler :
+    // elle s'exécute au clic, sans saisie, et fait sortir la commande de la file.
+    //
+    // FIX-UI-REFUS-01 : ce test utilisait « Refuser par le client », désormais retirée de
+    // la surface. Seul le VÉHICULE de la mutation change ; ce que ce test prouve (chiffres
+    // frais après mutation, jamais servis par le Router Cache) est inchangé, et l'assertion
+    // ci-dessous reste la même (« À appeler » retombe à (0)).
     const cibleRow = page.locator('article').filter({ hasText: 'Recherche Cible Unique' });
     await cibleRow.getByRole('button', { name: /^Actions/ }).click();
-    await page.getByRole('menuitem', { name: 'Refuser par le client' }).click();
+    await page.getByRole('menuitem', { name: 'À rappeler' }).click();
 
     // Chiffres FRAIS après la mutation : « À appeler » retombe à (0) (la cible a quitté la
     // file). Une vue mise en cache à travers le client component aurait laissé le compteur figé.

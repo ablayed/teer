@@ -9,11 +9,13 @@ import {
 } from '@/lib/domain/order-state-machine';
 import {
   type PaymentChannelAtDelivery,
+  type RetiredTransitionAction,
   type TransitionAction,
   actionToTarget,
   buildTransitionDimensionPatch,
   canRolePerformAction,
   getAllowedTransitionActionsForDimensions,
+  isRetiredTransitionAction,
   resolveOrderDimensions,
 } from '@/lib/domain/order-transition-actions';
 import { env } from '@/lib/env';
@@ -27,6 +29,11 @@ type SupabaseServerClient = SupabaseClient<Database>;
 type OrderRow = Tables<'orders'>;
 
 export type TransitionErrorCode =
+  // FIX-UI-REFUS-01 — l'action demandée est retirée de la surface : elle n'est plus
+  // proposée nulle part, et un appel direct (rôle autorisé, interface contournée) est
+  // refusé ici. Code distinct de `forbidden` (droits) et d'`illegal_transition`
+  // (l'état ne permet pas) : ni l'un ni l'autre ne serait factuellement vrai.
+  | 'action_retired'
   | 'audit_failed'
   | 'forbidden'
   | 'invalid_current_status'
@@ -42,6 +49,14 @@ export type TransitionErrorCode =
   | 'missing_driver_for_dispatch'
   | 'order_not_found'
   | 'update_failed';
+
+// FIX-UI-REFUS-01 — message de refus d'une action retirée. Il dit CE QUI remplace le
+// geste, sinon l'utilisateur qui l'obtient (session ouverte avant le déploiement,
+// raccourci mémorisé) reste sans issue. Vouvoiement, cf. docs/lexique-microcopie.md.
+const RETIRED_ACTION_MESSAGES: Record<RetiredTransitionAction, string> = {
+  refuser:
+    "L'action « Refuser par le client » n'existe plus. Utilisez « Annuler la commande » avant la livraison, ou « Marquer retournée » après une livraison.",
+};
 
 // 0116 — un seul message, partagé par la garde TS (pré-mutation, pour un retour immédiat)
 // et par le mapping de l'exception SQL (filet incontournable). Les deux doivent dire
@@ -301,6 +316,19 @@ export async function performTransitionForContext({
   role: TeamRole;
   supabase: SupabaseServerClient;
 }): Promise<TransitionResult> {
+  // FIX-UI-REFUS-01 — garde de RETRAIT, posée avant toute lecture et toute écriture :
+  // un retrait qui ne vivrait que dans les composants laisserait l'action serveur
+  // appelable par un rôle autorisé qui contourne l'interface (chemin `performTransition`
+  // direct, `transitionOrderStatusAction`/`updateCodStatusAction` par statut cible,
+  // `logCallAction` avec l'issue REFUSEE). Un seul point de refus les couvre tous les
+  // quatre, avec le même code nommé. Rien n'est lu, rien n'est écrit, aucun audit.
+  //
+  // Ce refus ne porte QUE sur les nouvelles transitions : les commandes déjà en REFUSEE
+  // ne sont pas touchées et gardent leur sortie (`desannuler`).
+  if (isRetiredTransitionAction(action)) {
+    return transitionError('action_retired', RETIRED_ACTION_MESSAGES[action]);
+  }
+
   if (!canRolePerformAction(role, action)) {
     return transitionError('forbidden', "Vous n'avez pas le droit d'executer cette action.");
   }

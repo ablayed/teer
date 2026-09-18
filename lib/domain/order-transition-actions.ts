@@ -251,6 +251,32 @@ export const transitionCatalog: readonly TransitionCatalogItem[] = [
   },
 ];
 
+// FIX-UI-REFUS-01 — actions RETIRÉES de la surface. Ce n'est PAS un retrait de la
+// machine à états : `legalTransitions` (couche 1), le CHECK de `cod_status` et la RPC
+// `transition_order` (couche 3) sont inchangés, donc toute commande déjà en REFUSEE
+// reste valide et garde sa sortie (`desannuler`, cf. la branche `order_state ===
+// 'cancelled'` plus bas). Ce qui disparaît, c'est l'OFFRE : aucune surface ne propose
+// plus l'action, et `performTransitionForContext` refuse toute NOUVELLE transition qui
+// l'emprunterait, par le code nommé `action_retired`.
+//
+// Le cas métier est couvert ailleurs : « Annuler la commande » avant la livraison,
+// « Marquer retournée » après. Le libellé du STATUT (« Refusée ») reste, lui, partout —
+// une commande historique doit continuer de s'afficher lisiblement.
+export const retiredTransitionActions = ['refuser'] as const;
+
+export type RetiredTransitionAction = (typeof retiredTransitionActions)[number];
+
+// Les actions qui peuvent encore atteindre une surface. Utilisée là où un libellé
+// d'action est rendu : le compilateur cesse alors d'exiger une entrée pour une action
+// retirée, ce qui est précisément ce qui fait disparaître son libellé.
+export type SurfaceTransitionAction = Exclude<TransitionAction, RetiredTransitionAction>;
+
+export function isRetiredTransitionAction(
+  action: TransitionAction,
+): action is RetiredTransitionAction {
+  return (retiredTransitionActions as readonly TransitionAction[]).includes(action);
+}
+
 function isOrderStatus(value: string | null | undefined): value is OrderStatus {
   return Boolean(value && orderStatuses.includes(value as OrderStatus));
 }
@@ -492,7 +518,13 @@ export function getAllowedTransitionActionsForDimensions(
     return [];
   }
 
-  return transitionCatalog
+  // FIX-UI-REFUS-01 — le retrait est structurel, posé UNE seule fois ici : toutes les
+  // surfaces (menu de liste, panneau de détail, vue mobile, Kanban) dérivent leurs
+  // entrées de cette liste. Un filtre par surface aurait laissé la prochaine surface
+  // reproposer l'action.
+  const offered = transitionCatalog.filter((item) => !isRetiredTransitionAction(item.action));
+
+  return offered
     .filter((item) => item.roles.includes(role))
     .filter((item) => {
       switch (item.action) {
@@ -545,10 +577,18 @@ export function getAllowedTransitionActionsForDimensions(
           // livraison (chemin d'abandon définitif, RTO/cancellationRate inchangés).
           return dimensions.deliveryState !== 'delivered';
         case 'refuser':
-          // "Refuser" retiré d'En cours de livraison (assigned/out_for_delivery) —
-          // remplacé par "reprogrammer" à ce stade précis. Reste légal avant dispatch
-          // (unassigned/scheduled), y compris le trou préexistant Lot 3 où "scheduled"
-          // est dimensionnellement légal mais masqué du menu (hors scope de ce lot).
+          // FIX-UI-REFUS-01 — branche désormais INATTEIGNABLE : `offered` ci-dessus
+          // écarte l'action retirée avant d'arriver ici. Conservée sans rien y retirer,
+          // parce qu'elle décrit la légalité DIMENSIONNELLE de la transition, que ce lot
+          // ne touche pas (machine à états et RPC inchangées). Remettre l'action en
+          // service se ferait en la sortant de `retiredTransitionActions`, jamais en
+          // réécrivant cette condition.
+          //
+          // Historique conservé : "Refuser" retiré d'En cours de livraison
+          // (assigned/out_for_delivery) — remplacé par "reprogrammer" à ce stade précis.
+          // Restait légal avant dispatch (unassigned/scheduled), y compris le trou
+          // préexistant Lot 3 où "scheduled" est dimensionnellement légal mais masqué
+          // du menu.
           return (
             dimensions.deliveryState === 'unassigned' || dimensions.deliveryState === 'scheduled'
           );

@@ -195,3 +195,27 @@ code SQL, aucun nom de colonne, aucun détail de requête n'est adressé au marc
 renvoie déjà qu'un code opaque). « Réessayer » désigne la reprise d'une **lecture** échouée ;
 « Reprendre » (`actions.retry`) reste réservé à la reprise d'un **provisionnement ou d'une
 synchronisation** — les deux ne doivent pas être fusionnés.
+
+## Retrait de l'action « Refuser par le client » (Lot FIX-UI-REFUS-01)
+
+**Deux libellés d'ACTION retirés, un libellé de STATUT conservé — la distinction est la
+décision, pas un détail d'implémentation.**
+
+| Chaîne | Statut | Raison |
+|---|---|---|
+| « Refuser par le client » (entrée de menu, file d'appel) | **Retirée.** | Le geste n'existe plus dans l'interface. Le cas métier est couvert par « Annuler la commande » avant la livraison et « Marquer retournée » après — ce lot ne crée aucun statut de remplacement. |
+| « Refuser » (même action, autres stades) | **Retirée.** | Même action (`refuser`), second libellé selon le contexte. Les deux partent ensemble : n'en retirer qu'un aurait laissé le geste atteignable sous l'autre nom. |
+| « Refusée » (`orderStatusLabels.REFUSEE`, `orders.codStatus.REFUSEE`, `finance.status.REFUSEE`, `CodStatusBadge`) | **Conservée — ne pas retirer.** | C'est le nom du STATUT, pas de l'action. Une commande historique dans cet état doit continuer d'afficher un nom lisible, jamais la valeur brute `REFUSEE` ni un vide. « Marquer retournée » vise toujours ce statut, et les surfaces de refus/RTO (`Taux de refus / RTO`, « Refuseurs répétés ») restent inchangées. |
+
+**Message de refus d'un appel direct** (`RETIRED_ACTION_MESSAGES.refuser`,
+`lib/actions/transitions.ts`, code `action_retired`) : « L'action « Refuser par le client »
+n'existe plus. Utilisez « Annuler la commande » avant la livraison, ou « Marquer retournée »
+après une livraison. » Il **nomme le remplacement** : un utilisateur qui l'obtient (session
+ouverte avant le déploiement, raccourci mémorisé) serait sinon laissé sans issue. Vouvoiement,
+comme le reste. Ce code est distinct de `forbidden` (droits) et d'`illegal_transition` (l'état
+ne permet pas) : ni l'un ni l'autre ne serait factuellement vrai ici.
+
+**Ne pas « réparer » en remettant l'entrée au menu.** Le retrait est posé une seule fois, dans
+`retiredTransitionActions` (`lib/domain/order-transition-actions.ts`) : la machine à états, le
+CHECK de `cod_status` et la RPC `transition_order` sont intacts, et les commandes déjà en
+REFUSEE gardent leur sortie (« Désannuler »).
