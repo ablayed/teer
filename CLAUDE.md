@@ -320,6 +320,136 @@ Ce qui unit les quatre formes reste donc : un **pull réseau non caché, non bor
 
 `shop.shop_gid` reste une colonne morte (jamais peuplée) — second facteur numérique souhaitable, non traité.
 
+## Récupération de mot de passe — PWD-RESET-01 (clos le 2026-09-19, PR #222)
+
+Le parcours n'existait pas et la FAQ le promettait depuis des mois. Il est livré, fusionné
+(`8bd4538`), déployé, et **vérifié par un smoke réel en production** : demande acceptée, courriel
+reçu, lien fonctionnel, nouveau mot de passe posé, session de récupération conservée, session
+antérieure invalidée, lien déjà utilisé refusé.
+
+**Distinguer les deux régimes de preuve dans tout ce qui suit.** Les références `fichier:ligne`
+sont vérifiables dans le dépôt. Les comportements attribués à Supabase, à Vercel ou au parcours
+réel sont des **observations de production ou de pile locale**, datées, que le dépôt ne démontre
+pas.
+
+### 1. CSP assouplie sur les deux écrans — affaiblissement réel et assumé
+
+`[Fait]` `/mot-de-passe-oublie` et `/mot-de-passe-oublie/nouveau` sont classés parmi les routes
+publiques statiques (`lib/security/csp.ts`:39-40), aux côtés de `/connexion` (:33). Elles servent
+donc `script-src 'self' 'unsafe-inline'` au lieu du régime à nonce et `'strict-dynamic'`.
+
+`[Fait]` **C'est un affaiblissement réel : sur ces deux pages, une injection de script inline ne
+serait plus arrêtée par la CSP.** Ne pas écrire que ces pages seraient « sans risque » parce
+qu'elles ne portent pas de données locataire — elles portent la pose d'un mot de passe.
+
+`[Fait]` Le classement est nécessaire dans l'architecture actuelle : ces pages sont **prérendues**,
+et le nonce produit par requête ne peut pas correspondre à un HTML déjà généré. Mesuré sur un vrai
+`next start` (jamais visible en `next dev`, qui ne prérend pas) : avant le classement, les pages
+s'affichaient **sans hydrater** et aucun formulaire ne partait.
+
+`[Décision]` Compromis accepté pour ce lot. Une conversion vers des pages dynamiques compatibles
+avec un nonce par requête relève d'un **durcissement CSP séparé**, jamais d'un lot de passage.
+
+### 2. Limite PKCE inter-appareils — non livrée, pas un défaut de configuration
+
+`[Fait]` Le parcours utilise PKCE : `createSupabaseServerClient` construit un client
+`@supabase/ssr` (`lib/supabase/server.ts`:3,16), et `resetPasswordForEmail`
+(`lib/actions/password-reset.ts`:64-65) dépose un vérificateur dans un cookie du **contexte
+navigateur qui a fait la demande**.
+
+`[Fait]` Conséquences, mesurées : la demande et l'ouverture du lien doivent avoir lieu **dans le
+même contexte navigateur** ; ouvrir le lien sur un autre appareil ou dans un autre profil échoue
+sur l'absence du vérificateur ; le lien étant à usage unique, il faut alors en **demander un
+nouveau**.
+
+`[Fait]` Le courriel Supabase par défaut porte **déjà** un code à six chiffres, et `verifyOtp` a
+été mesuré fonctionnel depuis un client neuf (`amr: otp`, et non `recovery`).
+
+`[Non livré]` **Aucun écran de saisie de ce code n'existe dans Tëër.** Ne pas présenter ce
+mécanisme comme disponible.
+
+`[Recommandation]` Un lot borné pourrait ajouter cet écran et fermer la limitation inter-appareils
+**sans modifier aucun réglage Supabase**. La garde `isRecoveryAccessToken`
+(`lib/security/password-recovery.ts`:58) est volontairement stricte sur `recovery` : l'élargir à
+`otp` fait partie de ce lot-là, jamais d'un autre.
+
+### 3. Sort des sessions après récupération — observé en production
+
+`[Fait]` **Mesuré en production avec un compte de test** : la session créée par le parcours de
+récupération reste valide après la pose du nouveau mot de passe ; une session antérieure ouverte
+dans un autre navigateur est invalidée ; le lien déjà utilisé est refusé lors d'un rejeu.
+
+`[Recommandation]` L'invalidation rend une utilisation frauduleuse du lien **détectable** par le
+propriétaire déjà connecté, et en réduit la portée. **Ce n'est pas une prévention** : qui a
+consommé le lien contrôle le compte jusqu'à la réaction du propriétaire. Ne pas généraliser cette
+mesure au-delà du comportement observé.
+
+### 4. TTL de production — mesuré, volontairement non affiché
+
+`[Fait]` `Email OTP Expiration` relevé dans le tableau de bord Supabase de production :
+**3600 secondes, soit 1 heure.**
+
+`[Décision]` **Cette durée n'est pas affichée**, ni dans l'interface ni dans la FAQ. La microcopie
+reste « Ce lien expirera prochainement. »
+(`app/mot-de-passe-oublie/forgot-password-form.tsx`:82, clé `auth.forgot_password.sent_expiry`), et
+l'entrée FAQ `equipe-mot-de-passe` (`lib/support/faq.ts`) dit « au bout d'un moment » sans chiffre.
+
+`[Décision]` Raison : le TTL est une configuration **externe** susceptible de changer. Afficher un
+nombre créerait une dette de synchronisation entre Supabase, l'interface et la documentation. **Ne
+pas rouvrir le lexique ni la FAQ pour y réintroduire « 1 heure ».**
+
+### 5. Incident `NEXT_PUBLIC_APP_URL` — une preuve manquante déguisée en preuve acquise
+
+`[Fait]` Au moment du premier smoke de production, la variable Vercel de production
+`NEXT_PUBLIC_APP_URL` valait `https://teer-dev.vercel.app`. Elle a dirigé le parcours livré vers le
+**mauvais domaine** — le cookie PKCE étant posé sur `www.teerafrik.com` et relu sur une autre
+origine, l'échange échouait systématiquement. Corrigée avant que le smoke réussisse.
+
+`[Fait]` **Les deux exécutions CI initiales et la CI post-fusion étaient vertes malgré l'erreur.**
+La CI construit avec son propre environnement de test (`localhost:3000`), où l'origine de la
+demande et celle du lien coïncident toujours : elle ne mesure jamais la valeur réellement injectée
+par Vercel dans le build de production. **La classe « deux origines pour une même application » est
+hors de portée de cette CI.**
+
+`[Fait]` La garde de démarrage `validateEnvironmentSafety`
+(`lib/security/environment-validation.ts`:107) ne vérifie que le **schéma** (`https:`) :
+`https://teer-dev.vercel.app` la satisfait. Aucune garde n'établit que `NEXT_PUBLIC_APP_URL`
+correspond au domaine public réellement servi.
+
+`[Fait]` Onze points de lecture de cette variable existent en code de production — construction des
+rappels d'authentification (`lib/actions/password-reset.ts`, `lib/actions/auth.ts`,
+`lib/actions/account.ts`), autorisation et livraison WooCommerce (`lib/actions/woocommerce.ts`,
+`lib/woocommerce/subscriptions.ts`), liens d'invitation (`lib/email/team-invitation.ts`,
+`lib/actions/team.ts`), identité publique (`app/layout.tsx` `metadataBase`,
+`app/(marketing)/page.tsx` JSON-LD). **Shopify n'en fait pas partie** : `redirect_uri` y est dérivé
+de `requestUrl.origin` (`app/api/shopify/install/route.ts`:82), donc immunisé par construction.
+
+`[Fait]` `NEXT_PUBLIC_*` est inliné à la compilation : **changer la variable sans redéployer ne
+change rien.** Mesuré sur un build local — 51 occurrences littérales de la valeur dans
+`.next/server/`.
+
+`[Décision]` **Une variable d'environnement de production non mesurée est une preuve manquante.**
+Pire lorsqu'elle a été lue contre le mauvais critère : le préflight `VAL-WOO-01` (2026-09-16) l'a
+déclarée « mesurée conforme » sur les critères *https* et *joignabilité*, en la nommant « domaine de
+projet » — la valeur exacte était sous les yeux, présentée comme une propriété rassurante. Le
+critère jamais appliqué était : *est-ce le domaine que le marchand a sous les yeux ?*
+
+`[Recommandation]` Tant qu'aucun contrôle post-déploiement automatisé n'existe, **ajouter la
+vérification explicite de cette valeur à la checklist de déploiement**. C'est une **mitigation
+humaine, jamais une garantie technique** ; le contrôle automatisé appartient à un lot distinct.
+
+### Clôture et limites ouvertes
+
+`[Fait]` **PWD-RESET-01 est clos** : code fusionné, CI post-fusion verte, déploiement production
+confirmé, smoke réel réussi (session antérieure invalidée, lien rejoué refusé), TTL de production
+mesuré.
+
+Trois limites restent ouvertes et **ne rouvrent pas le lot fonctionnel** :
+
+1. récupération inter-appareils par code à six chiffres **non livrée** ;
+2. CSP assouplie sur les deux pages ;
+3. **aucune garde automatisée** sur la cohérence de `NEXT_PUBLIC_APP_URL`.
+
 ## Lot 4A/4B — Détection ACL (Phase 2)
 
 **Le défaut fermé par schéma (`ALTER DEFAULT PRIVILEGES`) est non démontré sur ce stack Supabase — abandonné comme contrôle.** Contrôle retenu : ACL explicite par objet, vérifiée à 4 couches :
