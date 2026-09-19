@@ -15,6 +15,11 @@ const policyConfigs = {
     prefix: 'rl:auth:login',
     window: '60 s',
   },
+  auth_password_reset: {
+    limit: 5,
+    prefix: 'rl:auth:password_reset',
+    window: '1 h',
+  },
   auth_signup: {
     limit: 3,
     prefix: 'rl:auth:signup',

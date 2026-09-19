@@ -70,7 +70,7 @@ export const FAQ_ITEMS: FAQItem[] = [
     category: 'compte-equipe',
     question: 'Comment réinitialiser mon mot de passe ?',
     answer:
-      'Sur la page de connexion, clique sur « Mot de passe oublié » et saisis ton email. Tu recevras un lien de réinitialisation valable 1 heure. Si tu es déjà connecté, va dans Paramètres → Sécurité.',
+      "Sur la page de connexion, cliquez sur « Mot de passe oublié ? » et saisissez votre adresse e-mail. Si un compte existe, vous recevrez un lien pour choisir un nouveau mot de passe. Le lien expire au bout d'un moment et ne fonctionne qu'une fois : passé ce délai, demandez-en un nouveau. Si vous êtes déjà connecté, passez plutôt par Paramètres → Sécurité.",
     keywords: ['mot de passe', 'réinitialiser', 'oublié', 'connexion', 'sécurité'],
   },
   {
