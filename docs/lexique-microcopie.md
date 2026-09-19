@@ -254,3 +254,24 @@ une clôture — il est nommé comme tel dans `docs/lexique-dates.md` §6.
 « vendus » dans un libellé, vérifier au catalogue ce que la source applique réellement. Les
 libellés sont la première cause d'impression fausse chez le marchand, **avant** les calculs —
 et ils coûtent le moins cher à corriger.
+
+## Récupération de mot de passe (PWD-RESET-01, 2026-09-19)
+
+Le parcours n'existait pas ; la FAQ le promettait depuis des mois. Les décisions ci-dessous
+portent sur ce que l'interface **dit**, et deux d'entre elles sont des interdictions.
+
+| Chaîne / notion | Décision | Raison |
+|---|---|---|
+| « Mot de passe oublié ? » | **Libellé figé** du lien sur `/connexion` (mode connexion uniquement) et de l'entrée FAQ `equipe-mot-de-passe`. Le point d'interrogation fait partie du libellé. | La FAQ promettait « Mot de passe oublié » sans point d'interrogation, pour un lien qui n'existait pas. Les deux doivent désormais coïncider mot pour mot — une FAQ qui décrit un parcours légèrement différent est une nouvelle promesse fausse, en plus petit. |
+| **Toute durée chiffrée de validité du lien** | **Interdit à l'affichage.** L'interface écrit « Ce lien expirera prochainement. », jamais un nombre. | Le TTL mesuré (`GOTRUE_MAILER_OTP_EXP=3600`, soit 60 minutes) est celui de la **pile locale**. Le réglage de production n'est lisible que dans le tableau de bord Supabase et n'a pas été mesuré. La FAQ annonçait « valable 1 heure » sur la foi de rien. Afficher un nombre non mesuré est exactement le type de promesse que ce chantier passe son temps à fermer. **Le jour où la durée de production est mesurée, ce nombre peut remplacer « prochainement » — sans changement de code, seulement ici et dans la FAQ.** |
+| « Si un compte Tëër existe pour {email}, vous y recevrez un lien pour choisir un nouveau mot de passe. » | **Formulation figée** de l'accusé de réception. Le conditionnel est obligatoire. | L'écran doit être **identique** que l'adresse existe ou non. Écrire « Nous avons envoyé un lien à {email} » affirmerait l'existence du compte : c'est une énumération d'adresses par microcopie, et elle serait vraie même avec un serveur parfaitement silencieux. |
+| « Ce lien est invalide, expiré ou a déjà été utilisé. Demandez un nouveau lien. » | **Message unique** pour les trois cas, affiché sur `/connexion?reason=lien_invalide`. **Ne pas le scinder en trois messages.** | Mesuré le 2026-09-19 : GoTrue rend exactement `error=access_denied` + `error_code=otp_expired` + « Email link is invalid or has expired » pour un jeton **expiré**, **rejoué** et **inexistant**. Les trois sont indistinguables à la source. Promettre trois messages distincts obligerait à inventer une distinction que la plateforme ne fournit pas. |
+| Message distinct de **panne du fournisseur** | **Interdit.** Un échec d'envoi (Resend, SMTP, Supabase) part dans Sentry et rend la **même** réponse neutre. | Un message technique différencié révélerait qu'une tentative d'envoi a eu lieu, donc que le compte existe. La panne doit être visible pour nous, jamais pour le public. |
+| « Trop de demandes depuis cet appareil. Patientez avant de réessayer. » | **Seul** cas annoncé distinctement sur l'écran de demande. | C'est la limitation **locale par IP** (Upstash, 5/heure), qui ne dépend d'aucun compte — l'annoncer ne révèle rien. À ne pas confondre avec l'intervalle de 26 s de Supabase, qui est **par utilisateur** et reste volontairement avalé dans la réponse neutre. |
+| « Adresse e-mail invalide. » | **Autorisé** (clé existante `auth.errors.invalid_email`). | Validation de **format**, jamais d'existence. C'est l'existence de l'adresse qui doit rester indistinguable, jamais sa syntaxe. |
+| « Par sécurité, vos autres appareils connectés seront déconnectés. » | **Formulation figée**, affichée avant l'enregistrement du nouveau mot de passe. | Comportement **mesuré**, pas supposé : après la mise à jour, les sessions antérieures rendent 403 et leurs jetons de rafraîchissement 400, tandis que la session courante survit. L'annoncer évite que le marchand découvre seul qu'il est déconnecté ailleurs — et c'est la vraie mitigation d'un lien intercepté : l'accès devient **détectable**. |
+
+**Registre.** L'entrée FAQ `equipe-mot-de-passe` était rédigée au tutoiement (« clique », « tu
+recevras », « va dans ») en violation de la règle de vouvoiement ci-dessus. Elle est réécrite au
+vouvoiement dans ce lot, parce qu'elle était de toute façon réécrite — et non au titre d'une
+passe de correction du reste de la FAQ, qui en compte d'autres et relève d'un lot dédié.
