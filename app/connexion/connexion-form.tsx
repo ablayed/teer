@@ -296,6 +296,15 @@ export function ConnexionForm() {
             ))}
           </div>
 
+          {reason === 'lien_invalide' && (
+            <p
+              className="mb-5 block rounded-lg border border-danger/30 bg-danger-subtle px-4 py-3 text-sm text-danger"
+              role="alert"
+            >
+              {t('link_invalid_notice')}
+            </p>
+          )}
+
           {reason === 'idle' && (
             <output className="mb-5 block rounded-lg border border-border bg-canvas px-4 py-3 text-sm text-muted">
               {t('session_expired_idle')}
@@ -322,6 +331,17 @@ export function ConnexionForm() {
                 value={password}
               />
             </div>
+
+            {mode === 'signin' && (
+              <div className="-mt-2 text-right">
+                <Link
+                  className="text-sm text-accent-deep underline underline-offset-2"
+                  href="/mot-de-passe-oublie"
+                >
+                  {t('forgot_password.link')}
+                </Link>
+              </div>
+            )}
 
             {mode === 'signup' && (
               <div aria-live="polite">

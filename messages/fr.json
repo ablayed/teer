@@ -268,7 +268,11 @@
       "rate_limited": "Trop de tentatives. Patientez quelques minutes.",
       "email_not_confirmed": "Votre compte n'est pas encore activé. Vérifiez votre boîte mail.",
       "unknown": "Une erreur est survenue. Réessayez dans quelques instants.",
-      "generic": "Une erreur est survenue. Réessayez."
+      "generic": "Une erreur est survenue. Réessayez.",
+      "password_mismatch": "Les deux mots de passe ne correspondent pas.",
+      "reset_rate_limited": "Trop de demandes depuis cet appareil. Patientez avant de réessayer.",
+      "invalid_session": "Ce lien est invalide, expiré ou a déjà été utilisé. Demandez un nouveau lien.",
+      "update_failed": "Une erreur est survenue. Réessayez."
     },
     "password_criteria": {
       "ariaLabel": "Critères du mot de passe",
@@ -277,7 +281,32 @@
       "hasLower": "Une lettre minuscule",
       "hasDigit": "Un chiffre",
       "hasSpecial": "Un caractère spécial (!@#$%^&* etc.)"
-    }
+    },
+    "forgot_password": {
+      "link": "Mot de passe oublié ?",
+      "title": "Mot de passe oublié",
+      "subtitle": "Saisissez votre adresse e-mail. Nous vous enverrons un lien pour choisir un nouveau mot de passe.",
+      "submit": "Envoyer le lien",
+      "submit_loading": "Envoi…",
+      "back_to_signin": "Retour à la connexion",
+      "aria": "Demande de réinitialisation du mot de passe",
+      "sent_title": "Vérifiez votre boîte mail",
+      "sent_body": "Si un compte Tëër existe pour {email}, vous y recevrez un lien pour choisir un nouveau mot de passe.",
+      "sent_spam": "Vous ne le trouvez pas ? Vérifiez vos spams ou courriers indésirables.",
+      "sent_expiry": "Ce lien expirera prochainement.",
+      "sent_aria": "Demande envoyée"
+    },
+    "new_password": {
+      "title": "Nouveau mot de passe",
+      "subtitle": "Choisissez le mot de passe de votre espace Tëër.",
+      "password_label": "Nouveau mot de passe",
+      "confirm_label": "Confirmez le mot de passe",
+      "submit": "Enregistrer le mot de passe",
+      "submit_loading": "Enregistrement…",
+      "aria": "Choix du nouveau mot de passe",
+      "sessions_notice": "Par sécurité, vos autres appareils connectés seront déconnectés."
+    },
+    "link_invalid_notice": "Ce lien est invalide, expiré ou a déjà été utilisé. Demandez un nouveau lien."
   },
   "legalReaccept": {
     "eyebrow": "Action requise",

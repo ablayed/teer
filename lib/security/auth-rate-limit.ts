@@ -11,10 +11,11 @@ import * as Sentry from '@sentry/nextjs';
 // limiter est actif ; si jamais il manquait en prod, on émet une alerte Sentry (une
 // fois) pour rendre la mauvaise config visible sans bloquer.
 
-export type AuthRateLimitName = 'login' | 'signup';
+export type AuthRateLimitName = 'login' | 'signup' | 'password_reset';
 
 const authPolicyByName = {
   login: 'auth_login',
+  password_reset: 'auth_password_reset',
   signup: 'auth_signup',
 } as const;
 

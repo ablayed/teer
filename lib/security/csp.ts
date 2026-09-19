@@ -31,6 +31,13 @@ export type CspRegime = 'app' | 'embedded' | 'static';
 const STATIC_PUBLIC_PATHS = new Set<string>([
   '/',
   '/connexion',
+  // Récupération de mot de passe (PWD-RESET-01) : deux pages publiques PRÉRENDUES,
+  // au même titre que /connexion. Mesuré sur un vrai `next start` le 2026-09-19 —
+  // sous le régime « app », le nonce par-requête ne peut pas correspondre au HTML
+  // prérendu : les pages s'affichent mais n'hydratent pas, et AUCUN formulaire ne
+  // part. Invisible en `next dev`, qui ne prérend pas.
+  '/mot-de-passe-oublie',
+  '/mot-de-passe-oublie/nouveau',
   '/confidentialite',
   '/conditions',
   '/dpa',
