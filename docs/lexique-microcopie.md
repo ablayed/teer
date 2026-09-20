@@ -255,6 +255,12 @@ une clôture — il est nommé comme tel dans `docs/lexique-dates.md` §6.
 libellés sont la première cause d'impression fausse chez le marchand, **avant** les calculs —
 et ils coûtent le moins cher à corriger.
 
+## Domaine affiché dans les contenus publics (FIX-LANDING-DOMAIN-01, 2026-09-20)
+
+| Chaîne | Statut | Raison |
+|---|---|---|
+| `marketing.mock.url` — « www.teerafrik.com/commandes » | **Formulation figée.** La barre d'adresse factice de la maquette d'accueil (`components/marketing/cockpit-mock.tsx`) affiche le **domaine public de la marque**, jamais un domaine de déploiement. | Elle affichait « teer-dev.vercel.app/commandes » — le domaine de projet Vercel — à tout visiteur de la page d'accueil. Aucun défaut de fonctionnement : c'est une chaîne codée en dur dans `messages/fr.json`, sans rapport avec `NEXT_PUBLIC_APP_URL`, et elle a survécu à la correction de cette variable. Le coût est de crédibilité — un produit qui montre son URL interne dans sa propre vitrine se présente comme inachevé. **Règle générale : aucune chaîne de `messages/fr.json` ne doit porter un domaine de déploiement** (`*.vercel.app`, URL de prévisualisation, domaine de projet). Vérifié au lot : c'était la seule occurrence dans l'ensemble des contenus publics (`messages/`, `app/`, `components/`, `public/`, `docs/legal/`). |
+
 ## Récupération de mot de passe (PWD-RESET-01, 2026-09-19)
 
 Le parcours n'existait pas ; la FAQ le promettait depuis des mois. Les décisions ci-dessous

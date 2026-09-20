@@ -95,7 +95,7 @@
     },
     "mock": {
       "badge": "Aperçu — données illustratives",
-      "url": "teer-dev.vercel.app/commandes",
+      "url": "www.teerafrik.com/commandes",
       "ordersTitle": "Commandes du jour",
       "statusToCall": "À appeler",
       "statusConfirmed": "Confirmée",
