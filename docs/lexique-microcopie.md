@@ -281,3 +281,52 @@ portent sur ce que l'interface **dit**, et deux d'entre elles sont des interdict
 recevras », « va dans ») en violation de la règle de vouvoiement ci-dessus. Elle est réécrite au
 vouvoiement dans ce lot, parce qu'elle était de toute façon réécrite — et non au titre d'une
 passe de correction du reste de la FAQ, qui en compte d'autres et relève d'un lot dédié.
+
+## Refus de bascule d'app sur le callback OAuth (Lot SEC-APP-SWITCH-01, 2026-09-20)
+
+`settings.shops.errors.app_switch_refused` — **huitième** code OAuth de
+`components/settings/settings-shops.tsx`, émis par `app/api/shopify/callback/route.ts` quand une
+installation vise une boutique du **même locataire** déjà rattachée à une **autre** application
+Tëër. Il complète l'entrée « Libérer la boutique… » ci-dessus : celle-ci décrit la sortie, celui-ci
+est le mur que le marchand rencontre d'abord.
+
+**Le texte nomme TROIS étapes, et l'ordre est le fond, pas la forme :**
+
+1. désinstaller l'ancienne application **depuis l'administration Shopify** ;
+2. libérer la boutique dans **Paramètres → Boutiques** ;
+3. recommencer l'installation.
+
+**Pourquoi la première étape ne peut pas être omise — c'est une mesure, pas une précaution de
+style.** L'action « Libérer la boutique… » n'est **affichée** que si
+`status === 'uninstalled' && shopify_client_id && !access_token_encrypted && !refresh_token_encrypted`
+(`ShopListItem.canReleaseApp`, `lib/actions/shops.ts:130-134`), et `decideAppRelease` refuse sinon
+(`shop_still_active`, `credential_present` — `lib/shopify/app-release-guard.ts:73-79`). Or ce
+refus survient précisément quand l'ancienne app est **encore installée**. Une microcopie qui
+enverrait directement vers Paramètres → Boutiques désignerait donc, dans le cas le plus fréquent,
+un bouton **que le marchand ne voit pas**. C'est l'état `uninstalled` posé par le webhook
+`app/uninstalled` (`lib/shopify/webhook-core.ts:704-717` : statut et jetons) qui le fait
+apparaître.
+
+**Libellé du chemin, vérifié mot pour mot** : « Paramètres » (`settings.title`) → « Boutiques »
+(`settings.tabs.shops`). Ne pas écrire « Réglages », ni « Mes boutiques ».
+
+**Ce que le message ne dit jamais**, et ce n'est pas négociable : ni le `client_id`, ni le nom
+interne de l'application historique (`teer-dev`, `teer-koba`…), ni le locataire, ni le domaine.
+Seul le code `app_switch_refused` transite par l'URL de redirection ; l'identité de l'application
+en place reste une information interne, portée par la seule sentinelle Sentry
+`SHOPIFY_APP_SWITCH_REFUSED`. Même discipline que la surface embarquée, qui refuse déjà de nommer
+l'app historique (`app/api/shopify/embedded/session/route.ts`).
+
+**Renvoi au propriétaire, et pourquoi il est dans le texte** : la libération est réservée au rôle
+`owner` (`requireRole('owner')`, `lib/actions/shops.ts:209` ; `REQUIRED_ROLE`,
+`lib/shopify/app-release-guard.ts:45`). Un `manager` qui lance l'installation reçoit ce refus et
+n'a aucun moyen de le lever lui-même — le lui taire le laisserait tourner en rond.
+
+**Ce refus reste distinct de `connection_failed`, ne pas les fusionner.** Le refus nommé n'est
+émis que par la garde **préalable**, sur un état **lu et mesuré** avant tout échange de code. Une
+écriture qui échoue ensuite sur son compare-and-set rend zéro ligne, et zéro ligne n'a pas de
+cause attribuable (application changée, propriété réassignée, ligne supprimée) : elle retombe
+donc sur `connection_failed`, jamais sur `app_switch_refused`. Étiqueter ce second cas
+affirmerait une cause que rien n'a établie.
+
+Vouvoiement, comme tout `settings.shops.*`.

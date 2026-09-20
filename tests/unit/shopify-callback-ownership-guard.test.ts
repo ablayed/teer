@@ -37,6 +37,10 @@ const harness = vi.hoisted(() => ({
   shopUpdateCalls: [] as WriteCall[],
   connectionInsertCalls: [] as Array<{ payload: Record<string, unknown> }>,
   connectionUpdateCalls: [] as WriteCall[],
+  // SEC-APP-SWITCH-01 : toute table hors `shop`/`store_connection` du chemin — aujourd'hui
+  // `audit_log` seul. Compté pour prouver qu'un zéro-ligne au compare-and-set n'écrit RIEN
+  // derrière lui, pas seulement qu'il ne touche pas `store_connection`.
+  otherInsertCalls: [] as Array<{ table: string; payload: Record<string, unknown> }>,
 }));
 
 function freshId(prefix: string): string {
@@ -61,6 +65,23 @@ const exchangeCodeForToken = vi.fn(async () => ({
   refreshTokenExpiresAt: null,
   scope: 'read_customers,read_orders,read_products',
 }));
+
+// Espion pass-through : la vraie décision reste celle de lib/shopify/app-switch-guard.ts. Ce
+// mock ne change aucun comportement — il prouve seulement QUE la route appelle ce module, et
+// avec quels arguments. Un correctif qui réimplémenterait la règle sur place ferait rougir le
+// test sans changer le comportement observable, ce qui est précisément le but.
+const decideShopAppSwitchSpy = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/shopify/app-switch-guard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/shopify/app-switch-guard')>();
+  return {
+    ...actual,
+    decideShopAppSwitch: (...args: Parameters<typeof actual.decideShopAppSwitch>) => {
+      decideShopAppSwitchSpy(...args);
+      return actual.decideShopAppSwitch(...args);
+    },
+  };
+});
 
 vi.mock('@/lib/shopify/apps', () => ({
   getDefaultShopifyAppOrNull: vi.fn(() => APP),
@@ -112,7 +133,15 @@ vi.mock('@/lib/supabase/protected-client', () => ({
                 // Snapshot AVANT le hook : la lecture de garde doit voir l'état d'avant la
                 // course, sinon le test simulerait une course déjà visible à la lecture elle-même.
                 const snapshot = row
-                  ? { id: row.id, merchant_account_id: row.merchant_account_id }
+                  ? {
+                      id: row.id,
+                      merchant_account_id: row.merchant_account_id,
+                      // SEC-APP-SWITCH-01 : la lecture de garde sélectionne désormais aussi
+                      // l'identité d'app. `undefined` (colonne absente de la fixture) est
+                      // normalisé en `null` — c'est ce que rend la base pour une colonne
+                      // nullable non renseignée, jamais `undefined`.
+                      shopify_client_id: (row.shopify_client_id as string | null) ?? null,
+                    }
                   : null;
                 const hook = harness.onAfterGuardRead;
                 harness.onAfterGuardRead = null;
@@ -146,22 +175,40 @@ vi.mock('@/lib/supabase/protected-client', () => ({
           update: (payload: Record<string, unknown>) => {
             const filters: Array<[string, unknown]> = [];
             harness.shopUpdateCalls.push({ payload, filters });
+            // Normalisation `undefined` → `null` des DEUX côtés : en base, une colonne nullable
+            // non renseignée vaut NULL, jamais `undefined`. Sans cela, `.is('shopify_client_id',
+            // null)` ne matcherait aucune fixture qui omet la colonne, et le test mesurerait la
+            // forme de la fixture au lieu du prédicat.
+            const matches = (row: ShopRow) =>
+              filters.every(([column, value]) => (row[column] ?? null) === (value ?? null));
+            const findRow = () => harness.shops.find(matches);
+            const applyTo = (row: ShopRow | undefined) => {
+              if (!row) return null;
+              Object.assign(row, payload);
+              return { id: row.id };
+            };
             const builder = {
               eq(column: string, value: unknown) {
                 filters.push([column, value]);
                 return builder;
               },
+              // SEC-APP-SWITCH-01 : le compare-and-set null-safe passe par `.is(col, null)`.
+              is(column: string, value: unknown) {
+                filters.push([column, value]);
+                return builder;
+              },
               select: () => ({
                 single: async () => {
-                  const row = harness.shops.find((s) =>
-                    filters.every(([column, value]) => s[column] === value),
-                  );
-                  if (!row) {
+                  const applied = applyTo(findRow());
+                  if (!applied) {
                     return { data: null, error: { code: 'PGRST116', message: 'no rows found' } };
                   }
-                  Object.assign(row, payload);
-                  return { data: { id: row.id }, error: null };
+                  return { data: applied, error: null };
                 },
+                // Zéro ligne → `data: null`, `error: null` : sémantique réelle de
+                // `.maybeSingle()` (@supabase/postgrest-js, PostgrestBuilder.processResponse),
+                // épinglée en plus contre le vrai PostgREST par la suite RLS de ce lot.
+                maybeSingle: async () => ({ data: applyTo(findRow()), error: null }),
               }),
             };
             return builder;
@@ -216,7 +263,12 @@ vi.mock('@/lib/supabase/protected-client', () => ({
         };
       }
 
-      return { insert: async () => ({ error: null }) };
+      return {
+        insert: async (payload: Record<string, unknown>) => {
+          harness.otherInsertCalls.push({ table, payload });
+          return { error: null };
+        },
+      };
     },
   })),
 }));
@@ -242,7 +294,9 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
     harness.shopUpdateCalls.length = 0;
     harness.connectionInsertCalls.length = 0;
     harness.connectionUpdateCalls.length = 0;
+    harness.otherInsertCalls.length = 0;
     exchangeCodeForToken.mockClear();
+    decideShopAppSwitchSpy.mockClear();
     captureException.mockClear();
     captureMessage.mockClear();
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
@@ -270,12 +324,16 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
     expect(harness.connectionInsertCalls[0].payload.merchant_account_id).toBe(TENANT_A);
   });
 
-  it('met à jour la boutique existante en reconnexion sur le même tenant', async () => {
+  // SEC-APP-SWITCH-01 — fixture REMPLACÉE, jamais complétée : elle portait `shopify_client_id:
+  // 'old-client'` et asseyait donc le défaut (une reconnexion écrasait silencieusement l'identité
+  // d'une AUTRE app du même locataire). La reconnexion légitime est celle de la MÊME app ; la
+  // bascule vers une autre app est désormais couverte, en refus, par le bloc dédié plus bas.
+  it('met à jour la boutique existante en reconnexion sur le même tenant ET la même app', async () => {
     harness.shops.push({
       id: 'shop-existing',
       shop_domain: SHOP_DOMAIN,
       merchant_account_id: TENANT_A,
-      shopify_client_id: 'old-client',
+      shopify_client_id: APP.clientId,
     });
 
     const { GET } = await import('@/app/api/shopify/callback/route');
@@ -293,11 +351,12 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
 
   it('reconnexion complète (shop ET store_connection déjà existants, même tenant) : les deux ' +
     'updates sont structurellement incapables de réassigner merchant_account_id', async () => {
+    // Même correction de fixture que ci-dessus : reconnexion de la MÊME app.
     harness.shops.push({
       id: 'shop-existing',
       shop_domain: SHOP_DOMAIN,
       merchant_account_id: TENANT_A,
-      shopify_client_id: 'old-client',
+      shopify_client_id: APP.clientId,
     });
     harness.connections.push({
       id: 'conn-existing',
@@ -305,7 +364,7 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
       external_identifier: SHOP_DOMAIN,
       merchant_account_id: TENANT_A,
       shop_id: 'shop-existing',
-      platform_app_id: 'old-client',
+      platform_app_id: APP.clientId,
     });
 
     const { GET } = await import('@/app/api/shopify/callback/route');
@@ -392,10 +451,14 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
     expect(errorParamFrom(response)).toBe('connection_failed');
     expect(harness.shops[0].merchant_account_id).toBe(TENANT_B);
     expect(harness.connections).toHaveLength(0);
-    expect(captureException).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'PGRST116' }),
+    // SEC-APP-SWITCH-01 : l'écriture se termine désormais en `.maybeSingle()`, donc zéro ligne
+    // se lit `data: null, error: null` et non plus en PGRST116. Le comportement observable pour
+    // l'utilisateur est inchangé (refus générique fermé) ; seule la sentinelle interne change,
+    // et elle est volontairement NON attribuable à une cause unique.
+    expect(captureMessage).toHaveBeenCalledWith(
+      'shopify_callback_shop_write_no_row',
       expect.objectContaining({
-        tags: expect.objectContaining({ reason: 'ownership_guard_update_race' }),
+        tags: expect.objectContaining({ reason: 'shop_write_no_row' }),
       }),
     );
   });
@@ -425,6 +488,199 @@ describe('callback OAuth — garde de propriété avant écriture (APP-03 / Lot 
       expect.objectContaining({ code: '23505' }),
       expect.objectContaining({
         tags: expect.objectContaining({ reason: 'ownership_guard_insert_race' }),
+      }),
+    );
+  });
+});
+
+// ============================================================================================
+// SEC-APP-SWITCH-01 — garde de bascule d'app dans le callback OAuth.
+//
+// `decideShopOwnership` ne confronte que le locataire : avant ce lot, une installation d'une
+// AUTRE app du même locataire écrasait `shopify_client_id` et les jetons chiffrés d'une boutique
+// déjà rattachée. Deux protections distinctes sont vérifiées ici, et elles ne se remplacent pas :
+//   1. la garde préalable, AVANT l'échange de code — refus nommé, aucun effet externe ;
+//   2. le compare-and-set à l'écriture — ferme la seule fenêtre restante, entre la lecture et
+//      l'écriture ; il s'exerce nécessairement APRÈS l'échange.
+// ============================================================================================
+describe('callback OAuth — garde de bascule d’app (SEC-APP-SWITCH-01)', () => {
+  beforeEach(() => {
+    harness.shops.length = 0;
+    harness.connections.length = 0;
+    harness.onAfterGuardRead = null;
+    harness.shopInsertCalls.length = 0;
+    harness.shopUpdateCalls.length = 0;
+    harness.connectionInsertCalls.length = 0;
+    harness.connectionUpdateCalls.length = 0;
+    harness.otherInsertCalls.length = 0;
+    exchangeCodeForToken.mockClear();
+    decideShopAppSwitchSpy.mockClear();
+    captureException.mockClear();
+    captureMessage.mockClear();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-sentinel';
+  });
+
+  // Propriété 1 — la route appelle la garde PARTAGÉE, avec les bons arguments.
+  it('appelle decideShopAppSwitch (module partagé) avec la ligne lue et le client_id du state', async () => {
+    harness.shops.push({
+      id: 'shop-koba',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: 'koba-client-sentinel',
+    });
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    await GET(buildRequest());
+
+    expect(decideShopAppSwitchSpy).toHaveBeenCalledTimes(1);
+    expect(decideShopAppSwitchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ shopify_client_id: 'koba-client-sentinel' }),
+      APP.clientId,
+    );
+  });
+
+  // Propriété 2 — le refus précède l'échange de code.
+  it('refuse AVANT l’échange de code une boutique du MÊME locataire déjà rattachée à une autre app', async () => {
+    harness.shops.push({
+      id: 'shop-koba',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: 'koba-client-sentinel',
+      access_token_encrypted: 'encrypted-koba-token',
+    });
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    const response = await GET(buildRequest());
+
+    expect(errorParamFrom(response)).toBe('app_switch_refused');
+    // Preuve par l'ABSENCE d'appel, jamais par l'ordre des lignes du fichier : aucun code
+    // d'autorisation Shopify n'est consommé pour rien sur ce chemin.
+    expect(exchangeCodeForToken).not.toHaveBeenCalled();
+    // Aucune écriture, nulle part — ni identité, ni jeton, ni connexion, ni audit.
+    expect(harness.shops[0]).toMatchObject({
+      shopify_client_id: 'koba-client-sentinel',
+      access_token_encrypted: 'encrypted-koba-token',
+    });
+    expect(harness.shopUpdateCalls).toHaveLength(0);
+    expect(harness.shopInsertCalls).toHaveLength(0);
+    expect(harness.connections).toHaveLength(0);
+    expect(harness.otherInsertCalls).toHaveLength(0);
+    // Sentinelle interne à code stable — jamais le texte du message.
+    expect(captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'SHOPIFY_APP_SWITCH_REFUSED' }),
+      expect.objectContaining({
+        tags: expect.objectContaining({ reason: 'app_switch_refused' }),
+      }),
+    );
+  });
+
+  // Matrice de la garde.
+  it('laisse passer une boutique sans app rattachée (shopify_client_id null) — état normal après libération', async () => {
+    harness.shops.push({
+      id: 'shop-released',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: null,
+    });
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    const response = await GET(buildRequest());
+
+    expect(errorParamFrom(response)).not.toBe('app_switch_refused');
+    expect(exchangeCodeForToken).toHaveBeenCalledTimes(1);
+    expect(harness.shops[0]).toMatchObject({ shopify_client_id: APP.clientId });
+  });
+
+  it('laisse passer une reconnexion de la même app', async () => {
+    harness.shops.push({
+      id: 'shop-same-app',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: APP.clientId,
+    });
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    const response = await GET(buildRequest());
+
+    expect(errorParamFrom(response)).toBeNull();
+    expect(exchangeCodeForToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('laisse passer une première installation (aucune ligne pour ce domaine)', async () => {
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    const response = await GET(buildRequest());
+
+    expect(errorParamFrom(response)).toBeNull();
+    expect(decideShopAppSwitchSpy).toHaveBeenCalledWith(null, APP.clientId);
+    expect(harness.shops).toHaveLength(1);
+  });
+
+  // Propriété 3 — le prédicat de compare-and-set suit la valeur LUE.
+  it('construit le prédicat `is null` quand la ligne lue ne porte aucune app', async () => {
+    harness.shops.push({
+      id: 'shop-released',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: null,
+    });
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    await GET(buildRequest());
+
+    expect(harness.shopUpdateCalls).toHaveLength(1);
+    expect(harness.shopUpdateCalls[0].filters).toContainEqual(['shopify_client_id', null]);
+  });
+
+  it('construit le prédicat `eq <app lue>` quand la ligne lue porte déjà cette app', async () => {
+    harness.shops.push({
+      id: 'shop-same-app',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: APP.clientId,
+    });
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    await GET(buildRequest());
+
+    expect(harness.shopUpdateCalls).toHaveLength(1);
+    expect(harness.shopUpdateCalls[0].filters).toContainEqual(['shopify_client_id', APP.clientId]);
+  });
+
+  // Propriété 4 — un zéro-ligne au compare-and-set arrête TOUTES les écritures suivantes.
+  it('course sur l’identité d’app : zéro ligne au compare-and-set, refus fermé, aucune écriture secondaire', async () => {
+    harness.shops.push({
+      id: 'shop-raced-app',
+      shop_domain: SHOP_DOMAIN,
+      merchant_account_id: TENANT_A,
+      shopify_client_id: null,
+    });
+    // La garde lit « aucune app » (autorise), mais une autre installation rattache la boutique
+    // entre la lecture et l'écriture — le prédicat `.is('shopify_client_id', null)` ne matche
+    // alors plus aucune ligne. C'est exactement la fenêtre que la garde préalable ne couvre pas.
+    harness.onAfterGuardRead = () => {
+      const row = harness.shops.find((s) => s.id === 'shop-raced-app');
+      if (row) row.shopify_client_id = 'concurrent-app-sentinel';
+    };
+
+    const { GET } = await import('@/app/api/shopify/callback/route');
+    const response = await GET(buildRequest());
+
+    // Refus GÉNÉRIQUE : à ce stade la cause n'est pas attribuable (app changée, propriété
+    // réassignée, ligne supprimée). L'étiqueter `app_switch_refused` affirmerait une cause
+    // non mesurée.
+    expect(errorParamFrom(response)).toBe('connection_failed');
+    // L'identité posée par la course est intacte — aucun jeton du perdant n'a été écrit.
+    expect(harness.shops[0]).toMatchObject({ shopify_client_id: 'concurrent-app-sentinel' });
+    expect(harness.shops[0].access_token_encrypted).toBeUndefined();
+    // Aucune écriture secondaire derrière l'échec : ni connexion, ni audit, ni synchronisation.
+    expect(harness.connections).toHaveLength(0);
+    expect(harness.connectionInsertCalls).toHaveLength(0);
+    expect(harness.otherInsertCalls).toHaveLength(0);
+    expect(captureMessage).toHaveBeenCalledWith(
+      'shopify_callback_shop_write_no_row',
+      expect.objectContaining({
+        tags: expect.objectContaining({ reason: 'shop_write_no_row' }),
       }),
     );
   });

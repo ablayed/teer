@@ -1,3 +1,5 @@
+import { ShopifyAppSwitchRefusedError } from '@/lib/shopify/app-identity-errors';
+import { decideShopAppSwitch } from '@/lib/shopify/app-switch-guard';
 import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { encryptToken } from '@/lib/shopify/crypto';
 import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib/shopify/oauth';
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
     const supabase = createSupabaseAdminClient();
     const { data: existingShop, error: existingShopError } = await supabase
       .from('shop')
-      .select('id, merchant_account_id')
+      .select('id, merchant_account_id, shopify_client_id')
       .eq('shop_domain', shop)
       .maybeSingle();
 
@@ -119,6 +121,38 @@ export async function GET(request: NextRequest) {
       });
       return redirectTo('/boutiques?error=connection_failed', request);
     }
+
+    // Garde de bascule d'app (SEC-APP-SWITCH-01) — seconde garde, distincte de la propriété.
+    // `decideShopOwnership` ne confronte QUE le locataire : elle autorise l'update dès que
+    // `merchant_account_id` correspond, quelle que soit l'app déjà propriétaire de la ligne. Sans
+    // cette garde, une installation d'une autre app du MÊME locataire écrasait `shopify_client_id`
+    // et les jetons chiffrés d'une boutique déjà rattachée (ex. KOBA). Même règle et même module
+    // que le rattachement embarqué (lib/shopify/embedded-link-write.ts:156) — jamais une seconde
+    // implémentation de la règle.
+    //
+    // ORDRE DÉLIBÉRÉ — propriété D'ABORD, bascule ensuite, l'inverse de embedded-link-write.ts.
+    // Ce refus-ci porte un code d'erreur NOMMÉ et visible par l'utilisateur ; celui de la
+    // propriété reste générique. Évaluer la bascule en premier révélerait à un locataire
+    // étranger que ce domaine existe et porte déjà une app. Un locataire étranger doit recevoir
+    // exactement la réponse d'aujourd'hui ; seul un membre du locataire propriétaire voit le
+    // refus nommé.
+    //
+    // Posée AVANT `exchangeCodeForToken` ci-dessous : le cas courant (la ligne porte déjà une
+    // autre app au moment de la lecture) ne consomme aucun code d'autorisation Shopify. Le
+    // compare-and-set de l'écriture ne ferme QUE la fenêtre entre cette lecture et l'écriture.
+    const appSwitchDecision = decideShopAppSwitch(existingShop, clientId);
+
+    if (appSwitchDecision.kind === 'refuse') {
+      Sentry.captureException(new ShopifyAppSwitchRefusedError(), {
+        tags: { route: 'shopify.callback', reason: 'app_switch_refused' },
+      });
+      return redirectTo('/boutiques?error=app_switch_refused', request);
+    }
+
+    // Valeur d'app lue, normalisée : c'est l'ATTENDU du compare-and-set de l'écriture ci-dessous.
+    // `null` signifie « aucune app rattachée », jamais « une autre app » — motif projet, déjà posé
+    // côté SQL (gardes NULL-safe) et côté TS (app/api/shopify/embedded/session/route.ts:159-176).
+    const expectedClientId = existingShop?.shopify_client_id ?? null;
 
     const tokenResponse = await exchangeCodeForToken({
       shop,
@@ -169,17 +203,43 @@ export async function GET(request: NextRequest) {
       // garde ci-dessus. Le filtre `merchant_account_id` rend cette écriture structurellement
       // incapable de réassigner la boutique même si la propriété a changé entre la lecture de
       // garde et cet appel (fail-closed sous concurrence, pas seulement au moment de la lecture).
-      const { data: updatedShop, error: updateError } = await supabase
+      //
+      // Compare-and-set sur `shopify_client_id` (SEC-APP-SWITCH-01), même forme que
+      // lib/shopify/app-release-write.ts:210-231 : le prédicat porte la valeur LUE, donc une app
+      // changée entre la lecture de garde et cet appel ne matche plus aucune ligne. Branchement
+      // `.is(col, null)` / `.eq(col, valeur)` — jamais `.or()` : une comparaison d'égalité perd
+      // les NULL, et `null` est ici l'état normal d'une boutique dont l'identité a été libérée.
+      let shopUpdateQuery = supabase
         .from('shop')
         .update(shopWritePayload)
         .eq('id', ownershipDecision.shopId)
-        .eq('merchant_account_id', payload.merchantAccountId)
+        .eq('merchant_account_id', payload.merchantAccountId);
+      shopUpdateQuery =
+        expectedClientId === null
+          ? shopUpdateQuery.is('shopify_client_id', null)
+          : shopUpdateQuery.eq('shopify_client_id', expectedClientId);
+
+      const { data: updatedShop, error: updateError } = await shopUpdateQuery
         .select('id')
-        .single();
+        .maybeSingle();
 
       if (updateError) {
         Sentry.captureException(updateError, {
           tags: { route: 'shopify.callback', reason: 'ownership_guard_update_race' },
+          extra: { shopDomain: shop },
+        });
+        return redirectTo('/boutiques?error=connection_failed', request);
+      }
+
+      if (!updatedShop) {
+        // Zéro ligne modifiée — échec FERMÉ, jamais un succès silencieux. La cause n'est pas
+        // attribuable : propriété réassignée, app changée concurremment, ou ligne supprimée
+        // entre la lecture et l'écriture. Le refus reste donc GÉNÉRIQUE côté utilisateur —
+        // l'étiqueter `app_switch_refused` affirmerait une cause non mesurée. Seule la
+        // sentinelle interne, distincte de celle de la garde préalable, nomme l'événement.
+        Sentry.captureMessage('shopify_callback_shop_write_no_row', {
+          level: 'warning',
+          tags: { route: 'shopify.callback', reason: 'shop_write_no_row' },
           extra: { shopDomain: shop },
         });
         return redirectTo('/boutiques?error=connection_failed', request);
