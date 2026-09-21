@@ -1,10 +1,18 @@
 # Configuration de l'app publique « Teer Public ».
 #
 # VALEURS REPRISES À L'IDENTIQUE DE LA VERSION ACTIVE `teer-public-2` — confirmées par le
-# porteur, jamais déduites : `client_id`, `application_url`, `redirect_urls`, `embedded`,
+# porteur, jamais déduites : `client_id`, `application_url`, `redirect_urls`,
 # `use_legacy_install_flow` et surtout `scopes`. Toute divergence de portées déclencherait un
 # prompt de consentement chez le marchand et une régression sur la boutique déjà rattachée : ne
 # jamais « normaliser » l'ordre ou le contenu de `scopes` sans décision explicite.
+#
+# SEULE DIVERGENCE ASSUMÉE AVEC `teer-public-2` : `embedded = false` (TEST-NONEMBED-01, Test A).
+# Elle est là pour MESURER si Shopify délivre un code d'autorisation exploitable à une app
+# publique non embarquée qui le demande — la seule question qui commande `use_legacy_install_flow`,
+# laissé à `false`. Ce n'est pas la conversion : le parcours naturel depuis l'admin Shopify n'est
+# pas livré (l'entrée `application_url` rend toujours App Bridge, et `EmbeddedAppShell` rebondit
+# vers l'admin quand `host` arrive sans `embedded=1`). Tant que ce fichier porte `false` sans que
+# Test B soit livré, AUCUNE installation extérieure ne doit être ouverte.
 #
 # DÉPLOIEMENT : jamais `shopify app deploy` nu — voir docs/shopify/teer-public-app-config.md.
 # La commande DOIT porter `--no-release` : elle crée une version sans remplacer `teer-public-2`,
@@ -12,7 +20,7 @@
 client_id = "86c612a670ee04fe488426f442037605"
 name = "Teer Public"
 application_url = "https://www.teerafrik.com/shopify/embedded/teer-public"
-embedded = true
+embedded = false
 
 [access_scopes]
 scopes = "read_customers,read_orders,read_products"

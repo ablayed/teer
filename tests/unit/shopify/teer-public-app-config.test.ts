@@ -56,8 +56,13 @@ describe('shopify.app.teer-public.toml — identité de la version active teer-p
     expect(TOML).toContain('optional_scopes = [ ]');
   });
 
-  it('conserve le mode embarqué et le flux d\u2019installation moderne', () => {
-    expect(TOML).toContain('embedded = true');
+  // TEST-NONEMBED-01, Test A : `embedded` bascule à `false` pour MESURER si Shopify délivre
+  // un code d'autorisation exploitable à une app publique non embarquée qui le demande. La
+  // garde anti-dérive reste entière : elle change de valeur attendue, jamais de rôle. Et
+  // `use_legacy_install_flow` reste à `false` : ce réglage ne se touche QUE sur le verdict
+  // « échec du régime géré » du protocole, jamais sur un échec interne.
+  it('porte le mode non embarqué du Test A et le flux d\u2019installation moderne', () => {
+    expect(TOML).toContain('embedded = false');
     expect(TOML).toContain('use_legacy_install_flow = false');
   });
 

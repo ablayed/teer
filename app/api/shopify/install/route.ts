@@ -1,5 +1,4 @@
 import { getMerchantAccount } from '@/lib/actions/merchant';
-import { ShopifyPublicLegacyRouteRefusedError } from '@/lib/shopify/app-identity-errors';
 import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { buildAuthorizeUrl, validateShopDomain } from '@/lib/shopify/oauth';
 import { generateNonce, signState } from '@/lib/shopify/state';
@@ -68,15 +67,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'missing_shopify_app' }, { status: 500 });
   }
 
-  // Teer Public n'a aucun chemin par le flux OAuth `code` legacy — seul le token exchange
-  // embarqué (App Bridge) l'installe (cf. app/api/shopify/embedded/session/route.ts). Refus
-  // fermé, jamais un repli silencieux vers une autre app du registre.
-  if (app.label === 'teer-public') {
-    Sentry.captureException(new ShopifyPublicLegacyRouteRefusedError(), {
-      tags: { route: 'shopify.install' },
-    });
-    return NextResponse.json({ error: 'teer_public_not_supported' }, { status: 400 });
-  }
+  // TEST-NONEMBED-01, Test A — le refus fermé de `teer-public` sur cette route est levé.
+  // Il tenait à `embedded = true` : une app embarquée n'a que le token exchange App Bridge
+  // (app/api/shopify/embedded/session/route.ts). Avec `embedded = false`, le flux OAuth `code`
+  // redevient le seul chemin vers un jeton hors-ligne, et cette route est l'instrument de la
+  // mesure. Le refus est retiré, PAS déplacé : aucune autre garde de cette route ne
+  // connaît `teer-public`, et le callback n'en a jamais porté.
+  //
+  // Rappel de sélection, verrouillé par tests/unit/shopify-install-app-selection.test.ts :
+  // un `client_id` EXPLICITE choisit l'app, un `client_id` ABSENT retombe sur l'app par défaut
+  // (Teer Dev). Mesurer Teer Public exige donc de passer son `client_id` — l'omettre
+  // installerait Teer Dev et produirait un faux succès.
 
   const requestUrl = new URL(request.url);
   const redirectUri = `${requestUrl.origin}/api/shopify/callback`;
