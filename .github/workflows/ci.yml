@@ -97,7 +97,6 @@ jobs:
       # a retiré `supabase/setup-cli@v1`, qui retéléchargeait la même CLI sans cache.
       - name: Expose et vérifie la CLI Supabase
         run: |
-          echo "$GITHUB_WORKSPACE/node_modules/.bin" >>"$GITHUB_PATH"
           ls node_modules/.pnpm | grep '^@supabase+cli-'
           version="$(node_modules/.bin/supabase --version)"
           if [ "$version" != "2.102.0" ]; then
