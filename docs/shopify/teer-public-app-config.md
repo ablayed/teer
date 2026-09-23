@@ -104,11 +104,18 @@ Refuser et interrompre si l'un de ces cinq points ne correspond pas :
 5. **La version n'est PAS publiée** — le CLI doit annoncer une version créée sans release. S'il
    annonce une publication, `--no-release` a été perdu : interrompre.
 
+### Précondition — relever la version Shopify active
+
+Immédiatement avant de confirmer la publication, relever dans le Dev Dashboard le numéro et le nom
+de la version d'app actuellement active, ainsi que la date du relevé, puis les consigner dans le
+rapport de mesure daté de l'opération de publication en cours. Ne pas poursuivre vers **Release**
+tant que ce relevé n'est pas consigné.
+
 ### Publication, après relecture
 
 Depuis le Dev Dashboard de Teer Public → **Versions** → sélectionner la version créée → comparer
-le diff avec la version actuellement publiée, telle qu'elle a été relevée et consignée dans
-les préconditions → **Release**.
+le diff avec la version actuellement publiée, telle qu'elle a été relevée dans
+« Précondition — relever la version Shopify active » → **Release**.
 
 ### Retour arrière
 
@@ -117,9 +124,9 @@ Aucune migration de données n'est en jeu : une configuration d'app est versionn
 - **Avant publication** : ne rien faire. Une version non publiée n'a aucun effet ; elle peut
   rester en place indéfiniment.
 - **Après publication** : Dev Dashboard → **Versions** → republier la version qui était active
-  immédiatement avant la publication courante, telle qu'elle a été relevée et consignée dans
-  les préconditions → **Release** à nouveau. La configuration précédente redevient active,
-  abonnements au niveau app compris.
+  immédiatement avant la publication courante, telle qu'elle a été relevée dans
+  « Précondition — relever la version Shopify active » → **Release** à nouveau. La configuration
+  précédente redevient active, abonnements au niveau app compris.
 - Ne jamais « corriger » une version publiée en éditant les abonnements à la main dans le
   Dashboard : la version suivante déployée depuis le TOML les écraserait sans prévenir.
 
