@@ -3,6 +3,10 @@
 Fichier de configuration : `shopify.app.teer-public.toml` (racine du dépôt).
 Version active au moment de la rédaction : **`teer-public-2`**.
 
+> Document de **procédure** : il ne porte aucune mesure. Résultat mesuré de TEST-NONEMBED-01 Test A
+> (21 septembre 2026), état des versions publiées et dettes relevées :
+> [`TEST-NONEMBED-A-RESULTAT-2026-09-21.md`](./TEST-NONEMBED-A-RESULTAT-2026-09-21.md).
+
 Ce document décrit **une publication qui ne remplace rien tant que le porteur ne l'a pas
 décidé**. L'agent ne l'exécute pas : `shopify app deploy` exige une authentification interactive
 au Partner Dashboard.
