@@ -107,7 +107,8 @@ Refuser et interrompre si l'un de ces cinq points ne correspond pas :
 ### Publication, après relecture
 
 Depuis le Dev Dashboard de Teer Public → **Versions** → sélectionner la version créée → comparer
-le diff avec `teer-public-2` → **Release**.
+le diff avec la version actuellement publiée, telle qu'elle a été relevée et consignée dans
+les préconditions → **Release**.
 
 ### Retour arrière
 
@@ -115,9 +116,10 @@ Aucune migration de données n'est en jeu : une configuration d'app est versionn
 
 - **Avant publication** : ne rien faire. Une version non publiée n'a aucun effet ; elle peut
   rester en place indéfiniment.
-- **Après publication** : Dev Dashboard → **Versions** → sélectionner **`teer-public-2`** →
-  **Release** à nouveau. La configuration précédente redevient active, abonnements au niveau app
-  compris.
+- **Après publication** : Dev Dashboard → **Versions** → republier la version qui était active
+  immédiatement avant la publication courante, telle qu'elle a été relevée et consignée dans
+  les préconditions → **Release** à nouveau. La configuration précédente redevient active,
+  abonnements au niveau app compris.
 - Ne jamais « corriger » une version publiée en éditant les abonnements à la main dans le
   Dashboard : la version suivante déployée depuis le TOML les écraserait sans prévenir.
 
