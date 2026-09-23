@@ -104,7 +104,7 @@ propre, pas un effet de bord.
 `access_token_expires_at` nul. Conforme au code actuel.
 
 `[Fait]` Shopify impose les jetons hors-ligne expirants à **toutes** les apps publiques au
-**1er janvier 2027**, et déjà aux apps publiques **créées après le 1er avril 2026**.
+**1er janvier 2027**, et déjà aux apps publiques **créées le 1er avril 2026 ou après**.
 
 `[Décision]` **L'acceptation technique de l'échange ne vaut pas validation de conformité.** Shopify
 a délivré un jeton non expirant : cela prouve que le grant fonctionne, **pas** que cette
@@ -115,7 +115,7 @@ le Dev Dashboard. Elle décide de l'échéance réelle :
 
 | Date de création | Conséquence |
 |---|---|
-| après le 1er avril 2026 | **l'écart existe déjà aujourd'hui**, pas seulement au 1er janvier 2027 |
+| le 1er avril 2026 ou après | **l'écart existe déjà aujourd'hui**, pas seulement au 1er janvier 2027 |
 | avant le 1er avril 2026 | échéance au 1er janvier 2027 |
 
 `[Recommandation]` Relever cette date **avant la soumission**, et non comme un détail du lot de
@@ -175,10 +175,10 @@ installation**.
 celle de la variable réelle.
 `[Non vérifié]` **La comparaison à l'environnement Production n'a pas été faite.**
 
-**2. La règle `workflow_dispatch` vivait hors de `CLAUDE.md`.**
+**2. La règle `workflow_dispatch` vivait hors de `CLAUDE.md` — FERMÉE par ce lot.**
 `[Fait]` Le motif était écrit dans un rapport de lot, jamais dans `CLAUDE.md`, alors que ce même
 rapport demandait qu'il y soit. **Elle a coûté une exécution CI.** Portée dans `CLAUDE.md` par ce
-lot — c'est la seule des huit dettes à y figurer, parce que c'est une règle et non un constat.
+lot — c'est la seule des neuf dettes à y figurer, et la seule que ce lot ferme, parce que c'est une règle et non un constat.
 `[Fait]` **Le déclencheur `workflow_dispatch:` est bien déclaré dans `ci.yml:9`.** L'interdiction
 porte sur son **usage**, pas sur sa présence : ne pas « corriger » cette dette en retirant la ligne
 du workflow.
@@ -259,6 +259,14 @@ n'ouvre aucun fichier exécutable.
 ## 5. Ce que ce lot n'a pas fait
 
 `[Fait]` Aucun code, aucune migration, aucun test, aucun workflow, aucune modification du Partner
-Dashboard, aucune publication Shopify. **Aucune des huit dettes n'a été corrigée.**
+Dashboard, aucune publication Shopify.
+
+`[Fait]` **Neuf dettes sont consignées. La dette 2 est fermée par l'inscription de la règle 6-ter
+dans `CLAUDE.md`. Les huit autres ne sont pas corrigées par ce lot.**
+
+`[Décision]` **La dette 2 fait exception à « écrire, ne rien corriger », et ce n'est pas un écart à
+la consigne** : cette dette *est* l'absence d'une règle du fichier que les agents lisent. L'écrire
+la ferme — il n'existe aucun geste qui la consignerait sans la corriger. Le rapport qui prétendrait
+l'avoir seulement consignée sous-déclarerait son propre effet.
 
 `[Fait]` Le contenu de Test B n'est pas anticipé au-delà de ce que le §2 en dit.

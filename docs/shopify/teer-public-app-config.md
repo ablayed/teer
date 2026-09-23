@@ -1,7 +1,8 @@
 # Configuration Shopify de l'app « Teer Public » — déploiement et vérification
 
 Fichier de configuration : `shopify.app.teer-public.toml` (racine du dépôt).
-Version active au moment de la rédaction : **`teer-public-2`**.
+**La version Shopify actuellement active n'est pas suivie dans ce document de procédure.**
+Consulter le dernier rapport de mesure daté.
 
 > Document de **procédure** : il ne porte aucune mesure. Résultat mesuré de TEST-NONEMBED-01 Test A
 > (21 septembre 2026), état des versions publiées et dettes relevées :
