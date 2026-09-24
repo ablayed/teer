@@ -2863,6 +2863,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      shopify_token_lease: {
+        Row: {
+          acquired_at: string | null;
+          created_at: string;
+          generation: number;
+          lease_expires_at: string | null;
+          shop_domain: string;
+        };
+        Insert: {
+          acquired_at?: string | null;
+          created_at?: string;
+          generation?: number;
+          lease_expires_at?: string | null;
+          shop_domain: string;
+        };
+        Update: {
+          acquired_at?: string | null;
+          created_at?: string;
+          generation?: number;
+          lease_expires_at?: string | null;
+          shop_domain?: string;
+        };
+        Relationships: [];
+      };
       stock_movement: {
         Row: {
           created_at: string;
@@ -3606,6 +3630,13 @@ export type Database = {
       accept_pending_invitation_by_email: {
         Args: { p_invitation_id: string };
         Returns: Json;
+      };
+      acquire_shopify_token_lease: {
+        Args: { p_shop_domain: string; p_ttl_seconds: number };
+        Returns: {
+          acquired_generation: number;
+          expires_at: string;
+        }[];
       };
       cash_aging: {
         Args: { p_merchant: string };
@@ -4365,6 +4396,24 @@ export type Database = {
         };
         Returns: string;
       };
+      persist_shopify_credentials_fenced: {
+        Args: {
+          p_access_token_encrypted: string;
+          p_access_token_expires_at: string;
+          p_client_id: string;
+          p_generation: number;
+          p_merchant_account_id: string;
+          p_mode: string;
+          p_refresh_token_encrypted: string;
+          p_refresh_token_expires_at: string;
+          p_scopes: string;
+          p_shop_domain: string;
+        };
+        Returns: {
+          outcome: string;
+          shop_id: string;
+        }[];
+      };
       post_stock_movement: {
         Args: {
           p_created_by: string;
@@ -4499,6 +4548,16 @@ export type Database = {
         Args: { p_old_client_id: string; p_shop_id: string; p_user_id: string };
         Returns: string;
       };
+      renew_shopify_token_lease: {
+        Args: {
+          p_generation: number;
+          p_shop_domain: string;
+          p_ttl_seconds: number;
+        };
+        Returns: {
+          expires_at: string;
+        }[];
+      };
       replace_order_cart: {
         Args: { p_lines: Json; p_order_id: string };
         Returns: undefined;
@@ -4571,6 +4630,18 @@ export type Database = {
           p_shortfall_id: string;
         };
         Returns: Json;
+      };
+      write_shopify_store_connection_fenced: {
+        Args: {
+          p_client_id: string;
+          p_generation: number;
+          p_merchant_account_id: string;
+          p_shop_domain: string;
+        };
+        Returns: {
+          connection_id: string;
+          outcome: string;
+        }[];
       };
     };
     Enums: {
