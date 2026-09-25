@@ -1,21 +1,21 @@
 // APP-03 / Lot 2 — confrontation d'identité d'app avant tout `ready` sur la session embarquée
 // (GET /api/shopify/embedded/session). Avant ce lot, cette route n'avait aucun test dédié.
+//
+// SHOPIFY-EXPIRING-TOKENS-01 — la persistance passe par `persist_shopify_credentials_fenced`
+// (mode `token_exchange`) sous bail de jeton ; le faux client modélise ces RPC en mémoire
+// (tests/unit/helpers/fake-shopify-lease-db.ts).
+import { fakeLeaseDb } from '@/tests/unit/helpers/fake-shopify-lease-db';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PUBLIC_APP = {
   label: 'teer-public' as const,
+  distribution: 'public' as const,
   clientId: 'public_client_sentinel',
   clientSecret: 'public_secret_sentinel',
 };
 
 const harness = vi.hoisted(() => ({
-  shop: null as Record<string, unknown> | null,
-  shopUpdateCalls: [] as Array<{
-    payload: Record<string, unknown>;
-    filters: Array<[string, unknown]>;
-  }>,
-  connectionInsertCalls: [] as Array<Record<string, unknown>>,
   tokenExchangeShouldFail: false,
   raceAfterTokenExchange: null as (() => void) | null,
 }));
@@ -44,7 +44,7 @@ vi.mock('@/lib/shopify/session-token', () => ({
 }));
 
 vi.mock('@/lib/shopify/oauth', () => ({
-  exchangeIdTokenForOfflineToken: vi.fn(async () => {
+  exchangeIdTokenForOfflineToken: vi.fn(async (_input: Record<string, unknown>) => {
     if (harness.tokenExchangeShouldFail) {
       throw new Error('shopify_token_exchange_failed_sentinel');
     }
@@ -68,67 +68,37 @@ vi.mock('@/lib/shopify/crypto', () => ({
 }));
 
 const captureException = vi.fn();
+const captureMessage = vi.fn();
 vi.mock('@sentry/nextjs', () => ({
   captureException: (...args: unknown[]) => captureException(...args),
+  captureMessage: (...args: unknown[]) => captureMessage(...args),
 }));
 
-vi.mock('@/lib/supabase/protected-client', () => ({
-  createProtectedSupabaseClient: vi.fn(() => ({
-    from(table: string) {
-      if (table === 'shop') {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: harness.shop, error: null }),
-            }),
-          }),
-          update: (payload: Record<string, unknown>) => {
-            const filters: Array<[string, unknown]> = [];
-            const builder = {
-              eq(column: string, value: unknown) {
-                filters.push([column, value]);
-                return builder;
-              },
-              select: () => ({
-                single: async () => {
-                  harness.shopUpdateCalls.push({ payload, filters });
-                  const matches =
-                    harness.shop &&
-                    filters.every(([column, value]) => harness.shop?.[column] === value);
-                  if (!matches) {
-                    return { data: null, error: { code: 'PGRST116', message: 'no rows found' } };
-                  }
-                  Object.assign(harness.shop as Record<string, unknown>, payload);
-                  return {
-                    data: {
-                      shop_domain: harness.shop?.shop_domain,
-                      installed_at: harness.shop?.installed_at,
-                      updated_at: harness.shop?.updated_at,
-                      last_reconciled_at: harness.shop?.last_reconciled_at,
-                    },
-                    error: null,
-                  };
-                },
-              }),
-            };
-            return builder;
-          },
-        };
-      }
+vi.mock('@/lib/supabase/protected-client', async () => {
+  const { fakeLeaseDb: db } = await import('@/tests/unit/helpers/fake-shopify-lease-db');
+  return { createProtectedSupabaseClient: vi.fn(() => db.client()) };
+});
 
-      if (table === 'store_connection') {
-        return {
-          insert: (payload: Record<string, unknown>) => {
-            harness.connectionInsertCalls.push(payload);
-            return Promise.resolve({ error: null });
-          },
-        };
-      }
+type ShopFixture = Record<string, unknown> & { shop_domain: string };
 
-      throw new Error(`unexpected table ${table}`);
-    },
-  })),
-}));
+function setShop(shop: ShopFixture | null) {
+  fakeLeaseDb.state.shops.length = 0;
+  if (shop) {
+    fakeLeaseDb.state.shops.push({
+      id: 'shop-fixture',
+      merchant_account_id: 'tenant-sentinel',
+      ...shop,
+    });
+  }
+}
+
+function currentShop() {
+  return fakeLeaseDb.state.shops[0];
+}
+
+function rpcCalls(name: string) {
+  return fakeLeaseDb.state.rpcCalls.filter((call) => call.name === name);
+}
 
 function buildRequest() {
   return new NextRequest('http://localhost:3000/api/shopify/embedded/session', {
@@ -138,19 +108,18 @@ function buildRequest() {
 
 describe('GET /api/shopify/embedded/session — confrontation d’identité d’app', () => {
   beforeEach(() => {
-    harness.shop = null;
-    harness.shopUpdateCalls = [];
-    harness.connectionInsertCalls = [];
+    fakeLeaseDb.reset();
     harness.tokenExchangeShouldFail = false;
     harness.raceAfterTokenExchange = null;
     captureException.mockClear();
+    captureMessage.mockClear();
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-sentinel';
     process.env.SHOPIFY_API_SECRET = 'intent-secret-sentinel';
   });
 
   it('renvoie ready quand shopify_client_id correspond exactement à l’app ayant vérifié le token', async () => {
-    harness.shop = {
+    setShop({
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: PUBLIC_APP.clientId,
       status: 'active',
@@ -158,7 +127,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     const response = await GET(buildRequest());
@@ -171,7 +140,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('réinstallation actionnable : uninstalled + ID token frais relance le token exchange (jamais /api/shopify/install), retombe ready au succès', async () => {
-    harness.shop = {
+    setShop({
       id: 'shop-reinstall',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: PUBLIC_APP.clientId,
@@ -181,34 +150,32 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     const response = await GET(buildRequest());
     const body = await response.json();
 
     expect(body.status).toBe('ready');
-    expect(harness.shopUpdateCalls).toHaveLength(1);
     // L'ancien access_token_encrypted n'est jamais relu ni transmis à Shopify — seul le nouvel
     // ID token (déjà vérifié) sert de subject_token ; la ligne est écrasée par le nouveau couple.
-    expect(harness.shopUpdateCalls[0].payload).toMatchObject({
+    expect(rpcCalls('persist_shopify_credentials_fenced')).toHaveLength(1);
+    // Attendus fermant la course, comparés SOUS VERROU par la RPC : locataire + app stricte.
+    expect(rpcCalls('persist_shopify_credentials_fenced')[0].args).toMatchObject({
+      p_mode: 'token_exchange',
+      p_merchant_account_id: 'tenant-sentinel',
+      p_client_id: PUBLIC_APP.clientId,
+      p_access_token_encrypted: 'encrypted-fresh-access-token',
+    });
+    expect(currentShop()).toMatchObject({
       access_token_encrypted: 'encrypted-fresh-access-token',
       status: 'active',
     });
-    // Prédicats fermant la course : id + tenant + app attendue, pas seulement id.
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual(['id', 'shop-reinstall']);
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual([
-      'merchant_account_id',
-      'tenant-sentinel',
-    ]);
-    expect(harness.shopUpdateCalls[0].filters).toContainEqual([
-      'shopify_client_id',
-      PUBLIC_APP.clientId,
-    ]);
+    expect(fakeLeaseDb.state.directWrites).toEqual([]);
   });
 
   it('réinstallation : un échec de token exchange ne bloque jamais sur un état ready trompeur (link_retry, statut inchangé côté écriture)', async () => {
-    harness.shop = {
+    setShop({
       id: 'shop-reinstall',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: PUBLIC_APP.clientId,
@@ -218,7 +185,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
     harness.tokenExchangeShouldFail = true;
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
@@ -229,11 +196,11 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       status: 'link_retry',
       shop: { domain: 'shared-domain.myshopify.com' },
     });
-    expect(harness.shopUpdateCalls).toHaveLength(0);
+    expect(rpcCalls('persist_shopify_credentials_fenced')).toHaveLength(0);
   });
 
   it('renvoie not_configured quand aucune ligne shop n’existe pour ce domaine', async () => {
-    harness.shop = null;
+    setShop(null);
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     const response = await GET(buildRequest());
@@ -244,14 +211,14 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('refuse en fermé quand la boutique appartient à une autre app (ex. KOBA) — jamais ready, aucune identité historique dans la réponse', async () => {
-    harness.shop = {
+    setShop({
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: 'koba_client_sentinel',
       status: 'active',
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     const response = await GET(buildRequest());
@@ -268,8 +235,8 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
     // ne doit jamais degrader ce refus en simple avertissement.
     expect(body).not.toHaveProperty('loginUrl');
     expect(body).not.toHaveProperty('nextAction');
-    expect(harness.shopUpdateCalls).toHaveLength(0);
-    expect(harness.connectionInsertCalls).toHaveLength(0);
+    expect(rpcCalls('persist_shopify_credentials_fenced')).toHaveLength(0);
+    expect(fakeLeaseDb.state.connections).toHaveLength(0);
   });
 
   // Défaut mesuré en production sur le chemin de l'étape 8 du runbook option D : une boutique
@@ -280,7 +247,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   // jamais « une autre app » : c'est le motif `is distinct from` du projet. La PR #199 avait
   // verrouillé l'inverse par un test — celui-ci le remplace, il ne s'y ajoute pas.
   it('boutique libérée (shopify_client_id NULL) : état invitant au rattachement, jamais app_identity_mismatch', async () => {
-    harness.shop = {
+    setShop({
       id: 'shop-released',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: null,
@@ -290,7 +257,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     const response = await GET(buildRequest());
@@ -306,13 +273,13 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
     expect(body).not.toHaveProperty('shop.installedAt');
     // Aucun échange de token ni écriture tant que le rattachement n'a pas été confirmé par un
     // utilisateur authentifié — l'invitation n'est pas un rattachement.
-    expect(harness.shopUpdateCalls).toHaveLength(0);
-    expect(harness.connectionInsertCalls).toHaveLength(0);
+    expect(rpcCalls('persist_shopify_credentials_fenced')).toHaveLength(0);
+    expect(fakeLeaseDb.state.connections).toHaveLength(0);
     expect(captureException).not.toHaveBeenCalled();
   });
 
   it('boutique libérée : l’invitation est réellement actionnable (loginUrl signée quand host est valide)', async () => {
-    harness.shop = {
+    setShop({
       id: 'shop-released',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: null,
@@ -322,7 +289,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
     const validHost = Buffer.from('admin.shopify.com/store/shared-domain', 'utf8').toString(
       'base64url',
     );
@@ -342,14 +309,14 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('capture une exception interne avec un code stable, jamais déduit du texte du message', async () => {
-    harness.shop = {
+    setShop({
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: 'koba_client_sentinel',
       status: 'active',
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     await GET(buildRequest());
@@ -364,7 +331,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('renvoie une loginUrl signée quand la boutique est not_configured ET host valide', async () => {
-    harness.shop = null;
+    setShop(null);
     const validHost = Buffer.from('admin.shopify.com/store/shared-domain', 'utf8').toString(
       'base64url',
     );
@@ -385,7 +352,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('n’expose aucune loginUrl quand host est absent ou invalide (fermé, jamais de destination devinée)', async () => {
-    harness.shop = null;
+    setShop(null);
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     const response = await GET(buildRequest());
@@ -396,13 +363,14 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('n’expose jamais de loginUrl pour une app historique, même avec un host valide (parcours legacy inchangé)', async () => {
-    harness.shop = null;
+    setShop(null);
     const { getShopifyAppByClientId } = await import('@/lib/shopify/apps');
     const { extractShopifySessionAudience, verifyShopifySessionToken } = await import(
       '@/lib/shopify/session-token'
     );
     const DEV_APP = {
       label: 'teer-dev' as const,
+      distribution: 'custom' as const,
       clientId: 'dev_client_sentinel',
       clientSecret: 'dev_secret_sentinel',
       scopes: 'read_customers,read_orders,read_products',
@@ -440,7 +408,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('complète le rattachement en attente : token exchange + persistance + store_connection, jamais un second aller-retour', async () => {
-    harness.shop = {
+    setShop({
       id: 'shop-pending',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: PUBLIC_APP.clientId,
@@ -450,20 +418,20 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
     const response = await GET(buildRequest());
     const body = await response.json();
 
     expect(body.status).toBe('ready');
-    expect(harness.shopUpdateCalls).toHaveLength(1);
-    expect(harness.shopUpdateCalls[0].payload).toMatchObject({
+    expect(rpcCalls('persist_shopify_credentials_fenced')).toHaveLength(1);
+    expect(currentShop()).toMatchObject({
       access_token_encrypted: 'encrypted-fresh-access-token',
       refresh_token_encrypted: 'encrypted-fresh-refresh-token',
     });
-    expect(harness.connectionInsertCalls).toHaveLength(1);
-    expect(harness.connectionInsertCalls[0]).toMatchObject({
+    expect(fakeLeaseDb.state.connections).toHaveLength(1);
+    expect(fakeLeaseDb.state.connections[0]).toMatchObject({
       shop_id: 'shop-pending',
       platform: 'shopify',
       external_identifier: 'shared-domain.myshopify.com',
@@ -474,7 +442,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
   });
 
   it('renvoie link_retry sans écriture partielle quand le token exchange échoue', async () => {
-    harness.shop = {
+    setShop({
       id: 'shop-pending',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: PUBLIC_APP.clientId,
@@ -484,7 +452,7 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
     harness.tokenExchangeShouldFail = true;
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
@@ -495,12 +463,12 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       status: 'link_retry',
       shop: { domain: 'shared-domain.myshopify.com' },
     });
-    expect(harness.shopUpdateCalls).toHaveLength(0);
-    expect(harness.connectionInsertCalls).toHaveLength(0);
+    expect(rpcCalls('persist_shopify_credentials_fenced')).toHaveLength(0);
+    expect(fakeLeaseDb.state.connections).toHaveLength(0);
   });
 
   it('refuse en fermé (fail-closed) si une bascule d’app concurrente survient pendant le token exchange, entre la lecture de garde et la persistance', async () => {
-    harness.shop = {
+    setShop({
       id: 'shop-raced',
       shop_domain: 'shared-domain.myshopify.com',
       shopify_client_id: PUBLIC_APP.clientId,
@@ -510,13 +478,14 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       installed_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-02T00:00:00.000Z',
       last_reconciled_at: null,
-    };
+    });
     // La confrontation d'identité d'app (GET, plus haut) lit shopify_client_id === PUBLIC_APP —
     // autorise. Pendant le token exchange (le seul appel réseau de ce chemin), une autre requête
     // réassigne la ligne à une autre app — le prédicat .eq('shopify_client_id', app.clientId) de
     // la persistance ne doit alors matcher aucune ligne : échec fermé, jamais un succès trompeur.
     harness.raceAfterTokenExchange = () => {
-      if (harness.shop) harness.shop.shopify_client_id = 'koba_client_sentinel';
+      const shop = currentShop();
+      if (shop) shop.shopify_client_id = 'koba_client_sentinel';
     };
 
     const { GET } = await import('@/app/api/shopify/embedded/session/route');
@@ -527,12 +496,115 @@ describe('GET /api/shopify/embedded/session — confrontation d’identité d’
       status: 'link_retry',
       shop: { domain: 'shared-domain.myshopify.com' },
     });
-    expect(harness.shop.access_token_encrypted).toBeNull();
+    expect(currentShop().access_token_encrypted).toBeNull();
     expect(captureException).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'PGRST116' }),
+      expect.objectContaining({ message: 'shopify_credentials_persist_failed' }),
       expect.objectContaining({
         tags: expect.objectContaining({ reason: 'credentials_persist_failed' }),
       }),
+    );
+  });
+});
+
+// ============================================================================================
+// SHOPIFY-EXPIRING-TOKENS-01 — bail de jeton sur l'échange par ID token (preuves 4, 5, 11) et
+// distribution transmise à l'échange (preuves 1 et 2, côté route).
+// ============================================================================================
+describe('GET /api/shopify/embedded/session — bail de jeton (SHOPIFY-EXPIRING-TOKENS-01)', () => {
+  const PENDING_SHOP = {
+    id: 'shop-pending',
+    shop_domain: 'shared-domain.myshopify.com',
+    shopify_client_id: PUBLIC_APP.clientId,
+    status: 'active',
+    access_token_encrypted: null,
+    merchant_account_id: 'tenant-sentinel',
+    installed_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-02T00:00:00.000Z',
+    last_reconciled_at: null,
+  };
+
+  beforeEach(() => {
+    fakeLeaseDb.reset();
+    harness.tokenExchangeShouldFail = false;
+    harness.raceAfterTokenExchange = null;
+    captureException.mockClear();
+    captureMessage.mockClear();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-sentinel';
+    process.env.SHOPIFY_API_SECRET = 'intent-secret-sentinel';
+  });
+
+  it('preuve 4 — bail tenu : aucun échange par ID token, aucune écriture, link_retry', async () => {
+    setShop({ ...PENDING_SHOP });
+    fakeLeaseDb.holdLease(PENDING_SHOP.shop_domain);
+    const { exchangeIdTokenForOfflineToken } = await import('@/lib/shopify/oauth');
+    vi.mocked(exchangeIdTokenForOfflineToken).mockClear();
+
+    const { GET } = await import('@/app/api/shopify/embedded/session/route');
+    const body = await (await GET(buildRequest())).json();
+
+    expect(body.status).toBe('link_retry');
+    expect(exchangeIdTokenForOfflineToken).not.toHaveBeenCalled();
+    expect(fakeLeaseDb.state.rpcCalls.map((call) => call.name)).toEqual([
+      'acquire_shopify_token_lease',
+    ]);
+    expect(currentShop().access_token_encrypted).toBeNull();
+    expect(captureMessage).toHaveBeenCalledWith(
+      'shopify_token_lease_busy',
+      expect.objectContaining({ tags: expect.objectContaining({ operation: 'token_exchange' }) }),
+    );
+  });
+
+  it('preuve 5 — bail perdu pendant l’échange : sentinelle propre, rien d’écrit', async () => {
+    setShop({ ...PENDING_SHOP });
+    harness.raceAfterTokenExchange = () => fakeLeaseDb.bumpLease(PENDING_SHOP.shop_domain);
+
+    const { GET } = await import('@/app/api/shopify/embedded/session/route');
+    const body = await (await GET(buildRequest())).json();
+
+    expect(body.status).toBe('link_retry');
+    expect(currentShop().access_token_encrypted).toBeNull();
+    expect(fakeLeaseDb.state.connections).toHaveLength(0);
+    expect(captureMessage).toHaveBeenCalledWith(
+      'shopify_token_lease_lost',
+      expect.objectContaining({ tags: expect.objectContaining({ operation: 'token_exchange' }) }),
+    );
+    expect(captureException).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'shopify_credentials_persist_failed' }),
+      expect.anything(),
+    );
+  });
+
+  it('preuve 11 — une seule RPC porte les quatre valeurs, puis le bail est libéré', async () => {
+    setShop({ ...PENDING_SHOP });
+
+    const { GET } = await import('@/app/api/shopify/embedded/session/route');
+    await GET(buildRequest());
+
+    expect(rpcCalls('persist_shopify_credentials_fenced')).toHaveLength(1);
+    expect(rpcCalls('persist_shopify_credentials_fenced')[0].args).toMatchObject({
+      p_mode: 'token_exchange',
+      p_generation: 1,
+      p_access_token_encrypted: 'encrypted-fresh-access-token',
+      p_refresh_token_encrypted: 'encrypted-fresh-refresh-token',
+      p_access_token_expires_at: '2026-01-01T01:00:00.000Z',
+      p_refresh_token_expires_at: '2026-04-01T00:00:00.000Z',
+    });
+    expect(fakeLeaseDb.state.releases).toEqual([
+      { shopDomain: PENDING_SHOP.shop_domain, generation: 1 },
+    ]);
+  });
+
+  it('transmet la distribution de l’app (publique ici) à l’échange par ID token', async () => {
+    setShop({ ...PENDING_SHOP });
+    const { exchangeIdTokenForOfflineToken } = await import('@/lib/shopify/oauth');
+    vi.mocked(exchangeIdTokenForOfflineToken).mockClear();
+
+    const { GET } = await import('@/app/api/shopify/embedded/session/route');
+    await GET(buildRequest());
+
+    expect(exchangeIdTokenForOfflineToken).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: PUBLIC_APP.clientId, distribution: 'public' }),
     );
   });
 });

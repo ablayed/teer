@@ -222,6 +222,8 @@ describe('mode plan strictement sans renouvellement ni écriture', () => {
   it('conserve le renouvellement et la persistance pour apply', async () => {
     let refreshCalls = 0;
     let writes = 0;
+    let persistedGeneration: number | null = null;
+    let releasedGeneration: number | null = null;
     const result = await resolveAccessTokenForMode({
       mode: 'apply',
       shop: {
@@ -242,15 +244,80 @@ describe('mode plan strictement sans renouvellement ni écriture', () => {
           refreshTokenExpiresAt: null,
         };
       },
-      persistRefreshedToken: async () => {
+      persistRefreshedToken: async ({ generation }: { generation: number }) => {
         writes += 1;
-        return { ok: true };
+        persistedGeneration = generation;
+        return { ok: true, outcome: 'updated' };
+      },
+      acquireLease: async () => ({ ok: true, generation: 4 }),
+      releaseLease: async ({ generation }: { generation: number }) => {
+        releasedGeneration = generation;
       },
       refreshBufferMs: 5 * 60 * 1000,
     });
     expect(result).toEqual({ ok: true, accessToken: 'new-access-token-sentinel' });
     expect(refreshCalls).toBe(1);
     expect(writes).toBe(1);
+    // SHOPIFY-EXPIRING-TOKENS-01 — même bail que lib/shopify/token.ts.
+    expect(persistedGeneration).toBe(4);
+    expect(releasedGeneration).toBe(4);
+  });
+
+  const EXPIRING_SHOP = {
+    shop_domain: 'ntmwxz-83.myshopify.com',
+    access_token_encrypted: 'access-token-encrypted-sentinel',
+    access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+    refresh_token_encrypted: 'refresh-token-encrypted-sentinel',
+    refresh_token_expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+  };
+
+  it('apply, bail tenu : aucun appel Shopify, aucune écriture, lease_held', async () => {
+    let refreshCalls = 0;
+    let writes = 0;
+    const result = await resolveAccessTokenForMode({
+      mode: 'apply',
+      shop: EXPIRING_SHOP,
+      app: { clientId: 'client-sentinel', clientSecret: 'secret-sentinel' },
+      decrypt: (value: string) => `${value}-decrypted`,
+      refresh: async () => {
+        refreshCalls += 1;
+        throw new Error('SHOPIFY_CALL_SENTINEL');
+      },
+      persistRefreshedToken: async () => {
+        writes += 1;
+        return { ok: true, outcome: 'updated' };
+      },
+      acquireLease: async () => ({ ok: false, reason: 'lease_held' }),
+      releaseLease: async () => {},
+      refreshBufferMs: 5 * 60 * 1000,
+    });
+    expect(result).toEqual({ ok: false, reason: 'lease_held' });
+    expect(refreshCalls).toBe(0);
+    expect(writes).toBe(0);
+  });
+
+  it('apply, bail perdu à l’écriture : lease_lost, bail tout de même libéré', async () => {
+    let released = 0;
+    const result = await resolveAccessTokenForMode({
+      mode: 'apply',
+      shop: EXPIRING_SHOP,
+      app: { clientId: 'client-sentinel', clientSecret: 'secret-sentinel' },
+      decrypt: (value: string) => `${value}-decrypted`,
+      refresh: async () => ({
+        accessToken: 'new-access-token-sentinel',
+        refreshToken: null,
+        accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
+        refreshTokenExpiresAt: null,
+      }),
+      persistRefreshedToken: async () => ({ ok: false, outcome: 'lease_lost' }),
+      acquireLease: async () => ({ ok: true, generation: 2 }),
+      releaseLease: async () => {
+        released += 1;
+      },
+      refreshBufferMs: 5 * 60 * 1000,
+    });
+    expect(result).toEqual({ ok: false, reason: 'lease_lost' });
+    expect(released).toBe(1);
   });
 });
 

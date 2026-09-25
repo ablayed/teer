@@ -20,6 +20,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   ownership_refused: 'Cette boutique est déjà associée à un autre compte. Contactez le support.',
   write_failed: 'Une erreur est survenue. Réessayez dans un instant.',
   destination_unavailable: 'Impossible de revenir vers Shopify Admin. Réessayez depuis Shopify.',
+  link_in_progress:
+    'Une autre opération est en cours sur cette boutique. Patientez quelques instants, puis réessayez.',
 };
 
 export function EmbeddedLinkConfirmForm({ intent, accounts }: EmbeddedLinkConfirmFormProps) {

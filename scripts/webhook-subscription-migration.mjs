@@ -114,7 +114,13 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 // Miroir de lib/shopify/token.ts::getValidShopAccessToken, réduit à l'orchestration (la
 // fonction originale n'est pas importable ici — cf. note ci-dessus). Décrypte/rafraîchit/
-// persiste via les MÊMES primitives que le reste du dépôt, jamais une resémantisation.
+// persiste via les MÊMES primitives que le reste du dépôt, jamais une resémantisation :
+// SHOPIFY-EXPIRING-TOKENS-01 — bail `acquire_shopify_token_lease`, écriture
+// `persist_shopify_credentials_fenced` (mode `refresh`), libération conditionnelle, comme
+// lib/shopify/token-lease.ts (non importable ici : il importe @sentry/nextjs).
+// Miroir de SHOPIFY_TOKEN_LEASE_TTL_SECONDS (lib/shopify/token-lease.ts).
+const SHOPIFY_TOKEN_LEASE_TTL_SECONDS = 60;
+
 async function getValidAccessToken(admin, shop, app) {
   return resolveAccessTokenForMode({
     mode: 'apply',
@@ -123,24 +129,42 @@ async function getValidAccessToken(admin, shop, app) {
     decrypt: decryptToken,
     refresh: refreshAccessToken,
     refreshBufferMs: REFRESH_BUFFER_MS,
-    persistRefreshedToken: async ({ refreshed }) => {
-      const { data, error } = await admin
-        .from('shop')
-        .update({
-          access_token_encrypted: encryptToken(refreshed.accessToken),
-          refresh_token_encrypted: refreshed.refreshToken
-            ? encryptToken(refreshed.refreshToken)
-            : shop.refresh_token_encrypted,
-          access_token_expires_at: refreshed.accessTokenExpiresAt?.toISOString() ?? null,
-          refresh_token_expires_at:
-            refreshed.refreshTokenExpiresAt?.toISOString() ?? shop.refresh_token_expires_at,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', shop.id)
-        .eq('access_token_encrypted', shop.access_token_encrypted)
-        .select('id')
-        .maybeSingle();
-      return { ok: Boolean(data && !error) };
+    acquireLease: async () => {
+      const { data, error } = await admin.rpc('acquire_shopify_token_lease', {
+        p_shop_domain: shop.shop_domain,
+        p_ttl_seconds: SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
+      });
+      if (error) return { ok: false, reason: 'lease_error' };
+      const row = data?.[0];
+      return row
+        ? { ok: true, generation: row.acquired_generation }
+        : { ok: false, reason: 'lease_held' };
+    },
+    releaseLease: async ({ generation }) => {
+      await admin
+        .from('shopify_token_lease')
+        .update({ lease_expires_at: null })
+        .eq('shop_domain', shop.shop_domain)
+        .eq('generation', generation)
+        .not('lease_expires_at', 'is', null);
+    },
+    persistRefreshedToken: async ({ refreshed, generation }) => {
+      const { data, error } = await admin.rpc('persist_shopify_credentials_fenced', {
+        p_mode: 'refresh',
+        p_shop_domain: shop.shop_domain,
+        p_generation: generation,
+        p_merchant_account_id: shop.merchant_account_id,
+        p_client_id: app.clientId,
+        p_access_token_encrypted: encryptToken(refreshed.accessToken),
+        p_refresh_token_encrypted: refreshed.refreshToken
+          ? encryptToken(refreshed.refreshToken)
+          : null,
+        p_access_token_expires_at: refreshed.accessTokenExpiresAt?.toISOString() ?? null,
+        p_refresh_token_expires_at: refreshed.refreshTokenExpiresAt?.toISOString() ?? null,
+        p_scopes: null,
+      });
+      const outcome = error ? 'rpc_error' : (data?.[0]?.outcome ?? 'write_failed');
+      return { ok: outcome === 'updated', outcome };
     },
   });
 }
@@ -311,7 +335,7 @@ async function loadSelectedShop(shopDomain) {
 async function loadShopCredentials(shopId) {
   const shops = await fetchAll(
     'shop',
-    'id, shop_domain, shopify_client_id, access_token_encrypted, refresh_token_encrypted, access_token_expires_at, refresh_token_expires_at',
+    'id, shop_domain, merchant_account_id, shopify_client_id, access_token_encrypted, refresh_token_encrypted, access_token_expires_at, refresh_token_expires_at',
     (q) => q.eq('id', shopId),
   );
   const selection = resolveSingleShopSelection(shops, shops[0]?.shop_domain);
@@ -766,7 +790,7 @@ async function rotateConnection(connectionId, shopDomain) {
   const { data: shop, error: shopError } = await admin
     .from('shop')
     .select(
-      'id, shop_domain, shopify_client_id, access_token_encrypted, refresh_token_encrypted, access_token_expires_at, refresh_token_expires_at',
+      'id, shop_domain, merchant_account_id, shopify_client_id, access_token_encrypted, refresh_token_encrypted, access_token_expires_at, refresh_token_expires_at',
     )
     .eq('id', connection.shop_id)
     .maybeSingle();

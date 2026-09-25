@@ -1,4 +1,4 @@
-import { shopifyGraphQL } from '@/lib/shopify/graphql';
+import { isShopifyUnauthorizedError, shopifyGraphQL } from '@/lib/shopify/graphql';
 import { extractShopifyId } from '@/lib/shopify/orders-sync';
 import type { Database, Tables, TablesInsert, TablesUpdate } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
@@ -219,7 +219,8 @@ export async function syncProductsForShop({
   merchantAccountId,
   shop,
 }: SyncProductsForShopInput): Promise<
-  { ok: true; shopId: string; syncedCount: number } | { ok: false; errorCode: 'sync_failed' }
+  | { ok: true; shopId: string; syncedCount: number }
+  | { ok: false; errorCode: 'sync_failed' | 'unauthorized' }
 > {
   try {
     let cursor: string | null = null;
@@ -282,7 +283,12 @@ export async function syncProductsForShop({
       merchantAccountId,
       shopId: shop.id,
     });
-    return { ok: false, errorCode: 'sync_failed' };
+    // Un 401 est rendu distinctement : seul l'appelant qui détient le contexte boutique peut
+    // obtenir une paire plus récente et réessayer (SHOPIFY-EXPIRING-TOKENS-01 §7).
+    return {
+      ok: false,
+      errorCode: isShopifyUnauthorizedError(error) ? 'unauthorized' : 'sync_failed',
+    };
   }
 }
 

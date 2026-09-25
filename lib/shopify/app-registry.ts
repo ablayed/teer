@@ -1,7 +1,8 @@
 // Registre multi-app Shopify — cœur PUR et testable (n'importe AUCUN env).
 //
 // Tëër héberge plusieurs apps Shopify sur un seul déploiement :
-//   - Teer Dev   : app publique (credentials historiques SHOPIFY_API_KEY / SHOPIFY_API_SECRET) ;
+//   - Teer Dev   : app par défaut (credentials historiques SHOPIFY_API_KEY / SHOPIFY_API_SECRET),
+//     distribution custom (cf. app-registry-sources.ts) ;
 //   - Teer Pilote : app custom (SHOPIFY_PILOTE_API_KEY / SHOPIFY_PILOTE_API_SECRET).
 //   - Teer Marchand : app custom pilote (SHOPIFY_MARCHAND_API_KEY / SHOPIFY_MARCHAND_API_SECRET).
 // Le routage (install OAuth, vérif HMAC webhooks, credentials sortants) se fait sur le `client_id`.
@@ -9,7 +10,10 @@
 // Le singleton lié aux env vars vit dans lib/shopify/apps.ts ; ce module reste importable en test
 // sans déclencher la validation Zod de lib/env.
 
+import type { ShopifyAppDistribution } from '@/lib/shopify/app-registry-sources';
 import { SHOPIFY_REQUIRED_SCOPES } from '@/lib/shopify/oauth';
+
+export type { ShopifyAppDistribution } from '@/lib/shopify/app-registry-sources';
 
 export type ShopifyAppLabel =
   | 'teer-dev'
@@ -23,6 +27,7 @@ export type ShopifyAppConfig = {
   clientSecret: string;
   scopes: string;
   label: ShopifyAppLabel;
+  distribution: ShopifyAppDistribution;
 };
 
 // Une entrée de configuration brute (issue des env vars). clientId/secret peuvent manquer.
@@ -30,6 +35,8 @@ export type ShopifyAppEnvSource = {
   label: ShopifyAppLabel;
   clientId: string | undefined;
   clientSecret: string | undefined;
+  // Obligatoire, sans défaut (SHOPIFY-EXPIRING-TOKENS-01) : cf. app-registry-sources.ts.
+  distribution: ShopifyAppDistribution;
 };
 
 // Scopes communs aux deux apps (read_orders,read_customers,read_products).
@@ -71,6 +78,7 @@ export function createShopifyAppRegistry(
       clientSecret: source.clientSecret,
       scopes: DEFAULT_SCOPES,
       label: source.label,
+      distribution: source.distribution,
     };
     byClientId.set(config.clientId, config);
     ordered.push(config);

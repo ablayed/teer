@@ -130,6 +130,8 @@ export async function resolveAccessTokenForMode({
   decrypt,
   refresh,
   persistRefreshedToken,
+  acquireLease,
+  releaseLease,
   now = Date.now(),
   refreshBufferMs,
 }) {
@@ -175,24 +177,44 @@ export async function resolveAccessTokenForMode({
     return { ok: false, reason: 'token_error' };
   }
 
-  let refreshed;
+  // SHOPIFY-EXPIRING-TOKENS-01 — même bail que lib/shopify/token.ts : acquisition AVANT l'appel
+  // réseau (bail tenu → aucun appel Shopify), écriture sous la génération obtenue, libération
+  // toujours tentée. Divergence assumée avec token.ts : pas de relecture de la paire du gagnant
+  // (§6) — le script rend `lease_held` / `lease_lost` et l'opérateur relance.
+  const lease = await acquireLease({ shop });
+  if (!lease.ok) {
+    return { ok: false, reason: lease.reason === 'lease_held' ? 'lease_held' : 'token_error' };
+  }
+
   try {
-    refreshed = await refresh({
-      shop: shop.shop_domain,
-      clientId: app.clientId,
-      clientSecret: app.clientSecret,
-      refreshToken,
+    let refreshed;
+    try {
+      refreshed = await refresh({
+        shop: shop.shop_domain,
+        clientId: app.clientId,
+        clientSecret: app.clientSecret,
+        refreshToken,
+      });
+    } catch {
+      return { ok: false, reason: 'needs_reauth' };
+    }
+
+    const persisted = await persistRefreshedToken({
+      refreshed,
+      shop,
+      generation: lease.generation,
     });
-  } catch {
-    return { ok: false, reason: 'needs_reauth' };
-  }
+    if (persisted.outcome === 'lease_lost') {
+      return { ok: false, reason: 'lease_lost' };
+    }
+    if (!persisted.ok) {
+      return { ok: false, reason: 'token_error' };
+    }
 
-  const persisted = await persistRefreshedToken({ refreshed, shop });
-  if (!persisted.ok) {
-    return { ok: false, reason: 'token_error' };
+    return { ok: true, accessToken: refreshed.accessToken };
+  } finally {
+    await releaseLease({ shop, generation: lease.generation });
   }
-
-  return { ok: true, accessToken: refreshed.accessToken };
 }
 
 export function scopeShopQuery(query, shopDomain) {

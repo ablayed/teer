@@ -5,8 +5,13 @@ import { env } from '@/lib/env';
 import { performShopifyAppRelease } from '@/lib/shopify/app-release-write';
 import { shopStatus } from '@/lib/shopify/shop-status';
 import { syncShopOrders } from '@/lib/shopify/shop-sync';
+import {
+  SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
+  markShopifyConnectionUninstalled,
+} from '@/lib/shopify/token-lease';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
+import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -18,6 +23,7 @@ type ShopRow = Pick<
   | 'installed_at'
   | 'merchant_account_id'
   | 'refresh_token_encrypted'
+  | 'refresh_token_expires_at'
   | 'scopes'
   | 'shop_domain'
   | 'shopify_client_id'
@@ -91,7 +97,7 @@ export const listShopsAction = requireRole('owner', 'manager')
     const { data, error } = await admin
       .from('shop')
       .select(
-        'id, merchant_account_id, shop_domain, scopes, status, store_kind, installed_at, updated_at, access_token_encrypted, access_token_expires_at, shopify_client_id, refresh_token_encrypted',
+        'id, merchant_account_id, shop_domain, scopes, status, store_kind, installed_at, updated_at, access_token_encrypted, access_token_expires_at, shopify_client_id, refresh_token_encrypted, refresh_token_expires_at',
       )
       .eq('merchant_account_id', ctx.member.merchantAccountId)
       .order('installed_at', { ascending: false });
@@ -115,6 +121,8 @@ export const listShopsAction = requireRole('owner', 'manager')
           storeKind: shop.store_kind,
           accessTokenEncrypted: shop.access_token_encrypted,
           accessTokenExpiresAt: shop.access_token_expires_at,
+          refreshTokenEncrypted: shop.refresh_token_encrypted,
+          refreshTokenExpiresAt: shop.refresh_token_expires_at,
         });
 
         return {
@@ -164,23 +172,64 @@ export const disconnectShopAction = requireRole('owner')
   .inputSchema(z.object({ shopId: z.string().uuid() }))
   .action(async ({ ctx, parsedInput }) => {
     const admin = createSupabaseAdminClient();
-    const { data: shop, error: shopError } = await admin
-      .from('shop')
-      .update({
-        status: 'uninstalled',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', parsedInput.shopId)
-      .eq('merchant_account_id', ctx.member.merchantAccountId)
-      .select('id, shop_domain')
-      .maybeSingle();
+    // SHOPIFY-EXPIRING-TOKENS-01 — `disconnect_shop_fenced` (0159) : statut `uninstalled` ET les
+    // quatre colonnes de jeton à NULL (l'ancienne écriture laissait les credentials en place),
+    // rôle owner réévalué sous verrou, préemption du bail pour un domaine Shopify canonique.
+    const { data: verdictRows, error: disconnectError } = await admin.rpc(
+      'disconnect_shop_fenced',
+      {
+        p_user_id: ctx.user.id,
+        p_merchant_account_id: ctx.member.merchantAccountId,
+        p_shop_id: parsedInput.shopId,
+        p_ttl_seconds: SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
+      },
+    );
 
-    if (shopError) {
+    if (disconnectError) {
       return { ok: false as const, errorCode: 'disconnect_failed' as const };
     }
 
-    if (!shop) {
+    const verdict = verdictRows?.[0];
+    if (verdict?.outcome === 'shop_not_found' || verdict?.outcome === 'ownership_refused') {
       return { ok: false as const, errorCode: 'shop_not_found' as const };
+    }
+    if (verdict?.outcome !== 'disconnected' && verdict?.outcome !== 'already_disconnected') {
+      return { ok: false as const, errorCode: 'disconnect_failed' as const };
+    }
+
+    const { data: shop, error: shopError } = await admin
+      .from('shop')
+      .select('id, shop_domain, store_kind')
+      .eq('id', parsedInput.shopId)
+      .eq('merchant_account_id', ctx.member.merchantAccountId)
+      .maybeSingle();
+
+    if (shopError || !shop) {
+      return { ok: false as const, errorCode: 'disconnect_failed' as const };
+    }
+
+    // `store_connection` suit la boutique (§4.1 point 2) : sans cela, la connexion resterait
+    // `active` après une déconnexion initiée depuis Tëër, et la libération d'identité — dont le
+    // compare-and-set exige `status='uninstalled'` — dépendrait d'un webhook `app/uninstalled`
+    // qui n'arrivera peut-être jamais. Sous la génération de la préemption, ou sous un bail normal
+    // sur un verdict idempotent. Échec non bloquant : la boutique EST déconnectée ; il est
+    // signalé, et rejouer la déconnexion le reprend.
+    if (shop.store_kind === 'shopify') {
+      const connectionOutcome = await markShopifyConnectionUninstalled(admin, {
+        shopDomain: shop.shop_domain,
+        generation: verdict.generation ?? null,
+        merchantAccountId: ctx.member.merchantAccountId,
+      });
+      if (
+        connectionOutcome !== 'written' &&
+        connectionOutcome !== 'connection_not_found' &&
+        connectionOutcome !== 'not_leaseable'
+      ) {
+        Sentry.captureMessage('shopify_disconnect_connection_not_marked', {
+          level: 'warning',
+          tags: { action: 'shops.disconnect', outcome: connectionOutcome },
+        });
+      }
     }
 
     const { error: auditError } = await admin.from('audit_log').insert({

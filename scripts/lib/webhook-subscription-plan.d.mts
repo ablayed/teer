@@ -58,7 +58,17 @@ export function resolveAccessTokenForMode(params: {
   app?: { clientId?: string; clientSecret?: string; [key: string]: unknown };
   decrypt: (encryptedToken: string) => string;
   refresh?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  persistRefreshedToken?: (params: Record<string, unknown>) => Promise<{ ok: boolean }>;
+  persistRefreshedToken?: (params: {
+    refreshed: Record<string, unknown>;
+    shop: Record<string, unknown>;
+    generation: number;
+  }) => Promise<{ ok: boolean; outcome?: string }>;
+  // SHOPIFY-EXPIRING-TOKENS-01 — bail de jeton, requis en mode apply dès qu'un rafraîchissement a
+  // lieu (acquisition avant l'appel réseau, libération conditionnelle après).
+  acquireLease?: (params: { shop: Record<string, unknown> }) => Promise<
+    { ok: true; generation: number } | { ok: false; reason: string }
+  >;
+  releaseLease?: (params: { shop: Record<string, unknown>; generation: number }) => Promise<void>;
   now?: number;
   refreshBufferMs?: number;
 }): Promise<AccessTokenResult>;

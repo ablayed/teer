@@ -182,6 +182,7 @@ export async function POST(
       payload: receipt.payload,
       webhookId,
       triggeredAt,
+      validatedClientId: validatingApps[0].clientId,
     });
     return new Response(null, { status: 200 });
   }
@@ -201,6 +202,7 @@ export async function POST(
     payload,
     webhookId,
     triggeredAt,
+    validatedClientId: validatingApps[0].clientId,
   });
 
   return new Response(null, { status: 200 });

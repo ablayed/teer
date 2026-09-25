@@ -24,6 +24,12 @@ import { getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { buildShopifyEmbeddedAppUrl } from '@/lib/shopify/embedded-host';
 import { verifyEmbeddedLinkIntent } from '@/lib/shopify/embedded-link-intent';
 import { decideShopOwnership } from '@/lib/shopify/ownership-guard';
+import {
+  acquireShopifyTokenLease,
+  releaseShopifyTokenLease,
+  reportShopifyTokenLeaseBusy,
+  reportShopifyTokenLeaseLost,
+} from '@/lib/shopify/token-lease';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import type { createSupabaseServerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs';
@@ -52,7 +58,7 @@ function createSupabaseAdminClient() {
 
 const WRITE_ROLES = new Set(['owner', 'manager']);
 
-// Refus nommés rendus par `link_shopify_embedded_shop` (0155) — la RPC réévalue sous verrou les
+// Refus nommés rendus par `link_shopify_embedded_shop_fenced` (0159, corps de 0155) — la RPC réévalue sous verrou les
 // gardes déjà appliquées ci-dessous ; un refus à ce stade signale une course ou une garde que la
 // RLS portait implicitement (rôle de boutique). Toute autre valeur est un échec fermé.
 const LINK_REFUSALS = new Map<
@@ -88,7 +94,8 @@ export type ShopifyEmbeddedLinkResult =
         | 'app_switch_refused'
         | 'ownership_refused'
         | 'write_failed'
-        | 'destination_unavailable';
+        | 'destination_unavailable'
+        | 'link_in_progress';
     };
 
 export async function performShopifyEmbeddedLink(
@@ -179,12 +186,40 @@ export async function performShopifyEmbeddedLink(
   // au moment de l'écriture, rôle de boutique sur une ligne existante, bascule d'app, propriété.
   // Les gardes TS ci-dessus restent en place (défense en profondeur, refus nommés avant l'appel) ;
   // le client utilisateur ne sert plus qu'à la lecture d'appartenance.
-  const { data: linkResult, error: linkError } = await admin.rpc('link_shopify_embedded_shop', {
-    p_user_id: ctx.userId,
-    p_merchant_account_id: input.merchantAccountId,
-    p_shop_domain: intent.shopDomain,
-    p_client_id: app.clientId,
-  });
+  //
+  // SHOPIFY-EXPIRING-TOKENS-01 — `link_shopify_embedded_shop_fenced` (0159) : même corps, sous
+  // bail d'acquisition NORMAL (pas de préemption). Le rattachement écrit `status` et
+  // `shopify_client_id` ; une écriture tardive d'un détenteur périmé ne les modifie plus. Bail
+  // tenu, ou perdu avant l'écriture : refus nommé `link_in_progress`, rien n'est écrit.
+  const lease = await acquireShopifyTokenLease(admin, intent.shopDomain);
+  if (!lease.ok) {
+    if (lease.reason === 'lease_held') {
+      reportShopifyTokenLeaseBusy('embedded_link');
+      return { ok: false, errorCode: 'link_in_progress' };
+    }
+    return { ok: false, errorCode: 'write_failed' };
+  }
+
+  let linkResult: string | null;
+  let linkError: { message: string } | null;
+  try {
+    const response = await admin.rpc('link_shopify_embedded_shop_fenced', {
+      p_user_id: ctx.userId,
+      p_merchant_account_id: input.merchantAccountId,
+      p_shop_domain: intent.shopDomain,
+      p_client_id: app.clientId,
+      p_generation: lease.generation,
+    });
+    linkResult = response.data;
+    linkError = response.error;
+  } finally {
+    await releaseShopifyTokenLease(admin, intent.shopDomain, lease.generation);
+  }
+
+  if (linkResult === 'lease_lost') {
+    reportShopifyTokenLeaseLost('embedded_link');
+    return { ok: false, errorCode: 'link_in_progress' };
+  }
 
   if (linkError || (linkResult !== 'inserted' && linkResult !== 'updated')) {
     const refusal = linkError ? null : LINK_REFUSALS.get(linkResult ?? '');

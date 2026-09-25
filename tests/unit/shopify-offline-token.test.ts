@@ -46,6 +46,7 @@ describe('Shopify offline expiring tokens', () => {
       clientSecret: 'synthetic-secret',
       code: 'synthetic-code',
       shop: 'synthetic-shop.myshopify.com',
+      distribution: 'public',
     });
 
     expect(result.accessToken).toBe('synthetic-access-token');
@@ -104,6 +105,7 @@ describe('Shopify offline expiring tokens', () => {
       clientId: 'public-client-sentinel',
       clientSecret: 'public-secret-sentinel',
       idToken: 'fresh-id-token-sentinel',
+      distribution: 'public',
     });
 
     expect(result.accessToken).toBe('synthetic-offline-access');
@@ -130,11 +132,12 @@ describe('Shopify offline expiring tokens', () => {
         clientId: 'public-client-sentinel',
         clientSecret: 'public-secret-sentinel',
         idToken: 'rejected-id-token',
+        distribution: 'public',
       }),
     ).rejects.toThrow();
   });
 
-  it('serializes concurrent refreshes per shop and uses an optimistic old-token match', async () => {
+  it('dédoublonne en mémoire, rafraîchit sous bail et persiste par la RPC fencée', async () => {
     const refreshMock = vi
       .spyOn(await import('@/lib/shopify/oauth'), 'refreshAccessToken')
       .mockResolvedValue({
@@ -144,18 +147,26 @@ describe('Shopify offline expiring tokens', () => {
         accessTokenExpiresAt: new Date(Date.now() + 3600_000),
         refreshTokenExpiresAt: new Date(Date.now() + 7_776_000_000),
       });
-    const updateQuery = {
+    const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const releaseQuery = {
       eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'shop-1' }, error: null }),
-      select: vi.fn().mockReturnThis(),
+      not: vi.fn().mockResolvedValue({ error: null }),
     };
     const admin = {
-      from: vi.fn(() => ({ update: vi.fn(() => updateQuery) })),
+      rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
+        rpcCalls.push({ name, args });
+        if (name === 'acquire_shopify_token_lease') {
+          return { data: [{ acquired_generation: 7, expires_at: 'x' }], error: null };
+        }
+        return { data: [{ outcome: 'updated', shop_id: 'shop-1' }], error: null };
+      }),
+      from: vi.fn(() => ({ update: vi.fn(() => releaseQuery) })),
     } as never;
     const shop: ShopTokenRow = {
       access_token_encrypted: encryptToken('synthetic-old-access'),
       access_token_expires_at: new Date(Date.now() - 1_000).toISOString(),
       id: 'shop-1',
+      merchant_account_id: 'merchant-1',
       refresh_token_encrypted: encryptToken('synthetic-old-refresh'),
       refresh_token_expires_at: new Date(Date.now() + 7_000_000).toISOString(),
       shop_domain: 'synthetic-shop.myshopify.com',
@@ -171,9 +182,18 @@ describe('Shopify offline expiring tokens', () => {
       { ok: true, accessToken: 'synthetic-new-access' },
       { ok: true, accessToken: 'synthetic-new-access' },
     ]);
-    expect(updateQuery.eq).toHaveBeenCalledWith(
-      'access_token_encrypted',
-      shop.access_token_encrypted,
-    );
+    expect(rpcCalls.map((call) => call.name)).toEqual([
+      'acquire_shopify_token_lease',
+      'persist_shopify_credentials_fenced',
+    ]);
+    expect(rpcCalls[1]?.args).toMatchObject({
+      p_mode: 'refresh',
+      p_generation: 7,
+      p_merchant_account_id: 'merchant-1',
+      p_client_id: 'synthetic-client',
+    });
+    // Libération conditionnelle, sous la génération détenue.
+    expect(releaseQuery.eq).toHaveBeenCalledWith('generation', 7);
+    expect(releaseQuery.not).toHaveBeenCalledWith('lease_expires_at', 'is', null);
   });
 });

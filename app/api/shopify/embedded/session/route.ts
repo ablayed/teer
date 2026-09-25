@@ -1,5 +1,5 @@
 import { ShopifyAppIdentityMismatchError } from '@/lib/shopify/app-identity-errors';
-import { getShopifyAppByClientId } from '@/lib/shopify/apps';
+import { type ShopifyAppConfig, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { encryptToken } from '@/lib/shopify/crypto';
 import { buildShopifyEmbeddedAppUrl, decodeShopifyEmbeddedHost } from '@/lib/shopify/embedded-host';
 import { signEmbeddedLinkIntent } from '@/lib/shopify/embedded-link-intent';
@@ -8,6 +8,14 @@ import {
   extractShopifySessionAudience,
   verifyShopifySessionToken,
 } from '@/lib/shopify/session-token';
+import {
+  acquireShopifyTokenLease,
+  persistShopifyCredentialsFenced,
+  releaseShopifyTokenLease,
+  reportShopifyTokenLeaseBusy,
+  reportShopifyTokenLeaseLost,
+  writeShopifyStoreConnectionFenced,
+} from '@/lib/shopify/token-lease';
 import type { Database } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
@@ -215,7 +223,7 @@ type LinkableShopRow = {
 async function completeCredentialsLink(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   shop: LinkableShopRow,
-  app: { clientId: string; clientSecret: string },
+  app: Pick<ShopifyAppConfig, 'clientId' | 'clientSecret' | 'distribution'>,
   idToken: string,
   shopDomain: string,
 ): Promise<
@@ -230,92 +238,94 @@ async function completeCredentialsLink(
     }
   | { ok: false }
 > {
-  let tokenResponse: Awaited<ReturnType<typeof exchangeIdTokenForOfflineToken>>;
-  try {
-    tokenResponse = await exchangeIdTokenForOfflineToken({
-      shop: shopDomain,
-      clientId: app.clientId,
-      clientSecret: app.clientSecret,
-      idToken,
-    });
-  } catch (tokenExchangeError) {
-    Sentry.captureException(tokenExchangeError, {
-      tags: { route: 'shopify.embedded.session', reason: 'token_exchange_failed' },
-    });
+  // SHOPIFY-EXPIRING-TOKENS-01 — échange par ID token SOUS BAIL (lib/shopify/token-lease.ts).
+  // Acquisition AVANT l'appel Shopify : un bail tenu arrête l'échange ici, sans appel sortant ;
+  // la surface répond `link_retry`, exactement comme pour un échec d'échange. L'écriture passe par
+  // `persist_shopify_credentials_fenced` (mode `token_exchange`) : génération courante, locataire
+  // et app STRICTE (NULL compris), sous verrou — les prédicats de l'ancienne mise à jour.
+  const lease = await acquireShopifyTokenLease(admin, shopDomain);
+  if (!lease.ok) {
+    if (lease.reason === 'lease_held') {
+      reportShopifyTokenLeaseBusy('token_exchange');
+    }
     return { ok: false };
   }
 
-  const now = new Date().toISOString();
-  // Prédicats fermant la course entre la lecture de garde (confrontation d'identité d'app,
-  // ci-dessus dans GET) et cette écriture : reprend les valeurs autoritatives sur lesquelles la
-  // décision a été prise (tenant + app attendue), pas seulement `id`. Une bascule concurrente
-  // (ex. un autre rattachement a changé shopify_client_id ou le tenant entre-temps) fait
-  // disparaître la ligne cible du WHERE — `.single()` échoue alors avec `PGRST116` (0 ligne),
-  // traité ci-dessous comme un échec fermé, jamais un succès silencieux.
-  const { data: updatedShop, error: updateError } = await admin
-    .from('shop')
-    .update({
-      access_token_encrypted: encryptToken(tokenResponse.accessToken),
-      refresh_token_encrypted: tokenResponse.refreshToken
+  try {
+    let tokenResponse: Awaited<ReturnType<typeof exchangeIdTokenForOfflineToken>>;
+    try {
+      tokenResponse = await exchangeIdTokenForOfflineToken({
+        shop: shopDomain,
+        clientId: app.clientId,
+        clientSecret: app.clientSecret,
+        idToken,
+        distribution: app.distribution,
+      });
+    } catch (tokenExchangeError) {
+      Sentry.captureException(tokenExchangeError, {
+        tags: { route: 'shopify.embedded.session', reason: 'token_exchange_failed' },
+      });
+      return { ok: false };
+    }
+
+    const persisted = await persistShopifyCredentialsFenced(admin, {
+      mode: 'token_exchange',
+      shopDomain,
+      generation: lease.generation,
+      merchantAccountId: shop.merchant_account_id,
+      clientId: app.clientId,
+      accessTokenEncrypted: encryptToken(tokenResponse.accessToken),
+      refreshTokenEncrypted: tokenResponse.refreshToken
         ? encryptToken(tokenResponse.refreshToken)
         : null,
-      access_token_expires_at: tokenResponse.accessTokenExpiresAt?.toISOString() ?? null,
-      refresh_token_expires_at: tokenResponse.refreshTokenExpiresAt?.toISOString() ?? null,
+      accessTokenExpiresAt: tokenResponse.accessTokenExpiresAt?.toISOString() ?? null,
+      refreshTokenExpiresAt: tokenResponse.refreshTokenExpiresAt?.toISOString() ?? null,
       scopes: tokenResponse.scope,
-      status: 'active',
-      updated_at: now,
-    })
-    .eq('id', shop.id)
-    .eq('merchant_account_id', shop.merchant_account_id)
-    .eq('shopify_client_id', app.clientId)
-    .select('shop_domain, installed_at, updated_at, last_reconciled_at')
-    .single();
-
-  if (updateError || !updatedShop) {
-    Sentry.captureException(updateError ?? new Error('shopify_credentials_persist_failed'), {
-      tags: { route: 'shopify.embedded.session', reason: 'credentials_persist_failed' },
     });
-    return { ok: false };
-  }
 
-  // Best-effort et non bloquant, même discipline que le callback OAuth legacy
-  // (app/api/shopify/callback/route.ts) : un échec ici ne doit jamais faire régresser une
-  // connexion Shopify déjà réussie (credentials déjà persistées). merchant_account_id n'est
-  // jamais dans le payload de mise à jour — seulement comme filtre WHERE, jamais réassignable.
-  const storeConnectionWritePayload = {
-    shop_id: shop.id,
-    platform: 'shopify' as const,
-    external_identifier: shop.shop_domain,
-    platform_app_id: app.clientId,
-    status: 'active',
-    uninstalled_at: null,
-  };
+    if (persisted.outcome === 'lease_lost') {
+      reportShopifyTokenLeaseLost('token_exchange');
+      return { ok: false };
+    }
 
-  const { error: insertConnectionError } = await admin
-    .from('store_connection')
-    .insert({ ...storeConnectionWritePayload, merchant_account_id: shop.merchant_account_id });
+    if (persisted.outcome !== 'updated' || persisted.shopId !== shop.id) {
+      Sentry.captureException(new Error('shopify_credentials_persist_failed'), {
+        tags: { route: 'shopify.embedded.session', reason: 'credentials_persist_failed' },
+        extra: { outcome: persisted.outcome },
+      });
+      return { ok: false };
+    }
 
-  if (insertConnectionError) {
-    if (insertConnectionError.code === '23505') {
-      const { error: updateConnectionError } = await admin
-        .from('store_connection')
-        .update(storeConnectionWritePayload)
-        .eq('platform', 'shopify')
-        .eq('external_identifier', shop.shop_domain)
-        .eq('merchant_account_id', shop.merchant_account_id);
+    // Best-effort et non bloquant, en transaction distincte, même discipline que le callback
+    // OAuth : un échec ici ne fait jamais régresser des credentials déjà persistés.
+    const connectionOutcome = await writeShopifyStoreConnectionFenced(admin, {
+      shopDomain,
+      generation: lease.generation,
+      merchantAccountId: shop.merchant_account_id,
+      clientId: app.clientId,
+    });
 
-      if (updateConnectionError) {
-        Sentry.captureException(new Error('shopify_store_connection_upsert_failed'), {
-          tags: { route: 'shopify.embedded.session' },
-          extra: { message: updateConnectionError.message },
-        });
-      }
-    } else {
+    if (connectionOutcome !== 'written') {
       Sentry.captureException(new Error('shopify_store_connection_upsert_failed'), {
         tags: { route: 'shopify.embedded.session' },
-        extra: { message: insertConnectionError.message },
+        extra: { outcome: connectionOutcome },
       });
     }
+  } finally {
+    await releaseShopifyTokenLease(admin, shopDomain, lease.generation);
+  }
+
+  const { data: updatedShop, error: readError } = await admin
+    .from('shop')
+    .select('shop_domain, installed_at, updated_at, last_reconciled_at')
+    .eq('id', shop.id)
+    .single();
+
+  if (readError || !updatedShop) {
+    Sentry.captureException(readError ?? new Error('shopify_credentials_readback_failed'), {
+      tags: { route: 'shopify.embedded.session', reason: 'credentials_readback_failed' },
+    });
+    return { ok: false };
   }
 
   return { ok: true, shop: updatedShop };

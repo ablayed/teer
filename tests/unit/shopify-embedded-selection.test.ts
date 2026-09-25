@@ -4,12 +4,14 @@ import { describe, expect, it } from 'vitest';
 
 const dev: ShopifyAppConfig = {
   label: 'teer-dev',
+  distribution: 'custom' as const,
   clientId: 'dev_client_sentinel',
   clientSecret: 'dev_secret_sentinel',
   scopes: 'read_orders,read_customers,read_products',
 };
 const publicApp: ShopifyAppConfig = {
   label: 'teer-public',
+  distribution: 'public' as const,
   clientId: 'public_client_sentinel',
   clientSecret: 'public_secret_sentinel',
   scopes: 'read_orders,read_customers,read_products',
