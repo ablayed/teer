@@ -214,6 +214,7 @@ describe('CORRIGÉ (Lot R2) — processRefundCore résout la commande par (shop_
         payload: buildRefundPayload(collidingShopifyOrderId),
         webhookId: randomUUID(),
         triggeredAt: new Date().toISOString(),
+        validatedClientId: null,
       });
 
       const { data: after, error: afterError } = await admin

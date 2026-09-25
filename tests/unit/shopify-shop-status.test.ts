@@ -9,6 +9,8 @@ describe('shopStatus', () => {
         storeKind: 'shopify',
         accessTokenEncrypted: 'encrypted',
         accessTokenExpiresAt: null,
+        refreshTokenEncrypted: null,
+        refreshTokenExpiresAt: null,
       }),
     ).toEqual({ status: 'uninstalled', reason: null });
   });
@@ -20,6 +22,8 @@ describe('shopStatus', () => {
         storeKind: 'shopify',
         accessTokenEncrypted: null,
         accessTokenExpiresAt: null,
+        refreshTokenEncrypted: null,
+        refreshTokenExpiresAt: null,
       }),
     ).toEqual({ status: 'incomplete', reason: null });
   });
@@ -31,17 +35,21 @@ describe('shopStatus', () => {
         storeKind: 'manual',
         accessTokenEncrypted: null,
         accessTokenExpiresAt: null,
+        refreshTokenEncrypted: null,
+        refreshTokenExpiresAt: null,
       }),
     ).toEqual({ status: 'connected', reason: null });
   });
 
-  it('renvoie error/token_expired pour un jeton shopify expiré', () => {
+  it('renvoie error/token_expired pour un jeton shopify expiré sans refresh token exploitable', () => {
     expect(
       shopStatus({
         status: 'active',
         storeKind: 'shopify',
         accessTokenEncrypted: 'encrypted',
         accessTokenExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+        refreshTokenEncrypted: null,
+        refreshTokenExpiresAt: null,
       }),
     ).toEqual({ status: 'error', reason: 'token_expired' });
   });
@@ -53,6 +61,8 @@ describe('shopStatus', () => {
         storeKind: 'shopify',
         accessTokenEncrypted: 'encrypted',
         accessTokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        refreshTokenEncrypted: null,
+        refreshTokenExpiresAt: null,
       }),
     ).toEqual({ status: 'connected', reason: null });
   });
@@ -64,7 +74,49 @@ describe('shopStatus', () => {
         storeKind: 'shopify',
         accessTokenEncrypted: 'encrypted',
         accessTokenExpiresAt: null,
+        refreshTokenEncrypted: null,
+        refreshTokenExpiresAt: null,
       }),
     ).toEqual({ status: 'connected', reason: null });
+  });
+
+  // SHOPIFY-EXPIRING-TOKENS-01 §5, preuves 7 et 8.
+  it('preuve 7 — reste connected quand l’access token est échu mais le refresh token valide', () => {
+    expect(
+      shopStatus({
+        status: 'active',
+        storeKind: 'shopify',
+        accessTokenEncrypted: 'encrypted',
+        accessTokenExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+        refreshTokenEncrypted: 'encrypted-refresh',
+        refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      }),
+    ).toEqual({ status: 'connected', reason: null });
+  });
+
+  it('preuve 7 bis — refresh token sans échéance connue : connected', () => {
+    expect(
+      shopStatus({
+        status: 'active',
+        storeKind: 'shopify',
+        accessTokenEncrypted: 'encrypted',
+        accessTokenExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+        refreshTokenEncrypted: 'encrypted-refresh',
+        refreshTokenExpiresAt: null,
+      }),
+    ).toEqual({ status: 'connected', reason: null });
+  });
+
+  it('preuve 8 — rend l’erreur quand le refresh token est lui-même échu', () => {
+    expect(
+      shopStatus({
+        status: 'active',
+        storeKind: 'shopify',
+        accessTokenEncrypted: 'encrypted',
+        accessTokenExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+        refreshTokenEncrypted: 'encrypted-refresh',
+        refreshTokenExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+      }),
+    ).toEqual({ status: 'error', reason: 'token_expired' });
   });
 });

@@ -35,9 +35,10 @@ type StatusView = {
   label: string;
 };
 
-// Les 8 codes réellement émis par app/api/shopify/callback/route.ts et
+// Les 9 codes réellement émis par app/api/shopify/callback/route.ts et
 // app/api/shopify/install/route.ts (audité à la main, cf. rapport SHOP-01 ;
-// `app_switch_refused` ajouté par SEC-APP-SWITCH-01).
+// `app_switch_refused` ajouté par SEC-APP-SWITCH-01, `connection_in_progress` par
+// SHOPIFY-EXPIRING-TOKENS-01 — bail de jeton tenu ou perdu).
 // Un code émis mais absent d'ici tomberait sur errors.generic, jamais un silence.
 const oauthErrorCodes = [
   'invalid_shop',
@@ -48,6 +49,7 @@ const oauthErrorCodes = [
   'connection_failed',
   'unknown_client_id',
   'app_switch_refused',
+  'connection_in_progress',
 ] as const;
 
 type OauthErrorCode = (typeof oauthErrorCodes)[number];

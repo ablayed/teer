@@ -6,6 +6,8 @@ export type ShopStatusInput = {
   storeKind: string;
   accessTokenEncrypted: string | null;
   accessTokenExpiresAt: string | null;
+  refreshTokenEncrypted: string | null;
+  refreshTokenExpiresAt: string | null;
 };
 
 export type ShopStatusResult = {
@@ -27,8 +29,18 @@ export function shopStatus(shop: ShopStatusInput): ShopStatusResult {
     return { reason: null, status: 'incomplete' };
   }
 
+  // SHOPIFY-EXPIRING-TOKENS-01 §5 — avec des jetons d'une heure, un access token échu est l'état
+  // NORMAL entre deux rafraîchissements, pas une panne : le prochain accès le renouvelle
+  // (lib/shopify/token.ts). L'erreur n'apparaît que si le rafraîchissement est réellement
+  // impossible — aucun refresh token, ou refresh token lui-même échu.
   if (shop.accessTokenExpiresAt && new Date(shop.accessTokenExpiresAt).getTime() <= Date.now()) {
-    return { reason: 'token_expired', status: 'error' };
+    const refreshUsable =
+      Boolean(shop.refreshTokenEncrypted) &&
+      (shop.refreshTokenExpiresAt === null ||
+        new Date(shop.refreshTokenExpiresAt).getTime() > Date.now());
+    if (!refreshUsable) {
+      return { reason: 'token_expired', status: 'error' };
+    }
   }
 
   return { reason: null, status: 'connected' };

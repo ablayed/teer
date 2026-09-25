@@ -3,6 +3,7 @@
 // métier au cœur partagé (lib/shopify/webhook-core.ts) — le cœur ne lit ni en-tête ni jeton ni
 // URL, il reçoit une boutique déjà résolue.
 import { checkRateLimit } from '@/lib/security/rate-limit';
+import { identifyValidatingApps } from '@/lib/shopify/adapter';
 import {
   getDefaultShopifyAppOrNull,
   getRegisteredShopifyApps,
@@ -226,6 +227,7 @@ async function runWebhookEvent({
   replay,
   webhookId,
   triggeredAt,
+  validatedClientId,
 }: {
   eventId: string;
   payload: unknown;
@@ -235,6 +237,9 @@ async function runWebhookEvent({
   replay: boolean;
   webhookId: string | null;
   triggeredAt: string | null;
+  // App dont le HMAC de CETTE livraison a été validé. Un rejeu (`replay: true`) vient toujours
+  // d'une nouvelle livraison Shopify, donc d'un HMAC frais : l'app y est aussi connue.
+  validatedClientId: string | null;
 }) {
   let effectivePayload = payload;
   let effectiveShopDomain = shopDomain;
@@ -283,6 +288,7 @@ async function runWebhookEvent({
     payload: effectivePayload,
     webhookId,
     triggeredAt,
+    validatedClientId,
   });
 }
 
@@ -343,11 +349,30 @@ export async function POST(request: Request) {
       : fallbackSecrets;
 
   // HMAC vérifié AVANT tout traitement.
-  const hmacValid =
-    hmacSecrets.length > 0 &&
-    (isSignedShopDomainTopic(topic) && bodyApp
-      ? verifyWebhookHmac(rawBody, hmacHeader, bodyApp.clientSecret)
-      : verifyWebhookHmacAnySecret(rawBody, hmacHeader, hmacSecrets));
+  //
+  // SHOPIFY-EXPIRING-TOKENS-01 — `app/uninstalled` doit transmettre l'app dont le HMAC a été
+  // validé à la garde d'app de `uninstall_shopify_shop_fenced`. Avec `bodyApp`, c'est lui : le
+  // HMAC n'est vérifié que contre son secret. Sans `bodyApp` (corps sans domaine, repli sur
+  // l'en-tête ; ou boutique inconnue), `verifyWebhookHmacAnySecret` ne rendait qu'un booléen :
+  // l'app n'était jamais identifiée. Ce sous-chemin passe par `identifyValidatingApps` — la
+  // fonction qu'utilise déjà l'endpoint opaque (app/api/shopify/ingest/[token]/route.ts) — et
+  // exige EXACTEMENT une correspondance : zéro, ou deux apps et plus (identité ambiguë), refusent
+  // en 401, jamais un choix arbitraire. La vérification elle-même n'est pas réécrite.
+  let validatedClientId: string | null = null;
+  let hmacValid: boolean;
+  if (isSignedShopDomainTopic(topic) && bodyApp) {
+    hmacValid = verifyWebhookHmac(rawBody, hmacHeader, bodyApp.clientSecret);
+    validatedClientId = hmacValid ? bodyApp.clientId : null;
+  } else if (topic === 'app/uninstalled') {
+    const validatingApps = bodyShopKnownButAppUnknown
+      ? []
+      : identifyValidatingApps(rawBody, hmacHeader, getRegisteredShopifyApps());
+    hmacValid = validatingApps.length === 1;
+    validatedClientId = hmacValid ? validatingApps[0].clientId : null;
+  } else {
+    hmacValid =
+      hmacSecrets.length > 0 && verifyWebhookHmacAnySecret(rawBody, hmacHeader, hmacSecrets);
+  }
   if (!hmacValid) {
     logWebhookError('[webhook] invalid hmac', { topic });
     return new Response(null, { status: 401 });
@@ -414,6 +439,7 @@ export async function POST(request: Request) {
           replay: true,
           webhookId,
           triggeredAt,
+          validatedClientId,
         }),
       );
     }
@@ -431,6 +457,7 @@ export async function POST(request: Request) {
       replay: false,
       webhookId,
       triggeredAt,
+      validatedClientId,
     }),
   );
 

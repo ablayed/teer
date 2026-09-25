@@ -330,3 +330,30 @@ donc sur `connection_failed`, jamais sur `app_switch_refused`. Étiqueter ce sec
 affirmerait une cause que rien n'a établie.
 
 Vouvoiement, comme tout `settings.shops.*`.
+
+## Opération concurrente sur une boutique Shopify (SHOPIFY-EXPIRING-TOKENS-01, 2026-09-25)
+
+Deux refus nommés, un texte unique : « Une autre opération est en cours sur cette boutique.
+Patientez quelques instants, puis réessayez. »
+
+- `settings.shops.errors.connection_in_progress` — **neuvième** code OAuth de
+  `components/settings/settings-shops.tsx`, émis par `app/api/shopify/callback/route.ts` ;
+- `link_in_progress` — refus de `performShopifyEmbeddedLink`
+  (`app/shopify/embedded-link/embedded-link-confirm-form.tsx`).
+
+**Ce qu'ils couvrent.** Le bail de jeton Shopify (`lib/shopify/token-lease.ts`) est tenu par une
+autre opération sur le même domaine (rafraîchissement, autre installation, désinstallation ou
+déconnexion préemptive), ou il a été repris pendant l'échange. Dans les deux cas **rien n'a été
+écrit**, et réessayer après la libération du bail est la bonne action.
+
+**Pourquoi « quelques instants » et pas une durée.** Le TTL du bail (60 s) borne l'attente, mais
+c'est une constante interne susceptible de changer : l'afficher créerait la même dette de
+synchronisation que celle écartée pour la durée du lien de récupération (section PWD-RESET-01).
+
+**Ce qui n'en fait pas partie.** Un refus d'écriture APRÈS l'échange de code (propriété
+réassignée, app changée, ligne créée par une autre requête) reste `connection_failed`, comme le
+prescrit la section SEC-APP-SWITCH-01 : la RPC fencée rend désormais un verdict attribuable, mais
+seul le refus de la garde **préalable** porte `app_switch_refused`, et ce lot ne rouvre pas cette
+décision. Le verdict exact reste dans la sentinelle `shopify_callback_shop_write_no_row`.
+
+Vouvoiement, comme tout `settings.shops.*`.

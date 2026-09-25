@@ -1,24 +1,33 @@
 import { createShopifyAppRegistry } from '@/lib/shopify/app-registry';
 import { describe, expect, it } from 'vitest';
 
-const TEER_DEV = { label: 'teer-dev' as const, clientId: 'dev_client', clientSecret: 'dev_secret' };
+const TEER_DEV = {
+  label: 'teer-dev' as const,
+  distribution: 'custom' as const,
+  clientId: 'dev_client',
+  clientSecret: 'dev_secret',
+};
 const TEER_PILOTE = {
   label: 'teer-pilote' as const,
+  distribution: 'custom' as const,
   clientId: '4a2cd2a0befe5d828e67b436edad7d5d',
   clientSecret: 'pilote_secret',
 };
 const TEER_MARCHAND = {
   label: 'teer-marchand' as const,
+  distribution: 'custom' as const,
   clientId: 'marchand_client',
   clientSecret: 'marchand_secret',
 };
 const TEER_KOBA = {
   label: 'teer-koba' as const,
+  distribution: 'custom' as const,
   clientId: 'koba_client',
   clientSecret: 'koba_secret',
 };
 const TEER_PUBLIC = {
   label: 'teer-public' as const,
+  distribution: 'public' as const,
   clientId: 'public_client_sentinel',
   clientSecret: 'public_secret_sentinel',
 };
@@ -61,7 +70,12 @@ describe('createShopifyAppRegistry', () => {
   it('whitelists labels independently from credential provisioning', () => {
     const registry = createShopifyAppRegistry([
       TEER_DEV,
-      { label: 'teer-public', clientId: undefined, clientSecret: undefined },
+      {
+        label: 'teer-public',
+        distribution: 'public' as const,
+        clientId: undefined,
+        clientSecret: undefined,
+      },
     ]);
 
     expect(registry.hasLabel('teer-public')).toBe(true);
@@ -103,9 +117,24 @@ describe('createShopifyAppRegistry', () => {
   it('skips an app whose credentials are incomplete or missing', () => {
     const registry = createShopifyAppRegistry([
       TEER_DEV,
-      { label: 'teer-pilote', clientId: 'pilote_only_id', clientSecret: undefined },
-      { label: 'teer-marchand', clientId: undefined, clientSecret: 'marchand_only_secret' },
-      { label: 'teer-koba', clientId: 'koba_only_id', clientSecret: undefined },
+      {
+        label: 'teer-pilote',
+        distribution: 'custom' as const,
+        clientId: 'pilote_only_id',
+        clientSecret: undefined,
+      },
+      {
+        label: 'teer-marchand',
+        distribution: 'custom' as const,
+        clientId: undefined,
+        clientSecret: 'marchand_only_secret',
+      },
+      {
+        label: 'teer-koba',
+        distribution: 'custom' as const,
+        clientId: 'koba_only_id',
+        clientSecret: undefined,
+      },
     ]);
 
     expect(registry.getByClientId('pilote_only_id')).toBeNull();
@@ -117,7 +146,12 @@ describe('createShopifyAppRegistry', () => {
 
   it('returns no default when no app is configured', () => {
     const registry = createShopifyAppRegistry([
-      { label: 'teer-dev', clientId: undefined, clientSecret: undefined },
+      {
+        label: 'teer-dev',
+        distribution: 'custom' as const,
+        clientId: undefined,
+        clientSecret: undefined,
+      },
     ]);
 
     expect(registry.getDefault()).toBeNull();

@@ -2,7 +2,8 @@
 //
 // Le cœur pur (factory + types) vit dans lib/shopify/app-registry.ts (importable en test sans env).
 // Ici on construit le registre une fois au chargement depuis les credentials des apps connues :
-//   - Teer Dev   : SHOPIFY_API_KEY / SHOPIFY_API_SECRET (app publique, par défaut, rétrocompat) ;
+//   - Teer Dev   : SHOPIFY_API_KEY / SHOPIFY_API_SECRET (app par défaut, rétrocompat ; distribution
+//     custom, cf. app-registry-sources.ts) ;
 //   - Teer Pilote: SHOPIFY_PILOTE_API_KEY / SHOPIFY_PILOTE_API_SECRET (app custom).
 //   - Teer Marchand: SHOPIFY_MARCHAND_API_KEY / SHOPIFY_MARCHAND_API_SECRET (app custom pilote).
 //   - Teer Koba   : SHOPIFY_KOBA_API_KEY / SHOPIFY_KOBA_API_SECRET (app custom créée dans l'org
@@ -15,6 +16,7 @@ import { SHOPIFY_APP_ENV_KEYS } from '@/lib/shopify/app-registry-sources';
 
 export type {
   ShopifyAppConfig,
+  ShopifyAppDistribution,
   ShopifyAppLabel,
   ShopifyAppRegistry,
   ShopifyAppEnvSource,
@@ -25,10 +27,11 @@ export { createShopifyAppRegistry } from '@/lib/shopify/app-registry';
 // Teer Dev en premier = app par défaut (rétrocompat). Liste des 4 apps/clés nommée une seule
 // fois (lib/shopify/app-registry-sources.ts), partagée avec scripts/webhook-subscription-migration.mjs.
 const REGISTRY = createShopifyAppRegistry(
-  SHOPIFY_APP_ENV_KEYS.map(({ label, clientIdKey, clientSecretKey }) => ({
+  SHOPIFY_APP_ENV_KEYS.map(({ label, clientIdKey, clientSecretKey, distribution }) => ({
     label,
     clientId: env[clientIdKey],
     clientSecret: env[clientSecretKey],
+    distribution,
   })),
 );
 

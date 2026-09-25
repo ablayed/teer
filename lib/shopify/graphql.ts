@@ -41,6 +41,24 @@ function buildGraphQLErrorMessage(errors: ShopifyGraphQLError[]): string {
   return `Shopify GraphQL request failed: ${messages}`;
 }
 
+// SHOPIFY-EXPIRING-TOKENS-01 §7 — erreur HTTP typée, pour que l'appelant qui détient le contexte
+// boutique puisse reconnaître un 401 et réessayer UNE fois après une paire plus récente
+// (lib/shopify/token.ts#runWithShopifyUnauthorizedRetry). `shopifyGraphQL` ne reçoit toujours que
+// le domaine et le jeton : il ne rafraîchit rien lui-même. Message inchangé.
+export class ShopifyGraphQLHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`Shopify GraphQL HTTP request failed with status ${status}`);
+    this.name = 'ShopifyGraphQLHttpError';
+    this.status = status;
+  }
+}
+
+export function isShopifyUnauthorizedError(error: unknown): boolean {
+  return error instanceof ShopifyGraphQLHttpError && error.status === 401;
+}
+
 export async function shopifyGraphQL<T>({
   shopDomain,
   accessToken,
@@ -60,7 +78,7 @@ export async function shopifyGraphQL<T>({
   );
 
   if (!response.ok) {
-    throw new Error(`Shopify GraphQL HTTP request failed with status ${response.status}`);
+    throw new ShopifyGraphQLHttpError(response.status);
   }
 
   const payload = (await response.json()) as ShopifyGraphQLResponse<T>;

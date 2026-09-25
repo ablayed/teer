@@ -34,6 +34,10 @@
 // partiel (connexion déjà libérée, shop pas encore mise à jour) est accepté par
 // `decideAppRelease` et termine le travail restant.
 import { decideAppRelease } from '@/lib/shopify/app-release-guard';
+import {
+  SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
+  releaseShopifyTokenLease,
+} from '@/lib/shopify/token-lease';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import type { createSupabaseServerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs';
@@ -115,7 +119,7 @@ export async function performShopifyAppRelease(
   const { data: shop, error: shopError } = await rlsClient
     .from('shop')
     .select(
-      'id, merchant_account_id, status, shopify_client_id, access_token_encrypted, refresh_token_encrypted',
+      'id, shop_domain, merchant_account_id, status, shopify_client_id, access_token_encrypted, refresh_token_encrypted',
     )
     .eq('id', input.shopId)
     .eq('merchant_account_id', merchantAccountId)
@@ -246,14 +250,28 @@ export async function performShopifyAppRelease(
     return { ok: false, errorCode: 'write_failed' };
   }
 
-  // 3. shop.shopify_client_id -> NULL, EN DERNIER. RPC réservée à `service_role` (0155) : même
-  // compare-and-set (status uninstalled, ancienne app), sous verrou, avec le rôle owner sur le
-  // locataire de la LIGNE et le rôle de boutique que `shop_update` portait implicitement. Seul
-  // `released` est un succès ; toute autre réponse est un échec fermé.
-  const { data: releaseResult, error: releaseError } = await admin.rpc(
-    'release_shopify_shop_app_identity',
-    { p_user_id: ctx.userId, p_shop_id: shop?.id as string, p_old_client_id: oldClientId },
+  // 3. shop.shopify_client_id -> NULL, EN DERNIER. RPC réservée à `service_role` (0159) : mêmes
+  // gardes que 0155 (compare-and-set status uninstalled + ancienne app, rôle owner sur le
+  // locataire de la LIGNE, rôle de boutique), sous verrou, PUIS préemption du bail de jeton avant
+  // l'écriture (SHOPIFY-EXPIRING-TOKENS-01) : une acquisition en cours pour ce domaine devient
+  // périmée et ne peut plus réécrire l'identité. L'étape 2 ci-dessus reste applicative et la
+  // précède ; son prédicat `status='uninstalled'` la protège. Seul `released` est un succès.
+  const { data: releaseRows, error: releaseError } = await admin.rpc(
+    'release_shopify_shop_app_identity_fenced',
+    {
+      p_user_id: ctx.userId,
+      p_shop_id: shop?.id as string,
+      p_old_client_id: oldClientId,
+      p_ttl_seconds: SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
+    },
   );
+  const releaseResult = releaseRows?.[0]?.outcome ?? null;
+  const releaseGeneration = releaseRows?.[0]?.generation ?? null;
+
+  if (releaseGeneration !== null && shop?.shop_domain) {
+    // Préemption prise par la primitive : libérée ici, sans attendre le TTL.
+    await releaseShopifyTokenLease(admin, shop.shop_domain, releaseGeneration);
+  }
 
   if (releaseError || releaseResult !== 'released') {
     Sentry.captureException(

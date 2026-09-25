@@ -185,6 +185,7 @@ describe('resolveShopActive — connexion incomplète (access_token_encrypted nu
         payload: buildOrderPayload(shopifyOrderId),
         webhookId: randomUUID(),
         triggeredAt: new Date().toISOString(),
+        validatedClientId: null,
       });
 
       const resolvedForProduct = await resolveShopForTopic(admin, 'products/create', {
@@ -199,6 +200,7 @@ describe('resolveShopActive — connexion incomplète (access_token_encrypted nu
         payload: buildProductPayload(shopifyProductId),
         webhookId: randomUUID(),
         triggeredAt: new Date().toISOString(),
+        validatedClientId: null,
       });
 
       const { count: orderCount } = await admin
@@ -242,6 +244,7 @@ describe('resolveShopActive — connexion incomplète (access_token_encrypted nu
         payload: buildOrderPayload(shopifyOrderId),
         webhookId: randomUUID(),
         triggeredAt: new Date().toISOString(),
+        validatedClientId: null,
       });
 
       const { count: orderCount } = await admin
@@ -291,6 +294,10 @@ describe('resolveShopActive — connexion incomplète (access_token_encrypted nu
         payload: {},
         webhookId: randomUUID(),
         triggeredAt: new Date().toISOString(),
+        // SHOPIFY-EXPIRING-TOKENS-01 : app dont le HMAC a été validé, exigée par la primitive
+        // destructive. La boutique de ce fixture n'a aucune app rattachée (NULL) : la garde
+        // NULL-safe l'accepte, quelle que soit l'app qui a signé.
+        validatedClientId: 'incomplete-connection-validated-app-sentinel',
       });
 
       const { data: after, error } = await admin

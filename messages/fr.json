@@ -812,6 +812,7 @@
         "invalid_hmac": "Échec de la vérification de sécurité. Réessayez.",
         "connection_failed": "La connexion a échoué. Réessayez ou contactez le support.",
         "unknown_client_id": "Cette installation Shopify n’est pas reconnue. Contactez le support.",
+        "connection_in_progress": "Une autre opération est en cours sur cette boutique. Patientez quelques instants, puis réessayez.",
         "app_switch_refused": "Cette boutique est déjà liée à une autre application Tëër. Désinstallez d’abord cette application depuis votre administration Shopify, puis libérez la boutique dans Paramètres → Boutiques avant de recommencer. Si vous n’avez pas les droits nécessaires, contactez le propriétaire du compte.",
         "generic": "Une erreur est survenue. Réessayez."
       }

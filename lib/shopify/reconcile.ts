@@ -18,7 +18,7 @@ import {
   waitForBulkCompletion,
 } from '@/lib/shopify/bulk';
 import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
-import { getValidShopAccessToken } from '@/lib/shopify/token';
+import { getValidShopAccessToken, runWithShopifyUnauthorizedRetry } from '@/lib/shopify/token';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -197,8 +197,18 @@ export async function reconcileShopOrders(
   const runStartedAt = new Date().toISOString();
 
   try {
-    await startBulkOrdersOperation(shop.shop_domain, token.accessToken, shop.last_reconciled_at);
-    const operation = await waitForBulkCompletion(shop.shop_domain, token.accessToken);
+    // Un seul réessai après un 401, sur une paire plus récente (SHOPIFY-EXPIRING-TOKENS-01 §7).
+    const operation = await runWithShopifyUnauthorizedRetry(
+      admin,
+      shop,
+      clientId,
+      clientSecret,
+      token.accessToken,
+      async (accessToken) => {
+        await startBulkOrdersOperation(shop.shop_domain, accessToken, shop.last_reconciled_at);
+        return waitForBulkCompletion(shop.shop_domain, accessToken);
+      },
+    );
     if (operation.status !== 'COMPLETED') {
       // Bulk operation en échec avant toute persistance : le curseur reste inchangé (on ne le
       // touche tout simplement pas).
@@ -226,7 +236,14 @@ export async function processFinishedBulkForShop(
   const runStartedAt = new Date().toISOString();
 
   try {
-    const operation = await pollBulkOperation(shop.shop_domain, token.accessToken);
+    const operation = await runWithShopifyUnauthorizedRetry(
+      admin,
+      shop,
+      clientId,
+      clientSecret,
+      token.accessToken,
+      (accessToken) => pollBulkOperation(shop.shop_domain, accessToken),
+    );
     if (!operation || operation.status !== 'COMPLETED') {
       return { ok: false, reason: 'bulk_failed' };
     }

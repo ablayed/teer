@@ -1,14 +1,14 @@
 import { env } from '@/lib/env';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import { getShopifyAppForShop } from '@/lib/shopify/apps';
-import { shopifyGraphQL } from '@/lib/shopify/graphql';
+import { ShopifyGraphQLHttpError, shopifyGraphQL } from '@/lib/shopify/graphql';
 import {
   SHOPIFY_ORDERS_QUERY,
   type ShopifyOrdersResponse,
   persistShopifyOrder,
 } from '@/lib/shopify/orders-sync';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
-import { getValidShopAccessToken } from '@/lib/shopify/token';
+import { getValidShopAccessToken, runWithShopifyUnauthorizedRetry } from '@/lib/shopify/token';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
@@ -109,28 +109,45 @@ export async function syncShopOrders({
     return { ok: false, errorCode: 'token_error' };
   }
 
-  const accessToken = tokenResult.accessToken;
-
   try {
-    const productsSyncResult = await syncProductsForShop({
-      accessToken,
-      actorUserId,
+    // Un seul réessai après un 401, sur une paire plus récente (SHOPIFY-EXPIRING-TOKENS-01 §7).
+    // Les deux lectures Shopify de cette synchronisation sont rejouées ensemble : leurs écritures
+    // sont idempotentes (upsert produits, persistShopifyOrder).
+    const data = await runWithShopifyUnauthorizedRetry(
       admin,
-      auditAction: 'shopify.products_synced',
-      merchantAccountId,
       shop,
-    });
+      app.clientId,
+      app.clientSecret,
+      tokenResult.accessToken,
+      async (accessToken) => {
+        const productsSyncResult = await syncProductsForShop({
+          accessToken,
+          actorUserId,
+          admin,
+          auditAction: 'shopify.products_synced',
+          merchantAccountId,
+          shop,
+        });
 
-    if (!productsSyncResult.ok) {
+        if (!productsSyncResult.ok) {
+          if (productsSyncResult.errorCode === 'unauthorized') {
+            throw new ShopifyGraphQLHttpError(401);
+          }
+          return null;
+        }
+
+        return shopifyGraphQL<ShopifyOrdersResponse>({
+          accessToken,
+          query: SHOPIFY_ORDERS_QUERY,
+          shopDomain: shop.shop_domain,
+          variables: { cursor: null },
+        });
+      },
+    );
+
+    if (!data) {
       return { ok: false, errorCode: 'sync_failed' };
     }
-
-    const data = await shopifyGraphQL<ShopifyOrdersResponse>({
-      accessToken,
-      query: SHOPIFY_ORDERS_QUERY,
-      shopDomain: shop.shop_domain,
-      variables: { cursor: null },
-    });
 
     const edges = data.orders.edges;
     try {

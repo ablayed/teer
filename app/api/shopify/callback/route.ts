@@ -6,6 +6,14 @@ import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib
 import { decideShopOwnership } from '@/lib/shopify/ownership-guard';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import { verifyState } from '@/lib/shopify/state';
+import {
+  acquireShopifyTokenLease,
+  persistShopifyCredentialsFenced,
+  releaseShopifyTokenLease,
+  reportShopifyTokenLeaseBusy,
+  reportShopifyTokenLeaseLost,
+  writeShopifyStoreConnectionFenced,
+} from '@/lib/shopify/token-lease';
 import type { Database } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
@@ -149,103 +157,95 @@ export async function GET(request: NextRequest) {
       return redirectTo('/boutiques?error=app_switch_refused', request);
     }
 
-    // Valeur d'app lue, normalisée : c'est l'ATTENDU du compare-and-set de l'écriture ci-dessous.
-    // `null` signifie « aucune app rattachée », jamais « une autre app » — motif projet, déjà posé
-    // côté SQL (gardes NULL-safe) et côté TS (app/api/shopify/embedded/session/route.ts:159-176).
-    const expectedClientId = existingShop?.shopify_client_id ?? null;
-
-    const tokenResponse = await exchangeCodeForToken({
-      shop,
-      clientId,
-      clientSecret,
-      code,
-    });
-    const now = new Date().toISOString();
-
-    const shopWritePayload = {
-      shop_domain: shop,
-      shopify_client_id: app.clientId,
-      access_token_encrypted: encryptToken(tokenResponse.accessToken),
-      refresh_token_encrypted: tokenResponse.refreshToken
-        ? encryptToken(tokenResponse.refreshToken)
-        : null,
-      access_token_expires_at: tokenResponse.accessTokenExpiresAt?.toISOString() ?? null,
-      refresh_token_expires_at: tokenResponse.refreshTokenExpiresAt?.toISOString() ?? null,
-      scopes: tokenResponse.scope,
-      status: 'active',
-      uninstalled_at: null,
-      updated_at: now,
-    };
+    // SHOPIFY-EXPIRING-TOKENS-01 — l'échange de code est tenu SOUS BAIL (lib/shopify/token-lease.ts).
+    // Acquisition AVANT l'appel Shopify : un bail tenu par une autre opération (rafraîchissement,
+    // autre installation, désinstallation préemptive) arrête cette requête ici, sans consommer le
+    // code auprès de Shopify et sans écrire. L'écriture est ensuite fencée par la génération :
+    // `persist_shopify_credentials_fenced` (mode `authorization_code`) reprend sous verrou les
+    // deux gardes lues ci-dessus (propriété, puis bascule d'app) et remplace l'ancien
+    // compare-and-set applicatif — une app changée ou une propriété réassignée entre la lecture
+    // et l'écriture y est toujours refusée.
+    const lease = await acquireShopifyTokenLease(supabase, shop);
+    if (!lease.ok) {
+      if (lease.reason === 'lease_held') {
+        reportShopifyTokenLeaseBusy('authorization_code');
+        return redirectTo('/boutiques?error=connection_in_progress', request);
+      }
+      return redirectTo('/boutiques?error=connection_failed', request);
+    }
 
     let savedShopId: string;
+    let accessToken: string;
 
-    if (ownershipDecision.kind === 'insert') {
-      const { data: insertedShop, error: insertError } = await supabase
-        .from('shop')
-        .insert({ ...shopWritePayload, merchant_account_id: payload.merchantAccountId })
-        .select('id')
-        .single();
+    try {
+      const tokenResponse = await exchangeCodeForToken({
+        shop,
+        clientId,
+        clientSecret,
+        code,
+        distribution: app.distribution,
+      });
+      accessToken = tokenResponse.accessToken;
 
-      if (insertError) {
-        // 23505 sur `shop_domain` (contrainte shop_shop_domain_key, 0004) : une autre requête a
-        // créé la ligne entre la lecture de garde et cette écriture (course). Refus fermé —
-        // jamais de repli sur une upsert qui écraserait potentiellement un autre tenant.
-        Sentry.captureException(insertError, {
-          tags: { route: 'shopify.callback', reason: 'ownership_guard_insert_race' },
-          extra: { shopDomain: shop },
-        });
-        return redirectTo('/boutiques?error=connection_failed', request);
+      const persisted = await persistShopifyCredentialsFenced(supabase, {
+        mode: 'authorization_code',
+        shopDomain: shop,
+        generation: lease.generation,
+        merchantAccountId: payload.merchantAccountId,
+        clientId: app.clientId,
+        accessTokenEncrypted: encryptToken(tokenResponse.accessToken),
+        refreshTokenEncrypted: tokenResponse.refreshToken
+          ? encryptToken(tokenResponse.refreshToken)
+          : null,
+        accessTokenExpiresAt: tokenResponse.accessTokenExpiresAt?.toISOString() ?? null,
+        refreshTokenExpiresAt: tokenResponse.refreshTokenExpiresAt?.toISOString() ?? null,
+        scopes: tokenResponse.scope,
+      });
+
+      if (persisted.outcome === 'lease_lost') {
+        // Refus nommé, distinct : une autre opération a repris le bail pendant l'échange. Le
+        // résultat reçu de Shopify n'est pas écrit.
+        reportShopifyTokenLeaseLost('authorization_code');
+        return redirectTo('/boutiques?error=connection_in_progress', request);
       }
 
-      savedShopId = insertedShop.id;
-    } else {
-      // Multi-boutiques : reconnexion sur le même domaine, même tenant déjà confirmé par la
-      // garde ci-dessus. Le filtre `merchant_account_id` rend cette écriture structurellement
-      // incapable de réassigner la boutique même si la propriété a changé entre la lecture de
-      // garde et cet appel (fail-closed sous concurrence, pas seulement au moment de la lecture).
-      //
-      // Compare-and-set sur `shopify_client_id` (SEC-APP-SWITCH-01), même forme que
-      // lib/shopify/app-release-write.ts:210-231 : le prédicat porte la valeur LUE, donc une app
-      // changée entre la lecture de garde et cet appel ne matche plus aucune ligne. Branchement
-      // `.is(col, null)` / `.eq(col, valeur)` — jamais `.or()` : une comparaison d'égalité perd
-      // les NULL, et `null` est ici l'état normal d'une boutique dont l'identité a été libérée.
-      let shopUpdateQuery = supabase
-        .from('shop')
-        .update(shopWritePayload)
-        .eq('id', ownershipDecision.shopId)
-        .eq('merchant_account_id', payload.merchantAccountId);
-      shopUpdateQuery =
-        expectedClientId === null
-          ? shopUpdateQuery.is('shopify_client_id', null)
-          : shopUpdateQuery.eq('shopify_client_id', expectedClientId);
-
-      const { data: updatedShop, error: updateError } = await shopUpdateQuery
-        .select('id')
-        .maybeSingle();
-
-      if (updateError) {
-        Sentry.captureException(updateError, {
-          tags: { route: 'shopify.callback', reason: 'ownership_guard_update_race' },
-          extra: { shopDomain: shop },
-        });
-        return redirectTo('/boutiques?error=connection_failed', request);
-      }
-
-      if (!updatedShop) {
-        // Zéro ligne modifiée — échec FERMÉ, jamais un succès silencieux. La cause n'est pas
-        // attribuable : propriété réassignée, app changée concurremment, ou ligne supprimée
-        // entre la lecture et l'écriture. Le refus reste donc GÉNÉRIQUE côté utilisateur —
-        // l'étiqueter `app_switch_refused` affirmerait une cause non mesurée. Seule la
-        // sentinelle interne, distincte de celle de la garde préalable, nomme l'événement.
+      if (
+        (persisted.outcome !== 'inserted' && persisted.outcome !== 'updated') ||
+        !persisted.shopId
+      ) {
+        // Refus de l'écriture APRÈS l'échange (propriété réassignée, app changée, ligne créée par
+        // une autre requête, échec d'écriture) : échec FERMÉ et GÉNÉRIQUE côté utilisateur, comme
+        // avant ce lot — seul le refus de la garde préalable porte `app_switch_refused`
+        // (docs/lexique-microcopie.md). Le verdict exact reste dans la sentinelle interne.
         Sentry.captureMessage('shopify_callback_shop_write_no_row', {
           level: 'warning',
           tags: { route: 'shopify.callback', reason: 'shop_write_no_row' },
-          extra: { shopDomain: shop },
+          extra: { shopDomain: shop, outcome: persisted.outcome },
         });
         return redirectTo('/boutiques?error=connection_failed', request);
       }
 
-      savedShopId = updatedShop.id;
+      savedShopId = persisted.shopId;
+
+      // Lot L2 : chaque install (nouvelle ou reconnexion) doit poser/rafraîchir sa
+      // store_connection. Best-effort et non bloquant, en transaction DISTINCTE : un échec ici ne
+      // défait jamais des credentials déjà persistés (arbitrage explicite du fondateur). La RPC
+      // fencée ne réassigne jamais le locataire d'une connexion existante.
+      const connectionOutcome = await writeShopifyStoreConnectionFenced(supabase, {
+        shopDomain: shop,
+        generation: lease.generation,
+        merchantAccountId: payload.merchantAccountId,
+        clientId: app.clientId,
+      });
+
+      if (connectionOutcome !== 'written') {
+        Sentry.captureException(new Error('shopify_store_connection_upsert_failed'), {
+          tags: { module: 'shopify.callback' },
+          extra: { outcome: connectionOutcome, shopDomain: shop },
+        });
+      }
+    } finally {
+      await releaseShopifyTokenLease(supabase, shop, lease.generation);
     }
 
     const { error: auditError } = await supabase.from('audit_log').insert({
@@ -260,57 +260,8 @@ export async function GET(request: NextRequest) {
       throw auditError;
     }
 
-    // Lot L2 : chaque install (nouvelle ou reconnexion) doit poser/rafraîchir sa
-    // store_connection, sinon la double écriture (ingestion_event/external_ref) reste inerte
-    // pour toute boutique connectée après le backfill ponctuel de 0142 (Lot L1). Best-effort et
-    // non bloquant : un échec ici ne doit jamais empêcher une connexion Shopify réelle de réussir
-    // (arbitrage explicite du fondateur — rendre ce chemin bloquant est un lot distinct).
-    //
-    // Même discipline que ci-dessus : jamais une upsert `onConflict` capable de réassigner
-    // `merchant_account_id`. `merchant_account_id` est exclu du payload de mise à jour, donc cet
-    // appel ne peut structurellement pas changer le tenant propriétaire d'une ligne existante.
-    const storeConnectionWritePayload = {
-      shop_id: savedShopId,
-      platform: 'shopify' as const,
-      external_identifier: shop,
-      platform_app_id: app.clientId,
-      status: 'active',
-      uninstalled_at: null,
-    };
-
-    const { error: insertConnectionError } = await supabase
-      .from('store_connection')
-      .insert({ ...storeConnectionWritePayload, merchant_account_id: payload.merchantAccountId });
-
-    if (insertConnectionError) {
-      if (insertConnectionError.code === '23505') {
-        // Conflit sur (platform, external_identifier) : ligne déjà existante — reconnexion, ou
-        // rattrapage d'un échec best-effort antérieur. Mise à jour guardée par le même tenant ;
-        // 0 ligne affectée (ligne orpheline d'un autre tenant) est toléré en silence, comme le
-        // reste de ce bloc — jamais une réassignation, jamais un blocage de la connexion.
-        const { error: updateConnectionError } = await supabase
-          .from('store_connection')
-          .update(storeConnectionWritePayload)
-          .eq('platform', 'shopify')
-          .eq('external_identifier', shop)
-          .eq('merchant_account_id', payload.merchantAccountId);
-
-        if (updateConnectionError) {
-          Sentry.captureException(new Error('shopify_store_connection_upsert_failed'), {
-            tags: { module: 'shopify.callback' },
-            extra: { message: updateConnectionError.message, shopDomain: shop },
-          });
-        }
-      } else {
-        Sentry.captureException(new Error('shopify_store_connection_upsert_failed'), {
-          tags: { module: 'shopify.callback' },
-          extra: { message: insertConnectionError.message, shopDomain: shop },
-        });
-      }
-    }
-
     const productsSyncResult = await syncProductsForShop({
-      accessToken: tokenResponse.accessToken,
+      accessToken,
       actorUserId: null,
       admin: supabase,
       merchantAccountId: payload.merchantAccountId,

@@ -1,4 +1,21 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { ShopifyAppDistribution } from '@/lib/shopify/app-registry-sources';
+
+// SHOPIFY-EXPIRING-TOKENS-01 §3 — seule règle de décision de `expiring=1`, sur les DEUX chemins
+// d'acquisition (échange de code et échange par ID token). Shopify n'exige les jetons expirants
+// que des apps PUBLIQUES ; une app custom en est exclue. Le risque n'est pas symétrique : poser
+// `expiring=1` sur une app custom (KOBA) ferait expirer les jetons du seul marchand réel.
+export function requestsExpiringOfflineToken(distribution: ShopifyAppDistribution): boolean {
+  return distribution === 'public';
+}
+
+// SHOPIFY-EXPIRING-TOKENS-01 §9 — borne réseau des trois appels au endpoint de jeton. Avant ce
+// lot, aucune : le délai effectif était celui d'undici (300 s d'en-têtes), c'est-à-dire la durée
+// maximale de la fonction elle-même. Ces appels sont désormais tenus SOUS BAIL
+// (lib/shopify/token-lease.ts) ; c'est cette borne qui rend la durée d'une opération sous bail
+// inférieure au TTL sans renouvellement. Durée observée d'un échange réel : 2,86 s (Test A,
+// docs/shopify/TEST-NONEMBED-A-RESULTAT-2026-09-21.md) — marge d'un facteur 7.
+export const SHOPIFY_TOKEN_REQUEST_TIMEOUT_MS = 20_000;
 
 export type TokenResponse = {
   accessToken: string;
@@ -22,6 +39,8 @@ type ExchangeCodeForTokenInput = {
   clientId: string;
   clientSecret: string;
   code: string;
+  // Obligatoire : l'appelant ne choisit pas `expiring`, il déclare la distribution de l'app.
+  distribution: ShopifyAppDistribution;
 };
 
 const shopDomainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/;
@@ -138,6 +157,7 @@ export async function exchangeCodeForToken({
   clientId,
   clientSecret,
   code,
+  distribution,
 }: ExchangeCodeForTokenInput): Promise<TokenResponse> {
   const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: 'POST',
@@ -146,7 +166,9 @@ export async function exchangeCodeForToken({
       client_id: clientId,
       client_secret: clientSecret,
       code,
+      ...(requestsExpiringOfflineToken(distribution) ? { expiring: '1' } : {}),
     }),
+    signal: AbortSignal.timeout(SHOPIFY_TOKEN_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -174,6 +196,7 @@ export async function refreshAccessToken({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
     }),
+    signal: AbortSignal.timeout(SHOPIFY_TOKEN_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -188,20 +211,23 @@ type ExchangeIdTokenForOfflineTokenInput = {
   clientId: string;
   clientSecret: string;
   idToken: string;
+  // Obligatoire, comme pour exchangeCodeForToken : ce chemin est atteignable par une app custom
+  // (teer-dev est déclarée `embedded = true`), il n'est donc pas réservé à une app publique.
+  distribution: ShopifyAppDistribution;
 };
 
 // APP-03 / Lot 2 — additif : token exchange (RFC 8693) pour obtenir un access token OFFLINE
-// expirant depuis l'ID token de session (App Bridge), pour Teer Public. Ne touche ni
-// exchangeCodeForToken ni refreshAccessToken (flux OAuth `code` legacy, apps historiques
-// inchangées). `shop` est déjà un domaine complet validé (xxx.myshopify.com) — jamais reconstruit
-// ici. `expiring=1` est requis explicitement : Shopify renvoie par défaut (`expiring` absent) un
-// token OFFLINE non expirant, sans refresh_token — incompatible avec le modèle expirant déjà en
-// place (`lib/shopify/token.ts`, refresh proactif).
+// depuis l'ID token de session (App Bridge). `shop` est déjà un domaine complet validé
+// (xxx.myshopify.com) — jamais reconstruit ici. `expiring=1` n'est posé QUE pour une app
+// publique (SHOPIFY-EXPIRING-TOKENS-01 §3) : sans lui, Shopify renvoie un token OFFLINE non
+// expirant, sans refresh_token — le régime voulu pour une app custom. Avant ce lot, il était
+// posé inconditionnellement, et imposait le régime expirant à une app custom embarquée.
 export async function exchangeIdTokenForOfflineToken({
   shop,
   clientId,
   clientSecret,
   idToken,
+  distribution,
 }: ExchangeIdTokenForOfflineTokenInput): Promise<TokenResponse> {
   const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: 'POST',
@@ -213,8 +239,9 @@ export async function exchangeIdTokenForOfflineToken({
       subject_token: idToken,
       subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
       requested_token_type: 'urn:shopify:params:oauth:token-type:offline-access-token',
-      expiring: '1',
+      ...(requestsExpiringOfflineToken(distribution) ? { expiring: '1' } : {}),
     }),
+    signal: AbortSignal.timeout(SHOPIFY_TOKEN_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {

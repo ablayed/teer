@@ -1,16 +1,21 @@
+import { fakeLeaseDb } from '@/tests/unit/helpers/fake-shopify-lease-db';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const harness = vi.hoisted(() => ({
-  shops: [] as Array<Record<string, unknown>>,
-  connections: [] as Array<Record<string, unknown>>,
-}));
-
 const PUBLIC_APP = {
   label: 'teer-public' as const,
+  distribution: 'public' as const,
   clientId: 'public_client_sentinel',
   clientSecret: 'public_secret_sentinel',
 };
+
+const exchangeCodeForToken = vi.fn(async (_input: Record<string, unknown>) => ({
+  accessToken: 'access-token-sentinel',
+  refreshToken: null,
+  accessTokenExpiresAt: null,
+  refreshTokenExpiresAt: null,
+  scope: 'read_customers,read_orders,read_products',
+}));
 
 vi.mock('@/lib/shopify/apps', () => ({
   getDefaultShopifyAppOrNull: vi.fn(() => null),
@@ -31,13 +36,7 @@ vi.mock('@/lib/shopify/state', () => ({
 vi.mock('@/lib/shopify/oauth', () => ({
   validateShopDomain: vi.fn(() => true),
   verifyOAuthHmac: vi.fn(() => true),
-  exchangeCodeForToken: vi.fn(async () => ({
-    accessToken: 'access-token-sentinel',
-    refreshToken: null,
-    accessTokenExpiresAt: null,
-    refreshTokenExpiresAt: null,
-    scope: 'read_customers,read_orders,read_products',
-  })),
+  exchangeCodeForToken,
 }));
 
 vi.mock('@/lib/shopify/crypto', () => ({
@@ -53,47 +52,15 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: vi.fn(),
 }));
 
-vi.mock('@/lib/supabase/protected-client', () => ({
-  createProtectedSupabaseClient: vi.fn(() => ({
-    from(table: string) {
-      if (table === 'shop') {
-        return {
-          // Aucune boutique préexistante dans ce harnais : la garde de propriété
-          // (decideShopOwnership) résout toujours vers 'insert' ici.
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: null, error: null }),
-            }),
-          }),
-          insert(payload: Record<string, unknown>) {
-            harness.shops.push(payload);
-            return {
-              select: () => ({
-                single: async () => ({ data: { id: 'shop-sentinel' }, error: null }),
-              }),
-            };
-          },
-        };
-      }
-
-      if (table === 'store_connection') {
-        return {
-          insert: async (payload: Record<string, unknown>) => {
-            harness.connections.push(payload);
-            return { error: null };
-          },
-        };
-      }
-
-      return { insert: async () => ({ error: null }) };
-    },
-  })),
-}));
+vi.mock('@/lib/supabase/protected-client', async () => {
+  const { fakeLeaseDb: db } = await import('@/tests/unit/helpers/fake-shopify-lease-db');
+  return { createProtectedSupabaseClient: vi.fn(() => db.client()) };
+});
 
 describe('callback OAuth — identité Teer Public', () => {
   beforeEach(() => {
-    harness.shops.length = 0;
-    harness.connections.length = 0;
+    fakeLeaseDb.reset();
+    exchangeCodeForToken.mockClear();
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-sentinel';
   });
@@ -108,7 +75,13 @@ describe('callback OAuth — identité Teer Public', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(307);
-    expect(harness.shops[0]).toMatchObject({ shopify_client_id: PUBLIC_APP.clientId });
-    expect(harness.connections[0]).toMatchObject({ platform_app_id: PUBLIC_APP.clientId });
+    expect(fakeLeaseDb.state.shops[0]).toMatchObject({ shopify_client_id: PUBLIC_APP.clientId });
+    expect(fakeLeaseDb.state.connections[0]).toMatchObject({
+      platform_app_id: PUBLIC_APP.clientId,
+    });
+    // Preuve 1, côté route : une app publique déclare `public` à l'échange de code.
+    expect(exchangeCodeForToken).toHaveBeenCalledWith(
+      expect.objectContaining({ distribution: 'public' }),
+    );
   });
 });

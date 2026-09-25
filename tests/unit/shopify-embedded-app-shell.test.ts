@@ -12,6 +12,7 @@ vi.mock('@/app/shopify/embedded/embedded-shopify-surface', () => ({
 
 const APP = {
   label: 'teer-public' as const,
+  distribution: 'public' as const,
   clientId: 'public-client-sentinel',
   clientSecret: 's',
   scopes: 'read_customers,read_orders,read_products',

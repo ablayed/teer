@@ -10,10 +10,16 @@
 // refus rendus par la RPC (course, rôle de boutique) sont relayés sous leur nom. Preuve réelle
 // (Postgres, privilèges, RPC) : tests/rls/sec-shop-claim-01-domain-preemption.rls.test.ts et
 // tests/rls/shopify-embedded-link-rls.rls.test.ts.
+//
+// SHOPIFY-EXPIRING-TOKENS-01 — la RPC est désormais `link_shopify_embedded_shop_fenced` (0159),
+// appelée sous bail d'acquisition normal : acquisition AVANT l'appel, génération transmise,
+// libération conditionnelle APRÈS. `rpcCalls` ne compte que la RPC d'écriture ; le bail est
+// suivi à part (`leaseCalls`, `releases`).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PUBLIC_APP = {
   label: 'teer-public' as const,
+  distribution: 'public' as const,
   clientId: 'public_client_sentinel',
   clientSecret: 'public_secret_sentinel',
 };
@@ -31,6 +37,9 @@ const harness = vi.hoisted(() => ({
   rpcCalls: [] as Array<{ fn: string; args: Record<string, unknown> }>,
   rpcResponse: null as { data: unknown; error: unknown } | null,
   storeConnectionWriteCount: 0,
+  leaseHeld: false,
+  leaseCalls: 0,
+  releases: [] as Array<Array<[string, unknown]>>,
 }));
 
 vi.mock('@/lib/shopify/apps', () => ({
@@ -51,12 +60,36 @@ vi.mock('@sentry/nextjs', () => ({
 vi.mock('@/lib/supabase/protected-client', () => ({
   createProtectedSupabaseClient: vi.fn(() => ({
     rpc: async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'acquire_shopify_token_lease') {
+        harness.leaseCalls += 1;
+        return harness.leaseHeld
+          ? { data: [], error: null }
+          : { data: [{ acquired_generation: 1, expires_at: 'x' }], error: null };
+      }
       harness.rpcCalls.push({ fn, args });
       if (harness.rpcResponse) return harness.rpcResponse;
       const exists = harness.shops.some((s) => s.shop_domain === args.p_shop_domain);
       return { data: exists ? 'updated' : 'inserted', error: null };
     },
     from(table: string) {
+      if (table === 'shopify_token_lease') {
+        return {
+          update: () => {
+            const filters: Array<[string, unknown]> = [];
+            const builder = {
+              eq(column: string, value: unknown) {
+                filters.push([column, value]);
+                return builder;
+              },
+              async not() {
+                harness.releases.push(filters);
+                return { error: null };
+              },
+            };
+            return builder;
+          },
+        };
+      }
       if (table === 'store_connection') {
         return {
           insert: () => {
@@ -116,6 +149,9 @@ describe('performShopifyEmbeddedLink', () => {
     harness.rpcCalls = [];
     harness.rpcResponse = null;
     harness.storeConnectionWriteCount = 0;
+    harness.leaseHeld = false;
+    harness.leaseCalls = 0;
+    harness.releases = [];
     captureException.mockClear();
     captureMessage.mockClear();
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
@@ -200,12 +236,13 @@ describe('performShopifyEmbeddedLink', () => {
     });
     expect(harness.rpcCalls).toEqual([
       {
-        fn: 'link_shopify_embedded_shop',
+        fn: 'link_shopify_embedded_shop_fenced',
         args: {
           p_user_id: 'user-a',
           p_merchant_account_id: 'tenant-a',
           p_shop_domain: 'acme-shop.myshopify.com',
           p_client_id: PUBLIC_APP.clientId,
+          p_generation: 1,
         },
       },
     ]);
@@ -316,5 +353,57 @@ describe('performShopifyEmbeddedLink', () => {
         tags: expect.objectContaining({ reason: 'shop_link_rpc_failed' }),
       }),
     );
+  });
+
+  // SHOPIFY-EXPIRING-TOKENS-01 — bail d'acquisition normal sur le rattachement embarqué.
+  it('bail tenu : refus nommé link_in_progress, aucune écriture', async () => {
+    harness.leaseHeld = true;
+    const intent = await signIntent();
+    const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
+    const result = await performShopifyEmbeddedLink(
+      { intent, merchantAccountId: 'tenant-a' },
+      { userId: 'user-a', supabase: fakeSupabase() },
+    );
+
+    expect(result).toEqual({ ok: false, errorCode: 'link_in_progress' });
+    expect(harness.leaseCalls).toBe(1);
+    expect(harness.rpcCalls).toHaveLength(0);
+    expect(captureMessage).toHaveBeenCalledWith(
+      'shopify_token_lease_busy',
+      expect.objectContaining({ tags: expect.objectContaining({ operation: 'embedded_link' }) }),
+    );
+  });
+
+  it('bail perdu avant l’écriture (verdict lease_lost) : refus nommé, sentinelle propre, bail libéré', async () => {
+    harness.rpcResponse = { data: 'lease_lost', error: null };
+    const intent = await signIntent();
+    const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
+    const result = await performShopifyEmbeddedLink(
+      { intent, merchantAccountId: 'tenant-a' },
+      { userId: 'user-a', supabase: fakeSupabase() },
+    );
+
+    expect(result).toEqual({ ok: false, errorCode: 'link_in_progress' });
+    expect(captureMessage).toHaveBeenCalledWith(
+      'shopify_token_lease_lost',
+      expect.objectContaining({ tags: expect.objectContaining({ operation: 'embedded_link' }) }),
+    );
+    expect(harness.releases).toHaveLength(1);
+  });
+
+  it('libère le bail sous sa génération après un rattachement réussi', async () => {
+    const intent = await signIntent();
+    const { performShopifyEmbeddedLink } = await import('@/lib/shopify/embedded-link-write');
+    await performShopifyEmbeddedLink(
+      { intent, merchantAccountId: 'tenant-a' },
+      { userId: 'user-a', supabase: fakeSupabase() },
+    );
+
+    expect(harness.releases).toEqual([
+      [
+        ['shop_domain', 'acme-shop.myshopify.com'],
+        ['generation', 1],
+      ],
+    ]);
   });
 });
