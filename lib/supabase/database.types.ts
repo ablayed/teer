@@ -3745,6 +3745,19 @@ export type Database = {
         };
         Returns: string;
       };
+      disconnect_shop_fenced: {
+        Args: {
+          p_merchant_account_id: string;
+          p_shop_id: string;
+          p_ttl_seconds: number;
+          p_user_id: string;
+        };
+        Returns: {
+          generation: number;
+          outcome: string;
+          shop_id: string;
+        }[];
+      };
       execute_shopify_pcd_retention: {
         Args: { p_limit: number; p_now?: string };
         Returns: Json;
@@ -4108,6 +4121,16 @@ export type Database = {
         };
         Returns: string;
       };
+      link_shopify_embedded_shop_fenced: {
+        Args: {
+          p_client_id: string;
+          p_generation: number;
+          p_merchant_account_id: string;
+          p_shop_domain: string;
+          p_user_id: string;
+        };
+        Returns: string;
+      };
       list_customer_reliability: {
         Args: {
           p_limit?: number;
@@ -4367,6 +4390,17 @@ export type Database = {
         };
         Returns: string;
       };
+      mark_shopify_store_connection_uninstalled_fenced: {
+        Args: {
+          p_generation: number;
+          p_merchant_account_id: string;
+          p_shop_domain: string;
+        };
+        Returns: {
+          connection_id: string;
+          outcome: string;
+        }[];
+      };
       order_items_search_text: { Args: { p_items: Json }; Returns: string };
       orders_view_counts: {
         Args: { p_merchant_id: string; p_search?: string };
@@ -4548,6 +4582,18 @@ export type Database = {
         Args: { p_old_client_id: string; p_shop_id: string; p_user_id: string };
         Returns: string;
       };
+      release_shopify_shop_app_identity_fenced: {
+        Args: {
+          p_old_client_id: string;
+          p_shop_id: string;
+          p_ttl_seconds: number;
+          p_user_id: string;
+        };
+        Returns: {
+          generation: number;
+          outcome: string;
+        }[];
+      };
       renew_shopify_token_lease: {
         Args: {
           p_generation: number;
@@ -4617,6 +4663,20 @@ export type Database = {
           p_scheduled_for?: string;
         };
         Returns: string;
+      };
+      uninstall_shopify_shop_fenced: {
+        Args: {
+          p_client_id: string;
+          p_merchant_account_id: string;
+          p_shop_domain: string;
+          p_shop_id: string;
+          p_ttl_seconds: number;
+        };
+        Returns: {
+          generation: number;
+          outcome: string;
+          shop_id: string;
+        }[];
       };
       validate_pcd_access_audit_metadata: {
         Args: { p_metadata: Json };
