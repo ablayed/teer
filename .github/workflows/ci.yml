@@ -105,19 +105,8 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: |
-          supabase_log="$(mktemp)"
-          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
-            rm -f "$supabase_log"
-          else
-            status=$?
-            echo "::error::supabase start failed (exit $status)"
-            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
-              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line]' \
-              || true
-            rm -f "$supabase_log"
-            exit "$status"
-          fi
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+
       - run: |
           while IFS= read -r line; do
             case "$line" in
@@ -199,19 +188,8 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: |
-          supabase_log="$(mktemp)"
-          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
-            rm -f "$supabase_log"
-          else
-            status=$?
-            echo "::error::supabase start failed (exit $status)"
-            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
-              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line]' \
-              || true
-            rm -f "$supabase_log"
-            exit "$status"
-          fi
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+
       - run: bash scripts/l1-backfill-harness.sh
 
   test-e2e-phase1:
@@ -242,19 +220,8 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: |
-          supabase_log="$(mktemp)"
-          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
-            rm -f "$supabase_log"
-          else
-            status=$?
-            echo "::error::supabase start failed (exit $status)"
-            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
-              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line]' \
-              || true
-            rm -f "$supabase_log"
-            exit "$status"
-          fi
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
       - run: |
@@ -457,19 +424,7 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: |
-          supabase_log="$(mktemp)"
-          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
-            rm -f "$supabase_log"
-          else
-            status=$?
-            echo "::error::supabase start failed (exit $status)"
-            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
-              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line\]' \
-              || true
-            rm -f "$supabase_log"
-            exit "$status"
-          fi
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
       - run: |
@@ -645,19 +600,8 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: |
-          supabase_log="$(mktemp)"
-          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
-            rm -f "$supabase_log"
-          else
-            status=$?
-            echo "::error::supabase start failed (exit $status)"
-            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
-              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line]' \
-              || true
-            rm -f "$supabase_log"
-            exit "$status"
-          fi
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
       - run: |
@@ -809,19 +753,8 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: |
-          supabase_log="$(mktemp)"
-          if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
-            rm -f "$supabase_log"
-          else
-            status=$?
-            echo "::error::supabase start failed (exit $status)"
-            grep -Eiu 'error|failed|failure|timeout|timed out|unable|cannot|denied|refused|network|connection|pull|download' "$supabase_log" \
-              | sed -E '/key|token|secret|password|credential|jwt/Ic\[redacted sensitive diagnostic line]' \
-              || true
-            rm -f "$supabase_log"
-            exit "$status"
-          fi
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
       - run: |
