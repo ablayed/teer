@@ -4,6 +4,33 @@
 # Deliberately do not use `set -e`: diagnostics must never hide the CLI's status.
 set -u
 
+if [[ $# -ne 1 ]]; then
+  printf 'usage: %s <job-family>\n' "$0" >&2
+  exit 2
+fi
+
+job_family="$1"
+case "$job_family" in
+  test-rls|test-e2e-regression)
+    exclusions=(analytics edge-runtime functions imgproxy meta realtime studio vector)
+    ;;
+  l1-backfill-harness)
+    exclusions=(analytics edge-runtime functions imgproxy inbucket kong meta realtime rest storage studio vector)
+    ;;
+  test-e2e-phase1)
+    exclusions=(analytics edge-runtime functions imgproxy inbucket meta realtime studio vector)
+    ;;
+  test-visual-desktop|test-visual-mobile)
+    exclusions=(analytics edge-runtime functions imgproxy inbucket meta realtime storage studio vector)
+    ;;
+  *)
+    printf 'unknown Supabase service profile: %s\n' "$job_family" >&2
+    exit 2
+    ;;
+esac
+
+exclude_csv="$(IFS=,; printf '%s' "${exclusions[*]}")"
+
 timestamp_utc() {
   date -u '+%Y-%m-%dT%H:%M:%S.%NZ'
 }
@@ -104,7 +131,7 @@ capture_to_cli_ms=$(((cli_launch_epoch_ns - LAST_CAPTURE_END_EPOCH_NS) / 1000000
 printf 'SUPABASE_DIAGNOSTICS cli_launch_utc=%s capture_end_to_cli_launch_ms=%s\n' \
   "$cli_launch_utc" "$capture_to_cli_ms"
 
-if supabase start -x edge-runtime >"$supabase_log" 2>&1; then
+if supabase start -x "$exclude_csv" >"$supabase_log" 2>&1; then
   status=0
 else
   status=$?

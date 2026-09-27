@@ -105,7 +105,7 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh test-rls
 
       - run: |
           while IFS= read -r line; do
@@ -188,7 +188,7 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh l1-backfill-harness
 
       - run: bash scripts/l1-backfill-harness.sh
 
@@ -220,7 +220,7 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh test-e2e-phase1
 
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
@@ -424,7 +424,7 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh test-e2e-regression
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
       - run: |
@@ -600,7 +600,7 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh test-visual-desktop
 
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
@@ -753,7 +753,7 @@ jobs:
             exit 1
           fi
       - name: Start Supabase (sanitized diagnostics)
-        run: bash scripts/ci-start-supabase-with-diagnostics.sh
+        run: bash scripts/ci-start-supabase-with-diagnostics.sh test-visual-mobile
 
       - run: supabase db reset --local
       - run: echo "SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
