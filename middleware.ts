@@ -17,7 +17,10 @@ import { type NextRequest, NextResponse } from 'next/server';
 //     l'auth et les données tenant.
 export function middleware(request: NextRequest) {
   const isDev = process.env.NODE_ENV === 'development';
-  const regime = cspRegimeForPath(request.nextUrl.pathname);
+  const regime = cspRegimeForPath(
+    request.nextUrl.pathname,
+    request.nextUrl.searchParams.get('embedded') ?? undefined,
+  );
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete('x-teer-legacy-path');
   const workspaceMatch = request.nextUrl.pathname.match(/^\/s\/([^/]+)(\/.*)?$/);

@@ -12,6 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
+
 jobs:
   # Détection de chemins pour le job l1-backfill-harness (coûteux : ~2,5 min,
   # 2 `supabase db reset --local`). Le filtre couvre la migration elle-même,

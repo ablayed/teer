@@ -2,6 +2,13 @@ import { postSignInPath } from '@/lib/security/post-sign-in-path';
 import { describe, expect, it } from 'vitest';
 
 describe('postSignInPath', () => {
+  it('laisse passer uniquement la cible fixe de reprise Shopify non embarquÃ©e', () => {
+    expect(postSignInPath('/shopify/install-entry')).toBe('/shopify/install-entry');
+    expect(postSignInPath('/shopify/install-entry?shop=forged')).toBe(
+      '/s?next=%2Fshopify%2Finstall-entry%3Fshop%3Dforged',
+    );
+  });
+
   it('enveloppe toute cible interne ordinaire dans /s?next=...', () => {
     expect(postSignInPath('/tableau')).toBe('/s?next=%2Ftableau');
   });

@@ -44,8 +44,11 @@ const STATIC_PUBLIC_PATHS = new Set<string>([
   '/mentions-legales',
 ]);
 
-export function cspRegimeForPath(pathname: string): CspRegime {
+export function cspRegimeForPath(pathname: string, embedded?: string): CspRegime {
   if (pathname === '/shopify/embedded' || pathname.startsWith('/shopify/embedded/')) {
+    if (pathname.startsWith('/shopify/embedded/') && embedded !== '1') {
+      return 'app';
+    }
     return 'embedded';
   }
 

@@ -17,7 +17,11 @@ function safeReturnPath(value: string | null): string | undefined {
     return undefined;
   }
 
-  return value.startsWith('/shopify/embedded') ? value : undefined;
+  if (value.startsWith('/shopify/embedded')) {
+    return value;
+  }
+
+  return value === '/parametres?tab=shops&connected=1' ? value : undefined;
 }
 
 function redirectTo(path: string, request: NextRequest) {
@@ -31,13 +35,13 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return redirectTo('/connexion', request);
+    return redirectTo('/connexion?redirectTo=%2Fshopify%2Finstall-entry', request);
   }
 
   const merchantAccount = await getMerchantAccount();
 
   if (!merchantAccount) {
-    return redirectTo('/connexion', request);
+    return redirectTo('/connexion?redirectTo=%2Fshopify%2Finstall-entry', request);
   }
 
   const shop = request.nextUrl.searchParams.get('shop')?.trim() ?? '';
