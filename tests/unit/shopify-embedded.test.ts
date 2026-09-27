@@ -62,7 +62,8 @@ describe('Shopify embedded review surface', () => {
 
   it('uses a dedicated Shopify frame policy and keeps the rest of the app unembeddable', () => {
     expect(cspRegimeForPath('/shopify/embedded')).toBe('embedded');
-    expect(cspRegimeForPath('/shopify/embedded/teer-public')).toBe('embedded');
+    expect(cspRegimeForPath('/shopify/embedded/teer-public', '1')).toBe('embedded');
+    expect(cspRegimeForPath('/shopify/embedded/teer-public')).toBe('app');
     expect(cspRegimeForPath('/tableau')).toBe('app');
     // L'Ã©cran de confirmation de rattachement est dÃ©libÃ©rÃ©ment TOP-LEVEL uniquement (retour
     // depuis /connexion aprÃ¨s sortie de l'iframe) â€” jamais embarquable, mÃªme si son chemin
