@@ -13,13 +13,12 @@ type ActivateEvent = Event & {
 };
 
 type FetchEvent = Event & {
-  preloadResponse?: Promise<Response | undefined>;
   request: Request;
   respondWith(response: Promise<Response> | Response): void;
 };
 
 type NavigationPreloadManager = {
-  enable(): Promise<void>;
+  disable(): Promise<void>;
 };
 
 type WorkerRegistration = {
@@ -54,8 +53,13 @@ scope.addEventListener('install', (event) => {
 scope.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // Navigation Preload DÉSACTIVÉ, et explicitement : l'état vit sur l'inscription et survit
+      // au remplacement du script, retirer `enable()` ne suffirait pas. Actif, il part au niveau
+      // de la navigation, y compris vers /api/** que ce worker rend au navigateur : celui-ci jette
+      // la réponse preload et refait la requête → code OAuth, state et intention envoyés deux
+      // fois (FIX-SW-NAVIGATION-PRELOAD-01, tests/e2e/service-worker-navigation-preload.spec.ts).
       if (scope.registration.navigationPreload) {
-        await scope.registration.navigationPreload.enable();
+        await scope.registration.navigationPreload.disable();
       }
 
       const cacheNames = await scope.caches.keys();
@@ -79,8 +83,9 @@ scope.addEventListener('fetch', (event) => {
   }
 
   // Ne JAMAIS intercepter les routes /api/** : elles redirigent cross-origin (OAuth Shopify) et
-  // posent des cookies (état OAuth). L'interception + navigation preload casse la redirection
-  // (CORS) et le Set-Cookie → on laisse le navigateur les gérer nativement.
+  // posent des cookies (état OAuth), et portent des valeurs à usage unique → on laisse le
+  // navigateur les gérer nativement. Ne rien retourner ici n'est sûr QUE parce que le
+  // Navigation Preload est désactivé (voir `activate`).
   const url = new URL(event.request.url);
   if (url.origin === scope.location.origin && url.pathname.startsWith('/api/')) {
     return;
@@ -112,12 +117,6 @@ async function handleRequest(event: FetchEvent): Promise<Response> {
 
 async function handleNavigationRequest(event: FetchEvent): Promise<Response> {
   try {
-    const preloadResponse = await event.preloadResponse;
-
-    if (preloadResponse) {
-      return preloadResponse;
-    }
-
     return await scope.fetch(event.request);
   } catch {
     const cachedResponse = await scope.caches.match(event.request);
