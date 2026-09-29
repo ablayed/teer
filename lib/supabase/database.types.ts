@@ -2486,6 +2486,7 @@ export type Database = {
           is_default: boolean;
           last_reconciled_at: string | null;
           merchant_account_id: string;
+          reauthorization_required_at: string | null;
           refresh_token_encrypted: string | null;
           refresh_token_expires_at: string | null;
           scopes: string;
@@ -2507,6 +2508,7 @@ export type Database = {
           is_default?: boolean;
           last_reconciled_at?: string | null;
           merchant_account_id: string;
+          reauthorization_required_at?: string | null;
           refresh_token_encrypted?: string | null;
           refresh_token_expires_at?: string | null;
           scopes?: string;
@@ -2528,6 +2530,7 @@ export type Database = {
           is_default?: boolean;
           last_reconciled_at?: string | null;
           merchant_account_id?: string;
+          reauthorization_required_at?: string | null;
           refresh_token_encrypted?: string | null;
           refresh_token_expires_at?: string | null;
           scopes?: string;
@@ -2860,6 +2863,51 @@ export type Database = {
           started_at?: string;
           status?: string;
           summary?: Json;
+        };
+        Relationships: [];
+      };
+      shopify_pending_installation: {
+        Row: {
+          access_token_encrypted: string | null;
+          access_token_expires_at: string | null;
+          consumed_at: string | null;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          refresh_token_encrypted: string | null;
+          refresh_token_expires_at: string | null;
+          scopes: string;
+          shop_domain: string;
+          shopify_client_id: string;
+          ticket_hash: string;
+        };
+        Insert: {
+          access_token_encrypted?: string | null;
+          access_token_expires_at?: string | null;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          refresh_token_encrypted?: string | null;
+          refresh_token_expires_at?: string | null;
+          scopes: string;
+          shop_domain: string;
+          shopify_client_id: string;
+          ticket_hash: string;
+        };
+        Update: {
+          access_token_encrypted?: string | null;
+          access_token_expires_at?: string | null;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          refresh_token_encrypted?: string | null;
+          refresh_token_expires_at?: string | null;
+          scopes?: string;
+          shop_domain?: string;
+          shopify_client_id?: string;
+          ticket_hash?: string;
         };
         Relationships: [];
       };
@@ -3670,6 +3718,10 @@ export type Database = {
           topic: string;
         }[];
       };
+      classify_shopify_entry: {
+        Args: { p_client_id: string; p_shop_domain: string };
+        Returns: string;
+      };
       consume_pcd_access_quota: {
         Args: {
           p_action: string;
@@ -3697,6 +3749,20 @@ export type Database = {
           byte_size: number;
           storage_bucket: string;
           storage_path: string;
+        }[];
+      };
+      consume_shopify_pending_installation: {
+        Args: {
+          p_generation: number;
+          p_merchant_account_id: string;
+          p_ticket_hash: string;
+          p_user_id: string;
+        };
+        Returns: {
+          outcome: string;
+          shop_domain: string;
+          shop_id: string;
+          shopify_client_id: string;
         }[];
       };
       correct_purchase_lot_cost: {
@@ -3735,6 +3801,26 @@ export type Database = {
       customer_reliability_decay_factor: {
         Args: { p_at: string };
         Returns: number;
+      };
+      decide_and_write_shopify_authorization: {
+        Args: {
+          p_access_token_encrypted: string;
+          p_access_token_expires_at: string;
+          p_client_id: string;
+          p_generation: number;
+          p_pending_expires_at: string;
+          p_refresh_token_encrypted: string;
+          p_refresh_token_expires_at: string;
+          p_scopes: string;
+          p_shop_domain: string;
+          p_ticket_hash: string;
+        };
+        Returns: {
+          branch: string;
+          merchant_account_id: string;
+          outcome: string;
+          shop_id: string;
+        }[];
       };
       derive_legacy_cod_status: {
         Args: {
@@ -4390,6 +4476,14 @@ export type Database = {
         };
         Returns: string;
       };
+      mark_shopify_reauthorization_required: {
+        Args: {
+          p_client_id: string;
+          p_generation: number;
+          p_shop_domain: string;
+        };
+        Returns: string;
+      };
       mark_shopify_store_connection_uninstalled_fenced: {
         Args: {
           p_generation: number;
@@ -4477,6 +4571,10 @@ export type Database = {
           shop_count: number;
         }[];
       };
+      purge_expired_shopify_pending_installations: {
+        Args: never;
+        Returns: number;
+      };
       purge_pcd_access_audit: {
         Args: { p_batch_size?: number; p_before: string };
         Returns: number;
@@ -4486,6 +4584,14 @@ export type Database = {
         Returns: {
           authorization_rows: number;
           quota_rows: number;
+        }[];
+      };
+      read_shopify_pending_installation: {
+        Args: { p_ticket_hash: string };
+        Returns: {
+          shop_domain: string;
+          shopify_client_id: string;
+          state: string;
         }[];
       };
       reassign_order_driver: {
@@ -4663,6 +4769,19 @@ export type Database = {
           p_scheduled_for?: string;
         };
         Returns: string;
+      };
+      uninstall_shopify_pending_or_shop: {
+        Args: {
+          p_client_id: string;
+          p_shop_domain: string;
+          p_ttl_seconds: number;
+        };
+        Returns: {
+          generation: number;
+          merchant_account_id: string;
+          outcome: string;
+          shop_id: string;
+        }[];
       };
       uninstall_shopify_shop_fenced: {
         Args: {
