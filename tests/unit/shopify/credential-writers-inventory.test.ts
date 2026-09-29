@@ -123,6 +123,7 @@ describe('preuve 12 — aucun écrivain direct de credentials Shopify ne subsist
       // Primitives fencées.
       '0158_schema_token_lease_01_shopify_token_lease.sql',
       '0159_schema_lease_closure_01_fenced_destructive_primitives.sql',
+      '0160_shopify_oauth_first.sql',
     ]);
   });
 });
