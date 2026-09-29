@@ -23,9 +23,10 @@
 -- lib/shopify/crypto.ts). La base ne chiffre ni ne déchiffre rien : la table d'attente reprend
 -- la représentation de `shop` (text, chiffré applicatif).
 --
--- Ordre des verrous : BAIL, puis ATTENTE, puis SHOP, dans toutes les fonctions de ce fichier —
--- prolongement de la règle de 0159 (bail puis shop). Une fonction adressée par ticket lit le
--- domaine sans verrou, prend le bail, puis relit l'attente sous verrou.
+-- Ordre des verrous : le BAIL du domaine d'abord, dans toutes les fonctions de ce fichier
+-- (règle de 0159). Ce verrou sérialise toutes les écritures sur ce domaine ; l'ordre des
+-- verrous suivants (attente, `shop`) ne peut donc pas produire d'interblocage. Une fonction
+-- adressée par ticket lit le domaine sans verrou, prend le bail, puis relit l'attente sous verrou.
 --
 -- Gardes NULL-safe : `is distinct from` partout où un NULL peut paraître. En particulier, la
 -- propriété n'est confrontée QUE si la ligne `shop` existe (variable v_shop_exists) : pour une
@@ -631,12 +632,14 @@ grant execute on function public.decide_and_write_shopify_authorization(
 --   4. appartenance owner/manager, NULL-safe (D4)            → sinon forbidden
 --   5. ligne `shop` verrouillée ; SI elle existe : propriété, puis app — un seul verdict
 --      `refused` pour les deux, l'attente est supprimée
+--   5 bis. ligne déjà reconnectée pour cette app (active, avec access token) : attente
+--      périmée supprimée, sans audit                         → already_connected
 --   6. persistance fencée (insertion, ou rotation et réactivation pour le même locataire)
 --   7. audit `shopify.connected`, ticket consommé et credentials de l'attente effacés
 -- Tout échec levé après l'écriture annule la transaction entière : le ticket n'est pas
 -- consommé (T18). Absente, consommée ou expirée : un verdict unique, `ticket_invalid`.
--- Verdicts : inserted | updated | ticket_invalid | lease_lost | forbidden | refused |
--- invalid_input | <refus de persist>.
+-- Verdicts : inserted | updated | already_connected | ticket_invalid | lease_lost | forbidden |
+-- refused | invalid_input | <refus de persist>.
 -- ----------------------------------------------------------------------------
 create function public.consume_shopify_pending_installation(
   p_ticket_hash text,
@@ -748,6 +751,20 @@ begin
      and v_shop.shopify_client_id is distinct from v_pending.shopify_client_id then
     delete from public.shopify_pending_installation pi where pi.id = v_pending.id;
     return query select 'refused'::text, null::uuid, null::text, null::text;
+    return;
+  end if;
+
+  -- Attente périmée : la boutique a été reconnectée pour cette app par un autre chemin depuis
+  -- le callback. Le grant de l'attente est antérieur ; Shopify a donc déjà retiré son refresh
+  -- token. Le persister écraserait une connexion valide. Placée après la propriété : seul le
+  -- même locataire atteint ce verdict, un tiers reçoit toujours `refused`.
+  if v_shop_exists
+     and v_shop.shopify_client_id is not distinct from v_pending.shopify_client_id
+     and v_shop.status is not distinct from 'active'
+     and v_shop.access_token_encrypted is not null then
+    delete from public.shopify_pending_installation pi where pi.id = v_pending.id;
+    return query select 'already_connected'::text, v_shop.id, v_shop.shop_domain,
+                        v_shop.shopify_client_id;
     return;
   end if;
 
