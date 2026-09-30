@@ -9,6 +9,16 @@ describe('postSignInPath', () => {
     );
   });
 
+  // SHOPIFY-OAUTH-FIRST-01 / T36 — garde mutée : `target === SHOPIFY_SHOPS_ARRIVAL_PATH`.
+  it('T36 : reprend exactement /parametres?tab=shops, et aucune variante', () => {
+    expect(postSignInPath('/parametres?tab=shops')).toBe('/parametres?tab=shops');
+    expect(postSignInPath('/parametres?tab=shops&connected=1')).toBe(
+      '/s?next=%2Fparametres%3Ftab%3Dshops%26connected%3D1',
+    );
+    expect(postSignInPath('/parametres?tab=team')).toBe('/s?next=%2Fparametres%3Ftab%3Dteam');
+    expect(postSignInPath('/parametres')).toBe('/s?next=%2Fparametres');
+  });
+
   it('enveloppe toute cible interne ordinaire dans /s?next=...', () => {
     expect(postSignInPath('/tableau')).toBe('/s?next=%2Ftableau');
   });

@@ -1,4 +1,5 @@
 import { safeRedirectPath } from '@/lib/security/safe-redirect';
+import { SHOPIFY_SHOPS_ARRIVAL_PATH } from '@/lib/shopify/arrival';
 
 /**
  * Destination après une connexion réussie : TOUJOURS le point d'entrée workspace (`/s`).
@@ -12,6 +13,10 @@ import { safeRedirectPath } from '@/lib/security/safe-redirect';
  * proposerait un choix hors-sujet (choisir un workspace existant plutôt que rattacher une
  * boutique neuve). Seul ce préfixe exact est exempté ; cette fonction reste l'entrée workspace
  * pour tout le reste, y compris tout autre chemin sous /shopify/.
+ *
+ * Seconde exception, aussi étroite (SHOPIFY-OAUTH-FIRST-01 / R1) : l'arrivée d'une boutique
+ * Shopify déjà installée reprend sur `/parametres?tab=shops` — ce chemin EXACT, avec cette seule
+ * chaîne de requête. Toute variante (autre paramètre, autre onglet) repasse par `/s`.
  *
  * Module séparé (pas dans `lib/actions/auth.ts`, `'use server'`) : Next.js exige que tout export
  * d'un fichier `'use server'` soit une fonction async — cette fonction pure doit rester
@@ -35,6 +40,10 @@ export function postSignInPath(redirectTo: string | undefined): string {
   }
 
   if (target === SHOPIFY_INSTALL_ENTRY_PATH) {
+    return target;
+  }
+
+  if (target === SHOPIFY_SHOPS_ARRIVAL_PATH) {
     return target;
   }
 

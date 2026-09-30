@@ -77,6 +77,12 @@ export async function GET(request: NextRequest) {
       return redirectTo('/boutiques?error=shop_mismatch', request);
     }
 
+    // Parcours historique : le state porte le locataire de la session qui a lancé l'installation.
+    const merchantAccountId = payload.merchantAccountId;
+    if (!merchantAccountId) {
+      return redirectTo('/boutiques?error=invalid_state', request);
+    }
+
     // Multi-app : l'app a été choisie à l'install et transportée dans le state (clientId).
     // Un state legacy sans clientId retombe sur l'app par défaut (Teer Dev).
     app = payload.clientId
@@ -115,7 +121,7 @@ export async function GET(request: NextRequest) {
       throw existingShopError;
     }
 
-    const ownershipDecision = decideShopOwnership(existingShop, payload.merchantAccountId);
+    const ownershipDecision = decideShopOwnership(existingShop, merchantAccountId);
 
     if (ownershipDecision.kind === 'refuse') {
       // Refus générique, sans valeur d'identité (ni domaine, ni merchant_account_id) dans la
@@ -191,7 +197,7 @@ export async function GET(request: NextRequest) {
         mode: 'authorization_code',
         shopDomain: shop,
         generation: lease.generation,
-        merchantAccountId: payload.merchantAccountId,
+        merchantAccountId,
         clientId: app.clientId,
         accessTokenEncrypted: encryptToken(tokenResponse.accessToken),
         refreshTokenEncrypted: tokenResponse.refreshToken
@@ -234,7 +240,7 @@ export async function GET(request: NextRequest) {
       const connectionOutcome = await writeShopifyStoreConnectionFenced(supabase, {
         shopDomain: shop,
         generation: lease.generation,
-        merchantAccountId: payload.merchantAccountId,
+        merchantAccountId,
         clientId: app.clientId,
       });
 
@@ -249,7 +255,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { error: auditError } = await supabase.from('audit_log').insert({
-      merchant_account_id: payload.merchantAccountId,
+      merchant_account_id: merchantAccountId,
       actor_user_id: null,
       action: 'shopify.connected',
       resource_type: 'shop',
@@ -264,7 +270,7 @@ export async function GET(request: NextRequest) {
       accessToken,
       actorUserId: null,
       admin: supabase,
-      merchantAccountId: payload.merchantAccountId,
+      merchantAccountId,
       shop: {
         id: savedShopId,
         shop_domain: shop,
@@ -275,7 +281,7 @@ export async function GET(request: NextRequest) {
       Sentry.captureMessage('Shopify product sync failed after connect', {
         level: 'warning',
         extra: {
-          merchantAccountId: payload.merchantAccountId,
+          merchantAccountId,
           shopDomain: shop,
         },
         tags: { route: 'shopify.callback' },

@@ -243,5 +243,12 @@
     "boundaryFile": "lib/shopify/shop-sync.ts",
     "boundaryLine": 30,
     "boundaryDetail": "syncShopOrders() is called from two actions with DIFFERENT guard status: lib/actions/shops.ts:126 (syncShopAction, requireRole('owner','manager') — gated) AND lib/actions/shopify.ts:48 (syncOrdersAction, authActionClient only, NO requireRole — reachable by any authenticated member including agent). Tenant scoping itself (merchantAccountId from getMerchantAccount(), shopId from getRequestStoreId(), both server-derived, never client-supplied) is not at issue — the missing ROLE gate is. Arbitrage ouvert, voir docs/security/s4-rapport.md — S4 ne tranche pas si un agent doit pouvoir déclencher cette synchronisation."
+  },
+  {
+    "file": "app/api/shopify/entry/[appLabel]/route.ts",
+    "boundaryType": "shopify-entry-hmac",
+    "boundaryFile": "app/api/shopify/entry/[appLabel]/route.ts",
+    "boundaryLine": 74,
+    "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B1 — EXCEPTION NOMMÉE D16a. verifyShopifyEntryQuery (lib/shopify/entry.ts) checks the Shopify-signed application_url query (HMAC of the app named by the path, unique shop/timestamp/hmac params, ±5 min window, myshopify domain) BEFORE the admin client is constructed. The admin client then calls ONLY classify_shopify_entry (0160, service_role-only, returns an enum — no tenant, no credential) and, for an installed classification, reads the access/refresh ciphertexts of that one shop to test decryption in memory (D19; never returned nor logged). No write on any branch. Proven by tests/unit/shopify-oauth-first-entry.test.ts (each guard mutation-tested) and tests/rls/shopify-oauth-first-01.rls.test.ts."
   }
 ]

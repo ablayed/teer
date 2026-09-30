@@ -2,7 +2,11 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export type ShopifyOAuthStatePayload = {
   nonce: string;
-  merchantAccountId: string;
+  // SHOPIFY-OAUTH-FIRST-01 / D13 — le callback est BIMODAL selon ce champ. Présent : parcours
+  // historique, avec session (`/api/shopify/install`, apps historiques dont KOBA). Absent :
+  // entrée `application_url` sans session (app/api/shopify/entry/[appLabel]/route.ts), dont le
+  // rattachement à un locataire passe par D16b puis par un POST explicite, jamais par ce state.
+  merchantAccountId?: string;
   shopDomain: string;
   exp: number;
   returnTo?: string;
@@ -35,7 +39,7 @@ function isStatePayload(value: unknown): value is ShopifyOAuthStatePayload {
 
   return (
     typeof record.nonce === 'string' &&
-    typeof record.merchantAccountId === 'string' &&
+    (record.merchantAccountId === undefined || typeof record.merchantAccountId === 'string') &&
     typeof record.shopDomain === 'string' &&
     typeof record.exp === 'number' &&
     Number.isFinite(record.exp) &&
