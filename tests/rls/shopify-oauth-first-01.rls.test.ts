@@ -1624,3 +1624,49 @@ describe('B5 — D17 : rejet définitif du refresh, contre la base réelle (T30)
     },
   );
 });
+
+describe('B8 — purge des installations en attente', () => {
+  it.skipIf(!hasStack)(
+    'supprime les attentes actives expirées et les consommées depuis plus de 7 jours, rien d’autre',
+    async () => {
+      const expired = freshDomain('purge-expired');
+      const active = freshDomain('purge-active');
+      const consumedOld = freshDomain('purge-consumed-old');
+      const consumedRecent = freshDomain('purge-consumed-recent');
+      for (const domain of [expired, active, consumedOld, consumedRecent]) {
+        await authorizeWithoutSession(domain);
+      }
+      const pg = await pgConnect();
+      await pg.query(
+        `update public.shopify_pending_installation
+            set created_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'
+          where shop_domain = $1`,
+        [expired],
+      );
+      for (const [domain, age] of [
+        [consumedOld, '8 days'],
+        [consumedRecent, '1 day'],
+      ]) {
+        await pg.query(
+          `update public.shopify_pending_installation
+              set consumed_at = now() - $2::interval, access_token_encrypted = null,
+                  refresh_token_encrypted = null, access_token_expires_at = null,
+                  refresh_token_expires_at = null
+            where shop_domain = $1`,
+          [domain, age],
+        );
+      }
+
+      const { purgeExpiredShopifyPendingInstallations } = await import(
+        '@/lib/shopify/pending-installation-purge'
+      );
+      const count = await purgeExpiredShopifyPendingInstallations(service());
+
+      expect(count).toBeGreaterThanOrEqual(2);
+      expect(await pendingRows(expired)).toHaveLength(0);
+      expect(await pendingRows(consumedOld)).toHaveLength(0);
+      expect(await pendingRows(active)).toHaveLength(1);
+      expect(await pendingRows(consumedRecent)).toHaveLength(1);
+    },
+  );
+});

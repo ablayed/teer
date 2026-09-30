@@ -5,6 +5,7 @@ import {
   executeShopifyPcdRetention,
   previewShopifyPcdRetention,
 } from '@/lib/shopify/pcd-retention';
+import { purgeExpiredShopifyPendingInstallations } from '@/lib/shopify/pending-installation-purge';
 import type { Database } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { NextResponse } from 'next/server';
@@ -76,6 +77,9 @@ export async function GET(request: Request) {
     }
 
     const summary = await executeShopifyPcdRetention(admin, limit);
+    // SHOPIFY-OAUTH-FIRST-01 / B8 — purge des installations en attente, en mode `execute`
+    // seulement ; indépendante de la rétention : son échec est journalisé, jamais propagé.
+    await purgeExpiredShopifyPendingInstallations(admin).catch(() => null);
     return NextResponse.json(summary, { headers: { 'cache-control': 'no-store' } });
   } catch {
     return NextResponse.json({ error: 'retention_execution_failed' }, { status: 500 });
