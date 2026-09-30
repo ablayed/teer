@@ -357,3 +357,42 @@ seul le refus de la garde **préalable** porte `app_switch_refused`, et ce lot n
 décision. Le verdict exact reste dans la sentinelle `shopify_callback_shop_write_no_row`.
 
 Vouvoiement, comme tout `settings.shops.*`.
+
+## Parcours Shopify « OAuth d'abord » (SHOPIFY-OAUTH-FIRST-01, 2026-09-30)
+
+**Surface d'erreur publique D15** (`/shopify/erreur?code=…`, `lib/shopify/public-error.ts`) :
+huit codes, énumération fermée, messages FIXES choisis côté serveur. Aucun ne cite un domaine,
+un locataire ni une application, et aucun texte de la requête n'est réfléchi. `refused` reste
+**neutre** (« Cette boutique ne peut pas être rattachée à votre espace. ») : dire qu'elle
+appartient à un autre espace révélerait l'existence d'un tiers. `other_app`,
+`credentials_unavailable` et `refused` orientent vers le support, parce que le marchand ne peut
+pas les résoudre seul ; les autres renvoient vers l'administration Shopify.
+`connection_in_progress` reprend la formulation figée de la section « Opération concurrente ».
+
+**Confirmation du rattachement** (`/shopify/claim`) : le domaine myshopify est affiché en
+évidence, avec le nom de l'espace, et un seul bouton (« Rattacher la boutique »). Le lien
+expiré dit « Rouvrez Tëër depuis votre administration Shopify pour recommencer », **sans
+durée** (même raison que la section PWD-RESET-01 : le délai est une constante interne).
+
+**Réautorisation requise** (`settings.shops.reasons.reauthorizationRequired`) : « Reconnexion
+requise — rouvrez Tëër depuis votre administration Shopify. » Posé par le seul rejet définitif
+du refresh token (D17), distinct de `tokenExpired`.
+
+**Synchronisation en attente** (`settings.shops.messages.syncPending`) : la boutique est
+connectée et un effet après persistance a échoué. Bandeau d'avertissement, **jamais** une
+bannière d'échec ni `connection_failed` : la connexion a réussi, seule la synchronisation est à
+relancer avec « Synchroniser ».
+
+**Retirés (D9)** : l'onglet « Facturation » de Paramètres (il n'affichait que « Bientôt
+disponible »), le badge « Plan : Découverte » du profil et les FAQ `facturation-*`. Ne pas les
+réintroduire sans offre tarifaire réelle.
+
+**FAQ `shopify-connecter` corrigée (D8)** : le bouton « Connecter Shopify » qu'elle décrivait
+n'existe pas ; le parcours réel part de l'administration Shopify. Aucune entrée d'interface n'a
+été ajoutée pour coller à l'ancienne FAQ. Entrée `shopify-reprise` ajoutée : un e-mail de
+confirmation ouvert sur un autre appareil oblige à rouvrir Tëër depuis l'administration Shopify.
+
+**Registre** : les deux entrées FAQ réécrites ou ajoutées sont au vouvoiement. Le reste de la
+FAQ tutoie encore (« Va dans… ») : écart préexistant à la règle du vouvoiement, non corrigé par
+ce lot (hors périmètre), à traiter dans un lot de microcopie dédié.
+

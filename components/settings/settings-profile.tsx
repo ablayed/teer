@@ -16,7 +16,7 @@ import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 
 type CountryCode = 'SN' | 'CI' | 'BJ' | 'TG' | 'BF' | 'ML';
-type SettingsTab = 'profile' | 'team' | 'shops' | 'security' | 'billing';
+type SettingsTab = 'profile' | 'team' | 'shops' | 'security';
 type SettingsErrorCode =
   | 'invalid_whatsapp'
   | 'merchant_not_found'
@@ -38,7 +38,6 @@ const settingsTabs = [
   'team',
   'shops',
   'security',
-  'billing',
 ] as const satisfies readonly SettingsTab[];
 const settingsErrorCodes = [
   'invalid_whatsapp',
@@ -227,15 +226,6 @@ export function SettingsProfile({
                 <Label htmlFor="settings-email">{t('profile.fields.email')}</Label>
                 <Input id="settings-email" readOnly value={email} />
               </div>
-
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-text">{t('profile.fields.plan')}</span>
-                <div>
-                  <span className="inline-flex min-h-8 items-center rounded-full border border-border bg-canvas px-3 text-sm font-medium text-text">
-                    {t('profile.planDiscovery')}
-                  </span>
-                </div>
-              </div>
             </div>
 
             {successMessage ? (
@@ -280,23 +270,13 @@ export function SettingsProfile({
         >
           <SettingsShops currentRole={currentRole} />
         </section>
-      ) : activeTab === 'security' ? (
+      ) : (
         <section
           aria-labelledby="settings-tab-security"
           id="settings-panel-security"
           role="tabpanel"
         >
           <SettingsSecurity currentEmail={email} />
-        </section>
-      ) : (
-        <section
-          aria-labelledby={`settings-tab-${activeTab}`}
-          className="max-w-2xl rounded-lg border border-border bg-surface p-6"
-          id={`settings-panel-${activeTab}`}
-          role="tabpanel"
-        >
-          <h2 className="text-xl font-semibold">{t(`tabs.${activeTab}`)}</h2>
-          <p className="mt-2 text-muted">{t('placeholder')}</p>
         </section>
       )}
     </div>
