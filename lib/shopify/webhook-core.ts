@@ -898,6 +898,37 @@ async function processAppUninstalledPendingCore({
   });
 }
 
+// SHOPIFY-OAUTH-FIRST-01 — attente active du couple (domaine, app validée) quand la boutique
+// existe. Seule primitive existante qui la supprime sous le bail :
+// `uninstall_shopify_pending_or_shop` (0160, via processAppUninstalledPendingCore, qui libère le
+// bail qu'elle a préempté — R3). Cette primitive préempte TOUJOURS le bail : elle n'est appelée
+// que si une attente active existe, pour que le chemin historique sans attente (KOBA, apps
+// historiques) garde exactement ses effets. Si la lecture échoue, la suppression est tentée
+// quand même : mieux vaut une préemption de trop qu'une attente survivante.
+async function deletePendingInstallationOnUninstall({
+  supabase,
+  shopDomain,
+  validatedClientId,
+}: {
+  supabase: AdminClient;
+  shopDomain: string;
+  validatedClientId: string;
+}) {
+  const { data, error } = await supabase
+    .from('shopify_pending_installation')
+    .select('id')
+    .eq('shop_domain', shopDomain)
+    .eq('shopify_client_id', validatedClientId)
+    .is('consumed_at', null)
+    .limit(1);
+
+  if (!error && (data ?? []).length === 0) {
+    return;
+  }
+
+  await processAppUninstalledPendingCore({ supabase, shopDomain, validatedClientId });
+}
+
 async function processRefundCore({
   supabase,
   shop,
@@ -1288,6 +1319,17 @@ export async function dispatchWebhookCore({
         return null;
       }
       await processAppUninstalledCore({ supabase, shop, validatedClientId });
+      // SHOPIFY-OAUTH-FIRST-01 — une boutique déjà rattachée (typiquement `uninstalled`, puis
+      // réautorisée en branche 2) peut porter une attente active. `app/uninstalled` la supprime
+      // aussi, quel que soit l'état de la ligne `shop` : sinon un POST ultérieur la
+      // réactiverait avec des jetons que Shopify vient de révoquer.
+      if (validatedClientId) {
+        await deletePendingInstallationOnUninstall({
+          supabase,
+          shopDomain: shop.shop_domain,
+          validatedClientId,
+        });
+      }
       return null;
     case 'customers/data_request':
     case 'customers/redact':

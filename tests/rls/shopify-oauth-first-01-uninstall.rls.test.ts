@@ -293,3 +293,116 @@ describe('T20 — course app/uninstalled / POST, dans les deux ordres', () => {
     },
   );
 });
+
+describe('T12b — app/uninstalled sur une boutique existante porteuse d’une attente', () => {
+  // Boutique du locataire, posée directement (état, pas un parcours rejoué).
+  async function seedShop(
+    domain: string,
+    seed: { status: 'active' | 'uninstalled'; token: boolean },
+  ) {
+    const { encryptToken } = await import('@/lib/shopify/crypto');
+    await (await pg()).query(
+      `insert into public.shop (merchant_account_id, shop_domain, shopify_client_id,
+         access_token_encrypted, scopes, status, store_kind, display_name)
+       values ($1, $2, $3, $4, 'read_orders', $5, 'shopify', $2)`,
+      [
+        tenant.merchantAccountId,
+        domain,
+        APP,
+        seed.token ? encryptToken('seed-access') : null,
+        seed.status,
+      ],
+    );
+  }
+
+  // Empreinte des 8 colonnes de credentials et d'état.
+  async function fingerprint(domain: string): Promise<string | null> {
+    const { rows } = await (await pg()).query(
+      `select md5(concat_ws('|', access_token_encrypted, refresh_token_encrypted,
+         access_token_expires_at, refresh_token_expires_at, scopes, shopify_client_id, status,
+         reauthorization_required_at)) as h
+       from public.shop where shop_domain = $1`,
+      [domain],
+    );
+    return (rows[0]?.h as string | undefined) ?? null;
+  }
+
+  // Client service-role dont on relève les RPC appelées par le dispatcher.
+  function recordingService() {
+    const admin = service();
+    const calls: string[] = [];
+    const originalRpc = admin.rpc.bind(admin);
+    (admin as unknown as { rpc: (...args: unknown[]) => unknown }).rpc = (...args: unknown[]) => {
+      calls.push(String(args[0]));
+      return (originalRpc as (...inner: unknown[]) => unknown)(...args);
+    };
+    return { admin, calls };
+  }
+
+  async function deliverResolvedUninstall(domain: string, admin = service()) {
+    const { dispatchWebhookCore, resolveShopForTopic } = await import('@/lib/shopify/webhook-core');
+    const shop = await resolveShopForTopic(service(), 'app/uninstalled', {
+      by: 'domain',
+      shopDomain: domain,
+    });
+    expect(shop).not.toBeNull();
+    await dispatchWebhookCore({
+      supabase: admin,
+      shop,
+      eventId: crypto.randomUUID(),
+      topic: 'app/uninstalled',
+      payload: {},
+      webhookId: null,
+      triggeredAt: null,
+      validatedClientId: APP,
+      resolvedShopDomain: domain,
+    });
+  }
+
+  it.skipIf(!hasStack)(
+    'ligne uninstalled + attente + app/uninstalled → attente supprimée, POST = ticket_invalid, ligne inchangée',
+    async () => {
+      const domain = freshDomain('t12b');
+      await seedShop(domain, { status: 'uninstalled', token: false });
+      const ticket = await authorize(domain);
+      expect(await pendingCount(domain, APP)).toBe(1);
+      const before = await fingerprint(domain);
+
+      await deliverResolvedUninstall(domain);
+
+      expect(await pendingCount(domain, APP)).toBe(0);
+      expect(await leaseExpiresAt(domain)).toBeNull();
+      expect(await claim(ticket)).toEqual({ kind: 'error', code: 'ticket_invalid' });
+      expect(await shopStatus(domain)).toBe('uninstalled');
+      expect(await fingerprint(domain)).toBe(before);
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'contrôle positif : sans app/uninstalled, le POST reconnecte la même ligne',
+    async () => {
+      const domain = freshDomain('t12b-positive');
+      await seedShop(domain, { status: 'uninstalled', token: false });
+      const ticket = await authorize(domain);
+
+      expect(await claim(ticket)).toMatchObject({ kind: 'connected' });
+      expect(await shopStatus(domain)).toBe('active');
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'chemin historique sans attente (KOBA) : effets inchangés, aucune préemption supplémentaire',
+    async () => {
+      const domain = freshDomain('t12b-historical');
+      await seedShop(domain, { status: 'active', token: true });
+      const { admin, calls } = recordingService();
+
+      await deliverResolvedUninstall(domain, admin);
+
+      expect(await shopStatus(domain)).toBe('uninstalled');
+      expect(calls).toContain('uninstall_shopify_shop_fenced');
+      expect(calls).not.toContain('uninstall_shopify_pending_or_shop');
+      expect(await leaseExpiresAt(domain)).toBeNull();
+    },
+  );
+});
