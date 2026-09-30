@@ -28,7 +28,6 @@ import { SHOPIFY_CLAIM_PATH } from '@/lib/shopify/claim-ticket';
  * unitairement testable en synchrone.
  */
 const SHOPIFY_EMBEDDED_LINK_PATH = '/shopify/embedded-link';
-const SHOPIFY_INSTALL_ENTRY_PATH = '/shopify/install-entry';
 
 export function postSignInPath(redirectTo: string | undefined): string {
   const target = safeRedirectPath(redirectTo);
@@ -41,10 +40,6 @@ export function postSignInPath(redirectTo: string | undefined): string {
     target === SHOPIFY_EMBEDDED_LINK_PATH ||
     target.startsWith(`${SHOPIFY_EMBEDDED_LINK_PATH}?`)
   ) {
-    return target;
-  }
-
-  if (target === SHOPIFY_INSTALL_ENTRY_PATH) {
     return target;
   }
 

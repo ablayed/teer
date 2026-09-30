@@ -75,7 +75,8 @@ type EntryCredentials = {
   refresh_token_encrypted: string | null;
 };
 
-// D19 — modèle de l'ancien `hasUsableCredentialsForApp` : l'access token doit se déchiffrer ;
+// D19 — modèle de l'ancienne vérification de l'entrée non embarquée (retirée par D7) : l'access
+// token doit se déchiffrer ;
 // pour une boutique à rafraîchir, le refresh token aussi. Toute exception vaut « illisible ».
 export function entryCredentialsReadable(
   credentials: EntryCredentials | null,

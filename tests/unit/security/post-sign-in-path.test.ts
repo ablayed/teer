@@ -2,11 +2,9 @@ import { postSignInPath } from '@/lib/security/post-sign-in-path';
 import { describe, expect, it } from 'vitest';
 
 describe('postSignInPath', () => {
-  it('laisse passer uniquement la cible fixe de reprise Shopify non embarquÃ©e', () => {
-    expect(postSignInPath('/shopify/install-entry')).toBe('/shopify/install-entry');
-    expect(postSignInPath('/shopify/install-entry?shop=forged')).toBe(
-      '/s?next=%2Fshopify%2Finstall-entry%3Fshop%3Dforged',
-    );
+  // SHOPIFY-OAUTH-FIRST-01 / D7 — l'ancienne reprise non embarquée n'existe plus.
+  it('n’exempte plus /shopify/install-entry (supprimé par D7)', () => {
+    expect(postSignInPath('/shopify/install-entry')).toBe('/s?next=%2Fshopify%2Finstall-entry');
   });
 
   // SHOPIFY-OAUTH-FIRST-01 / T36 — garde mutée : `target === SHOPIFY_SHOPS_ARRIVAL_PATH`.
