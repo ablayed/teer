@@ -8,11 +8,14 @@ export type ShopStatusInput = {
   accessTokenExpiresAt: string | null;
   refreshTokenEncrypted: string | null;
   refreshTokenExpiresAt: string | null;
+  // SHOPIFY-OAUTH-FIRST-01 / D17 — posé par la seule signature exacte du rejet définitif du
+  // refresh (lib/shopify/token.ts), remis à NULL par une persistance fencée réussie.
+  reauthorizationRequiredAt?: string | null;
 };
 
 export type ShopStatusResult = {
   status: 'connected' | 'error' | 'incomplete' | 'uninstalled';
-  reason: 'token_expired' | null;
+  reason: 'token_expired' | 'reauthorization_required' | null;
 };
 
 export function shopStatus(shop: ShopStatusInput): ShopStatusResult {
@@ -27,6 +30,12 @@ export function shopStatus(shop: ShopStatusInput): ShopStatusResult {
   // interrompu d'un échange définitivement échoué, et ne doit rien promettre sur son issue.
   if (shop.storeKind === 'shopify' && !shop.accessTokenEncrypted) {
     return { reason: null, status: 'incomplete' };
+  }
+
+  // D17 — Shopify a retiré le refresh token : seule une nouvelle autorisation, lancée depuis
+  // l'administration Shopify, rétablit la connexion.
+  if (shop.reauthorizationRequiredAt) {
+    return { reason: 'reauthorization_required', status: 'error' };
   }
 
   // SHOPIFY-EXPIRING-TOKENS-01 §5 — avec des jetons d'une heure, un access token échu est l'état

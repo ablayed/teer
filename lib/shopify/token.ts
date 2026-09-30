@@ -20,7 +20,12 @@ import {
   reportShopifyTokenLeaseBusy,
   reportShopifyTokenLeaseLost,
 } from '@/lib/shopify/token-lease';
+import {
+  isDefinitiveRefreshRejection,
+  isRefreshWithoutResponse,
+} from '@/lib/shopify/token-refresh-error';
 import type { Database } from '@/lib/supabase/database.types';
+import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 // Marge de sécurité : on renouvelle 5 min avant l'expiration de l'access token.
@@ -166,15 +171,20 @@ async function refreshUnderLease(
   try {
     let refreshed: Awaited<ReturnType<typeof refreshAccessToken>>;
     try {
-      refreshed = await refreshAccessToken({
+      refreshed = await refreshWithSingleReplay({
         shop: shop.shop_domain,
         clientId,
         clientSecret,
         refreshToken,
       });
-    } catch {
-      // Refresh refusé (token révoqué/expiré) → re-OAuth nécessaire.
-      return { ok: false, reason: 'needs_reauth' };
+    } catch (error) {
+      // SHOPIFY-OAUTH-FIRST-01 / D17 — seule la signature EXACTE du rejet définitif marque la
+      // boutique, sous le bail encore tenu (avant la libération du `finally`). Toute autre erreur
+      // (5xx, 429, autre 401, absence de réponse après le rejeu) n'écrit rien.
+      if (isDefinitiveRefreshRejection(error)) {
+        await markReauthorizationRequired(admin, shop.shop_domain, clientId, lease.generation);
+      }
+      return { ok: false, reason: 'token_error' };
     }
 
     // Un seul couple vivant par boutique : les quatre valeurs en UNE instruction, sous génération.
@@ -206,6 +216,43 @@ async function refreshUnderLease(
     return { ok: false, reason: 'token_error' };
   } finally {
     await releaseShopifyTokenLease(admin, shop.shop_domain, lease.generation);
+  }
+}
+
+// D17 — sans réponse (réseau, délai dépassé), Shopify garantit la même réponse au même refresh
+// token pendant une heure : UN seul rejeu, avec le même refresh token, sous le même bail. Jamais
+// une boucle ; toute réponse HTTP, même d'erreur, est définitive pour cet appel.
+async function refreshWithSingleReplay(
+  input: Parameters<typeof refreshAccessToken>[0],
+): ReturnType<typeof refreshAccessToken> {
+  try {
+    return await refreshAccessToken(input);
+  } catch (error) {
+    if (!isRefreshWithoutResponse(error)) {
+      throw error;
+    }
+    return refreshAccessToken(input);
+  }
+}
+
+// D17 — marquage fencé par la génération du bail de CE rafraîchissement. Un échec est observé,
+// jamais propagé : l'appelant rend `token_error` dans tous les cas.
+async function markReauthorizationRequired(
+  admin: AdminClient,
+  shopDomain: string,
+  clientId: string,
+  generation: number,
+): Promise<void> {
+  const { data, error } = await admin.rpc('mark_shopify_reauthorization_required', {
+    p_shop_domain: shopDomain,
+    p_client_id: clientId,
+    p_generation: generation,
+  });
+  if (error || (data !== 'marked' && data !== 'already_marked')) {
+    Sentry.captureMessage('shopify_reauthorization_mark_failed', {
+      level: 'warning',
+      tags: { module: 'shopify.token', outcome: error ? 'rpc_error' : String(data) },
+    });
   }
 }
 

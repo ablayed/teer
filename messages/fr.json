@@ -730,6 +730,7 @@
       },
       "reasons": {
         "tokenExpired": "Le jeton Shopify a expiré. Réinstallez Tëër depuis Shopify Admin pour relancer la synchronisation.",
+        "reauthorizationRequired": "Reconnexion requise — rouvrez Tëër depuis votre administration Shopify.",
         "reconnectInstructions": "La réinstallation doit être initiée depuis Shopify Admin ; Tëër ne demande pas de domaine ici.",
         "generic": "La connexion Shopify doit être vérifiée.",
         "incomplete": "L’association de cette boutique n’a pas encore abouti.",

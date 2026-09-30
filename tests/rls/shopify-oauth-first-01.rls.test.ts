@@ -1443,3 +1443,149 @@ describe('T13 — ACL de 0160 : service_role seul', () => {
     },
   );
 });
+
+describe('B5 — D17 : rejet définitif du refresh, contre la base réelle (T30)', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  type RefreshReply = 'network' | { status: number; body: unknown };
+
+  // Endpoint de jeton remplacé : chaque appel consomme la réponse suivante de la liste.
+  function mockRefreshEndpoint(replies: RefreshReply[]) {
+    const sentRefreshTokens: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.includes('/admin/oauth/access_token')) return originalFetch(input, init);
+      const body = JSON.parse(String(init?.body ?? '{}')) as { refresh_token?: string };
+      sentRefreshTokens.push(body.refresh_token ?? '');
+      const reply = replies.shift();
+      if (!reply || reply === 'network') throw new TypeError('fetch failed');
+      return new Response(JSON.stringify(reply.body), {
+        status: reply.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    return sentRefreshTokens;
+  }
+
+  async function seedRefreshableShop(domain: string) {
+    await seedShop(domain, {
+      accessExpiresInMs: -60_000,
+      refresh: true,
+      refreshExpiresInMs: 86_400_000,
+    });
+    const pg = await pgConnect();
+    const { rows } = await pg.query(
+      `select id, shop_domain, merchant_account_id, access_token_encrypted, refresh_token_encrypted,
+              access_token_expires_at, refresh_token_expires_at
+         from public.shop where shop_domain = $1`,
+      [domain],
+    );
+    return rows[0];
+  }
+
+  async function refresh(shop: Record<string, unknown>) {
+    const { getValidShopAccessToken } = await import('@/lib/shopify/token');
+    return getValidShopAccessToken(service(), shop as never, APP, 'client-secret-unused', {
+      sleep: async () => undefined,
+    });
+  }
+
+  const DEFINITIVE = {
+    status: 401,
+    body: {
+      error: 'invalid_request',
+      error_description: 'This request requires an active refresh_token',
+    },
+  };
+
+  it.skipIf(!hasStack)(
+    'signature exacte → reauthorization_required_at écrit sous le bail, token_error, puis un grant à l’ouverture suivante',
+    async () => {
+      const domain = freshDomain('t30-definitive');
+      const shop = await seedRefreshableShop(domain);
+      const sent = mockRefreshEndpoint([DEFINITIVE]);
+
+      expect(await refresh(shop)).toEqual({ ok: false, reason: 'token_error' });
+
+      expect(sent).toEqual(['seed-refresh']);
+      const after = await shopState(domain);
+      expect(after?.reauthorization_required_at).not.toBeNull();
+      // Credentials inchangés : seul le marquage est écrit.
+      expect(await decryptValue(after?.access_token_encrypted)).toBe('seed-access');
+      expect((await leaseState(domain))?.lease_expires_at).toBeNull();
+      expect(await classify(domain)).toBe('reauthorization_required');
+    },
+  );
+
+  const controls: Array<[string, RefreshReply[], number]> = [
+    ['réseau (deux fois : un seul rejeu)', ['network', 'network'], 2],
+    ['500', [{ status: 500, body: {} }], 1],
+    ['429', [{ status: 429, body: { errors: 'Too many requests' } }], 1],
+    ['autre 401 (invalid_client)', [{ status: 401, body: { error: 'invalid_client' } }], 1],
+    [
+      '401 invalid_request, autre description',
+      [{ status: 401, body: { error: 'invalid_request', error_description: 'Invalid grant' } }],
+      1,
+    ],
+    ['401 sans corps objet', [{ status: 401, body: 'not-json' }], 1],
+    // Chaque condition de la signature isolée : même description, statut ou code différent.
+    ['400 avec la description exacte', [{ status: 400, body: DEFINITIVE.body }], 1],
+    [
+      '401 avec la description exacte, autre code d’erreur',
+      [
+        {
+          status: 401,
+          body: { error: 'invalid_client', error_description: DEFINITIVE.body.error_description },
+        },
+      ],
+      1,
+    ],
+  ];
+
+  for (const [name, replies, expectedCalls] of controls) {
+    it.skipIf(!hasStack)(`contrôle : ${name} → token_error, AUCUNE écriture`, async () => {
+      const domain = freshDomain('t30-control');
+      const shop = await seedRefreshableShop(domain);
+      const before = await shopState(domain);
+      const sent = mockRefreshEndpoint([...replies]);
+
+      expect(await refresh(shop)).toEqual({ ok: false, reason: 'token_error' });
+
+      expect(sent).toHaveLength(expectedCalls);
+      expect(new Set(sent)).toEqual(new Set(['seed-refresh']));
+      expect((await shopState(domain))?.fingerprint).toBe(before?.fingerprint);
+      expect((await leaseState(domain))?.lease_expires_at).toBeNull();
+    });
+  }
+
+  it.skipIf(!hasStack)(
+    'aucune réponse puis succès → un seul rejeu, avec le MÊME refresh token, persisté',
+    async () => {
+      const domain = freshDomain('t30-replay');
+      const shop = await seedRefreshableShop(domain);
+      const sent = mockRefreshEndpoint([
+        'network',
+        {
+          status: 200,
+          body: {
+            access_token: 't30-replayed-access',
+            refresh_token: 't30-replayed-refresh',
+            expires_in: 3600,
+            refresh_token_expires_in: 7_776_000,
+            scope: 'read_orders',
+          },
+        },
+      ]);
+
+      expect(await refresh(shop)).toEqual({ ok: true, accessToken: 't30-replayed-access' });
+      expect(sent).toEqual(['seed-refresh', 'seed-refresh']);
+      const after = await shopState(domain);
+      expect(await decryptValue(after?.access_token_encrypted)).toBe('t30-replayed-access');
+      expect(after?.reauthorization_required_at).toBeNull();
+    },
+  );
+});

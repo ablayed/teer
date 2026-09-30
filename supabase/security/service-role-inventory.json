@@ -129,8 +129,8 @@
     "file": "lib/actions/shops.ts",
     "boundaryType": "server-action-role-check",
     "boundaryFile": "lib/actions/shops.ts",
-    "boundaryLine": 92,
-    "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (91, 150), disconnectShopAction = requireRole('owner') (170). Confirmed by direct grep, 3 exports, all gated. (APP-03/Lot 2 correctif : shopStatus() extrait vers lib/shopify/shop-status.ts, module pur sans env/Supabase.) SHOPIFY-EXPIRING-TOKENS-01 : disconnectShopAction n'écrit plus shop directement — elle appelle la RPC service_role-only disconnect_shop_fenced (0159, line 178) avec ctx.user.id et ctx.member.merchantAccountId (dérivés serveur), qui réévalue sous verrou le rôle owner sur merchant_member et la propriété de la ligne ; puis store_connection passe à uninstalled par mark_shopify_store_connection_uninstalled_fenced (lib/shopify/token-lease.ts)."
+    "boundaryLine": 93,
+    "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (93, 153), disconnectShopAction = requireRole('owner') (170). Confirmed by direct grep, 3 exports, all gated. (APP-03/Lot 2 correctif : shopStatus() extrait vers lib/shopify/shop-status.ts, module pur sans env/Supabase.) SHOPIFY-OAUTH-FIRST-01 / D17 : listShopsAction lit aussi reauthorization_required_at (lecture seule, même requête scopée par ctx.member.merchantAccountId). SHOPIFY-EXPIRING-TOKENS-01 : disconnectShopAction n'écrit plus shop directement — elle appelle la RPC service_role-only disconnect_shop_fenced (0159, line 178) avec ctx.user.id et ctx.member.merchantAccountId (dérivés serveur), qui réévalue sous verrou le rôle owner sur merchant_member et la propriété de la ligne ; puis store_connection passe à uninstalled par mark_shopify_store_connection_uninstalled_fenced (lib/shopify/token-lease.ts)."
   },
   {
     "file": "lib/actions/stock.ts",

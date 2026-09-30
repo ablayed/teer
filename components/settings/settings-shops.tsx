@@ -391,7 +391,11 @@ function ShopCard({
           {shop.status === 'error' ? (
             <div className="rounded-md border border-danger/30 bg-danger-subtle p-3 text-sm text-danger">
               <p>
-                {shop.reason === 'token_expired' ? t('reasons.tokenExpired') : t('reasons.generic')}
+                {shop.reason === 'reauthorization_required'
+                  ? t('reasons.reauthorizationRequired')
+                  : shop.reason === 'token_expired'
+                    ? t('reasons.tokenExpired')
+                    : t('reasons.generic')}
               </p>
               <p className="mt-3 text-sm text-muted">{t('reasons.reconnectInstructions')}</p>
             </div>

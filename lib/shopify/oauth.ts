@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ShopifyAppDistribution } from '@/lib/shopify/app-registry-sources';
+import { ShopifyTokenRefreshError } from '@/lib/shopify/token-refresh-error';
 
 // SHOPIFY-EXPIRING-TOKENS-01 §3 — seule règle de décision de `expiring=1`, sur les DEUX chemins
 // d'acquisition (échange de code et échange par ID token). Shopify n'exige les jetons expirants
@@ -179,28 +180,49 @@ export async function exchangeCodeForToken({
 }
 
 // Renouvelle un access token offline expirant via le refresh token (grant_type=refresh_token).
-// Renvoie le nouveau couple access/refresh + expirations. Lève si le refresh est refusé
-// (ex. refresh token expiré → re-OAuth nécessaire). Aucun token n'est journalisé ici.
+// Renvoie le nouveau couple access/refresh + expirations. Aucun token n'est journalisé ici.
+//
+// SHOPIFY-OAUTH-FIRST-01 / D17 — un échec lève TOUJOURS une `ShopifyTokenRefreshError` : statut
+// HTTP (ou `null` sans réponse), code `error` et description lus dans le corps de la réponse
+// d'erreur. Jamais le jeton, ni celui envoyé, ni un éventuel corps de succès.
 export async function refreshAccessToken({
   shop,
   clientId,
   clientSecret,
   refreshToken,
 }: RefreshTokenInput): Promise<TokenResponse> {
-  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    }),
-    signal: AbortSignal.timeout(SHOPIFY_TOKEN_REQUEST_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      }),
+      signal: AbortSignal.timeout(SHOPIFY_TOKEN_REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    // Réseau ou délai dépassé : aucune réponse reçue.
+    throw new ShopifyTokenRefreshError({ status: null, errorCode: null, description: null });
+  }
 
   if (!response.ok) {
-    throw new Error(`Shopify token refresh failed with status ${response.status}`);
+    let errorCode: string | null = null;
+    let description: string | null = null;
+    try {
+      const body: unknown = await response.json();
+      if (body && typeof body === 'object' && !Array.isArray(body)) {
+        const record = body as Record<string, unknown>;
+        errorCode = readStringProperty(record, 'error') ?? null;
+        description = readStringProperty(record, 'error_description') ?? null;
+      }
+    } catch {
+      // Corps absent ou non JSON : seul le statut est connu.
+    }
+    throw new ShopifyTokenRefreshError({ status: response.status, errorCode, description });
   }
 
   return parseTokenResponse(await response.json());
