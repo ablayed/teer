@@ -5,8 +5,15 @@
 // Shopify : le endpoint de jeton est remplacé, au niveau de `fetch`, par une réponse locale.
 import { createHash, randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestPostgresClient, createTestPostgresClient } from '../helpers/postgres-client';
+
+// Sentinelles observées (R2 : un effet échoué doit rester OBSERVABLE) ; aucun envoi réel.
+const sentry = vi.hoisted(() => ({ messages: [] as Array<{ message: string; context: unknown }> }));
+vi.mock('@sentry/nextjs', () => ({
+  captureMessage: (message: string, context: unknown) => sentry.messages.push({ message, context }),
+  captureException: () => undefined,
+}));
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -330,6 +337,10 @@ afterEach(async () => {
   await pg.query('delete from public.shopify_pending_installation where shop_domain = any($1)', [
     createdDomains,
   ]);
+  await pg.query(
+    'delete from public.product where shop_id in (select id from public.shop where shop_domain = any($1))',
+    [createdDomains],
+  );
   await pg.query('delete from public.shop where shop_domain = any($1)', [createdDomains]);
   await pg.query('delete from public.shopify_token_lease where shop_domain = any($1)', [
     createdDomains,
@@ -742,6 +753,693 @@ describe('B3 — GET /shopify/claim en lecture seule', () => {
       expect(await loadView(result.ticket)).toEqual({ kind: 'ticket_invalid' });
       expect(await snapshot(domain)).toEqual(before);
       expect(await pendingRows(domain)).toHaveLength(1);
+    },
+  );
+});
+
+describe('B4 — POST de rattachement contre la base réelle', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    sentry.messages.length = 0;
+  });
+
+  async function claim(
+    ticket: string | undefined,
+    options: {
+      as?: Tenant;
+      userId?: string;
+      syncOk?: boolean;
+      realSync?: boolean;
+      admin?: ReturnType<typeof service>;
+    } = {},
+  ) {
+    const { performShopifyClaim } = await import('@/lib/shopify/claim-core');
+    const as = options.as ?? tenant;
+    return performShopifyClaim(
+      options.admin ?? service(),
+      {
+        ticket,
+        userId: options.userId ?? as.userId,
+        merchantAccountId: as.merchantAccountId,
+        resolveApp: (clientId) => (clientId === APP ? APP_CONFIG : null),
+      },
+      options.realSync ? undefined : { syncProducts: async () => options.syncOk ?? true },
+    );
+  }
+
+  async function pendingTicket(domain: string, label = 'granted'): Promise<string> {
+    const { result } = await authorizeWithoutSession(domain, { label });
+    if (result.kind !== 'pending') throw new Error(`attendu : pending, reçu ${result.kind}`);
+    return result.ticket;
+  }
+
+  async function shopCount(domain: string): Promise<number> {
+    const { rows } = await (await pgConnect()).query(
+      'select count(*)::int as n from public.shop where shop_domain = $1',
+      [domain],
+    );
+    return rows[0].n as number;
+  }
+
+  // Agent du locataire : l'utilisateur de test naît propriétaire de son propre espace
+  // (`handle_new_user`) ; son appartenance est déplacée vers le locataire, triggers de fixture
+  // neutralisés le temps de ces deux écritures (état posé, pas un parcours rejoué).
+  async function addAgent(): Promise<string> {
+    const agent = await createTenant('oauth-first-01-agent');
+    const pg = await pgConnect();
+    await pg.query('begin');
+    try {
+      await pg.query("set local session_replication_role = 'replica'");
+      await pg.query('delete from public.merchant_member where user_id = $1', [agent.userId]);
+      await pg.query(
+        `insert into public.merchant_member (merchant_account_id, user_id, role)
+         values ($1, $2, 'agent')`,
+        [tenant.merchantAccountId, agent.userId],
+      );
+      await pg.query('commit');
+    } catch (error) {
+      await pg.query('rollback');
+      throw error;
+    }
+    return agent.userId;
+  }
+
+  // Réseau Shopify remplacé : refresh et GraphQL produits, sans aucun appel réel.
+  function mockShopifyNetwork(options: { graphqlStatus?: number; refreshLabel?: string } = {}) {
+    const calls = { refresh: 0, graphql: 0 };
+    // Identifiants Shopify propres à chaque test : l'index produit est unique par marchand.
+    const productId = String(Date.now()) + String(Math.floor(Math.random() * 1000));
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/admin/oauth/access_token')) {
+        calls.refresh += 1;
+        return new Response(
+          JSON.stringify({
+            access_token: `${options.refreshLabel ?? 'refreshed'}-access`,
+            refresh_token: `${options.refreshLabel ?? 'refreshed'}-refresh`,
+            expires_in: 3600,
+            refresh_token_expires_in: 7_776_000,
+            scope: 'read_orders,read_customers,read_products',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/graphql.json')) {
+        calls.graphql += 1;
+        if (options.graphqlStatus && options.graphqlStatus !== 200) {
+          return new Response('{}', { status: options.graphqlStatus });
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              products: {
+                edges: [
+                  {
+                    cursor: 'c1',
+                    node: {
+                      id: `gid://shopify/Product/${productId}`,
+                      title: 'Produit test',
+                      status: 'ACTIVE',
+                      variants: {
+                        edges: [
+                          {
+                            node: {
+                              id: `gid://shopify/ProductVariant/${productId}`,
+                              title: 'Défaut',
+                              sku: `SKU-${productId}`,
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    return calls;
+  }
+
+  async function productCount(shopId: string): Promise<number> {
+    const { rows } = await (await pgConnect()).query(
+      'select count(*)::int as n from public.product where shop_id = $1',
+      [shopId],
+    );
+    return rows[0].n as number;
+  }
+
+  it.skipIf(!hasStack)(
+    'T4 : GET puis POST, boutique neuve → insertion chez le demandeur, ticket consommé, credentials effacés de l’attente',
+    async () => {
+      const domain = freshDomain('t4');
+      const ticket = await pendingTicket(domain, 't4');
+      expect(await readPending(ticket)).toMatchObject({ state: 'valid' });
+      const auditsBefore = await auditCount(tenant.merchantAccountId, 'shopify.connected');
+
+      const outcome = await claim(ticket);
+
+      expect(outcome).toEqual({ kind: 'connected', syncPending: false });
+      const shop = await shopState(domain);
+      expect(shop?.merchant_account_id).toBe(tenant.merchantAccountId);
+      expect(shop?.status).toBe('active');
+      expect(await decryptValue(shop?.access_token_encrypted)).toBe('t4-access');
+      const [pending] = await pendingRows(domain);
+      expect(pending.consumed_at).not.toBeNull();
+      expect(pending.access_token_encrypted).toBeNull();
+      expect(await auditCount(tenant.merchantAccountId, 'shopify.connected')).toBe(
+        auditsBefore + 1,
+      );
+      expect(await connectionState(domain)).toMatchObject({
+        status: 'active',
+        platform_app_id: APP,
+      });
+      expect((await leaseState(domain))?.lease_expires_at).toBeNull();
+    },
+  );
+
+  it.skipIf(!hasStack)('T5 : rejeu du même ticket → refus, rien ne change', async () => {
+    const domain = freshDomain('t5');
+    const ticket = await pendingTicket(domain, 't5');
+    expect(await claim(ticket)).toMatchObject({ kind: 'connected' });
+    const shopAfterFirst = await shopState(domain);
+    const auditsAfterFirst = await auditCount(tenant.merchantAccountId, 'shopify.connected');
+
+    expect(await claim(ticket)).toEqual({ kind: 'error', code: 'ticket_invalid' });
+
+    expect((await shopState(domain))?.fingerprint).toBe(shopAfterFirst?.fingerprint);
+    expect(await auditCount(tenant.merchantAccountId, 'shopify.connected')).toBe(auditsAfterFirst);
+  });
+
+  it.skipIf(!hasStack)('T6 : ticket expiré → refus, aucune boutique créée', async () => {
+    const domain = freshDomain('t6');
+    const ticket = await pendingTicket(domain);
+    await (await pgConnect()).query(
+      `update public.shopify_pending_installation
+          set created_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'
+        where shop_domain = $1`,
+      [domain],
+    );
+
+    expect(await claim(ticket)).toEqual({ kind: 'error', code: 'ticket_invalid' });
+    expect(await shopCount(domain)).toBe(0);
+  });
+
+  it.skipIf(!hasStack)(
+    'T7 / T38 (d) : ticket falsifié, absent ou remplacé → refus ; le ticket courant reste valide',
+    async () => {
+      const domain = freshDomain('t7');
+      const superseded = await pendingTicket(domain, 'old');
+      const current = await pendingTicket(domain, 'current');
+
+      const forged = randomBytes(32).toString('base64url');
+      expect(await claim(forged)).toEqual({ kind: 'error', code: 'ticket_invalid' });
+      expect(await claim(undefined)).toEqual({ kind: 'error', code: 'ticket_invalid' });
+      expect(await claim(superseded)).toEqual({ kind: 'error', code: 'ticket_invalid' });
+      expect(await shopCount(domain)).toBe(0);
+
+      // Garde autoritative, en base : un ticket falsifié ne consomme aucune attente, même porteur
+      // de la génération courante du bail.
+      const lease = await import('@/lib/shopify/token-lease');
+      const acquired = await lease.acquireShopifyTokenLease(service(), domain);
+      if (!acquired.ok) throw new Error('bail non acquis');
+      const { data: forgedConsume } = await service().rpc('consume_shopify_pending_installation', {
+        p_ticket_hash: sha256(forged),
+        p_user_id: tenant.userId,
+        p_merchant_account_id: tenant.merchantAccountId,
+        p_generation: acquired.generation,
+      });
+      expect(forgedConsume?.[0]?.outcome).toBe('ticket_invalid');
+      await lease.releaseShopifyTokenLease(service(), domain, acquired.generation);
+      expect(await shopCount(domain)).toBe(0);
+
+      // Contrôle positif : le ticket courant rattache.
+      expect(await claim(current)).toMatchObject({ kind: 'connected' });
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T8 / T35 : boutique de X, POST par Y → refus générique, X inchangé, audit chez Y seulement',
+    async () => {
+      const domain = freshDomain('t8');
+      await seedShop(domain, { status: 'uninstalled', access: false });
+      const ownerBefore = await shopState(domain);
+      const ticket = await pendingTicket(domain);
+      const ownerConnected = await auditCount(tenant.merchantAccountId, 'shopify.connected');
+      const ownerRefused = await auditCount(tenant.merchantAccountId, 'shopify.claim_refused');
+      const requesterRefused = await auditCount(
+        otherTenant.merchantAccountId,
+        'shopify.claim_refused',
+      );
+
+      expect(await claim(ticket, { as: otherTenant })).toEqual({ kind: 'error', code: 'refused' });
+
+      expect((await shopState(domain))?.fingerprint).toBe(ownerBefore?.fingerprint);
+      expect(await pendingRows(domain)).toHaveLength(0);
+      expect(await auditCount(otherTenant.merchantAccountId, 'shopify.claim_refused')).toBe(
+        requesterRefused + 1,
+      );
+      expect(await auditCount(tenant.merchantAccountId, 'shopify.claim_refused')).toBe(
+        ownerRefused,
+      );
+      expect(await auditCount(tenant.merchantAccountId, 'shopify.connected')).toBe(ownerConnected);
+
+      // T35 : l'audit de refus ne désigne pas la boutique du propriétaire.
+      const { rows } = await (await pgConnect()).query(
+        `select actor_user_id, resource_id, coalesce(payload::text, '') as payload
+           from public.audit_log
+          where merchant_account_id = $1 and action = 'shopify.claim_refused'
+          order by created_at desc limit 1`,
+        [otherTenant.merchantAccountId],
+      );
+      expect(rows[0]).toEqual({
+        actor_user_id: otherTenant.userId,
+        resource_id: null,
+        payload: '',
+      });
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T10 : un agent du locataire ne consomme pas le ticket (garde SQL D4) ; le ticket reste valide',
+    async () => {
+      const domain = freshDomain('t10');
+      const ticket = await pendingTicket(domain);
+      const agentUserId = await addAgent();
+
+      expect(await claim(ticket, { userId: agentUserId })).toEqual({
+        kind: 'error',
+        code: 'forbidden',
+      });
+      expect(await shopCount(domain)).toBe(0);
+      expect(await readPending(ticket)).toMatchObject({ state: 'valid' });
+
+      // Contrôle positif : le propriétaire du même locataire rattache.
+      expect(await claim(ticket)).toMatchObject({ kind: 'connected' });
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T14 : même locataire, boutique désinstallée → reconnexion, sans doublon',
+    async () => {
+      const domain = freshDomain('t14');
+      await seedShop(domain, { status: 'uninstalled', access: false });
+      const before = await shopState(domain);
+      const ticket = await pendingTicket(domain, 't14');
+
+      expect(await claim(ticket)).toEqual({ kind: 'connected', syncPending: false });
+
+      expect(await shopCount(domain)).toBe(1);
+      const after = await shopState(domain);
+      expect(after?.id).toBe(before?.id);
+      expect(after?.status).toBe('active');
+      expect(await decryptValue(after?.access_token_encrypted)).toBe('t14-access');
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T22c (POST) : boutique déconnectée → le POST du même locataire reconnecte',
+    async () => {
+      const domain = freshDomain('t22c-post');
+      await seedShop(domain, { accessExpiresInMs: null });
+      const shop = await shopState(domain);
+      const { error } = await service().rpc('disconnect_shop_fenced', {
+        p_user_id: tenant.userId,
+        p_merchant_account_id: tenant.merchantAccountId,
+        p_shop_id: shop?.id as string,
+        p_ttl_seconds: 60,
+      });
+      if (error) throw new Error(error.message);
+      await releaseLeaseDirectly(domain);
+      const ticket = await pendingTicket(domain, 't22c');
+      expect((await shopState(domain))?.status).toBe('uninstalled');
+
+      expect(await claim(ticket)).toMatchObject({ kind: 'connected' });
+      const after = await shopState(domain);
+      expect(after?.status).toBe('active');
+      expect(await decryptValue(after?.access_token_encrypted)).toBe('t22c-access');
+    },
+  );
+
+  // Reconnexion de la boutique par un autre chemin (persistance fencée directe), APRÈS le callback
+  // qui a créé l'attente : l'attente devient périmée.
+  async function reconnectByOtherPath(domain: string) {
+    const lease = await import('@/lib/shopify/token-lease');
+    const acquired = await lease.acquireShopifyTokenLease(service(), domain);
+    if (!acquired.ok) throw new Error('bail non acquis');
+    const persisted = await lease.persistShopifyCredentialsFenced(service(), {
+      mode: 'authorization_code',
+      shopDomain: domain,
+      generation: acquired.generation,
+      merchantAccountId: tenant.merchantAccountId,
+      clientId: APP,
+      accessTokenEncrypted: await encrypt('other-path-access'),
+      refreshTokenEncrypted: await encrypt('other-path-refresh'),
+      accessTokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scopes: 'read_orders',
+    });
+    expect(persisted.outcome).toBe('updated');
+    await lease.releaseShopifyTokenLease(service(), domain, acquired.generation);
+  }
+
+  it.skipIf(!hasStack)(
+    'T34 / D22 : attente périmée, même locataire → already_connected, empreinte de tous les credentials inchangée, aucun audit',
+    async () => {
+      const domain = freshDomain('t34');
+      await seedShop(domain, { status: 'uninstalled', access: false });
+      const staleTicket = await pendingTicket(domain, 'stale');
+      await reconnectByOtherPath(domain);
+      const reconnected = await shopState(domain);
+      const audits = await auditCount(tenant.merchantAccountId, 'shopify.connected');
+
+      expect(await claim(staleTicket)).toEqual({ kind: 'already_connected' });
+
+      expect((await shopState(domain))?.fingerprint).toBe(reconnected?.fingerprint);
+      expect(await decryptValue((await shopState(domain))?.access_token_encrypted)).toBe(
+        'other-path-access',
+      );
+      expect(await auditCount(tenant.merchantAccountId, 'shopify.connected')).toBe(audits);
+      expect(await pendingRows(domain)).toHaveLength(0);
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T34 / D22 : attente périmée, autre locataire → refused, boutique inchangée',
+    async () => {
+      const domain = freshDomain('t34-other');
+      await seedShop(domain, { status: 'uninstalled', access: false });
+      const staleTicket = await pendingTicket(domain, 'stale');
+      await reconnectByOtherPath(domain);
+      const reconnected = await shopState(domain);
+
+      expect(await claim(staleTicket, { as: otherTenant })).toEqual({
+        kind: 'error',
+        code: 'refused',
+      });
+      expect((await shopState(domain))?.fingerprint).toBe(reconnected?.fingerprint);
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T34 (contrôles positifs) : active sans jeton, et app NULL avec jetons → updated',
+    async () => {
+      const noToken = freshDomain('t34-no-token');
+      await seedShop(noToken, { access: false });
+      expect(await claim(await pendingTicket(noToken))).toMatchObject({ kind: 'connected' });
+      expect((await shopState(noToken))?.shopify_client_id).toBe(APP);
+
+      const nullApp = freshDomain('t34-null-app');
+      await seedShop(nullApp, { clientId: null });
+      expect(await claim(await pendingTicket(nullApp))).toMatchObject({ kind: 'connected' });
+      expect((await shopState(nullApp))?.shopify_client_id).toBe(APP);
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T9 / T21 : deux POST concurrents (TS, bail réel) → un seul rattachement, un seul audit, store_connection unique',
+    async () => {
+      const domain = freshDomain('t9-ts');
+      const ticket = await pendingTicket(domain);
+      const audits = await auditCount(tenant.merchantAccountId, 'shopify.connected');
+
+      const outcomes = await Promise.all([
+        claim(ticket, { admin: service() }),
+        claim(ticket, { admin: service() }),
+      ]);
+
+      expect(outcomes.filter((outcome) => outcome.kind === 'connected')).toHaveLength(1);
+      expect(await auditCount(tenant.merchantAccountId, 'shopify.connected')).toBe(audits + 1);
+      expect(await shopCount(domain)).toBe(1);
+      const { rows } = await (await pgConnect()).query(
+        "select count(*)::int as n from public.store_connection where platform = 'shopify' and external_identifier = $1",
+        [domain],
+      );
+      expect(rows[0].n).toBe(1);
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T9 / T21 : deux consommations SQL concurrentes sous la MÊME génération → une seule réussit (relecture sous verrou)',
+    async () => {
+      const domain = freshDomain('t9-sql');
+      const ticket = await pendingTicket(domain);
+      const lease = await import('@/lib/shopify/token-lease');
+      const acquired = await lease.acquireShopifyTokenLease(service(), domain);
+      if (!acquired.ok) throw new Error('bail non acquis');
+      const audits = await auditCount(tenant.merchantAccountId, 'shopify.connected');
+
+      const consume = () =>
+        service().rpc('consume_shopify_pending_installation', {
+          p_ticket_hash: sha256(ticket),
+          p_user_id: tenant.userId,
+          p_merchant_account_id: tenant.merchantAccountId,
+          p_generation: acquired.generation,
+        });
+      const results = await Promise.all([consume(), consume(), consume()]);
+
+      const outcomes = results.map((result) => result.data?.[0]?.outcome);
+      expect(outcomes.filter((outcome) => outcome === 'inserted')).toHaveLength(1);
+      expect(outcomes.filter((outcome) => outcome === 'ticket_invalid')).toHaveLength(2);
+      expect(await auditCount(tenant.merchantAccountId, 'shopify.connected')).toBe(audits + 1);
+      expect(await shopCount(domain)).toBe(1);
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'R3 (POST) : bail repris avant la consommation → lease_lost, aucune libération, ticket conservé',
+    async () => {
+      const domain = freshDomain('r3-post');
+      const ticket = await pendingTicket(domain);
+      const { admin, releases } = countingService();
+      // Un autre détenteur reprend le bail juste avant la transaction de consommation.
+      const originalRpc = admin.rpc.bind(admin);
+      (admin as unknown as { rpc: (...args: unknown[]) => unknown }).rpc = async (
+        ...args: unknown[]
+      ) => {
+        if (args[0] === 'consume_shopify_pending_installation') await preemptLease(domain);
+        return (originalRpc as (...inner: unknown[]) => unknown)(...args);
+      };
+
+      expect(await claim(ticket, { admin })).toEqual({
+        kind: 'error',
+        code: 'connection_in_progress',
+      });
+      expect(releases).toEqual([]);
+      expect((await leaseState(domain))?.lease_expires_at).not.toBeNull();
+      expect(await readPending(ticket)).toMatchObject({ state: 'valid' });
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T18 : échec de la transaction de consommation → rollback, ticket intact puis utilisable',
+    async () => {
+      const domain = freshDomain('t18');
+      const ticket = await pendingTicket(domain, 't18');
+      // Échec injecté APRÈS la persistance, SANS DDL (un verrou de DDL sur une table partagée
+      // interbloque les suites parallèles) : un membre `owner` « fantôme », sans utilisateur
+      // auth, est posé sur cette seule session (FK suspendues le temps de cette écriture). La
+      // consommation passe la garde de rôle, persiste, puis l'audit échoue sur sa FK
+      // `actor_user_id` : toute la transaction doit être annulée.
+      const ghostUserId = crypto.randomUUID();
+      const pg = await pgConnect();
+      await pg.query('begin');
+      try {
+        await pg.query("set local session_replication_role = 'replica'");
+        await pg.query(
+          `insert into public.merchant_member (merchant_account_id, user_id, role)
+           values ($1, $2, 'owner')`,
+          [tenant.merchantAccountId, ghostUserId],
+        );
+        await pg.query('commit');
+      } catch (error) {
+        await pg.query('rollback');
+        throw error;
+      }
+      try {
+        expect(await claim(ticket, { userId: ghostUserId })).toEqual({
+          kind: 'error',
+          code: 'unknown',
+        });
+        expect(await shopCount(domain)).toBe(0);
+        const [pending] = await pendingRows(domain);
+        expect(pending.consumed_at).toBeNull();
+        expect(pending.access_token_encrypted).not.toBeNull();
+      } finally {
+        await pg.query('delete from public.merchant_member where user_id = $1', [ghostUserId]);
+      }
+
+      // Le ticket non consommé reste utilisable.
+      expect(await claim(ticket)).toMatchObject({ kind: 'connected' });
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T17 : access échu et refresh valide → connectée ; la synchronisation rafraîchit APRÈS la libération du bail',
+    async () => {
+      const domain = freshDomain('t17');
+      const ticket = await pendingTicket(domain, 't17');
+      await (await pgConnect()).query(
+        `update public.shopify_pending_installation
+            set access_token_expires_at = now() - interval '1 minute'
+          where shop_domain = $1`,
+        [domain],
+      );
+      const network = mockShopifyNetwork({ refreshLabel: 't17-refreshed' });
+
+      const outcome = await claim(ticket, { realSync: true });
+
+      expect(outcome).toEqual({ kind: 'connected', syncPending: false });
+      expect(network.refresh).toBe(1);
+      expect(network.graphql).toBe(1);
+      const shop = await shopState(domain);
+      expect(await decryptValue(shop?.access_token_encrypted)).toBe('t17-refreshed-access');
+      expect(await productCount(shop?.id as string)).toBe(1);
+      expect((await leaseState(domain))?.lease_expires_at).toBeNull();
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T27 / T28 : synchronisation en échec → rattachement réussi, échec observable, relance sans doublon',
+    async () => {
+      const domain = freshDomain('t27');
+      const ticket = await pendingTicket(domain, 't27');
+      mockShopifyNetwork({ graphqlStatus: 500 });
+
+      expect(await claim(ticket, { realSync: true })).toEqual({
+        kind: 'connected',
+        syncPending: true,
+      });
+      const shop = await shopState(domain);
+      expect(shop?.status).toBe('active');
+      expect(
+        sentry.messages.filter((entry) => entry.message === 'shopify_post_connect_effect_failed'),
+      ).toHaveLength(1);
+      expect(JSON.stringify(sentry.messages)).not.toContain(domain);
+      expect(await productCount(shop?.id as string)).toBe(0);
+
+      // Relance (T27), puis rejeu (T28) : un seul produit.
+      mockShopifyNetwork();
+      const { syncProductsAfterConnect } = await import('@/lib/shopify/post-connect-effects');
+      const relaunch = () =>
+        syncProductsAfterConnect(service(), {
+          shopId: shop?.id as string,
+          app: APP_CONFIG,
+          actorUserId: tenant.userId,
+        });
+      expect(await relaunch()).toBe(true);
+      expect(await productCount(shop?.id as string)).toBe(1);
+      expect(await relaunch()).toBe(true);
+      expect(await productCount(shop?.id as string)).toBe(1);
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T37 (cœur) : store_connection refusée et synchronisation échouée → connectée, sync en attente',
+    async () => {
+      const domain = freshDomain('t37-claim');
+      const ticket = await pendingTicket(domain, 't37-claim');
+      const pg = await pgConnect();
+      const { rows } = await pg.query(
+        'select id from public.shop where merchant_account_id = $1 limit 1',
+        [otherTenant.merchantAccountId],
+      );
+      await pg.query(
+        `insert into public.store_connection (merchant_account_id, shop_id, platform,
+           external_identifier, platform_app_id, status)
+         values ($1, $2, 'shopify', $3, $4, 'active')`,
+        [otherTenant.merchantAccountId, rows[0].id, domain, APP],
+      );
+
+      expect(await claim(ticket, { syncOk: false })).toEqual({
+        kind: 'connected',
+        syncPending: true,
+      });
+      expect((await shopState(domain))?.status).toBe('active');
+      expect((await leaseState(domain))?.lease_expires_at).toBeNull();
+    },
+  );
+});
+
+describe('T13 — ACL de 0160 : service_role seul', () => {
+  it.skipIf(!hasStack)(
+    'table, colonnes et fonctions : aucun privilège pour anon ni authenticated',
+    async () => {
+      const pg = await pgConnect();
+      const { rows: table } = await pg.query(`
+        select r.rolname,
+               has_table_privilege(r.rolname, 'public.shopify_pending_installation', 'SELECT') as sel,
+               has_table_privilege(r.rolname, 'public.shopify_pending_installation', 'INSERT') as ins,
+               has_table_privilege(r.rolname, 'public.shopify_pending_installation', 'UPDATE') as upd,
+               has_table_privilege(r.rolname, 'public.shopify_pending_installation', 'DELETE') as del,
+               has_any_column_privilege(r.rolname, 'public.shopify_pending_installation', 'SELECT,INSERT,UPDATE') as col
+          from pg_roles r where r.rolname in ('anon', 'authenticated', 'service_role')
+         order by r.rolname`);
+      expect(table).toEqual([
+        { rolname: 'anon', sel: false, ins: false, upd: false, del: false, col: false },
+        { rolname: 'authenticated', sel: false, ins: false, upd: false, del: false, col: false },
+        // INSERT et UPDATE : accordés colonne par colonne (0160), jamais sur la table entière.
+        { rolname: 'service_role', sel: true, ins: false, upd: false, del: true, col: true },
+      ]);
+      const { rows: columns } = await pg.query(`
+        select has_column_privilege('service_role', 'public.shopify_pending_installation', 'ticket_hash', 'INSERT') as ins_ticket,
+               has_column_privilege('service_role', 'public.shopify_pending_installation', 'consumed_at', 'UPDATE') as upd_consumed,
+               has_column_privilege('service_role', 'public.shopify_pending_installation', 'ticket_hash', 'UPDATE') as upd_ticket,
+               has_column_privilege('authenticated', 'public.shopify_pending_installation', 'ticket_hash', 'SELECT') as auth_sel_ticket`);
+      expect(columns).toEqual([
+        { ins_ticket: true, upd_consumed: true, upd_ticket: false, auth_sel_ticket: false },
+      ]);
+
+      const { rows: rls } = await pg.query(`
+        select relrowsecurity, relforcerowsecurity,
+               (select count(*)::int from pg_policies where tablename = 'shopify_pending_installation') as policies
+          from pg_class where oid = 'public.shopify_pending_installation'::regclass`);
+      expect(rls).toEqual([{ relrowsecurity: true, relforcerowsecurity: true, policies: 0 }]);
+
+      const { rows: functions } = await pg.query(`
+        select p.proname,
+               has_function_privilege('anon', p.oid, 'EXECUTE') as anon,
+               has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated,
+               has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role,
+               p.prosecdef
+          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname in (
+           'classify_shopify_entry', 'decide_and_write_shopify_authorization',
+           'consume_shopify_pending_installation', 'read_shopify_pending_installation',
+           'uninstall_shopify_pending_or_shop', 'mark_shopify_reauthorization_required',
+           'purge_expired_shopify_pending_installations', 'persist_shopify_credentials_fenced')
+         order by p.proname`);
+      expect(functions).toHaveLength(8);
+      for (const fn of functions) {
+        expect(fn).toMatchObject({
+          anon: false,
+          authenticated: false,
+          service_role: true,
+          prosecdef: false,
+        });
+      }
+
+      // `shop.reauthorization_required_at` : aucune écriture hors service_role. Sa lecture suit le
+      // régime préexistant de `shop` (SELECT de table pour anon et authenticated, lignes filtrées
+      // par la RLS forcée) : la colonne n'y ajoute ni n'y retire rien.
+      const { rows: shopColumn } = await pg.query(`
+        select r.rolname,
+               has_column_privilege(r.rolname, 'public.shop', 'reauthorization_required_at', 'UPDATE') as upd,
+               has_column_privilege(r.rolname, 'public.shop', 'reauthorization_required_at', 'INSERT') as ins,
+               has_column_privilege(r.rolname, 'public.shop', 'reauthorization_required_at', 'SELECT')
+                 = has_table_privilege(r.rolname, 'public.shop', 'SELECT') as select_follows_table
+          from pg_roles r where r.rolname in ('anon', 'authenticated') order by r.rolname`);
+      expect(shopColumn).toEqual([
+        { rolname: 'anon', upd: false, ins: false, select_follows_table: true },
+        { rolname: 'authenticated', upd: false, ins: false, select_follows_table: true },
+      ]);
     },
   );
 });

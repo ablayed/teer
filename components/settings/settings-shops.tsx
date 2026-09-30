@@ -95,7 +95,11 @@ export function SettingsShops({ currentRole }: SettingsShopsProps) {
   // l'ancienne page /boutiques — désormais une simple redirection vers cet onglet.
   const [connectedParam] = useQueryState('connected');
   const [errorParam] = useQueryState('error');
+  // SHOPIFY-OAUTH-FIRST-01 / R2 — la connexion a réussi, un effet après persistance
+  // (store_connection, synchronisation des produits) a échoué : jamais une bannière d'échec.
+  const [syncParam] = useQueryState('sync');
   const showOauthSuccess = connectedParam === '1';
+  const showSyncPending = syncParam === 'pending';
   const oauthErrorMessage = errorParam
     ? isOauthErrorCode(errorParam)
       ? t(`errors.${errorParam}`)
@@ -114,6 +118,13 @@ export function SettingsShops({ currentRole }: SettingsShopsProps) {
         <div className="flex items-start gap-3 rounded-lg border border-success/30 bg-surface p-4 text-success">
           <CheckCircle2 aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
           <p className="text-sm font-medium">{t('messages.connected')}</p>
+        </div>
+      ) : null}
+
+      {showSyncPending ? (
+        <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/15 p-4 text-text">
+          <AlertCircle aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+          <p className="text-sm font-medium">{t('messages.syncPending')}</p>
         </div>
       ) : null}
 

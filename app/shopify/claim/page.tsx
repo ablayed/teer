@@ -6,6 +6,7 @@
 // cookie et une session.
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { ClaimConfirmForm } from './claim-confirm-form';
 import { loadShopifyClaimPageView } from './load-claim-view';
 
 export const dynamic = 'force-dynamic';
@@ -64,6 +65,7 @@ export default async function ShopifyClaimPage() {
         <span className="font-semibold text-text">{view.accountName}</span>. Vérifiez le nom de la
         boutique avant de confirmer.
       </p>
+      <ClaimConfirmForm />
     </main>
   );
 }

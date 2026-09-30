@@ -257,5 +257,12 @@
     "boundaryFile": "app/shopify/claim/load-claim-view.ts",
     "boundaryLine": 38,
     "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B3 — READ-ONLY GET (app/shopify/claim/page.tsx renders what this loader returns). The admin client only calls read_shopify_pending_installation (0160, service_role-only, STABLE, returns state + shop domain + app client id — never a credential nor an internal id), keyed by the sha256 of the httpOnly/Lax ticket cookie scoped to /shopify/claim (lib/shopify/claim-ticket.ts). A malformed ticket never reaches the database. Session, membership (same read as requireRole) and account name go through the RLS session client. No write on any branch (T15, proven against real Postgres with the SQL read mutated into a write: tests/rls/shopify-oauth-first-01.rls.test.ts). The attachment itself is the POST server action (owner/manager re-checked server-side and in SQL)."
+  },
+  {
+    "file": "lib/actions/shopify-claim.ts",
+    "boundaryType": "requireRole-session-ticket-cookie",
+    "boundaryFile": "lib/actions/shopify-claim.ts",
+    "boundaryLine": 36,
+    "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B4 — POST server action, treated as directly reachable. requireRole('owner','manager') at the cited line re-authenticates and re-checks the role on every call (Next's Origin check admits requests WITHOUT Origin, so it is never relied upon). User and tenant come from the session (ctx.user.id, ctx.member.merchantAccountId); the input schema is empty; the ticket is read ONLY from its httpOnly/SameSite=Lax cookie scoped to /shopify/claim. The admin client runs performShopifyClaim (lib/shopify/claim-core.ts): read_shopify_pending_installation, the Shopify token lease, consume_shopify_pending_installation (0160, service_role-only: role re-checked under lock, ownership then app, stale pending D22, fenced persist, audit, ticket consumed in one transaction), write_shopify_store_connection_fenced, and the shopify.claim_refused audit written in the REQUESTER tenant only. Proven by tests/unit/shopify-oauth-first-claim-action.test.ts, tests/rls/shopify-oauth-first-01.rls.test.ts and tests/e2e/shopify-claim-csrf.spec.ts (guards mutation-tested)."
   }
 ]

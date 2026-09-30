@@ -756,7 +756,8 @@
         "appReleased": "Application libérée. Vous pouvez désormais rattacher une nouvelle application Shopify."
       },
       "messages": {
-        "connected": "Boutique connectée avec succès !"
+        "connected": "Boutique connectée avec succès !",
+        "syncPending": "La boutique est connectée, mais sa synchronisation n’a pas abouti. Relancez-la avec « Synchroniser »."
       },
       "woocommerce": {
         "title": "Gérez vos boutiques connectées",
