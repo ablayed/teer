@@ -10,6 +10,7 @@ import {
   getShopifyAppByClientId,
   getShopifyAppForShop,
 } from '@/lib/shopify/apps';
+import { resolveGdprShopDomain } from '@/lib/shopify/gdpr-shop-domain';
 import {
   type WebhookShopRow,
   finishWebhookStatus,
@@ -181,21 +182,34 @@ async function resolveLegacyShopForTopic(
   headerShopDomain: string | null,
   payload: unknown,
 ): Promise<LegacyShopResolution> {
-  if (isSignedShopDomainTopic(topic)) {
-    const resolved = resolveSignedShopDomain(headerShopDomain, payload, {
-      allowHeaderFallback: topic === 'app/uninstalled',
+  // SHOPIFY-OAUTH-FIRST-01 / D20a — topics RGPD : HMAC déjà vérifié sur le corps brut (POST),
+  // corps parsé ; le domaine du corps signé fait autorité, l'en-tête doit lui être strictement
+  // égal après normalisation (lib/shopify/gdpr-shop-domain.ts). Rejet terminal AVANT toute
+  // résolution de boutique, toute lecture de données client, toute DSAR et toute suppression.
+  if (topic !== 'app/uninstalled' && isSignedShopDomainTopic(topic)) {
+    const gdpr = resolveGdprShopDomain(headerShopDomain, payload);
+    if (!gdpr.ok) {
+      logWebhookError(`[webhook] ${topic} shop domain ${gdpr.reason}`, { topic });
+      return { ok: false, errorCode: `gdpr_shop_domain_${gdpr.reason}` };
+    }
+    const shop = await resolveShopForTopic(supabase, topic, {
+      by: 'domain',
+      shopDomain: gdpr.shopDomain,
     });
-    const isGdpr = topic !== 'app/uninstalled';
+    return { ok: true, shop, shopDomain: gdpr.shopDomain };
+  }
+
+  if (isSignedShopDomainTopic(topic)) {
+    // Seul `app/uninstalled` arrive ici (les topics RGPD sont traités ci-dessus).
+    const resolved = resolveSignedShopDomain(headerShopDomain, payload, {
+      allowHeaderFallback: true,
+    });
 
     if (!resolved.ok) {
       const errorCode =
         resolved.reason === 'mismatch'
-          ? isGdpr
-            ? 'gdpr_shop_domain_mismatch'
-            : 'shopify_uninstall_shop_domain_mismatch'
-          : isGdpr
-            ? 'gdpr_shop_domain_missing'
-            : 'shopify_uninstall_shop_domain_missing';
+          ? 'shopify_uninstall_shop_domain_mismatch'
+          : 'shopify_uninstall_shop_domain_missing';
       logWebhookError(`[webhook] ${topic} shop domain ${resolved.reason}`, {
         topic,
         headerShopDomain,

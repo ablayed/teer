@@ -365,6 +365,8 @@ const CONTROLLED_WEBHOOK_ERROR_CODES = new Set([
   'shopify_uninstall_app_unidentified',
   'gdpr_shop_domain_missing',
   'gdpr_shop_domain_mismatch',
+  // SHOPIFY-OAUTH-FIRST-01 / D20a — domaine non canonique ou à espace interne.
+  'gdpr_shop_domain_invalid',
   'gdpr_shop_lookup_failed',
   'gdpr_shop_not_found',
   'gdpr_customer_id_missing',
@@ -401,6 +403,7 @@ export function isTerminalWebhookError(error: unknown): boolean {
   return new Set([
     'gdpr_shop_domain_missing',
     'gdpr_shop_domain_mismatch',
+    'gdpr_shop_domain_invalid',
     'gdpr_shop_not_found',
     'gdpr_customer_id_missing',
     'gdpr_topic_not_supported',
