@@ -118,7 +118,9 @@ describe('preuve 12 — aucun écrivain direct de credentials Shopify ne subsist
       '0126_workspace_store_foundation.sql',
       // Finalisation WooCommerce (`new_shop`) : exception hors protocole Shopify.
       '0154_r2_woocommerce_first_shop.sql',
-      // Primitives non fencées de 0155 : plus aucun appelant (test ci-dessus), fermeture en 0160.
+      // Primitives non fencées de 0155 : plus aucun appelant (test ci-dessus). Leur fermeture,
+      // annoncée « 0160 » par l'en-tête immuable de 0159, est renumérotée : 0160 est
+      // SHOPIFY-OAUTH-FIRST-01 (ci-dessous), la fermeture viendra au plus tôt en 0161.
       '0155_sec_shop_claim_01_shop_identity_writes.sql',
       // Primitives fencées.
       '0158_schema_token_lease_01_shopify_token_lease.sql',
