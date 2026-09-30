@@ -791,7 +791,10 @@ describe('B4 — POST de rattachement contre la base réelle', () => {
 
   async function pendingTicket(domain: string, label = 'granted'): Promise<string> {
     const { result } = await authorizeWithoutSession(domain, { label });
-    if (result.kind !== 'pending') throw new Error(`attendu : pending, reçu ${result.kind}`);
+    if (result.kind !== 'pending') {
+      // Code joint : une récidive doit être lisible sans relance.
+      throw new Error(`attendu : pending, reçu ${JSON.stringify(result)}`);
+    }
     return result.ticket;
   }
 
@@ -1235,6 +1238,38 @@ describe('B4 — POST de rattachement contre la base réelle', () => {
       expect(releases).toEqual([]);
       expect((await leaseState(domain))?.lease_expires_at).not.toBeNull();
       expect(await readPending(ticket)).toMatchObject({ state: 'valid' });
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'fencing de consume : génération périmée → lease_lost AVANT toute écriture, même sur un verdict sans persistance',
+    async () => {
+      const domain = freshDomain('fencing-consume');
+      await seedShop(domain, { status: 'uninstalled', access: false });
+      const ticket = await pendingTicket(domain);
+      const lease = await import('@/lib/shopify/token-lease');
+      const acquired = await lease.acquireShopifyTokenLease(service(), domain);
+      if (!acquired.ok) throw new Error('bail non acquis');
+      await preemptLease(domain);
+      const refusedBefore = await auditCount(
+        otherTenant.merchantAccountId,
+        'shopify.claim_refused',
+      );
+
+      // Un autre locataire, porteur d'une génération périmée : sans fencing, `refused`
+      // supprimerait l'attente sous un bail qui n'est plus le sien.
+      const { data } = await service().rpc('consume_shopify_pending_installation', {
+        p_ticket_hash: sha256(ticket),
+        p_user_id: otherTenant.userId,
+        p_merchant_account_id: otherTenant.merchantAccountId,
+        p_generation: acquired.generation,
+      });
+
+      expect(data?.[0]?.outcome).toBe('lease_lost');
+      expect(await readPending(ticket)).toMatchObject({ state: 'valid' });
+      expect(await auditCount(otherTenant.merchantAccountId, 'shopify.claim_refused')).toBe(
+        refusedBefore,
+      );
     },
   );
 

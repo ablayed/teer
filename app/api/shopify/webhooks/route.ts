@@ -165,7 +165,8 @@ function logMissingDomainForTolerantTopic(topic: string): void {
 }
 
 type LegacyShopResolution =
-  | { ok: true; shop: WebhookShopRow | null }
+  // `shopDomain` : domaine résolu, transmis au cœur pour `app/uninstalled` sans boutique (B6).
+  | { ok: true; shop: WebhookShopRow | null; shopDomain: string | null }
   | { ok: false; errorCode: string };
 
 // Résolution boutique topic-tolérante — legacy-only (lit l'en-tête/le corps), TOUJOURS
@@ -206,16 +207,16 @@ async function resolveLegacyShopForTopic(
       by: 'domain',
       shopDomain: resolved.shopDomain,
     });
-    return { ok: true, shop };
+    return { ok: true, shop, shopDomain: resolved.shopDomain };
   }
 
   const domain = resolveShopDomain(headerShopDomain, payload);
   if (!domain) {
     logMissingDomainForTolerantTopic(topic);
-    return { ok: true, shop: null };
+    return { ok: true, shop: null, shopDomain: null };
   }
   const shop = await resolveShopForTopic(supabase, topic, { by: 'domain', shopDomain: domain });
-  return { ok: true, shop };
+  return { ok: true, shop, shopDomain: domain };
 }
 
 async function runWebhookEvent({
@@ -289,6 +290,8 @@ async function runWebhookEvent({
     webhookId,
     triggeredAt,
     validatedClientId,
+    // D20b : pour `app/uninstalled`, ce domaine peut venir de l'en-tête NON SIGNÉ.
+    resolvedShopDomain: resolution.shopDomain,
   });
 }
 

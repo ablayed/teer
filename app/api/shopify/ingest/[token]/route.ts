@@ -183,6 +183,8 @@ export async function POST(
       webhookId,
       triggeredAt,
       validatedClientId: validatingApps[0].clientId,
+      // Domaine résolu par le jeton d'URL (connexion), jamais par un en-tête.
+      resolvedShopDomain: connection.externalIdentifier,
     });
     return new Response(null, { status: 200 });
   }
@@ -203,6 +205,8 @@ export async function POST(
     webhookId,
     triggeredAt,
     validatedClientId: validatingApps[0].clientId,
+    // Domaine résolu par le jeton d'URL (connexion), jamais par un en-tête.
+    resolvedShopDomain: connection.externalIdentifier,
   });
 
   return new Response(null, { status: 200 });
