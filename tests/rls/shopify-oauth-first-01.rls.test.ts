@@ -33,13 +33,19 @@ function service() {
   });
 }
 
+// Une seule connexion partagée par le fichier : les helpers l'appellent à chaque lecture.
+let sharedPg: Promise<TestPostgresClient> | null = null;
+
 async function pgConnect(): Promise<TestPostgresClient> {
-  const client = createTestPostgresClient(dbUrl, 'SUPABASE_DB_URL', {
-    connectionTimeoutMillis: 10_000,
-  });
-  await client.connect();
-  pgClients.push(client);
-  return client;
+  sharedPg ??= (async () => {
+    const client = createTestPostgresClient(dbUrl, 'SUPABASE_DB_URL', {
+      connectionTimeoutMillis: 10_000,
+    });
+    await client.connect();
+    pgClients.push(client);
+    return client;
+  })();
+  return sharedPg;
 }
 
 async function createTenant(prefix: string): Promise<Tenant> {
@@ -656,4 +662,86 @@ describe('B2 — D16b sans session contre la base réelle', () => {
     expect(all).not.toContain('t19-branch1-refresh');
     expect(all).not.toContain('t19-pending-access');
   });
+});
+
+describe('B3 — GET /shopify/claim en lecture seule', () => {
+  async function snapshot(domain: string) {
+    const pg = await pgConnect();
+    const pending = await pg.query(
+      `select md5(string_agg(t::text, '|' order by t.id)) as h
+         from public.shopify_pending_installation t where t.shop_domain = $1`,
+      [domain],
+    );
+    const lease = await pg.query(
+      'select md5(t::text) as h from public.shopify_token_lease t where t.shop_domain = $1',
+      [domain],
+    );
+    const shops = await pg.query(
+      'select count(*)::int as n from public.shop where shop_domain = $1',
+      [domain],
+    );
+    const audits = await pg.query(
+      'select count(*)::int as n from public.audit_log where merchant_account_id = $1',
+      [tenant.merchantAccountId],
+    );
+    return {
+      pending: pending.rows[0].h as string | null,
+      lease: lease.rows[0]?.h as string | undefined,
+      shops: shops.rows[0].n as number,
+      audits: audits.rows[0].n as number,
+    };
+  }
+
+  async function loadView(ticket: string) {
+    const { loadShopifyClaimView, readShopifyPendingInstallation } = await import(
+      '@/lib/shopify/claim-view'
+    );
+    return loadShopifyClaimView({
+      readPending: () => readShopifyPendingInstallation(service(), ticket),
+      getUserId: async () => tenant.userId,
+      getMembership: async () => ({ merchantAccountId: tenant.merchantAccountId, role: 'owner' }),
+      getAccountName: async () => 'Espace',
+    });
+  }
+
+  it.skipIf(!hasStack)(
+    'T15 : GET répété ou préchargé (en parallèle) → zéro mutation, ticket toujours valide',
+    async () => {
+      const domain = freshDomain('t15');
+      const { result } = await authorizeWithoutSession(domain);
+      if (result.kind !== 'pending') throw new Error('attendu : pending');
+      const before = await snapshot(domain);
+
+      const views = await Promise.all(Array.from({ length: 5 }, () => loadView(result.ticket)));
+      views.push(await loadView(result.ticket));
+
+      for (const view of views) {
+        expect(view).toMatchObject({ kind: 'confirm', shopDomain: domain });
+      }
+      expect(await snapshot(domain)).toEqual(before);
+      expect(await readPending(result.ticket)).toMatchObject({ state: 'valid' });
+    },
+  );
+
+  it.skipIf(!hasStack)(
+    'T15 : une attente expirée est lue invalide, sans être supprimée ni modifiée',
+    async () => {
+      const domain = freshDomain('t15-expired');
+      const { result } = await authorizeWithoutSession(domain);
+      if (result.kind !== 'pending') throw new Error('attendu : pending');
+      // Recul de l'horodatage : expiration sans attendre 59 minutes (created_at recule aussi,
+      // pour respecter la contrainte de fenêtre).
+      await (await pgConnect()).query(
+        `update public.shopify_pending_installation
+            set created_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'
+          where shop_domain = $1`,
+        [domain],
+      );
+      const before = await snapshot(domain);
+
+      expect(await loadView(result.ticket)).toEqual({ kind: 'ticket_invalid' });
+      expect(await snapshot(domain)).toEqual(before);
+      expect(await pendingRows(domain)).toHaveLength(1);
+    },
+  );
 });

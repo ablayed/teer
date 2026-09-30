@@ -34,6 +34,12 @@ export function hashShopifyClaimTicket(ticket: string | null | undefined): strin
   return createHash('sha256').update(ticket, 'utf8').digest('hex');
 }
 
+// D5 — reprise après l'onboarding : seul ce chemin exact est repris, toute autre valeur est
+// ignorée (l'onboarding garde sa destination par défaut).
+export function shopifyClaimResumePath(redirectTo: string | null | undefined): string | null {
+  return redirectTo === SHOPIFY_CLAIM_PATH ? SHOPIFY_CLAIM_PATH : null;
+}
+
 export function shopifyClaimTicketCookieOptions(maxAgeSeconds: number) {
   return {
     httpOnly: true,

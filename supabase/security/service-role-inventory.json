@@ -250,5 +250,12 @@
     "boundaryFile": "app/api/shopify/entry/[appLabel]/route.ts",
     "boundaryLine": 74,
     "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B1 — EXCEPTION NOMMÉE D16a. verifyShopifyEntryQuery (lib/shopify/entry.ts) checks the Shopify-signed application_url query (HMAC of the app named by the path, unique shop/timestamp/hmac params, ±5 min window, myshopify domain) BEFORE the admin client is constructed. The admin client then calls ONLY classify_shopify_entry (0160, service_role-only, returns an enum — no tenant, no credential) and, for an installed classification, reads the access/refresh ciphertexts of that one shop to test decryption in memory (D19; never returned nor logged). No write on any branch. Proven by tests/unit/shopify-oauth-first-entry.test.ts (each guard mutation-tested) and tests/rls/shopify-oauth-first-01.rls.test.ts."
+  },
+  {
+    "file": "app/shopify/claim/load-claim-view.ts",
+    "boundaryType": "ticket-cookie-read-only",
+    "boundaryFile": "app/shopify/claim/load-claim-view.ts",
+    "boundaryLine": 38,
+    "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B3 — READ-ONLY GET (app/shopify/claim/page.tsx renders what this loader returns). The admin client only calls read_shopify_pending_installation (0160, service_role-only, STABLE, returns state + shop domain + app client id — never a credential nor an internal id), keyed by the sha256 of the httpOnly/Lax ticket cookie scoped to /shopify/claim (lib/shopify/claim-ticket.ts). A malformed ticket never reaches the database. Session, membership (same read as requireRole) and account name go through the RLS session client. No write on any branch (T15, proven against real Postgres with the SQL read mutated into a write: tests/rls/shopify-oauth-first-01.rls.test.ts). The attachment itself is the POST server action (owner/manager re-checked server-side and in SQL)."
   }
 ]

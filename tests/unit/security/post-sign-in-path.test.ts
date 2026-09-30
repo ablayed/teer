@@ -19,6 +19,15 @@ describe('postSignInPath', () => {
     expect(postSignInPath('/parametres')).toBe('/s?next=%2Fparametres');
   });
 
+  // SHOPIFY-OAUTH-FIRST-01 / B3 — garde mutée : `target === SHOPIFY_CLAIM_PATH`.
+  it('reprend exactement /shopify/claim, et aucune variante', () => {
+    expect(postSignInPath('/shopify/claim')).toBe('/shopify/claim');
+    expect(postSignInPath('/shopify/claim?ticket=forged')).toBe(
+      '/s?next=%2Fshopify%2Fclaim%3Fticket%3Dforged',
+    );
+    expect(postSignInPath('/shopify/claims')).toBe('/s?next=%2Fshopify%2Fclaims');
+  });
+
   it('enveloppe toute cible interne ordinaire dans /s?next=...', () => {
     expect(postSignInPath('/tableau')).toBe('/s?next=%2Ftableau');
   });
