@@ -1,11 +1,19 @@
 import { ShopifyAppSwitchRefusedError } from '@/lib/shopify/app-identity-errors';
 import { decideShopAppSwitch } from '@/lib/shopify/app-switch-guard';
 import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
+import { shopifyArrivalPath } from '@/lib/shopify/arrival';
+import {
+  SHOPIFY_CLAIM_PATH,
+  SHOPIFY_CLAIM_TICKET_COOKIE,
+  shopifyClaimTicketCookieOptions,
+} from '@/lib/shopify/claim-ticket';
 import { encryptToken } from '@/lib/shopify/crypto';
+import { performNoSessionAuthorization } from '@/lib/shopify/no-session-authorization';
 import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib/shopify/oauth';
 import { decideShopOwnership } from '@/lib/shopify/ownership-guard';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
-import { verifyState } from '@/lib/shopify/state';
+import { type ShopifyPublicErrorCode, shopifyPublicErrorPath } from '@/lib/shopify/public-error';
+import { type ShopifyOAuthStatePayload, verifyState } from '@/lib/shopify/state';
 import {
   acquireShopifyTokenLease,
   persistShopifyCredentialsFenced,
@@ -51,7 +59,94 @@ function createSupabaseAdminClient() {
   );
 }
 
+// Import tardif : lib/supabase/server importe lib/env, qui valide TOUT l'environnement dès son
+// chargement ; le charger ici rendrait ce module inimportable sans l'environnement complet.
+async function hasSession(): Promise<boolean> {
+  const { createSupabaseServerClient } = await import('@/lib/supabase/server');
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return Boolean(user);
+}
+
+// SHOPIFY-OAUTH-FIRST-01 / B2 — mode SANS locataire (D13) : state émis par l'entrée
+// `application_url` (app/api/shopify/entry/[appLabel]/route.ts). Mêmes gardes du protocole que le
+// parcours historique ; TOUTES les erreurs vont vers la surface publique D15, jamais vers
+// `/boutiques?error=`. Aucun repli sur l'app par défaut : un state sans `clientId` est refusé.
+async function handleNoSessionCallback(
+  request: NextRequest,
+  payload: ShopifyOAuthStatePayload | null,
+) {
+  const publicError = (code: ShopifyPublicErrorCode) =>
+    redirectTo(shopifyPublicErrorPath(code), request);
+
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    const shop = searchParams.get('shop');
+
+    if (!payload || !state || state !== payload.nonce) {
+      return publicError('invalid_request');
+    }
+    if (!shop || shop !== payload.shopDomain || !validateShopDomain(shop)) {
+      return publicError('invalid_request');
+    }
+    const app = payload.clientId ? getShopifyAppByClientId(payload.clientId) : null;
+    if (!app || !verifyOAuthHmac(searchParams, app.clientSecret) || !code) {
+      return publicError('invalid_request');
+    }
+
+    const result = await performNoSessionAuthorization(createSupabaseAdminClient(), {
+      shopDomain: shop,
+      app,
+      code,
+    });
+
+    if (result.kind === 'error') {
+      return publicError(result.code);
+    }
+
+    if (result.kind === 'pending') {
+      // Le ticket en clair ne voyage QUE dans ce cookie : ni dans l'URL, ni dans un journal.
+      const response = redirectTo(SHOPIFY_CLAIM_PATH, request);
+      response.cookies.set(
+        SHOPIFY_CLAIM_TICKET_COOKIE,
+        result.ticket,
+        shopifyClaimTicketCookieOptions(result.maxAgeSeconds),
+      );
+      return response;
+    }
+
+    // Branche 1 : persistance faite chez le propriétaire établi ; arrivée R1, `sync=pending` si
+    // un effet après persistance a échoué (R2).
+    return redirectTo(
+      shopifyArrivalPath({ hasSession: await hasSession(), syncPending: result.syncPending }),
+      request,
+    );
+  } catch (error) {
+    // Aucun domaine ni identifiant dans la télémétrie de ce mode.
+    Sentry.captureException(error, { tags: { route: 'shopify.callback', mode: 'no_session' } });
+    return publicError('unknown');
+  }
+}
+
 export async function GET(request: NextRequest) {
+  // Callback BIMODAL (D13). Le mode se lit dans le state signé : sans locataire, parcours sans
+  // session ; avec, parcours historique inchangé (KOBA et apps historiques). Un state absent ou
+  // invalide ne dit pas son mode : le parcours historique exige une session, son absence désigne
+  // donc le mode sans session.
+  const initialStateCookie = request.cookies.get(OAUTH_STATE_COOKIE)?.value;
+  const initialPayload = initialStateCookie ? verifyState(initialStateCookie) : null;
+  if (
+    initialPayload
+      ? initialPayload.merchantAccountId === undefined
+      : !(await hasSession().catch(() => false))
+  ) {
+    return handleNoSessionCallback(request, initialPayload);
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
   const state = searchParams.get('state');
