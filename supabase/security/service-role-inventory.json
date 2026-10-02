@@ -24,8 +24,8 @@
     "file": "app/api/shopify/callback/route.ts",
     "boundaryType": "oauth-state-and-hmac",
     "boundaryFile": "app/api/shopify/callback/route.ts",
-    "boundaryLine": 83,
-    "boundaryDetail": "verifyOAuthHmac(searchParams, clientSecret) — plus verifyState(stateCookie) at line 56 confronting the callback's `state` query param against the signed cookie payload's nonce (line 62). Admin client (createSupabaseAdminClient) is constructed at line 97, after both checks and after the ownership guard's decision (APP-03 / Lot 1) but still before any write."
+    "boundaryLine": 194,
+    "boundaryDetail": "BIMODAL (SHOPIFY-OAUTH-FIRST-01 / D13). Historical mode (state carries merchantAccountId, session-initiated via /api/shopify/install): verifyOAuthHmac(searchParams, clientSecret) at the cited line, after verifyState(stateCookie) confronted the callback's `state` query param with the signed cookie payload's nonce and the shop domain; the admin client is constructed afterwards, then the ownership guard (APP-03 / Lot 1) and app-switch guard run before any write. No-session mode (state WITHOUT merchantAccountId, issued by app/api/shopify/entry/[appLabel]/route.ts): handleNoSessionCallback applies the same state/nonce/domain/HMAC guards (no fallback to the default app: a state without clientId is refused) BEFORE constructing the admin client, which then only runs performNoSessionAuthorization (lib/shopify/no-session-authorization.ts): app-switch rule, Shopify token lease, code exchange, then decide_and_write_shopify_authorization (0160, service_role-only) — the DB picks the branch and resolves the owner; the tenant never comes from the request. Branch 2 writes nothing in `shop` (pending installation + ticket cookie). Proven by tests/unit/shopify-oauth-first-callback.test.ts and tests/rls/shopify-oauth-first-01.rls.test.ts (guards mutation-tested)."
   },
   {
     "file": "app/api/shopify/embedded/session/route.ts",
@@ -129,8 +129,8 @@
     "file": "lib/actions/shops.ts",
     "boundaryType": "server-action-role-check",
     "boundaryFile": "lib/actions/shops.ts",
-    "boundaryLine": 92,
-    "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (91, 150), disconnectShopAction = requireRole('owner') (170). Confirmed by direct grep, 3 exports, all gated. (APP-03/Lot 2 correctif : shopStatus() extrait vers lib/shopify/shop-status.ts, module pur sans env/Supabase.) SHOPIFY-EXPIRING-TOKENS-01 : disconnectShopAction n'écrit plus shop directement — elle appelle la RPC service_role-only disconnect_shop_fenced (0159, line 178) avec ctx.user.id et ctx.member.merchantAccountId (dérivés serveur), qui réévalue sous verrou le rôle owner sur merchant_member et la propriété de la ligne ; puis store_connection passe à uninstalled par mark_shopify_store_connection_uninstalled_fenced (lib/shopify/token-lease.ts)."
+    "boundaryLine": 93,
+    "boundaryDetail": "listShopsAction/syncShopAction = requireRole('owner','manager') (93, 153), disconnectShopAction = requireRole('owner') (170). Confirmed by direct grep, 3 exports, all gated. (APP-03/Lot 2 correctif : shopStatus() extrait vers lib/shopify/shop-status.ts, module pur sans env/Supabase.) SHOPIFY-OAUTH-FIRST-01 / D17 : listShopsAction lit aussi reauthorization_required_at (lecture seule, même requête scopée par ctx.member.merchantAccountId). SHOPIFY-EXPIRING-TOKENS-01 : disconnectShopAction n'écrit plus shop directement — elle appelle la RPC service_role-only disconnect_shop_fenced (0159, line 178) avec ctx.user.id et ctx.member.merchantAccountId (dérivés serveur), qui réévalue sous verrou le rôle owner sur merchant_member et la propriété de la ligne ; puis store_connection passe à uninstalled par mark_shopify_store_connection_uninstalled_fenced (lib/shopify/token-lease.ts)."
   },
   {
     "file": "lib/actions/stock.ts",
@@ -243,5 +243,26 @@
     "boundaryFile": "lib/shopify/shop-sync.ts",
     "boundaryLine": 30,
     "boundaryDetail": "syncShopOrders() is called from two actions with DIFFERENT guard status: lib/actions/shops.ts:126 (syncShopAction, requireRole('owner','manager') — gated) AND lib/actions/shopify.ts:48 (syncOrdersAction, authActionClient only, NO requireRole — reachable by any authenticated member including agent). Tenant scoping itself (merchantAccountId from getMerchantAccount(), shopId from getRequestStoreId(), both server-derived, never client-supplied) is not at issue — the missing ROLE gate is. Arbitrage ouvert, voir docs/security/s4-rapport.md — S4 ne tranche pas si un agent doit pouvoir déclencher cette synchronisation."
+  },
+  {
+    "file": "app/api/shopify/entry/[appLabel]/route.ts",
+    "boundaryType": "shopify-entry-hmac",
+    "boundaryFile": "app/api/shopify/entry/[appLabel]/route.ts",
+    "boundaryLine": 74,
+    "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B1 — EXCEPTION NOMMÉE D16a. verifyShopifyEntryQuery (lib/shopify/entry.ts) checks the Shopify-signed application_url query (HMAC of the app named by the path, unique shop/timestamp/hmac params, ±5 min window, myshopify domain) BEFORE the admin client is constructed. The admin client then calls ONLY classify_shopify_entry (0160, service_role-only, returns an enum — no tenant, no credential) and, for an installed classification, reads the access/refresh ciphertexts of that one shop to test decryption in memory (D19; never returned nor logged). No write on any branch. Proven by tests/unit/shopify-oauth-first-entry.test.ts (each guard mutation-tested) and tests/rls/shopify-oauth-first-01.rls.test.ts."
+  },
+  {
+    "file": "app/shopify/claim/load-claim-view.ts",
+    "boundaryType": "ticket-cookie-read-only",
+    "boundaryFile": "app/shopify/claim/load-claim-view.ts",
+    "boundaryLine": 38,
+    "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B3 — READ-ONLY GET (app/shopify/claim/page.tsx renders what this loader returns). The admin client only calls read_shopify_pending_installation (0160, service_role-only, STABLE, returns state + shop domain + app client id — never a credential nor an internal id), keyed by the sha256 of the httpOnly/Lax ticket cookie scoped to /shopify/claim (lib/shopify/claim-ticket.ts). A malformed ticket never reaches the database. Session, membership (same read as requireRole) and account name go through the RLS session client. No write on any branch (T15, proven against real Postgres with the SQL read mutated into a write: tests/rls/shopify-oauth-first-01.rls.test.ts). The attachment itself is the POST server action (owner/manager re-checked server-side and in SQL)."
+  },
+  {
+    "file": "lib/actions/shopify-claim.ts",
+    "boundaryType": "requireRole-session-ticket-cookie",
+    "boundaryFile": "lib/actions/shopify-claim.ts",
+    "boundaryLine": 36,
+    "boundaryDetail": "SHOPIFY-OAUTH-FIRST-01 / B4 — POST server action, treated as directly reachable. requireRole('owner','manager') at the cited line re-authenticates and re-checks the role on every call (Next's Origin check admits requests WITHOUT Origin, so it is never relied upon). User and tenant come from the session (ctx.user.id, ctx.member.merchantAccountId); the input schema is empty; the ticket is read ONLY from its httpOnly/SameSite=Lax cookie scoped to /shopify/claim. The admin client runs performShopifyClaim (lib/shopify/claim-core.ts): read_shopify_pending_installation, the Shopify token lease, consume_shopify_pending_installation (0160, service_role-only: role re-checked under lock, ownership then app, stale pending D22, fenced persist, audit, ticket consumed in one transaction), write_shopify_store_connection_fenced, and the shopify.claim_refused audit written in the REQUESTER tenant only. Proven by tests/unit/shopify-oauth-first-claim-action.test.ts, tests/rls/shopify-oauth-first-01.rls.test.ts and tests/e2e/shopify-claim-csrf.spec.ts (guards mutation-tested)."
   }
 ]

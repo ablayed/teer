@@ -71,8 +71,7 @@
       "stock-produits": "Stock & produits",
       "shopify-boutiques": "Shopify & boutiques",
       "finances": "Finances",
-      "securite-donnees": "Sécurité & données",
-      "facturation": "Facturation"
+      "securite-donnees": "Sécurité & données"
     }
   },
   "marketing": {
@@ -615,10 +614,8 @@
       "profile": "Profil",
       "team": "Équipe",
       "shops": "Boutiques",
-      "billing": "Facturation",
       "security": "Sécurité"
     },
-    "placeholder": "Bientôt disponible.",
     "profile": {
       "fields": {
         "shopName": "Nom de votre boutique",
@@ -626,11 +623,9 @@
         "ownerFullName": "Nom du propriétaire",
         "whatsapp": "WhatsApp",
         "whatsappPlaceholder": "+221 77 123 45 67",
-        "email": "Adresse e-mail",
-        "plan": "Plan"
+        "email": "Adresse e-mail"
       },
       "emailNote": "L’email ne peut pas être modifié",
-      "planDiscovery": "Découverte",
       "save": "Enregistrer les modifications",
       "success": "Profil mis à jour."
     },
@@ -730,6 +725,7 @@
       },
       "reasons": {
         "tokenExpired": "Le jeton Shopify a expiré. Réinstallez Tëër depuis Shopify Admin pour relancer la synchronisation.",
+        "reauthorizationRequired": "Reconnexion requise — rouvrez Tëër depuis votre administration Shopify.",
         "reconnectInstructions": "La réinstallation doit être initiée depuis Shopify Admin ; Tëër ne demande pas de domaine ici.",
         "generic": "La connexion Shopify doit être vérifiée.",
         "incomplete": "L’association de cette boutique n’a pas encore abouti.",
@@ -756,7 +752,8 @@
         "appReleased": "Application libérée. Vous pouvez désormais rattacher une nouvelle application Shopify."
       },
       "messages": {
-        "connected": "Boutique connectée avec succès !"
+        "connected": "Boutique connectée avec succès !",
+        "syncPending": "La boutique est connectée, mais sa synchronisation n’a pas abouti. Relancez-la avec « Synchroniser »."
       },
       "woocommerce": {
         "title": "Gérez vos boutiques connectées",

@@ -41,14 +41,17 @@ self.addEventListener('fetch', (event) => {
 const SHELL_ASSETS = ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 const STATIC_CHUNK = '/_next/static/harness-chunk.js';
 const COUNTER = '/api/harness/counter';
-const SHOPS_SURFACE = '/parametres?tab=shops&connected=1';
-
-// Même forme de chaîne que le parcours d'installation réel, Shopify court-circuité : chaque saut
-// est une redirection 302, et chaque étape porte (en production) une valeur à usage unique.
+// SHOPIFY-OAUTH-FIRST-01 / D7 — la chaîne mesurée est celle du parcours OAuth d'abord :
+// entrée `application_url` (page interceptée par le service worker) → route d'entrée (`/api/**`,
+// rendue au navigateur) → [Shopify, court-circuité] → callback (`/api/**`) → confirmation du
+// rattachement. Chaque saut est une redirection 302, et chaque étape porte (en production) une
+// valeur à usage unique : requête signée, state et nonce, code d'autorisation, ticket.
+const ENTRY_PAGE = '/shopify/embedded/teer-public';
+const CLAIM_SURFACE = '/shopify/claim';
 const REDIRECTS: Record<string, string> = {
-  '/shopify/install-entry': '/api/shopify/install?shop=harness.myshopify.com',
-  '/api/shopify/install': '/api/shopify/callback?code=harness-code&state=harness-state',
-  '/api/shopify/callback': SHOPS_SURFACE,
+  [ENTRY_PAGE]: '/api/shopify/entry/teer-public?shop=harness.myshopify.com&hmac=harness',
+  '/api/shopify/entry/teer-public': '/api/shopify/callback?code=harness-code&state=harness-state',
+  '/api/shopify/callback': CLAIM_SURFACE,
 };
 
 type Reception = { pathname: string; preload: boolean };
@@ -198,8 +201,8 @@ test.describe('FIX-SW-NAVIGATION-PRELOAD-01 — service worker et navigations', 
     await expect.poll(() => harness.count(COUNTER)).toBe(2);
     expect(harness.receptions.filter((r) => r.pathname === COUNTER && r.preload)).toHaveLength(1);
 
-    await page.goto(`${harness.base}/shopify/install-entry`);
-    await expect(page).toHaveURL(/\/parametres\?tab=shops&connected=1$/);
+    await page.goto(`${harness.base}${ENTRY_PAGE}`);
+    await expect(page).toHaveURL(/\/shopify\/claim$/);
     await expect.poll(() => harness.count('/api/shopify/callback')).toBe(2);
   });
 
@@ -243,23 +246,23 @@ test.describe('FIX-SW-NAVIGATION-PRELOAD-01 — service worker et navigations', 
     expect(harness.receptions.slice(before).filter((r) => r.preload)).toEqual([]);
   });
 
-  test('preuves 4 et 5 : la chaîne install-entry → callback → parametres, une fois chacune', async ({
+  test('preuves 4 et 5 : la chaîne entrée → callback → /shopify/claim, une fois chacune', async ({
     page,
   }) => {
     harness = await startHarness(REAL_SW);
     await registerAndWaitForControl(page, harness.base);
 
-    const response = await page.goto(`${harness.base}/shopify/install-entry`);
-    await expect(page).toHaveURL(/\/parametres\?tab=shops&connected=1$/);
+    const response = await page.goto(`${harness.base}${ENTRY_PAGE}`);
+    await expect(page).toHaveURL(/\/shopify\/claim$/);
     await settle(page);
 
     expect(response?.status()).toBe(200);
-    await expect(page.locator('#page')).toHaveText('/parametres');
+    await expect(page.locator('#page')).toHaveText(CLAIM_SURFACE);
     for (const pathname of [
-      '/shopify/install-entry',
-      '/api/shopify/install',
+      ENTRY_PAGE,
+      '/api/shopify/entry/teer-public',
       '/api/shopify/callback',
-      '/parametres',
+      CLAIM_SURFACE,
     ]) {
       expect(harness.count(pathname), pathname).toBe(1);
     }

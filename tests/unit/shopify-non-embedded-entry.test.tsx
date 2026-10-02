@@ -1,72 +1,26 @@
-import { createHmac } from 'node:crypto';
+// SHOPIFY-OAUTH-FIRST-01 / B1 — la branche non embarquée de la page d'app ne décide plus rien :
+// elle transmet la requête signée par Shopify au route handler d'entrée, sans rendu. Les gardes
+// (HMAC, fenêtre, domaine, classification) sont prouvées sur le route handler lui-même
+// (tests/unit/shopify-oauth-first-entry.test.ts).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => {
-  const apps = {
-    'teer-public': {
-      label: 'teer-public',
-      clientId: 'public-client',
-      clientSecret: 'public-secret',
-      distribution: 'public',
-      scopes: 'read_orders',
-    },
-    'teer-koba': {
-      label: 'teer-koba',
-      clientId: 'koba-client',
-      clientSecret: 'koba-secret',
-      distribution: 'custom',
-      scopes: 'read_orders',
-    },
-  };
   const redirect = vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   });
-  const shell = vi.fn(
-    ({
-      app,
-      host,
-      embedded,
-    }: { app: { clientId: string } | null; host?: string; embedded?: string }) => {
-      if (embedded !== '1' && host && app)
-        redirect(`https://admin.shopify.com/store/store/apps/${app.clientId}`);
-      return null;
-    },
-  );
-  const cookieSet = vi.fn();
-  const cookieDelete = vi.fn();
-  return { apps, cookieSet, cookieDelete, redirect, shell };
+  const shell = vi.fn(() => null);
+  return { redirect, shell };
 });
 
 vi.mock('next/navigation', () => ({ redirect: harness.redirect }));
 vi.mock('next/headers', () => ({
   headers: async () => new Headers({ 'x-nonce': 'nonce-test' }),
-  cookies: async () => ({
-    set: harness.cookieSet,
-    delete: harness.cookieDelete,
-  }),
 }));
 vi.mock('@/lib/env', () => ({ publicEnv: { NEXT_PUBLIC_SUPPORT_EMAIL: null } }));
-vi.mock('@/lib/shopify/apps', () => ({
-  getShopifyAppByLabel: (label: string) => harness.apps[label as keyof typeof harness.apps] ?? null,
+vi.mock('@/lib/shopify/embedded', () => ({
+  getShopifyAppOrNullForEmbedded: () => ({ clientId: 'public-client-id' }),
 }));
 vi.mock('@/app/shopify/embedded/embedded-app-shell', () => ({ EmbeddedAppShell: harness.shell }));
-
-const SHOP = 'test-shop.myshopify.com';
-
-function buildQuery(shop: string, secret: string, overrides: Record<string, string> = {}) {
-  const values = new URLSearchParams({
-    shop,
-    timestamp: String(Math.floor(Date.now() / 1000)),
-    host: Buffer.from('admin.shopify.com/store/test-shop').toString('base64url'),
-    ...overrides,
-  });
-  const message = Array.from(values.entries())
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('&');
-  values.set('hmac', createHmac('sha256', secret).update(message).digest('hex'));
-  return Object.fromEntries(values.entries());
-}
 
 async function renderEntry(
   appLabel: string,
@@ -79,61 +33,42 @@ async function renderEntry(
   });
 }
 
-describe('entrÃ©e Shopify non embarquÃ©e', () => {
+describe('entrée Shopify non embarquée — trampoline vers le route handler', () => {
   beforeEach(() => {
     harness.redirect.mockClear();
     harness.shell.mockClear();
-    harness.cookieSet.mockClear();
-    harness.cookieDelete.mockClear();
   });
 
-  it('accepte le HMAC de application_url et garde seulement une intention signÃ©e app/shop', async () => {
-    await expect(renderEntry('teer-public', buildQuery(SHOP, 'public-secret'))).rejects.toThrow(
-      /^REDIRECT:\/api\/shopify\/non-embedded-intent\?intent=/,
-    );
+  it('transmet la requête signée telle quelle, sans rien rendre', async () => {
+    const query = {
+      shop: 'test-shop.myshopify.com',
+      timestamp: '1790000000',
+      host: 'aG9zdA',
+      hmac: 'a'.repeat(64),
+    };
+    await expect(renderEntry('teer-public', query)).rejects.toThrow(/^REDIRECT:/);
     expect(harness.shell).not.toHaveBeenCalled();
-    const redirectCall = harness.redirect.mock.calls[0]?.[0] ?? '';
-    expect(redirectCall).not.toContain('hmac=');
-    expect(redirectCall).toMatch(/^\/api\/shopify\/non-embedded-intent\?intent=/);
-    const token = new URL(`http://localhost${redirectCall}`).searchParams.get('intent') ?? '';
-    const payload = JSON.parse(
-      Buffer.from(String(token).split('.')[0] ?? '', 'base64url').toString(),
-    );
-    expect(payload).toMatchObject({ appLabel: 'teer-public', shop: SHOP });
-    expect(payload).not.toHaveProperty('host');
-    expect(payload).not.toHaveProperty('hmac');
+
+    const target = new URL(`http://localhost${harness.redirect.mock.calls[0]?.[0] ?? ''}`);
+    expect(target.pathname).toBe('/api/shopify/entry/teer-public');
+    expect(Object.fromEntries(target.searchParams.entries())).toEqual(query);
   });
 
-  it('refuse un HMAC invalide et ne pose aucune intention', async () => {
-    const query = buildQuery(SHOP, 'public-secret');
-    query.hmac = '0'.repeat(64);
-    const result = await renderEntry('teer-public', query);
-    expect(result.props['data-error']).toBe('invalid_hmac');
-    expect(harness.redirect).not.toHaveBeenCalled();
+  it('conserve les paramètres dupliqués, pour que le refus reste celui de la vérification', async () => {
+    await expect(
+      renderEntry('teer-public', {
+        shop: ['a.myshopify.com', 'b.myshopify.com'],
+        hmac: 'a'.repeat(64),
+        timestamp: '1790000000',
+      }),
+    ).rejects.toThrow(/^REDIRECT:/);
+    const target = new URL(`http://localhost${harness.redirect.mock.calls[0]?.[0] ?? ''}`);
+    expect(target.searchParams.getAll('shop')).toEqual(['a.myshopify.com', 'b.myshopify.com']);
   });
 
-  it('nomme le refus d’un appLabel inconnu', async () => {
-    const result = await renderEntry('unknown-app', buildQuery(SHOP, 'public-secret'));
-    expect(result.props['data-error']).toBe('unknown_app_label');
-    expect(harness.redirect).not.toHaveBeenCalled();
-  });
-
-  it('refuse dans les deux sens une signature prÃ©sentÃ©e sur le chemin de la mauvaise app', async () => {
-    const signedByPublic = await renderEntry(
-      'teer-koba',
-      buildQuery(SHOP, harness.apps['teer-public'].clientSecret),
-    );
-    const signedByKoba = await renderEntry(
-      'teer-public',
-      buildQuery(SHOP, harness.apps['teer-koba'].clientSecret),
-    );
-    expect(signedByPublic.props['data-error']).toBe('invalid_hmac');
-    expect(signedByKoba.props['data-error']).toBe('invalid_hmac');
-    expect(harness.redirect).not.toHaveBeenCalled();
-  });
-
-  it('conserve le parcours embarquÃ© uniquement pour embedded=1', async () => {
+  it('conserve le parcours embarqué uniquement pour embedded=1', async () => {
     const result = await renderEntry('teer-public', { embedded: '1', host: 'test-host' });
+    expect(harness.redirect).not.toHaveBeenCalled();
     expect(result.type).toBe(harness.shell);
     expect(result.props).toMatchObject({ embedded: '1', host: 'test-host' });
   });

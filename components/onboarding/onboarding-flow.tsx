@@ -32,7 +32,13 @@ function isOnboardingErrorCode(errorCode: string): errorCode is OnboardingErrorC
   return onboardingErrorCodes.includes(errorCode as OnboardingErrorCode);
 }
 
-export function OnboardingFlow() {
+type OnboardingFlowProps = {
+  // SHOPIFY-OAUTH-FIRST-01 / D5 — reprise du rattachement Shopify en attente, déjà filtrée côté
+  // serveur (`shopifyClaimResumePath`) ; sinon la destination habituelle.
+  resumeTo?: string | null;
+};
+
+export function OnboardingFlow({ resumeTo = null }: OnboardingFlowProps = {}) {
   const t = useTranslations('onboarding');
   const router = useRouter();
   const completeOnboarding = useAction(completeOnboardingAction);
@@ -122,7 +128,7 @@ export function OnboardingFlow() {
             <p className="text-sm text-muted">{t('welcome.checklist')}</p>
             <Button
               className="min-h-12 w-full"
-              onClick={() => router.push('/tableau')}
+              onClick={() => router.push(resumeTo ?? '/tableau')}
               type="button"
             >
               {t('welcome.cta')}

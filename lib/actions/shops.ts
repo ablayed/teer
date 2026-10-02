@@ -24,6 +24,7 @@ type ShopRow = Pick<
   | 'merchant_account_id'
   | 'refresh_token_encrypted'
   | 'refresh_token_expires_at'
+  | 'reauthorization_required_at'
   | 'scopes'
   | 'shop_domain'
   | 'shopify_client_id'
@@ -37,7 +38,7 @@ export type ShopListItem = {
   domain: string;
   installedAt: string;
   lastSyncAt: string | null;
-  reason: 'token_expired' | null;
+  reason: 'token_expired' | 'reauthorization_required' | null;
   scopes: string;
   status: 'connected' | 'error' | 'incomplete' | 'uninstalled';
   // Libération d'identité d'app (APP-03/Lot 2 correctif 3, §3) : n'a de sens que sur une boutique
@@ -97,7 +98,7 @@ export const listShopsAction = requireRole('owner', 'manager')
     const { data, error } = await admin
       .from('shop')
       .select(
-        'id, merchant_account_id, shop_domain, scopes, status, store_kind, installed_at, updated_at, access_token_encrypted, access_token_expires_at, shopify_client_id, refresh_token_encrypted, refresh_token_expires_at',
+        'id, merchant_account_id, shop_domain, scopes, status, store_kind, installed_at, updated_at, access_token_encrypted, access_token_expires_at, shopify_client_id, refresh_token_encrypted, refresh_token_expires_at, reauthorization_required_at',
       )
       .eq('merchant_account_id', ctx.member.merchantAccountId)
       .order('installed_at', { ascending: false });
@@ -123,6 +124,7 @@ export const listShopsAction = requireRole('owner', 'manager')
           accessTokenExpiresAt: shop.access_token_expires_at,
           refreshTokenEncrypted: shop.refresh_token_encrypted,
           refreshTokenExpiresAt: shop.refresh_token_expires_at,
+          reauthorizationRequiredAt: shop.reauthorization_required_at,
         });
 
         return {

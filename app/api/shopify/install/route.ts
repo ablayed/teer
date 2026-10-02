@@ -1,4 +1,4 @@
-import { getMerchantAccount } from '@/lib/actions/merchant';
+import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { buildAuthorizeUrl, validateShopDomain } from '@/lib/shopify/oauth';
 import { generateNonce, signState } from '@/lib/shopify/state';
@@ -28,6 +28,20 @@ function redirectTo(path: string, request: NextRequest) {
   return NextResponse.redirect(new URL(path, request.url));
 }
 
+// Modèle de app/api/shopify/embedded/install/route.ts : la connexion reprend CE point
+// d'installation, reconstruit à partir de ses seuls paramètres connus.
+function redirectToLogin(request: NextRequest) {
+  const installUrl = new URL('/api/shopify/install', request.url);
+  for (const key of ['shop', 'client_id', 'return_to']) {
+    const value = request.nextUrl.searchParams.get(key);
+    if (value) installUrl.searchParams.set(key, value);
+  }
+  return redirectTo(
+    `/connexion?redirectTo=${encodeURIComponent(installUrl.pathname + installUrl.search)}`,
+    request,
+  );
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -35,13 +49,22 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return redirectTo('/connexion?redirectTo=%2Fshopify%2Finstall-entry', request);
+    return redirectToLogin(request);
   }
 
-  const merchantAccount = await getMerchantAccount();
-
+  // SHOPIFY-OAUTH-FIRST-01 / D4 — installer une boutique est réservé à `owner` et `manager`,
+  // vérifié ICI, côté serveur (même lecture que `requireRole`). Un utilisateur sans espace va
+  // vers l'onboarding.
+  const member = await getMerchantMemberForUser(user.id);
+  if (!member) {
+    return redirectTo('/onboarding', request);
+  }
+  if (member.role !== 'owner' && member.role !== 'manager') {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+  const merchantAccount = await getMerchantAccountById(member.merchant_account_id);
   if (!merchantAccount) {
-    return redirectTo('/connexion?redirectTo=%2Fshopify%2Finstall-entry', request);
+    return redirectTo('/onboarding', request);
   }
 
   const shop = request.nextUrl.searchParams.get('shop')?.trim() ?? '';
@@ -71,13 +94,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'missing_shopify_app' }, { status: 500 });
   }
 
-  // TEST-NONEMBED-01, Test A — le refus fermé de `teer-public` sur cette route est levé.
-  // Il tenait à `embedded = true` : une app embarquée n'a que le token exchange App Bridge
-  // (app/api/shopify/embedded/session/route.ts). Avec `embedded = false`, le flux OAuth `code`
-  // redevient le seul chemin vers un jeton hors-ligne, et cette route est l'instrument de la
-  // mesure. Le refus est retiré, PAS déplacé : aucune autre garde de cette route ne
-  // connaît `teer-public`, et le callback n'en a jamais porté.
-  //
+  // SHOPIFY-OAUTH-FIRST-01 / D23, option (a) — une app PUBLIQUE ne s'installe jamais par cette
+  // route. Son seul chemin est l'entrée `application_url` sans session
+  // (app/api/shopify/entry/[appLabel]/route.ts), dont le grant passe par D16b sous le bail du
+  // domaine. Deux grants concurrents hors du même bail retireraient l'un l'autre leur refresh
+  // token. Aucun appelant légitime ne porte le `client_id` d'une app publique vers cette route
+  // (relevé de l'étape 0 : seul app/api/shopify/embedded/install/route.ts l'appelle, pour les
+  // apps historiques). Le refus précède toute création de state, tout cookie et toute
+  // redirection OAuth.
+  if (app.distribution === 'public') {
+    return NextResponse.json({ error: 'app_not_installable_here' }, { status: 403 });
+  }
+
   // Rappel de sélection, verrouillé par tests/unit/shopify-install-app-selection.test.ts :
   // un `client_id` EXPLICITE choisit l'app, un `client_id` ABSENT retombe sur l'app par défaut
   // (Teer Dev). Mesurer Teer Public exige donc de passer son `client_id` — l'omettre

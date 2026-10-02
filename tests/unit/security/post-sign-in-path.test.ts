@@ -2,11 +2,28 @@ import { postSignInPath } from '@/lib/security/post-sign-in-path';
 import { describe, expect, it } from 'vitest';
 
 describe('postSignInPath', () => {
-  it('laisse passer uniquement la cible fixe de reprise Shopify non embarquÃ©e', () => {
-    expect(postSignInPath('/shopify/install-entry')).toBe('/shopify/install-entry');
-    expect(postSignInPath('/shopify/install-entry?shop=forged')).toBe(
-      '/s?next=%2Fshopify%2Finstall-entry%3Fshop%3Dforged',
+  // SHOPIFY-OAUTH-FIRST-01 / D7 — l'ancienne reprise non embarquée n'existe plus.
+  it('n’exempte plus /shopify/install-entry (supprimé par D7)', () => {
+    expect(postSignInPath('/shopify/install-entry')).toBe('/s?next=%2Fshopify%2Finstall-entry');
+  });
+
+  // SHOPIFY-OAUTH-FIRST-01 / T36 — garde mutée : `target === SHOPIFY_SHOPS_ARRIVAL_PATH`.
+  it('T36 : reprend exactement /parametres?tab=shops, et aucune variante', () => {
+    expect(postSignInPath('/parametres?tab=shops')).toBe('/parametres?tab=shops');
+    expect(postSignInPath('/parametres?tab=shops&connected=1')).toBe(
+      '/s?next=%2Fparametres%3Ftab%3Dshops%26connected%3D1',
     );
+    expect(postSignInPath('/parametres?tab=team')).toBe('/s?next=%2Fparametres%3Ftab%3Dteam');
+    expect(postSignInPath('/parametres')).toBe('/s?next=%2Fparametres');
+  });
+
+  // SHOPIFY-OAUTH-FIRST-01 / B3 — garde mutée : `target === SHOPIFY_CLAIM_PATH`.
+  it('reprend exactement /shopify/claim, et aucune variante', () => {
+    expect(postSignInPath('/shopify/claim')).toBe('/shopify/claim');
+    expect(postSignInPath('/shopify/claim?ticket=forged')).toBe(
+      '/s?next=%2Fshopify%2Fclaim%3Fticket%3Dforged',
+    );
+    expect(postSignInPath('/shopify/claims')).toBe('/s?next=%2Fshopify%2Fclaims');
   });
 
   it('enveloppe toute cible interne ordinaire dans /s?next=...', () => {

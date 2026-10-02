@@ -14,8 +14,7 @@ export type FAQCategory =
   | 'stock-produits'
   | 'shopify-boutiques'
   | 'finances'
-  | 'securite-donnees'
-  | 'facturation';
+  | 'securite-donnees';
 
 export const FAQ_CATEGORY_KEYS = [
   'compte-equipe',
@@ -27,7 +26,6 @@ export const FAQ_CATEGORY_KEYS = [
   'shopify-boutiques',
   'finances',
   'securite-donnees',
-  'facturation',
 ] as const satisfies readonly FAQCategory[];
 
 export interface FAQItem {
@@ -326,8 +324,17 @@ export const FAQ_ITEMS: FAQItem[] = [
     category: 'shopify-boutiques',
     question: 'Comment connecter ma boutique Shopify à Tëër ?',
     answer:
-      "Va dans Boutiques → « Ajouter une boutique », clique sur « Connecter Shopify » et suis le flux d'autorisation OAuth. Tes commandes Shopify commenceront à arriver automatiquement dans Tëër via les webhooks.",
-    keywords: ['shopify', 'connecter', 'boutique', 'oauth', 'webhooks', 'synchronisation'],
+      "Installez Tëër depuis votre administration Shopify. Shopify vous demande d'autoriser l'accès, puis Tëër vous invite à vous connecter, ou à créer votre compte, et à confirmer le rattachement : vérifiez le nom de la boutique affiché avant de confirmer. Le rattachement est réservé au propriétaire ou à un gestionnaire de l'espace. La boutique apparaît ensuite dans Paramètres → Boutiques, et ses commandes arrivent automatiquement dans Tëër.",
+    keywords: ['shopify', 'connecter', 'boutique', 'installer', 'autoriser', 'rattacher'],
+  },
+  {
+    id: 'shopify-reprise',
+    category: 'shopify-boutiques',
+    question:
+      "J'ai ouvert l'e-mail de confirmation sur un autre appareil : comment reprendre le rattachement ?",
+    answer:
+      "Le rattachement d'une boutique Shopify ne reprend que dans le navigateur où vous l'avez commencé. Si vous avez ouvert l'e-mail de confirmation de votre compte sur un autre appareil ou dans un autre navigateur, rouvrez Tëër depuis votre administration Shopify, connectez-vous, puis confirmez le rattachement.",
+    keywords: ['reprendre', 'confirmation', 'e-mail', 'appareil', 'navigateur', 'rattachement'],
   },
   {
     id: 'shopify-sync',
@@ -441,24 +448,6 @@ export const FAQ_ITEMS: FAQItem[] = [
     answer:
       "L'export de données (commandes, finances) est prévu dans la feuille de route de Tëër. Pour l'instant, certaines vues proposent un export CSV partiel. Contacte le support pour une demande d'export complète.",
     keywords: ['export', 'données', 'CSV', 'télécharger', 'rapport'],
-  },
-
-  // ─── FACTURATION ─────────────────────────────────────────────────────────
-  {
-    id: 'facturation-abonnement',
-    category: 'facturation',
-    question: 'Quels sont les plans tarifaires de Tëër ?',
-    answer:
-      "Les informations tarifaires sont disponibles sur la page d'accueil de Tëër. Pour toute question sur l'abonnement, la facturation ou les conditions tarifaires, contacte le support via WhatsApp ou email.",
-    keywords: ['tarif', 'abonnement', 'prix', 'plan', 'payer', 'facture', 'coût'],
-  },
-  {
-    id: 'facturation-essai',
-    category: 'facturation',
-    question: "Y a-t-il une période d'essai gratuite ?",
-    answer:
-      "Pour les conditions actuelles d'accès et d'essai, contacte l'équipe Tëër via le support. Les modalités peuvent évoluer selon les offres en cours.",
-    keywords: ['essai', 'gratuit', 'trial', 'période', 'test', 'démarrer'],
   },
 ];
 

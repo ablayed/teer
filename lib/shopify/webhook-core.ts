@@ -48,6 +48,8 @@ import {
   SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
   isLeaseableShopDomain,
   markShopifyConnectionUninstalled,
+  markShopifyStoreConnectionUninstalledFenced,
+  releaseShopifyTokenLease,
 } from '@/lib/shopify/token-lease';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import { nullableRpcArg } from '@/lib/supabase/rpc-args';
@@ -363,6 +365,8 @@ const CONTROLLED_WEBHOOK_ERROR_CODES = new Set([
   'shopify_uninstall_app_unidentified',
   'gdpr_shop_domain_missing',
   'gdpr_shop_domain_mismatch',
+  // SHOPIFY-OAUTH-FIRST-01 / D20a — domaine non canonique ou à espace interne.
+  'gdpr_shop_domain_invalid',
   'gdpr_shop_lookup_failed',
   'gdpr_shop_not_found',
   'gdpr_customer_id_missing',
@@ -399,6 +403,7 @@ export function isTerminalWebhookError(error: unknown): boolean {
   return new Set([
     'gdpr_shop_domain_missing',
     'gdpr_shop_domain_mismatch',
+    'gdpr_shop_domain_invalid',
     'gdpr_shop_not_found',
     'gdpr_customer_id_missing',
     'gdpr_topic_not_supported',
@@ -807,6 +812,123 @@ async function processAppUninstalledCore({
   logWebhookInfo('[webhook-core] app/uninstalled processed', { shopDomain: shop.shop_domain });
 }
 
+// SHOPIFY-OAUTH-FIRST-01 / B6 — app/uninstalled pour un domaine SANS boutique rattachée au
+// moment de la résolution : une installation en attente (branche 2 de D16b) peut exister.
+//
+// AVERTISSEMENT (D20b) : `shopDomain` N'EST PAS authentifié. Le HMAC Shopify ne couvre que le
+// corps brut, et le chemin legacy retombe sur l'en-tête non signé `x-shopify-shop-domain` quand
+// le corps de `app/uninstalled` ne porte pas de domaine. Une livraison authentique rejouée avec un
+// autre domaine peut donc viser l'attente d'un tiers utilisant la même app. Risque ACCEPTÉ jusqu'au
+// lot 1b (abonnement par boutique sur URL opaque) ; ne jamais présenter ce domaine comme lié au
+// corps signé. La garde d'app, elle, est réelle : seule l'app dont le HMAC a été validé est visée.
+//
+// `uninstall_shopify_pending_or_shop` (0160) décide SOUS VERROU : attente du couple supprimée,
+// et boutique désinstallée par composition si elle a été créée entre la résolution et cet appel.
+// Le bail préempté par la primitive est TOUJOURS libéré, avec la génération qu'elle rend.
+async function processAppUninstalledPendingCore({
+  supabase,
+  shopDomain,
+  validatedClientId,
+}: {
+  supabase: AdminClient;
+  shopDomain: string;
+  validatedClientId: string;
+}) {
+  if (!isLeaseableShopDomain(shopDomain)) {
+    logWebhookInfo('[webhook-core] app/uninstalled shop not found', {});
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('uninstall_shopify_pending_or_shop', {
+    p_shop_domain: shopDomain,
+    p_client_id: validatedClientId,
+    p_ttl_seconds: SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
+  });
+
+  if (error) {
+    // Transaction annulée : aucune préemption n'a eu lieu.
+    logWebhookError('[webhook-core] app/uninstalled pending failed', { code: error.code });
+    throw new Error('shopify_uninstall_pending_failed');
+  }
+
+  const verdict = data?.[0];
+  const generation = verdict?.generation ?? null;
+
+  try {
+    if (
+      (verdict?.outcome === 'shop_uninstalled' || verdict?.outcome === 'both') &&
+      verdict.shop_id &&
+      verdict.merchant_account_id &&
+      generation !== null
+    ) {
+      const merchantAccountId = verdict.merchant_account_id;
+      const shopId = verdict.shop_id;
+      // Même motif que processAppUninstalledCore, sous la génération rendue par la primitive.
+      await runDualWrite('app_uninstalled_connection_status', async () => {
+        const connectionOutcome = await markShopifyStoreConnectionUninstalledFenced(supabase, {
+          shopDomain,
+          generation,
+          merchantAccountId,
+        });
+        if (connectionOutcome !== 'written' && connectionOutcome !== 'connection_not_found') {
+          throw new Error(`store_connection_uninstall_${connectionOutcome}`);
+        }
+      });
+
+      const { error: auditError } = await supabase.from('audit_log').insert({
+        merchant_account_id: merchantAccountId,
+        actor_user_id: null,
+        action: 'shopify.app_uninstalled',
+        resource_type: 'shop',
+        resource_id: shopId,
+        payload: { shopDomain },
+      });
+      if (auditError) {
+        logWebhookError('[webhook-core] app/uninstalled audit failed', { code: auditError.code });
+      }
+    }
+  } finally {
+    if (generation !== null) {
+      await releaseShopifyTokenLease(supabase, shopDomain, generation);
+    }
+  }
+
+  logWebhookInfo('[webhook-core] app/uninstalled pending processed', {
+    outcome: verdict?.outcome ?? null,
+  });
+}
+
+// SHOPIFY-OAUTH-FIRST-01 — attente active du couple (domaine, app validée) quand la boutique
+// existe. Seule primitive existante qui la supprime sous le bail :
+// `uninstall_shopify_pending_or_shop` (0160, via processAppUninstalledPendingCore, qui libère le
+// bail qu'elle a préempté — R3). Cette primitive préempte TOUJOURS le bail : elle n'est appelée
+// que si une attente active existe, pour que le chemin historique sans attente (KOBA, apps
+// historiques) garde exactement ses effets. Si la lecture échoue, la suppression est tentée
+// quand même : mieux vaut une préemption de trop qu'une attente survivante.
+async function deletePendingInstallationOnUninstall({
+  supabase,
+  shopDomain,
+  validatedClientId,
+}: {
+  supabase: AdminClient;
+  shopDomain: string;
+  validatedClientId: string;
+}) {
+  const { data, error } = await supabase
+    .from('shopify_pending_installation')
+    .select('id')
+    .eq('shop_domain', shopDomain)
+    .eq('shopify_client_id', validatedClientId)
+    .is('consumed_at', null)
+    .limit(1);
+
+  if (!error && (data ?? []).length === 0) {
+    return;
+  }
+
+  await processAppUninstalledPendingCore({ supabase, shopDomain, validatedClientId });
+}
+
 async function processRefundCore({
   supabase,
   shop,
@@ -1105,6 +1227,7 @@ export async function dispatchWebhookCore({
   webhookId,
   triggeredAt,
   validatedClientId,
+  resolvedShopDomain = null,
 }: {
   supabase: AdminClient;
   shop: WebhookShopRow | null;
@@ -1116,6 +1239,9 @@ export async function dispatchWebhookCore({
   // App dont le HMAC a été validé par le point d'entrée (SHOPIFY-EXPIRING-TOKENS-01). Seul
   // `app/uninstalled` la consomme, comme garde d'app de la primitive destructive.
   validatedClientId: string | null;
+  // SHOPIFY-OAUTH-FIRST-01 / B6 — domaine résolu par le point d'entrée, transmis pour le seul
+  // `app/uninstalled` sans boutique. NON AUTHENTIFIÉ sur le chemin legacy (D20b).
+  resolvedShopDomain?: string | null;
 }): Promise<GdprProcessResult | null> {
   // Pré-audit PCD : `shop` est déjà résolu (avec la bonne tolérance topic-par-topic) au moment où
   // ce dispatcher est appelé — l'audit ne peut donc jamais précéder le refus qui aurait dû avoir
@@ -1181,10 +1307,29 @@ export async function dispatchWebhookCore({
       return null;
     case 'app/uninstalled':
       if (!shop) {
+        if (resolvedShopDomain && validatedClientId) {
+          await processAppUninstalledPendingCore({
+            supabase,
+            shopDomain: resolvedShopDomain,
+            validatedClientId,
+          });
+          return null;
+        }
         logWebhookInfo('[webhook-core] app/uninstalled shop not found', {});
         return null;
       }
       await processAppUninstalledCore({ supabase, shop, validatedClientId });
+      // SHOPIFY-OAUTH-FIRST-01 — une boutique déjà rattachée (typiquement `uninstalled`, puis
+      // réautorisée en branche 2) peut porter une attente active. `app/uninstalled` la supprime
+      // aussi, quel que soit l'état de la ligne `shop` : sinon un POST ultérieur la
+      // réactiverait avec des jetons que Shopify vient de révoquer.
+      if (validatedClientId) {
+        await deletePendingInstallationOnUninstall({
+          supabase,
+          shopDomain: shop.shop_domain,
+          validatedClientId,
+        });
+      }
       return null;
     case 'customers/data_request':
     case 'customers/redact':
@@ -1207,6 +1352,7 @@ export async function runResolvedWebhookEvent({
   webhookId,
   triggeredAt,
   validatedClientId,
+  resolvedShopDomain = null,
 }: {
   supabase: AdminClient;
   eventId: string;
@@ -1216,6 +1362,7 @@ export async function runResolvedWebhookEvent({
   webhookId: string | null;
   triggeredAt: string | null;
   validatedClientId: string | null;
+  resolvedShopDomain?: string | null;
 }): Promise<void> {
   try {
     const result = await dispatchWebhookCore({
@@ -1227,6 +1374,7 @@ export async function runResolvedWebhookEvent({
       webhookId,
       triggeredAt,
       validatedClientId,
+      resolvedShopDomain,
     });
     await finishWebhookStatus({
       supabase,

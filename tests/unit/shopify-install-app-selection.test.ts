@@ -17,39 +17,59 @@
 // L'assertion porte sur le `clientId` passé à `buildAuthorizeUrl`, jamais sur l'URL rendue :
 // l'URL est mockée et ne porte aucune identité d'app. Un test qui n'inspecterait que la
 // redirection serait vert quelle que soit l'app choisie — exactement l'angle mort à fermer.
+//
+// SHOPIFY-OAUTH-FIRST-01 / B9 — cette route REFUSE désormais toute app publique (D23, option (a),
+// T33) et réserve l'installation à `owner`/`manager` (D4, T10). Le cas « accepte Teer Public »
+// de Test A est remplacé par son refus ; les apps custom (KOBA et historiques) passent inchangées.
 import { buildAuthorizeUrl } from '@/lib/shopify/oauth';
 import { signState } from '@/lib/shopify/state';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authUser = vi.hoisted(() => ({ value: { id: 'user-sentinel' } as { id: string } | null }));
+const member = vi.hoisted(() => ({
+  value: { merchant_account_id: 'merchant-sentinel', role: 'owner' } as {
+    merchant_account_id: string;
+    role: string;
+  } | null,
+}));
 
 const APPS = {
-  'teer-dev': { label: 'teer-dev' as const, clientId: 'dev_client', clientSecret: 'dev_secret' },
+  'teer-dev': {
+    label: 'teer-dev' as const,
+    clientId: 'dev_client',
+    clientSecret: 'dev_secret',
+    distribution: 'custom' as const,
+  },
   'teer-pilote': {
     label: 'teer-pilote' as const,
     clientId: 'pilote_client',
     clientSecret: 'pilote_secret',
+    distribution: 'custom' as const,
   },
   'teer-marchand': {
     label: 'teer-marchand' as const,
     clientId: 'marchand_client',
     clientSecret: 'marchand_secret',
+    distribution: 'custom' as const,
   },
   'teer-koba': {
     label: 'teer-koba' as const,
     clientId: 'koba_client',
     clientSecret: 'koba_secret',
+    distribution: 'custom' as const,
   },
   'teer-public': {
     label: 'teer-public' as const,
     clientId: 'public_client',
     clientSecret: 'public_secret',
+    distribution: 'public' as const,
   },
 };
 
 vi.mock('@/lib/actions/merchant', () => ({
-  getMerchantAccount: vi.fn(async () => ({ id: 'merchant-sentinel' })),
+  getMerchantMemberForUser: vi.fn(async () => member.value),
+  getMerchantAccountById: vi.fn(async (id: string) => ({ id })),
 }));
 
 vi.mock('@/lib/shopify/apps', () => ({
@@ -99,29 +119,74 @@ function authorizedClientId(): string | undefined {
 describe('GET /api/shopify/install — l’app autorisée est celle du client_id fourni', () => {
   beforeEach(() => {
     authUser.value = { id: 'user-sentinel' };
+    member.value = { merchant_account_id: 'merchant-sentinel', role: 'owner' };
     captureException.mockClear();
     captureMessage.mockClear();
     vi.mocked(buildAuthorizeUrl).mockClear();
     vi.mocked(signState).mockClear();
   });
 
-  it('accepte Teer Public et autorise sous SON client_id', async () => {
+  // T33 — garde mutée : `if (app.distribution === 'public')`.
+  it('T33 : refuse Teer Public AVANT tout state, tout cookie et toute redirection OAuth', async () => {
     const { GET } = await import('@/app/api/shopify/install/route');
     const response = await GET(buildRequest(APPS['teer-public'].clientId));
 
-    expect(response.status).toBe(307);
-    expect(authorizedClientId()).toBe('public_client');
-    expect(captureException).not.toHaveBeenCalled();
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'app_not_installable_here' });
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(signState).not.toHaveBeenCalled();
+    expect(buildAuthorizeUrl).not.toHaveBeenCalled();
   });
 
-  it('préserve uniquement le point d’installation fixe quand /api/shopify/install reçoit un utilisateur non connecté', async () => {
+  // T10 — garde mutée : `member.role !== 'owner' && member.role !== 'manager'`.
+  it('T10 : un agent ne peut pas installer (refus serveur, aucun state)', async () => {
+    member.value = { merchant_account_id: 'merchant-sentinel', role: 'agent' };
+    const { GET } = await import('@/app/api/shopify/install/route');
+    const response = await GET(buildRequest(APPS['teer-koba'].clientId));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'forbidden' });
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(signState).not.toHaveBeenCalled();
+    expect(buildAuthorizeUrl).not.toHaveBeenCalled();
+  });
+
+  it('T10 (contrôle positif) : un manager installe une app custom', async () => {
+    member.value = { merchant_account_id: 'merchant-sentinel', role: 'manager' };
+    const { GET } = await import('@/app/api/shopify/install/route');
+    const response = await GET(buildRequest(APPS['teer-koba'].clientId));
+
+    expect(response.status).toBe(307);
+    expect(authorizedClientId()).toBe('koba_client');
+  });
+
+  it('sans espace : vers l’onboarding, aucun state', async () => {
+    member.value = null;
+    const { GET } = await import('@/app/api/shopify/install/route');
+    const response = await GET(buildRequest(APPS['teer-koba'].clientId));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost:3000/onboarding');
+    expect(buildAuthorizeUrl).not.toHaveBeenCalled();
+  });
+
+  it('sans session : connexion avec ce point d’installation, reconstruit à partir de ses seuls paramètres', async () => {
     authUser.value = null;
     const { GET } = await import('@/app/api/shopify/install/route');
-    const response = await GET(buildRequest(APPS['teer-public'].clientId));
+    const request = buildRequest(APPS['teer-koba'].clientId, '/parametres?tab=shops&connected=1');
+    request.nextUrl.searchParams.set('injected', 'x');
+    const response = await GET(new NextRequest(request.nextUrl));
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/connexion?redirectTo=%2Fshopify%2Finstall-entry',
-    );
+    const location = new URL(response.headers.get('location') ?? '');
+    expect(location.pathname).toBe('/connexion');
+    const resume = new URL(location.searchParams.get('redirectTo') ?? '', 'http://localhost:3000');
+    expect(resume.pathname).toBe('/api/shopify/install');
+    expect(Object.fromEntries(resume.searchParams.entries())).toEqual({
+      shop: 'acme-shop.myshopify.com',
+      client_id: 'koba_client',
+      return_to: '/parametres?tab=shops&connected=1',
+    });
     expect(buildAuthorizeUrl).not.toHaveBeenCalled();
   });
 
@@ -160,7 +225,7 @@ describe('GET /api/shopify/install — l’app autorisée est celle du client_id
 
   it('conserve uniquement le retour externe canonique vers ParamÃ¨tres > Boutiques', async () => {
     const { GET } = await import('@/app/api/shopify/install/route');
-    await GET(buildRequest(APPS['teer-public'].clientId, '/parametres?tab=shops&connected=1'));
+    await GET(buildRequest(APPS['teer-koba'].clientId, '/parametres?tab=shops&connected=1'));
     expect(signState).toHaveBeenCalledWith(
       expect.objectContaining({
         returnTo: '/parametres?tab=shops&connected=1',
@@ -168,7 +233,7 @@ describe('GET /api/shopify/install — l’app autorisée est celle du client_id
     );
 
     vi.mocked(signState).mockClear();
-    await GET(buildRequest(APPS['teer-public'].clientId, 'https://evil.example/'));
+    await GET(buildRequest(APPS['teer-koba'].clientId, 'https://evil.example/'));
     expect(signState).toHaveBeenCalledWith(expect.objectContaining({ returnTo: undefined }));
   });
 });

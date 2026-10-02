@@ -119,4 +119,33 @@ describe('shopStatus', () => {
       }),
     ).toEqual({ status: 'error', reason: 'token_expired' });
   });
+
+  // SHOPIFY-OAUTH-FIRST-01 / D17 — garde mutée : `if (shop.reauthorizationRequiredAt)`.
+  it('D17 — réautorisation requise : erreur nommée, même avec un access token valide', () => {
+    expect(
+      shopStatus({
+        status: 'active',
+        storeKind: 'shopify',
+        accessTokenEncrypted: 'encrypted',
+        accessTokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        refreshTokenEncrypted: 'encrypted-refresh',
+        refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        reauthorizationRequiredAt: new Date().toISOString(),
+      }),
+    ).toEqual({ status: 'error', reason: 'reauthorization_required' });
+  });
+
+  it('D17 — contrôle positif : sans marquage, la même boutique est connectée', () => {
+    expect(
+      shopStatus({
+        status: 'active',
+        storeKind: 'shopify',
+        accessTokenEncrypted: 'encrypted',
+        accessTokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        refreshTokenEncrypted: 'encrypted-refresh',
+        refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        reauthorizationRequiredAt: null,
+      }),
+    ).toEqual({ status: 'connected', reason: null });
+  });
 });
