@@ -2480,6 +2480,7 @@ export type Database = {
           access_token_encrypted: string | null;
           access_token_expires_at: string | null;
           api_version: string;
+          credentials_acquired_at: string | null;
           display_name: string;
           id: string;
           installed_at: string;
@@ -2502,6 +2503,7 @@ export type Database = {
           access_token_encrypted?: string | null;
           access_token_expires_at?: string | null;
           api_version?: string;
+          credentials_acquired_at?: string | null;
           display_name?: string;
           id?: string;
           installed_at?: string;
@@ -2524,6 +2526,7 @@ export type Database = {
           access_token_encrypted?: string | null;
           access_token_expires_at?: string | null;
           api_version?: string;
+          credentials_acquired_at?: string | null;
           display_name?: string;
           id?: string;
           installed_at?: string;
@@ -2872,6 +2875,7 @@ export type Database = {
           access_token_expires_at: string | null;
           consumed_at: string | null;
           created_at: string;
+          credentials_acquired_at: string | null;
           expires_at: string;
           id: string;
           refresh_token_encrypted: string | null;
@@ -2886,6 +2890,7 @@ export type Database = {
           access_token_expires_at?: string | null;
           consumed_at?: string | null;
           created_at?: string;
+          credentials_acquired_at?: string | null;
           expires_at: string;
           id?: string;
           refresh_token_encrypted?: string | null;
@@ -2900,6 +2905,7 @@ export type Database = {
           access_token_expires_at?: string | null;
           consumed_at?: string | null;
           created_at?: string;
+          credentials_acquired_at?: string | null;
           expires_at?: string;
           id?: string;
           refresh_token_encrypted?: string | null;
@@ -2934,6 +2940,88 @@ export type Database = {
           shop_domain?: string;
         };
         Relationships: [];
+      };
+      shopify_webhook_reconcile_lease: {
+        Row: {
+          acquired_at: string | null;
+          created_at: string;
+          generation: number;
+          lease_expires_at: string | null;
+          store_connection_id: string;
+        };
+        Insert: {
+          acquired_at?: string | null;
+          created_at?: string;
+          generation?: number;
+          lease_expires_at?: string | null;
+          store_connection_id: string;
+        };
+        Update: {
+          acquired_at?: string | null;
+          created_at?: string;
+          generation?: number;
+          lease_expires_at?: string | null;
+          store_connection_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shopify_webhook_reconcile_lease_store_connection_id_fkey';
+            columns: ['store_connection_id'];
+            isOneToOne: true;
+            referencedRelation: 'store_connection';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      shopify_webhook_subscription_state: {
+        Row: {
+          api_version: string | null;
+          created_at: string;
+          id: string;
+          last_error_code: string | null;
+          last_observed_at: string | null;
+          shopify_subscription_id: string | null;
+          status: string;
+          store_connection_id: string;
+          token_public_id: string;
+          topic: string;
+          updated_at: string;
+        };
+        Insert: {
+          api_version?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error_code?: string | null;
+          last_observed_at?: string | null;
+          shopify_subscription_id?: string | null;
+          status: string;
+          store_connection_id: string;
+          token_public_id: string;
+          topic: string;
+          updated_at?: string;
+        };
+        Update: {
+          api_version?: string | null;
+          created_at?: string;
+          id?: string;
+          last_error_code?: string | null;
+          last_observed_at?: string | null;
+          shopify_subscription_id?: string | null;
+          status?: string;
+          store_connection_id?: string;
+          token_public_id?: string;
+          topic?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'shopify_webhook_subscription_state_store_connection_id_fkey';
+            columns: ['store_connection_id'];
+            isOneToOne: false;
+            referencedRelation: 'store_connection';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       stock_movement: {
         Row: {
@@ -3681,6 +3769,13 @@ export type Database = {
       };
       acquire_shopify_token_lease: {
         Args: { p_shop_domain: string; p_ttl_seconds: number };
+        Returns: {
+          acquired_generation: number;
+          expires_at: string;
+        }[];
+      };
+      acquire_shopify_webhook_reconcile_lease: {
+        Args: { p_store_connection_id: string; p_ttl_seconds: number };
         Returns: {
           acquired_generation: number;
           expires_at: string;
@@ -4700,6 +4795,10 @@ export type Database = {
           outcome: string;
         }[];
       };
+      release_shopify_webhook_reconcile_lease: {
+        Args: { p_generation: number; p_store_connection_id: string };
+        Returns: boolean;
+      };
       renew_shopify_token_lease: {
         Args: {
           p_generation: number;
@@ -4781,6 +4880,24 @@ export type Database = {
           merchant_account_id: string;
           outcome: string;
           shop_id: string;
+        }[];
+      };
+      uninstall_shopify_pending_or_shop_ordered: {
+        Args: {
+          p_client_id: string;
+          p_event_triggered_at: string;
+          p_margin_seconds: number;
+          p_shop_domain: string;
+          p_ttl_seconds: number;
+        };
+        Returns: {
+          generation: number;
+          merchant_account_id: string;
+          pending_deleted: boolean;
+          pending_effect: string;
+          shop_effect: string;
+          shop_id: string;
+          shop_transitioned: boolean;
         }[];
       };
       uninstall_shopify_shop_fenced: {
