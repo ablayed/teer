@@ -85,19 +85,21 @@ Les trois tests passés au rejeu dans `37196059557` : `tests/e2e/shop-filter.spe
 
 Toutes les empreintes ci-dessous ont été **recalculées le 2026-10-04**, avant l'écriture de ce document. Aucun de ces fichiers n'est dans le dépôt.
 
+**Mise à jour du 2026-10-04, après la fusion de la PR #248.** Sur instruction du porteur, deux fichiers du dossier de la phase 1 ont été corrigés : `README.md` (une phrase) et `SHA256SUMS.txt` (régénéré pour couvrir `prod\`). Leurs empreintes ci-dessous sont les **valeurs finales**, recalculées après la correction ; les valeurs antérieures sont conservées dans la section des écarts. Aucun autre fichier n'a changé : contrôle `sha256sum -c` conforme pour les 51 fichiers listés.
+
 ### `C:\Users\diaab\teer-preuves\2026-10-03-LOT-1B-PHASE1\`
 
-52 fichiers : 37 listés par `SHA256SUMS.txt`, `SHA256SUMS.txt` lui-même, et les 14 du sous-dossier `prod\`.
+52 fichiers : 51 listés par `SHA256SUMS.txt` (les 37 d'origine et les 14 du sous-dossier `prod\`), et `SHA256SUMS.txt` lui-même.
 
 | Fichier | sha256 |
 |---|---|
-| `SHA256SUMS.txt` | `cab6ec6fb74490424e803cb984f4ee1a03776d67f26738be1e9ca3620db0436d` |
+| `SHA256SUMS.txt` | `ba94922f913bf26722747cd1263c9d10215f1a328c202fb42599940fac3f3842` |
 
-Les 37 fichiers listés par `SHA256SUMS.txt` — recalcul **conforme pour les 37** :
+Les 37 fichiers d'origine — recalcul **conforme pour les 37** :
 
 | Fichier | sha256 |
 |---|---|
-| `README.md` | `6eb47f1b943744418740ced4b52dbc62360b2046a00314ac932f1615ad28da82` |
+| `README.md` | `88857689327737af18c35e4a5a507b9d20c02163ecfd9bd289f7c57ab66ac41a` |
 | `out\00_setup_helpers.txt` | `881d13c3c2a2ddaaa10bc1a394601fa4c44f0a5caef9e073f0a0b807ddfa144d` |
 | `out\01_scenarios_P1a_P14.txt` | `5262c6f4f0f786bdfba1f8c8e108c68d6bf9116a42d6ef507a7980b618f75755` |
 | `out\02_P10_reconcile_lease.txt` | `bc0c35b9de0fc24b9bacdff9937b3cbc0922db70d151978b2e0b7417709f4192` |
@@ -135,7 +137,7 @@ Les 37 fichiers listés par `SHA256SUMS.txt` — recalcul **conforme pour les 37
 | `sql\20_releves_production_R0_R6.sql` | `b9e1cdb3518ce941a3bd8d3e3b20cf9a9040038d8dba25dce8242d697c49da3e` |
 | `sql\21_releve_production_R1bis.sql` | `f72318674e1ac66438f509a43e89521d111f9ae58843420d6380e082ba941106` |
 
-Les 14 fichiers du sous-dossier `prod\` — relevés de production, **transcriptions et non exports bruts** (`prod\README_prod.md`) ; **aucun n'est couvert par `SHA256SUMS.txt`** :
+Les 14 fichiers du sous-dossier `prod\` — relevés de production, **transcriptions et non exports bruts** (`prod\README_prod.md`) ; couverts par `SHA256SUMS.txt` depuis sa régénération du 2026-10-04 :
 
 | Fichier | sha256 |
 |---|---|
@@ -166,17 +168,17 @@ Les 14 fichiers du sous-dossier `prod\` — relevés de production, **transcript
 
 Relus dans les deux sorties, datées du 2026-10-04 à 19:47 UTC : 9 abonnements pour `ntmwxz-83`, tous sur l'origine `https://webhooks.teerafrik.com`, version `2026-04`, classés `true | true | current` ; 0 abonnement et aucun jeton d'URL local pour `teer-test`. Les sorties ne portent ni chemin opaque, ni secret, ni `uri` complète.
 
-## Écarts constatés, signalés et non corrigés
+## Écarts constatés et signalés
 
 1. **Le sous-dossier `prod\` n'existait pas** à l'ouverture de ce lot documentaire. Le porteur a déposé ses fichiers dans son dossier de téléchargements le 2026-10-04 ; ils ont été **copiés** dans `prod\`, et la copie a été comparée à l'original, empreinte par empreinte : identique. **Les originaux ne sont plus dans le dossier de téléchargements** à la fin de ce lot : `prod\` est désormais le seul exemplaire connu de ces pièces.
 2. **14 fichiers et non 15.** Le porteur en annonçait 15 ; le dépôt en compte 14, soit exactement le contenu de l'archive `files.zip` déposée avec eux (sha256 `558742ef5629aaa22e69d61bb63e87e65523cef9e303c151d10901def573dc17`, 14 entrées aux empreintes identiques). Cette archive **n'a pas été conservée** : elle n'est plus dans le dossier de téléchargements, et son empreinte, relevée une fois, ne peut plus être recalculée.
-3. **`SHA256SUMS.txt` ne couvre pas `prod\`.** Il n'a pas été régénéré.
-4. **`README.md` du dossier dit encore « Rien ici n'a été mesuré en production »**, ce qui n'est plus vrai du sous-dossier `prod\`. Il n'a pas été modifié : son empreinte figure dans `SHA256SUMS.txt`.
+3. **RÉSOLU le 2026-10-04 — `SHA256SUMS.txt` ne couvrait pas `prod\`.** À la rédaction, il listait 37 fichiers (sha256 `cab6ec6fb74490424e803cb984f4ee1a03776d67f26738be1e9ca3620db0436d`). Régénéré après la fusion de la PR #248, au même format et dans le même ordre : il liste désormais 51 fichiers, dont les 14 de `prod\` (sha256 `ba94922f913bf26722747cd1263c9d10215f1a328c202fb42599940fac3f3842`). L'ancienne version n'a pas été conservée ; ses 37 lignes sont reprises à l'identique dans la nouvelle, sauf celle de `README.md`.
+4. **RÉSOLU le 2026-10-04 — `README.md` du dossier disait « Rien ici n'a été mesuré en production »**, ce qui n'était plus vrai du sous-dossier `prod\`. Cette phrase, et elle seule, a été remplacée : le fichier dit maintenant que `prod\` contient des **transcriptions de relevés de production, et non des exports bruts**, le reste du dossier étant local. Empreinte avant : `6eb47f1b943744418740ced4b52dbc62360b2046a00314ac932f1615ad28da82` ; après : `88857689327737af18c35e4a5a507b9d20c02163ecfd9bd289f7c57ab66ac41a`. **L'ancienne version du fichier n'a pas été conservée** : son empreinte ne peut plus être recalculée.
 5. **R1bis n'a aucune pièce.** Le verdict cite « les relevés « avant » R0 à R6 et R1bis » ; les définitions complètes n'ont pas été conservées en fichier. Leur identité repose sur les empreintes de R1 (`docs/security/ATTESTATION-0161-2026-10-03.md`, §5 et réserve 2).
 6. **R5 ne varie pas.** Le mandat de ce lot documentaire prévoyait « R5 qui varie sous explication » ; les deux relevés sont identiques, il n'y a aucune variation à expliquer.
 7. **Relevés de production : transcriptions.** Le verdict dit les relevés « après » « conformes à la liste fermée des différences attendues » ; cette conformité est lue dans des transcriptions du porteur, les exports bruts n'ayant pas été conservés.
 
-Aucune empreinte recalculée ne diffère d'une empreinte écrite dans le verdict ou dans `SHA256SUMS.txt`.
+Les écarts 1, 2, 5, 6 et 7 restent en l'état. Aucune empreinte recalculée ne diffère d'une empreinte écrite dans le verdict ou dans `SHA256SUMS.txt`.
 
 ## Renvois
 
