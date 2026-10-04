@@ -2,7 +2,7 @@
 
 > `AGENTS.md` points here. This file is the single source of truth. If in doubt between this file and an ad-hoc instruction, ask the developer.
 
-> **Migration tracker attestation (2026-09-25, tête mise à jour le 2026-10-02) :** dernières migrations confirmées appliquées en production : **`0160`**. Lecture du catalogue de production (et non du seul tracker de la CLI) : le 2026-09-10 pour **`0148`, `0149`, `0150`, `0151`**, le 2026-09-12 pour **`0152`, `0153`, `0154`**, le 2026-09-17 pour **`0155`** (privilèges `shop` et ACL des deux RPC mesurés, décompte `shop` identique avant/après) — toutes appliquées en production. La date d'application de chacune n'est pas disponible depuis une source autoritative ; ces dates sont des dates de vérification du catalogue, pas des dates d'application. Ne jamais présumer l'application d'une migration sans preuve : `db push` réussi attesté par le porteur, ou lecture directe du tracker/catalogue sur la base réellement concernée (règle #4).
+> **Migration tracker attestation (2026-09-25, tête mise à jour le 2026-10-04) :** dernières migrations confirmées appliquées en production : **`0161`**. Lecture du catalogue de production (et non du seul tracker de la CLI) : le 2026-09-10 pour **`0148`, `0149`, `0150`, `0151`**, le 2026-09-12 pour **`0152`, `0153`, `0154`**, le 2026-09-17 pour **`0155`** (privilèges `shop` et ACL des deux RPC mesurés, décompte `shop` identique avant/après) — toutes appliquées en production. La date d'application de chacune n'est pas disponible depuis une source autoritative ; ces dates sont des dates de vérification du catalogue, pas des dates d'application. Ne jamais présumer l'application d'une migration sans preuve : `db push` réussi attesté par le porteur, ou lecture directe du tracker/catalogue sur la base réellement concernée (règle #4).
 >
 > **`0156` et `0157` (lot COHERENCE-01) : confirmées le 2026-09-18, par lecture du catalogue de production** (`supabase db dump --linked`, lecture seule), **et non par la seule présence en colonne *Remote***. La vérification a porté sur les **objets réellement modifiés** : l'axe de datation dans les deux corps (`coalesce(cash_collected_at, …)` présent ; `coalesce(o.updated_at, o.created_at)` de `0085` et `coalesce(max(ost.created_at), o.updated_at)` de `0017` tous deux **absents**), la **disparition** du join `order_state_transition` dans `cash_aging`, l'alias `financial_at`, et l'ACL (`REVOKE ALL … FROM PUBLIC` + `GRANT` à `authenticated` et `service_role`, **zéro** grant à `anon`, `proacl` identique avant/après).
 >
@@ -13,6 +13,8 @@
 > **`0159` (lot SCHEMA-LEASE-CLOSURE-01) : confirmée le 2026-09-25, par lecture du catalogue de production** (`supabase db dump --linked`, lecture seule) après le `db push` du porteur — cinq primitives `SECURITY INVOKER`, `search_path=''`, `EXECUTE` au seul `service_role`, une seule signature par nom. **Le relevé « avant » a cette fois été pris** : l'ACL de `shop`, `store_connection` et `shopify_token_lease` ainsi que les deux primitives de `0155` sont **identiques** avant/après, ce qui établit l'additivité en production. Le bail n'est exhaustif **que pour les domaines Shopify canoniques** ; l'existence de domaines non canoniques en production reste `[Non vérifié]`. Mesures et réserves : `docs/security/ATTESTATION-0159-2026-09-25.md`. Cette ligne couvre **`0159` et elle seule**.
 >
 > **`0160` (lot SHOPIFY-OAUTH-FIRST-01) : confirmée le 2026-09-29, par lecture du catalogue de production** (`supabase db dump --linked`, lecture seule) après le `db push` du porteur — table `shopify_pending_installation` (RLS forcée, zéro policy), colonne `shop.reauthorization_required_at`, huit fonctions (`persist_shopify_credentials_fenced` remplacée, sept créées) `SECURITY INVOKER`, `search_path=''`, `EXECUTE` au seul `service_role`, une seule signature par nom. **Aucun relevé « avant » n'a été pris** : la conformité repose sur des **extraits ciblés** identiques entre production et local (1 708 lignes), qui **ne s'étendent pas au reste du catalogue**. Mesures, réserves, N1–N6 et l'écart immuable avec `0159:64-66` : `docs/security/ATTESTATION-0160-2026-09-29.md`. Cette ligne couvre **`0160` et elle seule**.
+>
+> **`0161` (lot SHOPIFY-WEBHOOKS-PER-SHOP-1B) : confirmée par des relevés du catalogue de production du 2026-10-03, pris par le porteur AVANT puis APRÈS son `db push`** — trois fonctions remplacées (`persist_shopify_credentials_fenced`, `decide_and_write_shopify_authorization`, `consume_shopify_pending_installation`) et trois créées (`uninstall_shopify_pending_or_shop_ordered`, `acquire_shopify_webhook_reconcile_lease`, `release_shopify_webhook_reconcile_lease`), toutes `SECURITY INVOKER`, `search_path=''`, `EXECUTE` au seul `service_role`, une seule signature par nom ; deux tables (`shopify_webhook_subscription_state`, `shopify_webhook_reconcile_lease`), RLS forcée, zéro policy ; colonne `credentials_acquired_at` sur `shop` et sur `shopify_pending_installation`. **Le relevé « avant » a été pris** (règle 19) : `relacl`, policies et grants de colonne existants de `shop` et de l'attente, ainsi que les comptes, sont **identiques** avant/après, et les différences se réduisent à une liste fermée. **Trois réserves à ne pas effacer** : les pièces sont des **transcriptions** du porteur, **pas des exports bruts** ; les définitions complètes (R1bis) ne sont **pas conservées**, leur identité repose sur les empreintes ; les **grants de colonne des deux tables nouvelles ne sont pas relevés** en production. La fenêtre entre le push et la fusion de la baseline (PR #246) **n'a pas été sondée**. Mesures, M0 et réserves : `docs/security/ATTESTATION-0161-2026-10-03.md`. Cette ligne couvre **`0161` et elle seule**.
 >
 > **Motif de méthode, à ne pas refaire raisonner au prochain lot : une attestation de migration ne peut pas être écrite dans le lot qui l'applique.** La preuve n'existe qu'**après** le `db push`, et le commit qui la porterait **changerait le SHA final**, invalidant les deux exécutions CI initiales vertes exigées par la règle 6-bis. Le choix entre « attestation juste » et « deux CI valides » n'existe pas : les deux sont obligatoires, et seul l'**ordre** permet de les avoir. L'attestation relève donc **toujours d'un lot documentaire suivant**, jamais du lot qui pousse la migration.
 >
@@ -261,7 +263,7 @@ Ce qui unit les quatre formes reste donc : un **pull réseau non caché, non bor
 
 **(l) Ouvert — le parcours WooCommerce n'a AUCUN test de bout en bout (2026-09-12).** `createWooCommerceConnectionIntentAction` → `/wc-auth` → callback → `finalize_woocommerce_connection` → abonnements → synchronisation initiale : chaque maillon est testé isolément, la chaîne ne l'est pas. **Deux régimes inégalement exercés** : `new_shop` a été écrit et testé ; **`existing_shop` n'a jamais tourné hors RLS**, puisqu'aucune connexion n'a jamais existé au moment où il a été écrit. C'est l'objet du lot `VAL-WOO-01` (voir la section « Connecteurs » ci-dessous). **État au 2026-09-16 : préflight terminé, exécution suspendue** faute de boutique publique synthétique — la dette reste ouverte.
 
-**(m) Ouvert — instabilités et défauts d'isolation de la boucle RLS locale.** Les pollutions parallèles R2.3/R2.4 ont nécessité trois `supabase db reset --local` ; elles sont sans effet en CI, où chaque job part d'une base neuve. Quatre sous-familles récentes, à garder distinctes : `r2-woocommerce-*`, 13 échecs au second passage sans réinitialisation, disparus après `db reset` (**pollution d'état confirmée**) ; `invitation-organization-guard`, vert 3/3 isolé, rouge en suite complète après `db reset` (**interférence de groupe fortement indiquée, cause exacte non établie**) ; `sec-shop-claim-01`, échec en exécution groupée, puis 21/21 seul et 87/87 deux fois (**même niveau de preuve, cause exacte non établie**) ; `product-bundle-cascade-shop-scope`, `An invalid response was received from the upstream server` avant toute assertion (**instabilité de passerelle `kong`, pas une preuve de pollution par l'ordre**). Cette dernière sous-famille n'est pas de même nature que les trois premières. **Cinquième sous-famille, horodatage (SHOPIFY-OAUTH-FIRST-01, 2026-09-29)** : `orders-dimensions.rls.test.ts:699` et `:828`, voir la section « Dettes et réserves ouvertes par SHOPIFY-OAUTH-FIRST-01 ». **Sixième sous-famille, boucle RLS locale : imports lents et fuite réseau possible en 9B (SHOPIFY-WEBHOOKS-PER-SHOP-1B, consignée le 2026-10-04)** : `[Fait]` en local (Windows), le chargement d'une suite RLS qui tire la chaîne `lib/shopify/token` → `@sentry/nextjs` est lent — `collect 36,64 s` mesuré pour UN fichier à froid (`tests/rls/shopify-webhooks-1b-reconcile.rls.test.ts`), contre un `testTimeout` de 15 s ; tout `await import()` fait DANS un test ou un hook en hérite. `[Fait, par lecture]` `tests/rls/shopify-expiring-tokens-01.rls.test.ts` (preuve 9B) remplace `globalThis.fetch` et le restaure en tête de son `afterEach` (`:213-214`) : un appel encore en vol à ce moment (relecture bornée du perdant, cinq tentatives à une seconde) repartirait sur le VRAI réseau. `[Non vérifié]` Qu'une telle fuite se soit produite : l'instabilité de 9B est rapportée par le mandat de la phase 2, elle n'a pas été reproduite dans ce lot (6 sur 6, trois passages). Les suites du lot 1b n'ont pas ce défaut par construction — Shopify y est un double INJECTÉ, jamais un `fetch` remplacé, et une garde fait échouer tout appel sortant vers un domaine Shopify (`tests/helpers/shopify-webhooks-1b.ts`). À distinguer de (k), qui porte sur une suite précise et un verdict dépendant de données résiduelles.
+**(m) Ouvert — instabilités et défauts d'isolation de la boucle RLS locale.** Les pollutions parallèles R2.3/R2.4 ont nécessité trois `supabase db reset --local` ; elles sont sans effet en CI, où chaque job part d'une base neuve. Quatre sous-familles récentes, à garder distinctes : `r2-woocommerce-*`, 13 échecs au second passage sans réinitialisation, disparus après `db reset` (**pollution d'état confirmée**) ; `invitation-organization-guard`, vert 3/3 isolé, rouge en suite complète après `db reset` (**interférence de groupe fortement indiquée, cause exacte non établie**) ; `sec-shop-claim-01`, échec en exécution groupée, puis 21/21 seul et 87/87 deux fois (**même niveau de preuve, cause exacte non établie**) ; `product-bundle-cascade-shop-scope`, `An invalid response was received from the upstream server` avant toute assertion (**instabilité de passerelle `kong`, pas une preuve de pollution par l'ordre**). Cette dernière sous-famille n'est pas de même nature que les trois premières. **Cinquième sous-famille, horodatage (SHOPIFY-OAUTH-FIRST-01, 2026-09-29)** : `orders-dimensions.rls.test.ts:699` et `:828`, voir la section « Dettes et réserves ouvertes par SHOPIFY-OAUTH-FIRST-01 ». **Sixième sous-famille, boucle RLS locale : imports lents et fuite réseau possible en 9B (SHOPIFY-WEBHOOKS-PER-SHOP-1B, consignée le 2026-10-04)** : `[Fait]` en local (Windows), le chargement d'une suite RLS qui tire la chaîne `lib/shopify/token` → `@sentry/nextjs` est lent — `collect 36,64 s` mesuré pour UN fichier à froid (`tests/rls/shopify-webhooks-1b-reconcile.rls.test.ts`), contre un `testTimeout` de 15 s ; tout `await import()` fait DANS un test ou un hook en hérite. `[Fait, par lecture]` `tests/rls/shopify-expiring-tokens-01.rls.test.ts` (preuve 9B) remplace `globalThis.fetch` et le restaure en tête de son `afterEach` (`:213-214`) : un appel encore en vol à ce moment (relecture bornée du perdant, cinq tentatives à une seconde) repartirait sur le VRAI réseau. `[Non vérifié]` Qu'une telle fuite se soit produite : l'instabilité de 9B est rapportée par le mandat de la phase 2, elle n'a pas été reproduite dans ce lot (6 sur 6, trois passages). `[Fait]` Les deux exécutions locales rouges de la phase 1 (2026-10-03, T12 puis preuve 9B, une fois chacune, vertes au passage suivant sur le même arbre) sont conservées avec un extrait des journaux de la passerelle : `docs/security/ATTESTATION-0161-2026-10-03.md`, §7. Les suites du lot 1b n'ont pas ce défaut par construction — Shopify y est un double INJECTÉ, jamais un `fetch` remplacé, et une garde fait échouer tout appel sortant vers un domaine Shopify (`tests/helpers/shopify-webhooks-1b.ts`). À distinguer de (k), qui porte sur une suite précise et un verdict dépendant de données résiduelles.
 
 **(n) Ouvert — aucun `supabase stop` en CI, conflit de port au démarrage.** Les incidents historiques de `54324` et `54326` demeurent distincts de (i). Nouvelle occurrence : `failed to bind host port for 0.0.0.0:54324 … address already in use`, sur un runner éphémère — ce n'est donc pas un conflit avec une machine locale. **[Non vérifié] Cause exacte** : processus ou conteneur résiduel dans l'environnement du job, collision interne au démarrage, ou anomalie du runner ; aucune hypothèse n'est établie. La dette est probablement diagnosticable et ne dépend d'aucun tiers, ce qui en fait la plus abordable des deux pour le lot d'infrastructure. (i) et (n) relèvent de la même étape `Start Supabase`, qui démarre neuf conteneurs ; ouvrir le lot après une fenêtre de décantation. Le coût en exécutions perdues n'est pas chiffré sans inventaire des identifiants de run et de leur motif.
 
@@ -563,6 +565,8 @@ Trois limites restent ouvertes et **ne rouvrent pas le lot fonctionnel** :
 
 **Hors scope, constaté et non corrigé (2026-09-09)** : la confirmation de libération d'identité utilise une boîte de dialogue **native** affichant `teer-dev.vercel.app` (domaine du déploiement, pas la marque) ; et `installed_at` n'est **pas** remis à zéro après libération — une boutique rattachée à nouveau conserve donc sa date d'installation d'origine, affichée telle quelle par la surface embarquée.
 
+**AMENDÉ par SHOPIFY-WEBHOOKS-PER-SHOP-1B (2026-10-04) : le sous-domaine n'est plus un bloqueur** — `WEBHOOK_PUBLIC_BASE_URL` est posée (décision du porteur, voir la section du lot 1b), et la bascule par script décrite ici est remplacée par la réconciliation applicative. Le reste du paragraphe est conservé pour ses dettes.
+
 **Reste à faire pour la bascule réelle (Étape 3, hors scope de tous les lots ci-dessus)** : un sous-domaine dédié (`WEBHOOK_PUBLIC_BASE_URL`) est le seul bloqueur restant — responsabilité du porteur, pas du code. Dette connue et documentée dans le runbook, non traitée : `refunds/create` sans clé de dédup portait ce risque avant `0144` (résolu) ; configuration webhook des apps `teer-pilote`/`teer-marchand`/`teer-koba` absente du dépôt (uniquement dans leurs Partner Dashboards respectifs) ; scopes suffisants pour `webhookSubscriptionCreate` raisonnés depuis la doc Shopify, jamais prouvés contre un jeton réel installé.
 
 **Dettes relevées au préflight R2.0 (2026-09-10, SHA `8a05bd5`, mesurées sur stack locale, non corrigées)** — à reprendre dans le lot du chantier connecteurs qui touche la zone, jamais en passant :
@@ -623,8 +627,11 @@ refresh token de l'autre. Réservée à `owner`/`manager` (D4).
 ## Shopify — abonnements par boutique et désinstallation ordonnée (SHOPIFY-WEBHOOKS-PER-SHOP-1B, migration `0161`)
 
 Phase 2 (code), consignée le 2026-10-04. Plan : `PLAN-LOT-SHOPIFY-WEBHOOKS-PER-SHOP-1B.md` v3.2
-(hors dépôt). **Aucune attestation de `0161` n'est écrite ici** : elle relève d'un lot
-documentaire, comme toute attestation.
+(hors dépôt). **Lot clos avec réserves acceptées (2026-10-04)** : verdict du porteur, dossiers
+de preuves et checklist avant soumission dans
+`docs/lots/SHOPIFY-WEBHOOKS-PER-SHOP-1B-CLOTURE.md` ; attestation de `0161` dans
+`docs/security/ATTESTATION-0161-2026-10-03.md`. **Ne pas recopier ici les mesures de ces deux
+documents.**
 
 **Ce que le lot livre.** Chaque boutique Shopify connectée porte neuf abonnements webhook sur
 l'URL opaque de sa connexion : les huit topics métier et `app/uninstalled`. Ils sont créés,
@@ -640,8 +647,11 @@ Un échec ne défait jamais un rattachement : il laisse une sentinelle, une lign
 la réconciliation rend `base_url_unavailable` et n'enregistre RIEN chez Shopify : aucune boutique
 ne reçoit ses webhooks par boutique, et chaque connexion arrive avec `sync=pending`. **Aucun repli
 sur `NEXT_PUBLIC_APP_URL`** — ne pas en ajouter un : c'est exactement la classe d'erreur de
-l'incident `NEXT_PUBLIC_APP_URL` (PWD-RESET-01). `[Non vérifié]` Sa présence dans
-l'environnement de production n'a pas été mesurée par ce lot.
+l'incident `NEXT_PUBLIC_APP_URL` (PWD-RESET-01). `[Décision, porteur, 2026-10-04]` Valeur de
+production : `https://webhooks.teerafrik.com`, déclarée posée et vérifiée par le porteur
+(verdict de clôture). `[Fait]` C'est l'origine des neuf abonnements de `ntmwxz-83` relevés par
+l'inventaire G11 du 2026-10-04. `[Non vérifié]` par l'agent : la variable elle-même, qu'il n'a
+pas lue.
 
 **Fencing des écritures SANS primitive SQL — ne pas « simplifier ».** `0161` ne fournit aucune
 fonction qui vérifie la génération sur l'état des abonnements. Trois conditions atomiques, dans
@@ -694,9 +704,16 @@ NULL → aucune libération.
 
 ### Dettes et écarts ouverts par la phase 2
 
-- **E11 non livré** : l'abonnement global `app/uninstalled` du TOML reste en place. Double
-  livraison à chaque désinstallation, absorbée par la primitive ordonnée.
-- **Aucune reprise de `store_connection` après un échec partiel.** L'écriture de
+- **E11 DIFFÉRÉ APRÈS LA SOUMISSION (décision du porteur, 2026-10-04) — ne pas le faire en
+  passant.** L'abonnement global `app/uninstalled` du TOML et l'abonnement par boutique sont
+  conservés tous les deux. Motif : le global couvre les installations dont la réconciliation a
+  échoué avant de créer l'abonnement par boutique (`sync=pending`) ; le retirer ouvrirait un
+  trou de couverture. La décision accepte le risque D20b ; elle ne dit rien de ce que la revue
+  Shopify en pensera. Double livraison à chaque désinstallation, couverte par les tests W5
+  sous les réserves H1, H2 et de marge, **jamais mesurée en production**. Quatre critères de
+  sortie, dans l'ordre, dans `docs/lots/SHOPIFY-WEBHOOKS-PER-SHOP-1B-CLOTURE.md`.
+- **Aucune reprise de `store_connection` après un échec partiel (réserve 5 du verdict).**
+  L'écriture de
   `store_connection` dépend de `shop_transitioned`, vrai une seule fois : si elle échoue après la
   transition de la boutique, une livraison ultérieure ne la rejoue pas (l'ancien chemin
   `uninstall_connection_resume` a disparu avec le conditionnement par booléen). Conséquence
@@ -720,17 +737,58 @@ NULL → aucune libération.
   affichait son secret. Le runbook de bascule est périmé en partie (bandeau en tête du document).
 - **Secret L3 dans la télémétrie.** `[Fait]` Les transactions Sentry (échantillonnées à 10 %)
   ne passaient pas par `beforeSend` et portaient l'URL brute ; `beforeSendTransaction` masque
-  désormais le segment de jeton. `[Fait]` La route `/api/woocommerce/webhooks/[token]` porte
-  elle aussi un jeton dans son chemin, et ses transactions le même défaut : **non traité par ce
-  lot**. `[Non vérifié]` Les journaux de requêtes de la plateforme d'hébergement, hors de portée
-  du code : mesure de la phase 5.
+  désormais le segment de jeton. `[Non vérifié]` Les journaux de requêtes de Vercel, hors de
+  portée du code (réserve 9 du verdict) : l'exposition du secret L3 n'y est pas mesurée, et
+  cette mesure est dans la **checklist avant soumission**.
+- **Dette ouverte — `/api/woocommerce/webhooks/[token]`, même défaut que celui fermé par C8.**
+  `[Fait]` Cette route porte elle aussi un jeton dans son chemin, et ses transactions Sentry
+  partent avec l'URL brute : `maskOpaqueIngestPath` (`lib/security/telemetry-sanitize.ts`) ne
+  masque que le préfixe `/api/shopify/ingest/`. Non traité par le lot 1b ; lot dédié.
 - **En-tête `X-Shopify-Triggered-At` illisible** : il faisait échouer l'insertion de
   `webhook_event` (colonne `timestamptz`) et répondre 503 à chaque tentative. Il est désormais
   consigné NULL (`recordWebhookReceipt`).
 - **Budget du cron** : 300 s pour l'ensemble des boutiques ; une boutique lancée à moins de 90 s
   de l'échéance est sautée et consignée (`lib/shopify/cron-budget.ts`).
-- **Instabilité E2E `tests/e2e/shop-filter.spec.ts:271` (iphone-14)** : `[Rapporté]` observée sur
-  la PR #246 selon le mandat de la phase 2. `[Non vérifié]` Cause ; domaine sans lien avec ce lot.
+- **Instabilités E2E (réserve 10 du verdict).** `[Fait]` Trois tests sont passés au rejeu
+  interne de Playwright dans la seconde exécution initiale de la PR #247 (`37196059557`, SHA
+  `401635c`), et aucun dans la première (`37194614918`) :
+  `tests/e2e/shop-filter.spec.ts:271` (iphone-14), `tests/e2e/drivers.spec.ts:368` (chromium),
+  `tests/e2e/purchases.spec.ts:257` (iphone-14). `[Rapporté]` `shop-filter:271` avait déjà été
+  observé sur la PR #246. `[Non vérifié]` Cause ; domaines sans lien avec ce lot. Chantier
+  `e2e-zero-flake`. La boucle RLS locale (T12, preuve 9B) relève de la dette (m).
+
+### Réserves et dettes consignées à la clôture (2026-10-04)
+
+Réserves 6 à 8 du verdict, et deux dettes de documentation. Aucune n'est corrigée.
+
+- **GETGET SN (`ntmwxz-83`, `teer-koba`) — réserve 6.** `[Fait]` Inventaire « avant » du
+  2026-10-04 : 9 abonnements, tous sur l'origine publique, tous reconnus `current`.
+  `[Non vérifié]` « Aucun changement chez le marchand » : aucun inventaire « après » n'a été
+  pris. Ne pas l'affirmer.
+- **Inventaires `teer-public` dus — réserve 7.** L'inventaire « après » de `teer-s1-apres` n'a
+  pas été fait ; la preuve fonctionnelle en tient lieu. Les inventaires de `teer-public-smoke`
+  et de `teer-s1-apres`, avec un nettoyage éventuel, sont dus **avant** toute mesure qui dépend
+  de leur état.
+- **Désinstallation puis réinstallation avec le code du lot 1b — réserve 8.** Non mesurées en
+  production ; prouvées par les tests W6 et W7 et par le mode de rotation. **Les mesures du lot 1
+  (SHOPIFY-OAUTH-FIRST-01, dont S3) ne valident pas ce chemin.** Reportées à la répétition
+  générale.
+- **Portée de la preuve de production.** Création et mise à jour d'une commande sur une
+  boutique `teer-public` après réconciliation : validé. Ni les autres topics, ni les autres
+  boutiques, ni les scénarios de réparation ne le sont.
+- **Premier clic sur « Synchroniser » sans effet, cause non établie.** `[Fait, rapporté par le
+  porteur]` Sur `teer-s1-apres`, le premier clic n'a laissé ni bail, ni jeton, ni ligne d'état ;
+  le second, après un rechargement complet, a créé les neuf abonnements. `[Non vérifié]` Le
+  déploiement qui a servi le premier clic ; un onglet ouvert avant le déploiement est plausible,
+  pas établi.
+- **Runbook de bascule périmé en partie.** `docs/security/webhook-subscription-bascule-runbook.md`
+  porte un bandeau, il n'est pas réécrit : ses étapes `--apply`, `--rotate-token` et de
+  génération manuelle d'un jeton ne sont plus exécutables.
+- **Commentaire périmé dans le TOML.** `shopify.app.teer-public.toml:45` dit encore que les
+  huit topics métier sont créés par `scripts/webhook-subscription-migration.mjs --apply`
+  (« étape 11 du runbook Option D »). Ce mode est retiré : c'est la réconciliation applicative
+  qui les crée. Commentaire seul, sans effet sur la configuration ; à corriger avec la prochaine
+  version d'app, jamais par un déploiement fait pour lui.
 
 ## Connecteurs non-Shopify — WooCommerce livré, YouCan reporté (R2.3/R2.4, 2026-09-12)
 
