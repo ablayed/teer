@@ -5,6 +5,7 @@ import {
   APP_LEVEL_BY_DECISION_TOPICS,
   APP_LEVEL_ONLY_TOPICS,
   APP_LEVEL_TOPICS,
+  PER_SHOP_SUBSCRIPTION_TOPICS,
 } from '@/scripts/lib/webhook-subscription-plan.mjs';
 import { describe, expect, it } from 'vitest';
 
@@ -116,24 +117,49 @@ describe('partage 4 / 8 entre niveau app et niveau boutique', () => {
   });
 });
 
-describe('ADMIN_API_TOPICS — invariant anti double livraison', () => {
+describe('topics par boutique — huit topics métier, plus app/uninstalled (lot 1b, E0)', () => {
   it('compte exactement 8 topics métier', () => {
     expect(ADMIN_API_TOPICS).toHaveLength(8);
   });
 
-  it('exclut app/uninstalled — sinon --apply en créerait un second, shop-scoped', () => {
+  it('garde app/uninstalled hors des topics MÉTIER', () => {
     expect(ADMIN_API_TOPICS.map((t) => t.rest)).not.toContain('app/uninstalled');
     expect(ADMIN_API_TOPICS.map((t) => t.graphql)).not.toContain('APP_UNINSTALLED');
   });
 
+  // SHOPIFY-WEBHOOKS-PER-SHOP-1B / E0 — ce test verrouillait l'EXCLUSION d'app/uninstalled des
+  // abonnements par boutique. Il verrouille désormais son INCLUSION : la désinstallation doit
+  // arriver sur l'URL opaque, résolue par le jeton et non par un en-tête non signé.
+  it('souscrit app/uninstalled par boutique : neuf abonnements attendus', () => {
+    expect(PER_SHOP_SUBSCRIPTION_TOPICS).toHaveLength(9);
+    expect(PER_SHOP_SUBSCRIPTION_TOPICS.map((t) => t.rest)).toContain('app/uninstalled');
+    expect(PER_SHOP_SUBSCRIPTION_TOPICS.map((t) => t.graphql)).toContain('APP_UNINSTALLED');
+    expect(PER_SHOP_SUBSCRIPTION_TOPICS.slice(0, 8)).toEqual([...ADMIN_API_TOPICS]);
+  });
+
+  // Le TOML global reste inchangé dans ce lot (E11 est un sous-lot distinct) : app/uninstalled
+  // est donc livré DEUX fois, et c'est la primitive ordonnée de 0161 qui absorbe la seconde.
+  it('laisse app/uninstalled déclaré au niveau app : double livraison assumée jusqu’à E11', () => {
+    expect(declaredTopics('topics')).toEqual(['app/uninstalled']);
+    const perShop = new Set(PER_SHOP_SUBSCRIPTION_TOPICS.map((t) => t.rest));
+    expect(APP_LEVEL_TOPICS.filter((topic) => perShop.has(topic))).toEqual(['app/uninstalled']);
+  });
+
   it('garde les deux raisons de rester au niveau app SÉPARÉES', () => {
-    // GDPR : non souscriptibles. app/uninstalled : souscriptible, mais non souscrit par choix.
+    // GDPR : non souscriptibles. app/uninstalled : souscriptible, et resté au niveau app par choix.
     // Fusionner les deux listes ferait perdre la raison, donc la possibilité de la réviser.
     expect(APP_LEVEL_ONLY_TOPICS).not.toContain('app/uninstalled');
     expect(APP_LEVEL_BY_DECISION_TOPICS).toEqual(['app/uninstalled']);
   });
 
-  it('ne recoupe jamais les topics de niveau app', () => {
+  it('ne souscrit jamais par boutique un topic RGPD (non souscriptible)', () => {
+    const perShop = new Set(PER_SHOP_SUBSCRIPTION_TOPICS.map((t) => t.rest));
+    for (const topic of APP_LEVEL_ONLY_TOPICS) {
+      expect(perShop.has(topic)).toBe(false);
+    }
+  });
+
+  it('ne recoupe jamais les topics de niveau app par un topic MÉTIER', () => {
     const admin = new Set(ADMIN_API_TOPICS.map((t) => t.rest));
     for (const topic of APP_LEVEL_TOPICS) {
       expect(admin.has(topic)).toBe(false);

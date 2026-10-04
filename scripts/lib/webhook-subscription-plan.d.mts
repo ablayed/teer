@@ -10,7 +10,8 @@ export interface AdminApiTopic {
   graphql: string;
 }
 
-export const ADMIN_API_TOPICS: AdminApiTopic[];
+export const ADMIN_API_TOPICS: readonly AdminApiTopic[];
+export const PER_SHOP_SUBSCRIPTION_TOPICS: readonly AdminApiTopic[];
 export const APP_LEVEL_ONLY_TOPICS: string[];
 export const APP_LEVEL_BY_DECISION_TOPICS: string[];
 export const APP_LEVEL_TOPICS: string[];

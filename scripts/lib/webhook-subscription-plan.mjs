@@ -4,18 +4,13 @@
 // n'est jamais touché par un simple --apply, jamais en effet de bord d'une mutation par ailleurs
 // nécessaire. Voir tests/unit/shopify/webhook-subscription-plan.test.ts.
 
-// rest = forme historique (webhook_event.topic, ingestion_event.topic) ; graphql = valeur de
-// l'enum WebhookSubscriptionTopic attendue par webhookSubscriptionCreate/Update.
-export const ADMIN_API_TOPICS = [
-  { rest: 'orders/create', graphql: 'ORDERS_CREATE' },
-  { rest: 'orders/updated', graphql: 'ORDERS_UPDATED' },
-  { rest: 'orders/cancelled', graphql: 'ORDERS_CANCELLED' },
-  { rest: 'orders/fulfilled', graphql: 'ORDERS_FULFILLED' },
-  { rest: 'products/create', graphql: 'PRODUCTS_CREATE' },
-  { rest: 'products/update', graphql: 'PRODUCTS_UPDATE' },
-  { rest: 'refunds/create', graphql: 'REFUNDS_CREATE' },
-  { rest: 'bulk_operations/finish', graphql: 'BULK_OPERATIONS_FINISH' },
-];
+// Les topics créés PAR BOUTIQUE vivent dans lib/shopify/webhook-subscription-topics.ts, source
+// unique partagée avec la réconciliation applicative. ADMIN_API_TOPICS : les huit topics métier.
+// PER_SHOP_SUBSCRIPTION_TOPICS : ces huit, plus `app/uninstalled` (lot 1b, E0).
+export {
+  ADMIN_API_TOPICS,
+  PER_SHOP_SUBSCRIPTION_TOPICS,
+} from '../../lib/shopify/webhook-subscription-topics.ts';
 
 // Non souscriptibles par l'Admin API (absents de l'enum WebhookSubscriptionTopic, vérifié
 // contre la documentation Shopify avant d'écrire ce script — jamais supposé). Restent
@@ -23,23 +18,19 @@ export const ADMIN_API_TOPICS = [
 export const APP_LEVEL_ONLY_TOPICS = ['customers/data_request', 'customers/redact', 'shop/redact'];
 
 // `app/uninstalled` est, LUI, parfaitement souscriptible par l'Admin API — il figure bien dans
-// l'enum WebhookSubscriptionTopic. Il est retiré d'ADMIN_API_TOPICS par DÉCISION, pas par
+// l'enum WebhookSubscriptionTopic. Il reste déclaré au niveau app par DÉCISION, pas par
 // incapacité : les deux raisons sont différentes et ne doivent jamais être fusionnées.
 //
-// Raison, établie depuis la documentation Shopify (query `webhookSubscriptions`, Admin GraphQL) :
-// « Retrieves a paginated list of webhook subscriptions created using the API for the current app
-// and shop », avec la note « Returns only shop-scoped subscriptions, not app-scoped subscriptions
-// configured in TOML files ». Un abonnement déclaré dans `shopify.app.*.toml` est donc
-// STRUCTURELLEMENT invisible à `listSubscriptions`.
+// Fait Shopify, établi depuis la documentation (query `webhookSubscriptions`, Admin GraphQL) :
+// « Returns only shop-scoped subscriptions, not app-scoped subscriptions configured in TOML
+// files ». Un abonnement déclaré dans `shopify.app.*.toml` est donc STRUCTURELLEMENT invisible à
+// l'inventaire, et ne se supprime pas par l'Admin API.
 //
-// Conséquence si `app/uninstalled` restait ici : `--apply` ne verrait jamais l'abonnement
-// app-scoped du TOML, en créerait un second, shop-scoped, vers l'URL opaque — et
-// `verifyAndCleanup` ne pourrait pas davantage retirer le premier (invisible, et un abonnement
-// app-scoped ne se supprime pas par l'Admin API). Résultat : DOUBLE LIVRAISON de
-// `app/uninstalled`, sur les deux endpoints, sans aucun moyen de la voir depuis l'outil.
-//
-// Cible retenue : 4 abonnements au niveau app (3 GDPR + celui-ci, endpoint fixe
-// `/api/shopify/webhooks`) et 8 abonnements métier par boutique sur l'URL opaque.
+// Depuis le lot 1b (E0), `app/uninstalled` est AUSSI souscrit par boutique sur l'URL opaque
+// (PER_SHOP_SUBSCRIPTION_TOPICS), pour que la désinstallation soit résolue par le jeton d'URL.
+// Tant que la déclaration du TOML n'est pas retirée (E11, hors de ce lot), chaque désinstallation
+// produit donc DEUX livraisons, sur les deux endpoints. C'est assumé : la primitive ordonnée
+// (`uninstall_shopify_pending_or_shop_ordered`, 0161) rend la seconde sans effet.
 export const APP_LEVEL_BY_DECISION_TOPICS = ['app/uninstalled'];
 
 // Les 4 topics déclarés dans le TOML de l'app, tous servis par l'endpoint legacy signé par corps.
