@@ -46,34 +46,6 @@ export function resolvePlanAccessToken(params: {
   refreshBufferMs?: number;
 }): AccessTokenResult;
 
-export function resolveAccessTokenForMode(params: {
-  mode: string;
-  shop: {
-    shop_domain?: string;
-    access_token_encrypted?: string | null;
-    access_token_expires_at?: string | null;
-    refresh_token_encrypted?: string | null;
-    refresh_token_expires_at?: string | null;
-    [key: string]: unknown;
-  };
-  app?: { clientId?: string; clientSecret?: string; [key: string]: unknown };
-  decrypt: (encryptedToken: string) => string;
-  refresh?: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  persistRefreshedToken?: (params: {
-    refreshed: Record<string, unknown>;
-    shop: Record<string, unknown>;
-    generation: number;
-  }) => Promise<{ ok: boolean; outcome?: string }>;
-  // SHOPIFY-EXPIRING-TOKENS-01 — bail de jeton, requis en mode apply dès qu'un rafraîchissement a
-  // lieu (acquisition avant l'appel réseau, libération conditionnelle après).
-  acquireLease?: (params: { shop: Record<string, unknown> }) => Promise<
-    { ok: true; generation: number } | { ok: false; reason: string }
-  >;
-  releaseLease?: (params: { shop: Record<string, unknown>; generation: number }) => Promise<void>;
-  now?: number;
-  refreshBufferMs?: number;
-}): Promise<AccessTokenResult>;
-
 export function scopeShopQuery(
   query: { eq: (field: string, value: string) => unknown },
   shopDomain: string,
@@ -85,32 +57,30 @@ export function scopeActiveConnectionQuery(
   shopId: string,
 ): unknown;
 
+export function withPlanFailure<T>(code: string, operation: () => T | Promise<T>): Promise<T>;
 export function controlledErrorMessage(error: unknown): string;
 export function maskSensitiveText(value: unknown): unknown;
 
-export function maskIngestUrl(rawUrl: unknown): string;
-
-export function subscriptionsByGraphqlTopic(subscriptions: unknown[]): Map<string, unknown[]>;
-
-export interface TopicPlanResult {
-  action: string;
-  detail: string;
-  existingId?: string;
+export interface ClassifiedSubscriptionLike {
+  topic: string;
+  classification: { kind: 'current' | 'previous' | 'foreign'; onOurOrigin?: boolean };
 }
 
-export function planTopicAction(params: {
-  existingForTopic: unknown[];
-  knownPublicId: string | null;
-  ourOrigin: string;
-}): TopicPlanResult;
+export interface TopicState {
+  topic: string;
+  graphqlTopic: string;
+  state: 'conforme' | 'precedent' | 'absent';
+  current: number;
+  previous: number;
+  foreign: number;
+  doublons: number;
+}
 
-export type ConnectionApplyDecision =
-  | { kind: 'blocked_anomalie'; blocking: unknown[]; actionable: unknown[] }
-  | { kind: 'already_conformant'; topics: unknown[] }
-  | { kind: 'requires_rotation'; actionable: unknown[] }
-  | { kind: 'provision'; actionable: unknown[] };
+export function summarizeTopicStates(
+  classified: readonly ClassifiedSubscriptionLike[],
+  expectedTopics: readonly AdminApiTopic[],
+): TopicState[];
 
-export function decideConnectionApplyPlan(params: {
-  topics: unknown[];
-  hasLocalToken: boolean;
-}): ConnectionApplyDecision;
+export function summarizeReconcileOutlook(
+  topicStates: readonly TopicState[],
+): 'aucune_action' | 'creation_sans_rotation' | 'rotation';
