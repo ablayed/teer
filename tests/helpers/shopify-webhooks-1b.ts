@@ -144,6 +144,17 @@ export async function seedConnectedShop(
 export async function cleanupDomains(): Promise<void> {
   if (!hasStack || createdDomains.length === 0) return;
   const client = await pg();
+  // Écritures métier d'une livraison acceptée (registre d'ingestion, commandes).
+  await client.query(
+    `delete from public.ingestion_event where store_connection_id in (
+       select id from public.store_connection where external_identifier = any($1))`,
+    [createdDomains],
+  );
+  await client.query(
+    `delete from public.orders where shop_id in (
+       select id from public.shop where shop_domain = any($1))`,
+    [createdDomains],
+  );
   // `store_connection` cascade vers le jeton L3, l'état des abonnements et le bail.
   await client.query('delete from public.store_connection where external_identifier = any($1)', [
     createdDomains,

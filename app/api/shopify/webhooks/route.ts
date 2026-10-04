@@ -2,6 +2,9 @@
 // l'identité par l'en-tête x-shopify-shop-domain (comme avant), délègue tout le traitement
 // métier au cœur partagé (lib/shopify/webhook-core.ts) — le cœur ne lit ni en-tête ni jeton ni
 // URL, il reçoit une boutique déjà résolue.
+//
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / G7 — `app/uninstalled` passe, ici aussi, par la désinstallation
+// ORDONNÉE : `X-Shopify-Triggered-At` (non signé, H1) est transmis au cœur tel que reçu.
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { identifyValidatingApps } from '@/lib/shopify/adapter';
 import {
@@ -304,7 +307,12 @@ async function runWebhookEvent({
     webhookId,
     triggeredAt,
     validatedClientId,
-    // D20b : pour `app/uninstalled`, ce domaine peut venir de l'en-tête NON SIGNÉ.
+    // SHOPIFY-WEBHOOKS-PER-SHOP-1B / G7 — ce chemin GLOBAL reste résolu par l'EN-TÊTE : pour
+    // `app/uninstalled`, ce domaine peut venir de `x-shopify-shop-domain`, NON SIGNÉ (D20b). La
+    // désinstallation y passe par la même primitive ordonnée que le chemin opaque : le risque de
+    // désinstallation tardive est RÉDUIT à la marge et aux hypothèses H1 et H2, jamais fermé. Il
+    // ne le sera qu'au retrait de l'abonnement global (E11) ; ne jamais présenter ce domaine comme
+    // authentifié.
     resolvedShopDomain: resolution.shopDomain,
   });
 }
