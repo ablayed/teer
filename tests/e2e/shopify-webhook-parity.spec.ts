@@ -81,6 +81,11 @@ async function seedShop(
   return { shopId: data.id, shopDomain };
 }
 
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / G8 — l'endpoint opaque EXIGE désormais l'en-tête de domaine, égal
+// au domaine de la connexion résolue par le jeton. Chaque jeton émis ici mémorise son domaine,
+// pour que `postOpaque` envoie l'en-tête qu'une vraie livraison Shopify porte toujours.
+const domainByTokenPublicId = new Map<string, string>();
+
 // Uniquement pour le chemin opaque : store_connection + jeton d'URL. Le chemin legacy n'a besoin
 // que du shop (identité par en-tête).
 async function seedConnectionAndToken(
@@ -109,6 +114,7 @@ async function seedConnectionAndToken(
     secret_hash: token.secretHash,
   });
   if (tokenError) throw new Error(`token insert failed: ${tokenError.message}`);
+  domainByTokenPublicId.set(token.publicId, shopDomain);
 
   return { storeConnectionId: connection.id, rawToken: token.raw };
 }
@@ -162,11 +168,13 @@ async function postOpaque(
   { topic, token, webhookId, body, triggeredAt }: PostArgs & { token: string },
 ) {
   const rawBody = JSON.stringify(body);
+  const shopDomain = domainByTokenPublicId.get(token.slice(0, token.indexOf('.')));
   return request.post(`/api/shopify/ingest/${encodeURIComponent(token)}`, {
     headers: {
       'content-type': 'application/json',
       'x-shopify-hmac-sha256': sign(rawBody, KOBA_SECRET),
       'x-shopify-topic': topic,
+      ...(shopDomain ? { 'x-shopify-shop-domain': shopDomain } : {}),
       'x-shopify-webhook-id': webhookId,
       'x-shopify-triggered-at': triggeredAt,
     },

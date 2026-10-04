@@ -68,6 +68,12 @@ async function createMerchant(
   return { userId, merchantAccountId };
 }
 
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / G8 — l'endpoint opaque EXIGE désormais l'en-tête de domaine, égal
+// au domaine de la connexion résolue par le jeton. Chaque jeton émis par `issueToken` mémorise le
+// domaine de sa connexion : `postIngest` l'envoie par défaut, comme une vraie livraison Shopify.
+const domainByConnectionId = new Map<string, string>();
+const domainByTokenPublicId = new Map<string, string>();
+
 async function seedConnection(
   admin: AdminClient,
   merchantAccountId: string,
@@ -103,6 +109,7 @@ async function seedConnection(
   if (connectionError || !connection) {
     throw new Error(`store_connection insert failed: ${connectionError?.message}`);
   }
+  domainByConnectionId.set(connection.id, externalIdentifier);
 
   return { shopId: shop.id, storeConnectionId: connection.id, externalIdentifier };
 }
@@ -115,6 +122,8 @@ async function issueToken(admin: AdminClient, storeConnectionId: string): Promis
     secret_hash: token.secretHash,
   });
   if (error) throw new Error(`token insert failed: ${error.message}`);
+  const domain = domainByConnectionId.get(storeConnectionId);
+  if (domain) domainByTokenPublicId.set(token.publicId, domain);
   return token.raw;
 }
 
@@ -131,13 +140,17 @@ async function postIngest(
     webhookId,
     hmacSecret,
     shopDomainHeader,
+    triggeredAt = '2026-08-25T09:00:00Z',
   }: {
     token: string;
     topic: string;
     body: unknown;
     webhookId: string;
     hmacSecret: string | null;
-    shopDomainHeader?: string;
+    // Non fourni : le domaine de la connexion du jeton (ce qu'envoie Shopify). Chaîne : cette
+    // valeur, telle quelle. `null` : AUCUN en-tête de domaine.
+    shopDomainHeader?: string | null;
+    triggeredAt?: string;
   },
 ) {
   const rawBody = JSON.stringify(body);
@@ -145,13 +158,17 @@ async function postIngest(
     'content-type': 'application/json',
     'x-shopify-topic': topic,
     'x-shopify-webhook-id': webhookId,
-    'x-shopify-triggered-at': '2026-08-25T09:00:00Z',
+    'x-shopify-triggered-at': triggeredAt,
   };
   if (hmacSecret !== null) {
     headers['x-shopify-hmac-sha256'] = sign(rawBody, hmacSecret);
   }
-  if (shopDomainHeader) {
-    headers['x-shopify-shop-domain'] = shopDomainHeader;
+  const domainHeader =
+    shopDomainHeader === undefined
+      ? domainByTokenPublicId.get(token.slice(0, Math.max(token.indexOf('.'), 0)))
+      : shopDomainHeader;
+  if (domainHeader) {
+    headers['x-shopify-shop-domain'] = domainHeader;
   }
   return request.post(`/api/shopify/ingest/${encodeURIComponent(token)}`, {
     headers,
@@ -479,6 +496,56 @@ test.describe('preuve #4 : six causes de refus, une seule réponse externe (401,
     }
   });
 
+  // SHOPIFY-WEBHOOKS-PER-SHOP-1B / W4 — la tolérance d'un en-tête de domaine ABSENT a disparu (G8) :
+  // jeton valide, HMAC valide, app recoupée, et pourtant refus, sans aucune écriture.
+  test('en-tête de domaine absent → même réponse, aucune écriture', async ({ request }) => {
+    const admin = adminClient();
+    const merchant = await createMerchant(admin);
+    try {
+      const conn = await seedConnection(
+        admin,
+        merchant.merchantAccountId,
+        KOBA_CLIENT_ID,
+        'hdr-absent',
+      );
+      const token = await issueToken(admin, conn.storeConnectionId);
+      const orderId = 990_007;
+      const webhookId = `wh-l3-cause-header-absent-${Date.now()}`;
+      const res = await postIngest(request, {
+        token,
+        topic: 'orders/create',
+        body: orderBody(orderId),
+        webhookId,
+        hmacSecret: KOBA_SECRET,
+        shopDomainHeader: null,
+      });
+      expect(res.status()).toBe(401);
+      expect((await res.body()).length).toBe(0);
+      const { count } = await admin
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_order_id', String(orderId));
+      expect(count).toBe(0);
+      const { count: events } = await admin
+        .from('webhook_event')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_webhook_id', webhookId);
+      expect(events).toBe(0);
+
+      // Contrôle positif : la même livraison, avec l'en-tête attendu, est acceptée.
+      const accepted = await postIngest(request, {
+        token,
+        topic: 'orders/create',
+        body: orderBody(orderId),
+        webhookId: `${webhookId}-ok`,
+        hmacSecret: KOBA_SECRET,
+      });
+      expect(accepted.status()).toBe(200);
+    } finally {
+      await admin.auth.admin.deleteUser(merchant.userId);
+    }
+  });
+
   test('jeton révoqué (secret expiré → même verdict) via manipulation directe du registre', async ({
     request,
   }) => {
@@ -507,6 +574,7 @@ test.describe('preuve #4 : six causes de refus, une seule réponse externe (401,
         body: orderBody(orderId),
         webhookId: `wh-l3-cause-revoked-${Date.now()}`,
         hmacSecret: KOBA_SECRET,
+        shopDomainHeader: conn.externalIdentifier,
       });
       expect(res.status()).toBe(401);
       expect((await res.body()).length).toBe(0);
@@ -560,6 +628,7 @@ test.describe('preuve #7 : rotation — fenêtre bornée, jamais deux secrets va
         body: orderBody(orderId),
         webhookId: `wh-l3-rotate-old-open-${orderId}`,
         hmacSecret: KOBA_SECRET,
+        shopDomainHeader: conn.externalIdentifier,
       });
       expect(resOld.status()).toBe(200);
       await waitForIngestionEvent(admin, `wh-l3-rotate-old-open-${orderId}`);
@@ -571,6 +640,7 @@ test.describe('preuve #7 : rotation — fenêtre bornée, jamais deux secrets va
         body: orderBody(orderId + 1),
         webhookId: `wh-l3-rotate-new-${orderId}`,
         hmacSecret: KOBA_SECRET,
+        shopDomainHeader: conn.externalIdentifier,
       });
       expect(resNew.status()).toBe(200);
 
@@ -587,6 +657,7 @@ test.describe('preuve #7 : rotation — fenêtre bornée, jamais deux secrets va
         body: orderBody(orderId + 2),
         webhookId: `wh-l3-rotate-old-expired-${orderId}`,
         hmacSecret: KOBA_SECRET,
+        shopDomainHeader: conn.externalIdentifier,
       });
       expect(resExpired.status()).toBe(401);
 
@@ -674,4 +745,141 @@ test("app/uninstalled sur l'endpoint opaque : marque shop.status ET store_connec
   } finally {
     await admin.auth.admin.deleteUser(merchant.userId);
   }
+});
+
+// --- SHOPIFY-WEBHOOKS-PER-SHOP-1B / W11 : connexion inactive (G8) --------------------------------
+// Le résolveur ne refuse plus une connexion inactive avant le HMAC : il rend son état. Sur une
+// connexion inactive, `app/uninstalled` — et lui seul — est traité, et n'agit plus que sur
+// l'installation en attente. Tout autre topic garde le 401.
+
+async function seedPendingInstallation(admin: AdminClient, shopDomain: string): Promise<void> {
+  const { error } = await admin.from('shopify_pending_installation').insert({
+    shop_domain: shopDomain,
+    shopify_client_id: KOBA_CLIENT_ID,
+    access_token_encrypted: 'dummy-pending',
+    scopes: 'read_orders',
+    ticket_hash: createHmac('sha256', 'e2e').update(shopDomain, 'utf8').digest('hex'),
+    expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+    credentials_acquired_at: new Date(Date.now() - 60_000).toISOString(),
+  });
+  if (error) throw new Error(`pending installation insert failed: ${error.message}`);
+}
+
+async function pendingInstallationCount(admin: AdminClient, shopDomain: string): Promise<number> {
+  const { count } = await admin
+    .from('shopify_pending_installation')
+    .select('id', { count: 'exact', head: true })
+    .eq('shop_domain', shopDomain);
+  return count ?? 0;
+}
+
+async function markUninstalled(
+  admin: AdminClient,
+  conn: { shopId: string; storeConnectionId: string },
+): Promise<void> {
+  await admin
+    .from('shop')
+    .update({ status: 'uninstalled', access_token_encrypted: null })
+    .eq('id', conn.shopId);
+  await admin
+    .from('store_connection')
+    .update({ status: 'uninstalled', uninstalled_at: new Date().toISOString() })
+    .eq('id', conn.storeConnectionId);
+}
+
+test.describe('W11 : connexion inactive', () => {
+  test('app/uninstalled est traité : 200, et l’attente antérieure est supprimée', async ({
+    request,
+  }) => {
+    const admin = adminClient();
+    const merchant = await createMerchant(admin);
+    try {
+      const conn = await seedConnection(
+        admin,
+        merchant.merchantAccountId,
+        KOBA_CLIENT_ID,
+        'inactive-uninstall',
+      );
+      const token = await issueToken(admin, conn.storeConnectionId);
+      await markUninstalled(admin, conn);
+      await seedPendingInstallation(admin, conn.externalIdentifier);
+      expect(await pendingInstallationCount(admin, conn.externalIdentifier)).toBe(1);
+
+      const res = await postIngest(request, {
+        token,
+        topic: 'app/uninstalled',
+        body: { id: 1, name: conn.externalIdentifier, domain: conn.externalIdentifier },
+        webhookId: `wh-l3-inactive-uninstall-${Date.now()}`,
+        hmacSecret: KOBA_SECRET,
+        // Événement postérieur à l'attente : elle lui est antérieure, donc supprimée.
+        triggeredAt: new Date().toISOString(),
+      });
+      expect(res.status()).toBe(200);
+
+      await expect
+        .poll(() => pendingInstallationCount(admin, conn.externalIdentifier), {
+          timeout: 10_000,
+          intervals: [200, 400, 800],
+        })
+        .toBe(0);
+
+      // La boutique était déjà désinstallée : aucune transition, donc aucun audit de plus.
+      const { count: audits } = await admin
+        .from('audit_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('merchant_account_id', merchant.merchantAccountId)
+        .eq('action', 'shopify.app_uninstalled');
+      expect(audits).toBe(0);
+    } finally {
+      await admin.auth.admin.deleteUser(merchant.userId);
+    }
+  });
+
+  test('un topic métier reste refusé : 401, corps vide, aucune écriture', async ({ request }) => {
+    const admin = adminClient();
+    const merchant = await createMerchant(admin);
+    let pendingDomain: string | null = null;
+    try {
+      const conn = await seedConnection(
+        admin,
+        merchant.merchantAccountId,
+        KOBA_CLIENT_ID,
+        'inactive-order',
+      );
+      const token = await issueToken(admin, conn.storeConnectionId);
+      await markUninstalled(admin, conn);
+      await seedPendingInstallation(admin, conn.externalIdentifier);
+      pendingDomain = conn.externalIdentifier;
+
+      const orderId = 990_008;
+      const webhookId = `wh-l3-inactive-order-${Date.now()}`;
+      const res = await postIngest(request, {
+        token,
+        topic: 'orders/create',
+        body: orderBody(orderId),
+        webhookId,
+        hmacSecret: KOBA_SECRET,
+      });
+      expect(res.status()).toBe(401);
+      expect((await res.body()).length).toBe(0);
+
+      const { count: events } = await admin
+        .from('webhook_event')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_webhook_id', webhookId);
+      expect(events).toBe(0);
+      // Le refus n'a touché ni la commande, ni l'attente.
+      const { count } = await admin
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('shopify_order_id', String(orderId));
+      expect(count).toBe(0);
+      expect(await pendingInstallationCount(admin, conn.externalIdentifier)).toBe(1);
+    } finally {
+      if (pendingDomain) {
+        await admin.from('shopify_pending_installation').delete().eq('shop_domain', pendingDomain);
+      }
+      await admin.auth.admin.deleteUser(merchant.userId);
+    }
+  });
 });

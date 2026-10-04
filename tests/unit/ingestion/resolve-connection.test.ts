@@ -2,6 +2,7 @@ import {
   finalizeResolvedConnection,
   resolveConnectionByToken,
   resolveConnectionForWebhook,
+  tokenConnectionMatchesApp,
 } from '@/lib/ingestion/resolve-connection';
 import { generateWebhookToken, hashWebhookTokenSecret } from '@/lib/ingestion/webhook-token';
 import type { Database } from '@/lib/supabase/database.types';
@@ -263,13 +264,20 @@ describe('Lot L3 — resolveConnectionByToken', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('connexion inactive (uninstalled) → refus même avec un jeton valide', async () => {
+  // SHOPIFY-WEBHOOKS-PER-SHOP-1B / G8 — ce test verrouillait le REFUS d'une connexion inactive
+  // dans le résolveur, avant le HMAC. Le résolveur REND désormais l'état : c'est l'appelant qui
+  // décide, après le HMAC et le recoupement d'app (seul `app/uninstalled` continue). La garde
+  // « aucun contexte résolu pour une connexion inactive » vit dans finalizeResolvedConnection.
+  it('connexion inactive (uninstalled) → état RENDU, jamais refusé avant le HMAC', async () => {
     const admin = fakeTokenAdmin({
       tokenRow: TOKEN_ROW,
       connectionRow: { ...CONNECTION_ROW_L3, status: 'uninstalled' },
     });
     const result = await resolveConnectionByToken(admin, TOKEN.raw);
-    expect(result).toEqual({ ok: false, reason: 'connection_inactive' });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.connection.status).toBe('uninstalled');
+    }
   });
 
   it('contrôle positif : jeton valide + connexion active → résolu, aucun champ secret exposé', async () => {
@@ -284,6 +292,7 @@ describe('Lot L3 — resolveConnectionByToken', () => {
         platform: 'shopify',
         platformAppId: 'app-a',
         externalIdentifier: 'shop.myshopify.com',
+        status: 'active',
       });
     }
   });
@@ -297,7 +306,23 @@ describe('Lot L3 — finalizeResolvedConnection', () => {
     platform: 'shopify',
     platformAppId: 'app-a',
     externalIdentifier: 'shop.myshopify.com',
+    status: 'active',
   };
+
+  it('connexion inactive → refus, même avec la bonne app : aucun contexte résolu n’existe pour elle', () => {
+    expect(
+      finalizeResolvedConnection({ ...connection, status: 'uninstalled' }, { clientId: 'app-a' }),
+    ).toEqual({ ok: false, reason: 'connection_inactive' });
+  });
+
+  it('tokenConnectionMatchesApp : recoupement d’app seul, quel que soit l’état', () => {
+    const inactive = { ...connection, status: 'uninstalled' };
+    expect(tokenConnectionMatchesApp(inactive, { clientId: 'app-a' })).toBe(true);
+    expect(tokenConnectionMatchesApp(inactive, { clientId: 'app-b' })).toBe(false);
+    expect(
+      tokenConnectionMatchesApp({ ...inactive, platformAppId: null }, { clientId: 'app-a' }),
+    ).toBe(false);
+  });
 
   it('preuve #3 : jeton de la connexion B, app validante = A → refus (désaccord app/jeton)', () => {
     const result = finalizeResolvedConnection(connection, { clientId: 'app-b' });

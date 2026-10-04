@@ -1,13 +1,23 @@
 // Phase 2 / Lot L3 + Verrou 0 — endpoint webhook à URL opaque par installation.
 //
 // Ordre d'autorité, dans cet ordre, jamais inversé : URL (jeton) → connexion → platform_app_id →
-// HMAC du corps → comparaison de l'en-tête. Chaque étape ne peut être décidée que par la
-// précédente ; l'en-tête n'intervient JAMAIS avant la dernière étape, à titre de garde-fou comparé
-// seulement — jamais autoritatif.
+// HMAC du corps → comparaison de l'en-tête → état de la connexion. Chaque étape ne peut être
+// décidée que par la précédente ; l'en-tête n'intervient JAMAIS avant, à titre de garde-fou
+// comparé seulement — jamais autoritatif.
 //
-// Six causes de refus distinctes en interne (jeton malformé, inconnu, expiré, mauvais secret, HMAC
-// invalide, en-tête divergent) + une 7ᵉ (désaccord app/jeton, recoupement L2) → UNE SEULE réponse
-// externe (401, corps vide), pour toutes. Un appelant ne doit jamais pouvoir distinguer ces cas.
+// Causes de refus distinctes en interne (jeton malformé, inconnu, révoqué, expiré, mauvais secret,
+// HMAC invalide, désaccord app/jeton, en-tête absent ou divergent, connexion inactive) → UNE SEULE
+// réponse externe (401, corps vide), pour toutes. Un appelant ne doit jamais pouvoir distinguer
+// ces cas, ni apprendre si la boutique existe.
+//
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / G8 :
+//   - l'en-tête de domaine est OBLIGATOIRE et doit être ÉGAL au domaine résolu par l'URL ; la
+//     tolérance d'un en-tête absent a disparu ;
+//   - le résolveur rend l'état de la connexion au lieu de refuser avant le HMAC. Sur une
+//     connexion INACTIVE, `app/uninstalled` — et lui seul — est traité, après le HMAC et le
+//     recoupement d'app : une seconde livraison de la désinstallation doit encore supprimer une
+//     attente antérieure (la primitive ordonnée n'agit alors que sur elle). Tout autre topic sur
+//     une connexion inactive reçoit 401, comme avant.
 // Toutes vérifiées AVANT tout appel au cœur métier — le cœur n'est jamais atteint avec un contexte
 // douteux (preuve : absence de ligne dans webhook_event/ingestion_event/orders/product, pas
 // seulement le code de réponse — cf. tests/e2e/shopify-ingest-token-endpoint.spec.ts).
@@ -20,6 +30,7 @@
 import {
   finalizeResolvedConnection,
   resolveConnectionByToken,
+  tokenConnectionMatchesApp,
 } from '@/lib/ingestion/resolve-connection';
 import { identifyValidatingApps } from '@/lib/shopify/adapter';
 import { getRegisteredShopifyApps } from '@/lib/shopify/apps';
@@ -64,6 +75,7 @@ type IngestRefusalReason =
   // connexion est déjà résolue par le jeton), mais partagée par le type ConnectionRefusalReason
   // que finalizeResolvedConnection retourne : gardée ici pour rester exhaustif sans caster.
   | 'unknown_connection'
+  | 'header_missing'
   | 'header_mismatch';
 
 function refuse(reason: IngestRefusalReason, extra: Record<string, unknown> = {}): Response {
@@ -118,17 +130,34 @@ export async function POST(
   }
 
   // Étape 3 — platform_app_id → recoupement. Même contrôle, même raison de refus que le point
-  // d'entrée legacy (lib/ingestion/resolve-connection.ts `resolveConnectionForWebhook`).
-  const resolved = finalizeResolvedConnection(connection, { clientId: validatingApps[0].clientId });
-  if (!resolved.ok) {
-    return refuse(resolved.reason, { topic, webhookId });
+  // d'entrée legacy (lib/ingestion/resolve-connection.ts `resolveConnectionForWebhook`). Fait
+  // quel que soit l'état de la connexion : une connexion inactive n'en est pas dispensée.
+  if (!tokenConnectionMatchesApp(connection, { clientId: validatingApps[0].clientId })) {
+    return refuse('app_mismatch', { topic, webhookId });
   }
 
-  // Étape 4 — comparaison de l'en-tête : garde-fou comparé, jamais autoritatif. La connexion est
-  // déjà entièrement déterminée par le jeton ; une divergence signale une requête incohérente,
-  // jamais une source d'identité alternative.
-  if (headerShopDomain && headerShopDomain !== connection.externalIdentifier) {
+  // Étape 4 — en-tête de domaine : OBLIGATOIRE, et ÉGAL au domaine résolu par l'URL (G8). Il reste
+  // un garde-fou comparé, jamais une source d'identité : la connexion est déjà entièrement
+  // déterminée par le jeton.
+  if (!headerShopDomain) {
+    return refuse('header_missing', { topic, webhookId });
+  }
+  if (headerShopDomain !== connection.externalIdentifier) {
     return refuse('header_mismatch', { topic, webhookId });
+  }
+
+  // Étape 5 — état de la connexion (G8). Active : contexte résolu, comme avant. Inactive : seul
+  // `app/uninstalled` continue, sans contexte résolu (il n'en existe pas pour une connexion
+  // inactive) ; il passe par le même cœur, qui n'agit plus que sur l'installation en attente.
+  if (connection.status === 'active') {
+    const resolved = finalizeResolvedConnection(connection, {
+      clientId: validatingApps[0].clientId,
+    });
+    if (!resolved.ok) {
+      return refuse(resolved.reason, { topic, webhookId });
+    }
+  } else if (topic !== 'app/uninstalled') {
+    return refuse('connection_inactive', { topic, webhookId });
   }
 
   // Identité prouvée. Aucun refus possible après ce point — tout ce qui suit passe par le MÊME
