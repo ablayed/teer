@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/nextjs';
-import { sanitizeSentryEvent } from './lib/security/telemetry-sanitize';
+import { sanitizeSentryEvent, sanitizeSentryTransaction } from './lib/security/telemetry-sanitize';
 
 // Voir sentry.server.config.ts : désactivé en E2E prod-build pour éviter le flush réseau
 // bloquant au teardown du webServer Playwright.
@@ -11,4 +11,7 @@ Sentry.init({
   enabled: sentryEnabled,
   tracesSampleRate: 0.1,
   beforeSend: (event) => sanitizeSentryEvent(event),
+  // Les transactions ne passent pas par `beforeSend` : sans ceci, l'URL brute d'une requête
+  // d'ingestion — donc le secret du jeton L3 — partait avec les traces échantillonnées.
+  beforeSendTransaction: (event) => sanitizeSentryTransaction(event),
 });

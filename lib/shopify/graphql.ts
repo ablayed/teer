@@ -22,6 +22,8 @@ type ShopifyGraphQLInput = {
   accessToken: string;
   query: string;
   variables?: Record<string, unknown>;
+  // Optionnel : borne l'appel (SHOPIFY-WEBHOOKS-PER-SHOP-1B, opérations tenues sous un bail).
+  signal?: AbortSignal;
 };
 
 function buildGraphQLErrorMessage(errors: ShopifyGraphQLError[]): string {
@@ -64,6 +66,7 @@ export async function shopifyGraphQL<T>({
   accessToken,
   query,
   variables,
+  signal,
 }: ShopifyGraphQLInput): Promise<T> {
   const response = await fetch(
     `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
@@ -74,6 +77,7 @@ export async function shopifyGraphQL<T>({
         'X-Shopify-Access-Token': accessToken,
       },
       body: JSON.stringify({ query, variables }),
+      ...(signal ? { signal } : {}),
     },
   );
 

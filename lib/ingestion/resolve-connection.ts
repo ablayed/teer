@@ -124,9 +124,14 @@ export type TokenIdentifiedConnection = {
   readonly platform: string;
   readonly platformAppId: string | null;
   readonly externalIdentifier: string;
+  // SHOPIFY-WEBHOOKS-PER-SHOP-1B / G8 — état de la connexion, RENDU à l'appelant au lieu d'être
+  // refusé ici, avant le HMAC. L'appelant décide, APRÈS le HMAC et le recoupement d'app : seul
+  // `app/uninstalled` est traité sur une connexion inactive. `finalizeResolvedConnection` refuse
+  // toute connexion inactive : aucun contexte résolu n'existe pour elle.
+  readonly status: string;
 };
 
-// Six causes distinctes en interne — JAMAIS exposées telles quelles à l'appelant HTTP, qui doit
+// Cinq causes distinctes en interne — JAMAIS exposées telles quelles à l'appelant HTTP, qui doit
 // répondre de façon indifférenciée (preuve #4 du lot). `app_mismatch` (ConnectionRefusalReason,
 // export existant) est une 7ᵉ cause distincte, à un autre étage (finalizeResolvedConnection).
 export type TokenRefusalReason =
@@ -134,8 +139,7 @@ export type TokenRefusalReason =
   | 'unknown_token'
   | 'revoked'
   | 'secret_expired'
-  | 'secret_mismatch'
-  | 'connection_inactive';
+  | 'secret_mismatch';
 
 export type ResolveConnectionByTokenResult =
   | { ok: true; connection: TokenIdentifiedConnection }
@@ -203,10 +207,7 @@ export async function resolveConnectionByToken(
     return { ok: false, reason: 'unknown_token' };
   }
 
-  if (connection.status !== 'active') {
-    return { ok: false, reason: 'connection_inactive' };
-  }
-
+  // L'état est rendu, jamais jugé ici (G8) : voir TokenIdentifiedConnection.status.
   return {
     ok: true,
     connection: {
@@ -216,8 +217,19 @@ export async function resolveConnectionByToken(
       platform: connection.platform,
       platformAppId: connection.platform_app_id,
       externalIdentifier: connection.external_identifier,
+      status: connection.status,
     },
   };
+}
+
+// Recoupement d'app SEUL, sans production de contexte : la connexion identifiée par le jeton
+// porte-t-elle le `platform_app_id` de l'app qui a validé le HMAC ? Sert au seul cas où aucun
+// contexte résolu ne peut exister — `app/uninstalled` sur une connexion inactive (G8).
+export function tokenConnectionMatchesApp(
+  connection: TokenIdentifiedConnection,
+  verifiedApp: { readonly clientId: string },
+): boolean {
+  return Boolean(connection.platformAppId) && connection.platformAppId === verifiedApp.clientId;
 }
 
 // Recoupement final : la connexion identifiée par le jeton doit porter le platform_app_id de l'app
@@ -229,8 +241,14 @@ export function finalizeResolvedConnection(
   connection: TokenIdentifiedConnection,
   verifiedApp: { readonly clientId: string },
 ): ResolveConnectionResult {
-  if (!connection.platformAppId || connection.platformAppId !== verifiedApp.clientId) {
+  if (!tokenConnectionMatchesApp(connection, verifiedApp)) {
     return { ok: false, reason: 'app_mismatch' };
+  }
+
+  // Une connexion inactive ne produit JAMAIS de contexte résolu (garde de la PR #208, déplacée
+  // ici depuis `resolveConnectionByToken`, qui rend désormais l'état au lieu de refuser).
+  if (connection.status !== 'active') {
+    return { ok: false, reason: 'connection_inactive' };
   }
 
   return {

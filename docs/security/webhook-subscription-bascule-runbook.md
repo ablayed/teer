@@ -1,5 +1,16 @@
 # Runbook de bascule — abonnements webhook Shopify vers l'URL opaque (L3)
 
+> **PÉRIMÉ EN PARTIE depuis SHOPIFY-WEBHOOKS-PER-SHOP-1B (phase 2).** Les modes `--apply` et
+> `--rotate-token` de `scripts/webhook-subscription-migration.mjs` sont **retirés**, ainsi que
+> `scripts/l3-generate-webhook-token.mjs` : les abonnements par boutique sont désormais créés,
+> réparés et tournés par l'application elle-même, sous bail
+> (`lib/shopify/webhook-subscription-reconcile.ts`) — à la finalisation d'une connexion, à la
+> relance manuelle (Paramètres > Boutiques) et par le cron `shopify-reconcile`. Le script ne garde
+> que `--plan`, en lecture seule. **Toute étape de ce document qui demande `--apply`,
+> `--rotate-token` ou la génération manuelle d'un jeton n'est plus exécutable** ; les faits
+> Shopify qu'il établit (politique de réessai, adresse liée au déclenchement) restent valables.
+> Ce document n'a pas été réécrit dans ce lot.
+
 > Document opérationnel. Ne remplace pas `CLAUDE.md` (source de vérité) — décrit la séquence
 > exacte de bascule des abonnements Shopify réels vers l'endpoint à URL opaque
 > (`app/api/shopify/ingest/[token]/route.ts`, migration `0143`), et la fermeture en deux temps

@@ -187,6 +187,9 @@ async function authorizeWithoutSession(
     {
       exchangeCode: exchange as never,
       syncProducts: async () => options.syncOk ?? true,
+      // SHOPIFY-WEBHOOKS-PER-SHOP-1B : la réconciliation des abonnements est prouvée dans ses
+      // propres suites (tests/rls/shopify-webhooks-1b-*.rls.test.ts) ; ici, elle est neutre.
+      reconcileWebhooks: async () => true,
     },
   );
   return { result, exchange };
@@ -776,6 +779,7 @@ describe('B4 — POST de rattachement contre la base réelle', () => {
     } = {},
   ) {
     const { performShopifyClaim } = await import('@/lib/shopify/claim-core');
+    const { syncProductsAfterConnect } = await import('@/lib/shopify/post-connect-effects');
     const as = options.as ?? tenant;
     return performShopifyClaim(
       options.admin ?? service(),
@@ -785,7 +789,13 @@ describe('B4 — POST de rattachement contre la base réelle', () => {
         merchantAccountId: as.merchantAccountId,
         resolveApp: (clientId) => (clientId === APP ? APP_CONFIG : null),
       },
-      options.realSync ? undefined : { syncProducts: async () => options.syncOk ?? true },
+      {
+        syncProducts: options.realSync
+          ? syncProductsAfterConnect
+          : async () => options.syncOk ?? true,
+        // SHOPIFY-WEBHOOKS-PER-SHOP-1B : prouvée dans ses propres suites ; neutre ici.
+        reconcileWebhooks: async () => true,
+      },
     );
   }
 

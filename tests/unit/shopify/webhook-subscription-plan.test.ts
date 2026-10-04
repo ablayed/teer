@@ -1,126 +1,29 @@
+// Diagnostic en lecture seule des abonnements webhook Shopify
+// (scripts/webhook-subscription-migration.mjs --plan) — logique pure et propagation du jeton.
+//
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / G10 — `--apply` et `--rotate-token` sont retirés : les tests de
+// leur décision (planTopicAction, decideConnectionApplyPlan, renouvellement en mode apply) ont
+// disparu avec eux. La reconnaissance d'un abonnement est prouvée dans
+// tests/unit/shopify/webhook-subscription-inventory.test.ts ; la réconciliation, contre
+// PostgreSQL, dans tests/rls/shopify-webhooks-1b-reconcile.rls.test.ts.
+import { generateWebhookToken } from '@/lib/ingestion/webhook-token';
 import {
-  ADMIN_API_TOPICS,
+  PER_SHOP_SUBSCRIPTION_TOPICS,
   controlledErrorMessage,
-  decideConnectionApplyPlan,
   maskSensitiveText,
-  planTopicAction,
-  resolveAccessTokenForMode,
   resolvePlanAccessToken,
   resolveSingleConnectionSelection,
   resolveSingleShopSelection,
   scopeActiveConnectionQuery,
   scopeShopQuery,
+  summarizeReconcileOutlook,
+  summarizeTopicStates,
   validateShopDomainSelection,
 } from '@/scripts/lib/webhook-subscription-plan.mjs';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../lib/shopify/crypto.ts', () => ({
-  decryptToken: vi.fn(),
-  encryptToken: vi.fn(),
-}));
+vi.mock('../../../lib/shopify/crypto.ts', () => ({ decryptToken: vi.fn() }));
 vi.mock('../../../lib/shopify/graphql.ts', () => ({ shopifyGraphQL: vi.fn() }));
-vi.mock('../../../lib/shopify/oauth.ts', () => ({ refreshAccessToken: vi.fn() }));
-
-const OUR_ORIGIN = 'https://webhooks.example.com';
-
-function httpEndpoint(callbackUrl: string) {
-  return { __typename: 'WebhookHttpEndpoint', callbackUrl };
-}
-
-describe('planTopicAction', () => {
-  it("aucun abonnement existant -> 'creer'", () => {
-    const result = planTopicAction({
-      existingForTopic: [],
-      knownPublicId: null,
-      ourOrigin: OUR_ORIGIN,
-    });
-    expect(result.action).toBe('creer');
-  });
-
-  it("abonnement pointant vers le jeton local connu -> 'conforme', existingId préservé", () => {
-    const result = planTopicAction({
-      existingForTopic: [
-        {
-          id: 'gid://shopify/WebhookSubscription/1',
-          endpoint: httpEndpoint(`${OUR_ORIGIN}/api/shopify/ingest/pub123.secretABC`),
-        },
-      ],
-      knownPublicId: 'pub123',
-      ourOrigin: OUR_ORIGIN,
-    });
-    expect(result.action).toBe('conforme');
-    expect(result.existingId).toBe('gid://shopify/WebhookSubscription/1');
-  });
-
-  it("abonnement pointant vers un public_id différent -> 'remplacer'", () => {
-    const result = planTopicAction({
-      existingForTopic: [
-        {
-          id: 'gid://shopify/WebhookSubscription/1',
-          endpoint: httpEndpoint(`${OUR_ORIGIN}/api/shopify/ingest/OLD.secretABC`),
-        },
-      ],
-      knownPublicId: 'pub123',
-      ourOrigin: OUR_ORIGIN,
-    });
-    expect(result.action).toBe('remplacer');
-    expect(result.existingId).toBe('gid://shopify/WebhookSubscription/1');
-  });
-
-  it("abonnement pointant vers une autre origine (ancien endpoint) -> 'remplacer'", () => {
-    const result = planTopicAction({
-      existingForTopic: [
-        {
-          id: 'gid://shopify/WebhookSubscription/1',
-          endpoint: httpEndpoint('https://teer-dev.vercel.app/api/shopify/webhooks'),
-        },
-      ],
-      knownPublicId: 'pub123',
-      ourOrigin: OUR_ORIGIN,
-    });
-    expect(result.action).toBe('remplacer');
-  });
-
-  it("endpoint non-HTTP (EventBridge/PubSub) -> 'remplacer'", () => {
-    const result = planTopicAction({
-      existingForTopic: [
-        {
-          id: 'gid://shopify/WebhookSubscription/1',
-          endpoint: { __typename: 'WebhookEventBridgeEndpoint' },
-        },
-      ],
-      knownPublicId: 'pub123',
-      ourOrigin: OUR_ORIGIN,
-    });
-    expect(result.action).toBe('remplacer');
-  });
-
-  it("plusieurs abonnements simultanés sur le même topic -> 'anomalie_multiple'", () => {
-    const result = planTopicAction({
-      existingForTopic: [
-        { id: 'a', endpoint: httpEndpoint(`${OUR_ORIGIN}/api/shopify/ingest/pub123.x`) },
-        { id: 'b', endpoint: httpEndpoint(`${OUR_ORIGIN}/api/shopify/ingest/pub123.x`) },
-      ],
-      knownPublicId: 'pub123',
-      ourOrigin: OUR_ORIGIN,
-    });
-    expect(result.action).toBe('anomalie_multiple');
-  });
-
-  it("Shopify pointe déjà vers l'URL opaque mais aucun jeton local -> 'anomalie_token_local_absent'", () => {
-    const result = planTopicAction({
-      existingForTopic: [
-        {
-          id: 'gid://shopify/WebhookSubscription/1',
-          endpoint: httpEndpoint(`${OUR_ORIGIN}/api/shopify/ingest/pub123.secretABC`),
-        },
-      ],
-      knownPublicId: null,
-      ourOrigin: OUR_ORIGIN,
-    });
-    expect(result.action).toBe('anomalie_token_local_absent');
-  });
-});
 
 describe('ciblage explicite de la boutique pilote', () => {
   it('exige un domaine canonique myshopify exact', () => {
@@ -182,31 +85,14 @@ describe('ciblage explicite de la boutique pilote', () => {
 });
 
 describe('mode plan strictement sans renouvellement ni écriture', () => {
-  it('refuse le renouvellement requis sans appeler OAuth ni client DB', async () => {
-    const writes: string[] = [];
-    let oauthCalls = 0;
-    const result = await resolveAccessTokenForMode({
-      mode: 'plan',
-      shop: {
-        shop_domain: 'ntmwxz-83.myshopify.com',
-        access_token_encrypted: 'encrypted-token-sentinel',
-        access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
-      },
-      app: { clientId: 'client-pilot' },
+  it('refuse le renouvellement requis : le diagnostic ne rafraîchit jamais un jeton', () => {
+    const result = resolvePlanAccessToken({
+      encryptedToken: 'encrypted-token-sentinel',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
       decrypt: () => 'access-token-sentinel',
-      refresh: async () => {
-        oauthCalls += 1;
-        throw new Error('SHOPIFY_CALL_SENTINEL');
-      },
-      persistRefreshedToken: async () => {
-        writes.push('unexpected-write');
-        return { ok: true };
-      },
       refreshBufferMs: 5 * 60 * 1000,
     });
     expect(result).toEqual({ ok: false, reason: 'renewal_required' });
-    expect(oauthCalls).toBe(0);
-    expect(writes).toEqual([]);
   });
 
   it('utilise un token encore valide sans renouvellement', () => {
@@ -219,105 +105,14 @@ describe('mode plan strictement sans renouvellement ni écriture', () => {
     expect(result).toEqual({ ok: true, accessToken: 'access-token-sentinel' });
   });
 
-  it('conserve le renouvellement et la persistance pour apply', async () => {
-    let refreshCalls = 0;
-    let writes = 0;
-    let persistedGeneration: number | null = null;
-    let releasedGeneration: number | null = null;
-    const result = await resolveAccessTokenForMode({
-      mode: 'apply',
-      shop: {
-        shop_domain: 'ntmwxz-83.myshopify.com',
-        access_token_encrypted: 'access-token-encrypted-sentinel',
-        access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
-        refresh_token_encrypted: 'refresh-token-encrypted-sentinel',
-        refresh_token_expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-      },
-      app: { clientId: 'client-sentinel', clientSecret: 'secret-sentinel' },
-      decrypt: (value: string) => `${value}-decrypted`,
-      refresh: async () => {
-        refreshCalls += 1;
-        return {
-          accessToken: 'new-access-token-sentinel',
-          refreshToken: null,
-          accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
-          refreshTokenExpiresAt: null,
-        };
-      },
-      persistRefreshedToken: async ({ generation }: { generation: number }) => {
-        writes += 1;
-        persistedGeneration = generation;
-        return { ok: true, outcome: 'updated' };
-      },
-      acquireLease: async () => ({ ok: true, generation: 4 }),
-      releaseLease: async ({ generation }: { generation: number }) => {
-        releasedGeneration = generation;
-      },
-      refreshBufferMs: 5 * 60 * 1000,
-    });
-    expect(result).toEqual({ ok: true, accessToken: 'new-access-token-sentinel' });
-    expect(refreshCalls).toBe(1);
-    expect(writes).toBe(1);
-    // SHOPIFY-EXPIRING-TOKENS-01 — même bail que lib/shopify/token.ts.
-    expect(persistedGeneration).toBe(4);
-    expect(releasedGeneration).toBe(4);
-  });
-
-  const EXPIRING_SHOP = {
-    shop_domain: 'ntmwxz-83.myshopify.com',
-    access_token_encrypted: 'access-token-encrypted-sentinel',
-    access_token_expires_at: new Date(Date.now() + 60_000).toISOString(),
-    refresh_token_encrypted: 'refresh-token-encrypted-sentinel',
-    refresh_token_expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-  };
-
-  it('apply, bail tenu : aucun appel Shopify, aucune écriture, lease_held', async () => {
-    let refreshCalls = 0;
-    let writes = 0;
-    const result = await resolveAccessTokenForMode({
-      mode: 'apply',
-      shop: EXPIRING_SHOP,
-      app: { clientId: 'client-sentinel', clientSecret: 'secret-sentinel' },
-      decrypt: (value: string) => `${value}-decrypted`,
-      refresh: async () => {
-        refreshCalls += 1;
-        throw new Error('SHOPIFY_CALL_SENTINEL');
-      },
-      persistRefreshedToken: async () => {
-        writes += 1;
-        return { ok: true, outcome: 'updated' };
-      },
-      acquireLease: async () => ({ ok: false, reason: 'lease_held' }),
-      releaseLease: async () => {},
-      refreshBufferMs: 5 * 60 * 1000,
-    });
-    expect(result).toEqual({ ok: false, reason: 'lease_held' });
-    expect(refreshCalls).toBe(0);
-    expect(writes).toBe(0);
-  });
-
-  it('apply, bail perdu à l’écriture : lease_lost, bail tout de même libéré', async () => {
-    let released = 0;
-    const result = await resolveAccessTokenForMode({
-      mode: 'apply',
-      shop: EXPIRING_SHOP,
-      app: { clientId: 'client-sentinel', clientSecret: 'secret-sentinel' },
-      decrypt: (value: string) => `${value}-decrypted`,
-      refresh: async () => ({
-        accessToken: 'new-access-token-sentinel',
-        refreshToken: null,
-        accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
-        refreshTokenExpiresAt: null,
+  it('utilise tel quel un jeton non expirant (app custom)', () => {
+    expect(
+      resolvePlanAccessToken({
+        encryptedToken: 'encrypted-token-sentinel',
+        expiresAt: null,
+        decrypt: () => 'access-token-sentinel',
       }),
-      persistRefreshedToken: async () => ({ ok: false, outcome: 'lease_lost' }),
-      acquireLease: async () => ({ ok: true, generation: 2 }),
-      releaseLease: async () => {
-        released += 1;
-      },
-      refreshBufferMs: 5 * 60 * 1000,
-    });
-    expect(result).toEqual({ ok: false, reason: 'lease_lost' });
-    expect(released).toBe(1);
+    ).toEqual({ ok: true, accessToken: 'access-token-sentinel' });
   });
 });
 
@@ -340,129 +135,82 @@ describe('erreurs contrôlées et masquage', () => {
   });
 });
 
-describe('decideConnectionApplyPlan — invariant central : jamais de rotation implicite', () => {
-  const conformeTopics = ADMIN_API_TOPICS.map((t) => ({
-    topic: t.rest,
-    action: 'conforme',
-    existingId: `id-${t.rest}`,
-  }));
+describe('summarizeTopicStates et summarizeReconcileOutlook — ce que la réconciliation ferait', () => {
+  const current = { kind: 'current' as const };
+  const previous = { kind: 'previous' as const };
+  const foreign = { kind: 'foreign' as const, onOurOrigin: true };
 
-  it("tous conformes -> 'already_conformant' (aucune mutation, quel que soit hasLocalToken)", () => {
-    expect(decideConnectionApplyPlan({ topics: conformeTopics, hasLocalToken: true }).kind).toBe(
-      'already_conformant',
+  function everyTopic(classification: typeof current | typeof previous) {
+    return PER_SHOP_SUBSCRIPTION_TOPICS.map((topic) => ({ topic: topic.graphql, classification }));
+  }
+
+  it('attend neuf topics, app/uninstalled compris', () => {
+    const topics = summarizeTopicStates([], PER_SHOP_SUBSCRIPTION_TOPICS);
+    expect(topics).toHaveLength(9);
+    expect(topics.map((topic) => topic.topic)).toContain('app/uninstalled');
+  });
+
+  it('inventaire vide : tout est absent, donc rotation', () => {
+    const topics = summarizeTopicStates([], PER_SHOP_SUBSCRIPTION_TOPICS);
+    expect(topics.every((topic) => topic.state === 'absent')).toBe(true);
+    expect(summarizeReconcileOutlook(topics)).toBe('rotation');
+  });
+
+  it('neuf abonnements courants : aucune action', () => {
+    const topics = summarizeTopicStates(everyTopic(current), PER_SHOP_SUBSCRIPTION_TOPICS);
+    expect(topics.every((topic) => topic.state === 'conforme')).toBe(true);
+    expect(summarizeReconcileOutlook(topics)).toBe('aucune_action');
+  });
+
+  it('un topic manquant parmi des courants : création sans rotation', () => {
+    const classified = everyTopic(current).filter((entry) => entry.topic !== 'ORDERS_UPDATED');
+    const topics = summarizeTopicStates(classified, PER_SHOP_SUBSCRIPTION_TOPICS);
+    expect(topics.find((topic) => topic.topic === 'orders/updated')?.state).toBe('absent');
+    expect(summarizeReconcileOutlook(topics)).toBe('creation_sans_rotation');
+  });
+
+  it('seulement des abonnements précédents : aucun courant, donc rotation', () => {
+    const topics = summarizeTopicStates(everyTopic(previous), PER_SHOP_SUBSCRIPTION_TOPICS);
+    expect(topics.every((topic) => topic.state === 'precedent')).toBe(true);
+    expect(summarizeReconcileOutlook(topics)).toBe('rotation');
+  });
+
+  it('compte les doublons et les abonnements non reconnus sans les prendre pour conformes', () => {
+    const topics = summarizeTopicStates(
+      [
+        { topic: 'ORDERS_CREATE', classification: current },
+        { topic: 'ORDERS_CREATE', classification: current },
+        { topic: 'ORDERS_UPDATED', classification: foreign },
+      ],
+      PER_SHOP_SUBSCRIPTION_TOPICS,
     );
-  });
-
-  it("un topic 'creer' + AUCUN jeton local -> 'provision' (première bascule, sans risque)", () => {
-    const topics = [{ topic: 'orders/create', action: 'creer' }, ...conformeTopics.slice(1)];
-    const decision = decideConnectionApplyPlan({ topics, hasLocalToken: false });
-    expect(decision.kind).toBe('provision');
-  });
-
-  it("un topic 'creer' + jeton local EXISTANT -> 'requires_rotation' (jamais mutée par --apply — " +
-    'le bug corrigé : faire tourner ici invaliderait les 8 autres topics déjà conformes)', () => {
-    const topics = [{ topic: 'orders/create', action: 'creer' }, ...conformeTopics.slice(1)];
-    const decision = decideConnectionApplyPlan({ topics, hasLocalToken: true });
-    expect(decision.kind).toBe('requires_rotation');
-  });
-
-  it("une anomalie l'emporte toujours, même avec des topics par ailleurs actionnables", () => {
-    const topics = [
-      { topic: 'orders/create', action: 'anomalie_multiple', detail: 'x' },
-      { topic: 'products/create', action: 'creer' },
-      ...conformeTopics.slice(2),
-    ];
-    expect(decideConnectionApplyPlan({ topics, hasLocalToken: false }).kind).toBe(
-      'blocked_anomalie',
-    );
-    expect(decideConnectionApplyPlan({ topics, hasLocalToken: true }).kind).toBe(
-      'blocked_anomalie',
-    );
-  });
-});
-
-describe('Idempotence de --apply, prouvée sur les 3 invariants (pas supposée)', () => {
-  // Simule l'état Shopify APRÈS un premier --apply réussi : les 9 topics pointent vers le MÊME
-  // jeton local, chacun avec un identifiant d'abonnement Shopify fixe.
-  const publicId = 'pubStable123';
-  const afterFirstApply = ADMIN_API_TOPICS.map((t, i) => ({
-    graphql: t.graphql,
-    rest: t.rest,
-    subscription: {
-      id: `gid://shopify/WebhookSubscription/${i}`,
-      endpoint: httpEndpoint(`${OUR_ORIGIN}/api/shopify/ingest/${publicId}.secretXYZ`),
-    },
-  }));
-
-  it('un second passage de planification reproduit EXACTEMENT le même diagnostic (conforme, mêmes ids)', () => {
-    const secondPassTopics = afterFirstApply.map(({ rest, subscription }) => {
-      const result = planTopicAction({
-        existingForTopic: [subscription],
-        knownPublicId: publicId,
-        ourOrigin: OUR_ORIGIN,
-      });
-      return { topic: rest, ...result };
+    expect(topics.find((topic) => topic.topic === 'orders/create')).toMatchObject({
+      state: 'conforme',
+      current: 2,
+      doublons: 1,
     });
-
-    // Invariant #2 (URL cible) : chaque topic est 'conforme', jamais 'remplacer'/'creer'.
-    for (const t of secondPassTopics) {
-      expect(t.action).toBe('conforme');
-    }
-    // Invariant #3 (identifiant Shopify) : l'existingId rapporté au second passage est
-    // EXACTEMENT celui déjà en place — rien n'a été recréé.
-    for (let i = 0; i < secondPassTopics.length; i++) {
-      expect(secondPassTopics[i].existingId).toBe(afterFirstApply[i].subscription.id);
-    }
-
-    // Invariant #1 (jeton) : la décision globale ne déclenche aucune mutation de jeton — c'est
-    // 'already_conformant' qui le garantit structurellement (applyConnection ne fait alors AUCUN
-    // appel à createWebhookToken/rotateWebhookToken, cf. webhook-subscription-migration.mjs).
-    const decision = decideConnectionApplyPlan({ topics: secondPassTopics, hasLocalToken: true });
-    expect(decision.kind).toBe('already_conformant');
-  });
-
-  it('état MIXTE réaliste (8 topics déjà conformes + 1 dérivé manuellement chez Shopify) -> ' +
-    "'requires_rotation', jamais 'already_conformant' ni 'provision' — c'est exactement le " +
-    'scénario qui a exposé le bug : un seul topic actionnable ne doit jamais entraîner de ' +
-    'rotation qui invaliderait les 8 autres.', () => {
-    const mixedTopics = afterFirstApply.map(({ rest, subscription }, i) => {
-      // Le premier topic a été pointé ailleurs manuellement (config de test, ancien endpoint) —
-      // les 8 autres restent sur le jeton courant.
-      const existingForTopic =
-        i === 0
-          ? [
-              {
-                id: subscription.id,
-                endpoint: httpEndpoint('https://teer-dev.vercel.app/api/shopify/webhooks'),
-              },
-            ]
-          : [subscription];
-      const result = planTopicAction({
-        existingForTopic,
-        knownPublicId: publicId,
-        ourOrigin: OUR_ORIGIN,
-      });
-      return { topic: rest, ...result };
+    expect(topics.find((topic) => topic.topic === 'orders/updated')).toMatchObject({
+      state: 'absent',
+      foreign: 1,
     });
-
-    expect(mixedTopics[0].action).toBe('remplacer');
-    for (const t of mixedTopics.slice(1)) {
-      expect(t.action).toBe('conforme');
-    }
-
-    const decision = decideConnectionApplyPlan({ topics: mixedTopics, hasLocalToken: true });
-    if (decision.kind !== 'requires_rotation') {
-      throw new Error(`expected 'requires_rotation', got '${decision.kind}'`);
-    }
-    expect(decision.actionable).toHaveLength(1);
   });
 });
 
 type PlanResult = {
   blocked: boolean;
   reason?: string;
-  topics?: Array<{ topic: string; action: string }>;
+  topics?: Array<{ topic: string; state: string }>;
+  inventory?: Array<{ topic: string; classification: string; uri: string }>;
+  outlook?: string;
+  localToken?: string;
 };
+
+type KnownToken = {
+  public_id: string;
+  secret_hash: string;
+  previous_secret_hash: string | null;
+  revoked_at: string | null;
+} | null;
 
 type PlanConnection = (args: {
   connection: { id: string };
@@ -472,7 +220,7 @@ type PlanConnection = (args: {
     access_token_expires_at?: string | null;
   };
   app: { label: string };
-  knownToken: null;
+  knownToken: KnownToken;
 }) => Promise<PlanResult>;
 
 type PlanInput = Parameters<PlanConnection>[0];
@@ -533,12 +281,36 @@ describe('planConnection — propagation du résultat de jeton', () => {
     vi.clearAllMocks();
   });
 
-  function planInput(shop: PlanInput['shop']): PlanInput {
+  function planInput(shop: PlanInput['shop'], knownToken: KnownToken = null): PlanInput {
     return {
       connection: { id: 'connection-pilot' },
       shop,
       app: { label: 'teer-koba' },
-      knownToken: null,
+      knownToken,
+    };
+  }
+
+  const validShop = {
+    shop_domain: 'pilot.myshopify.com',
+    access_token_encrypted: 'encrypted-test-sentinel',
+    access_token_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+  };
+
+  function page(nodes: unknown[], endCursor: string | null = null) {
+    return {
+      webhookSubscriptions: {
+        edges: nodes.map((node) => ({ node })),
+        pageInfo: { hasNextPage: endCursor !== null, endCursor },
+      },
+    };
+  }
+
+  function localToken(token: { publicId: string; secretHash: string }, revoked = false) {
+    return {
+      public_id: token.publicId,
+      secret_hash: token.secretHash,
+      previous_secret_hash: null,
+      revoked_at: revoked ? new Date().toISOString() : null,
     };
   }
 
@@ -575,25 +347,102 @@ describe('planConnection — propagation du résultat de jeton', () => {
     expect(result).toMatchObject({ blocked: true, reason: 'renewal_required' });
   });
 
-  it("poursuit le plan valide jusqu'à l'inventaire et au calcul par topic", async () => {
+  it("poursuit le plan valide jusqu'à l'inventaire et au diagnostic par topic", async () => {
     decryptToken.mockReturnValue('access-test-sentinel');
-    shopifyGraphQL.mockResolvedValue({ webhookSubscriptions: { edges: [] } });
+    shopifyGraphQL.mockResolvedValue(page([]));
 
-    const result = await planConnection(
-      planInput({
-        shop_domain: 'pilot.myshopify.com',
-        access_token_encrypted: 'encrypted-test-sentinel',
-        access_token_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-      }),
-    );
+    const result = await planConnection(planInput(validShop));
 
     expect(result.blocked).toBe(false);
     expect(shopifyGraphQL).toHaveBeenCalledTimes(1);
     expect(shopifyGraphQL).toHaveBeenCalledWith(
       expect.objectContaining({ shopDomain: 'pilot.myshopify.com' }),
     );
+    expect(result.topics).toHaveLength(9);
     expect(result.topics?.find((topic) => topic.topic === 'orders/create')).toMatchObject({
-      action: 'creer',
+      state: 'absent',
     });
+    expect(result.localToken).toBe('absent');
+    expect(result.outlook).toBe('rotation');
+  });
+
+  it('inventaire PAGINÉ : suit le curseur et classe un abonnement de la seconde page', async () => {
+    decryptToken.mockReturnValue('access-test-sentinel');
+    const token = generateWebhookToken();
+    const currentUri = `https://webhooks.example.test/api/shopify/ingest/${token.raw}`;
+    shopifyGraphQL
+      .mockResolvedValueOnce(
+        page(
+          [{ id: 'gid://1', topic: 'ORDERS_CREATE', uri: 'https://ailleurs.example.test/h' }],
+          '1',
+        ),
+      )
+      .mockResolvedValueOnce(
+        page([
+          {
+            id: 'gid://2',
+            topic: 'ORDERS_UPDATED',
+            uri: currentUri,
+            apiVersion: { handle: '2026-04' },
+          },
+        ]),
+      );
+
+    const result = await planConnection(planInput(validShop, localToken(token)));
+
+    expect(shopifyGraphQL).toHaveBeenCalledTimes(2);
+    expect(shopifyGraphQL.mock.calls[1][0].variables).toMatchObject({ after: '1' });
+    expect(result.topics?.find((topic) => topic.topic === 'orders/updated')?.state).toBe(
+      'conforme',
+    );
+    expect(result.topics?.find((topic) => topic.topic === 'orders/create')?.state).toBe('absent');
+    expect(result.outlook).toBe('creation_sans_rotation');
+    expect(result.localToken).toBe('présent');
+  });
+
+  it('sortie MASQUÉE : ni le secret ni le publicId du jeton ne sortent du diagnostic', async () => {
+    decryptToken.mockReturnValue('access-test-sentinel');
+    const token = generateWebhookToken();
+    shopifyGraphQL.mockResolvedValue(
+      page([
+        {
+          id: 'gid://1',
+          topic: 'ORDERS_CREATE',
+          uri: `https://webhooks.example.test/api/shopify/ingest/${token.raw}`,
+        },
+      ]),
+    );
+
+    const result = await planConnection(planInput(validShop, localToken(token)));
+
+    expect(result.inventory?.[0]).toMatchObject({
+      classification: 'courant',
+      uri: 'https://webhooks.example.test/api/shopify/ingest/***',
+    });
+    const serialized = JSON.stringify({ inventory: result.inventory, topics: result.topics });
+    expect(serialized).not.toContain(token.secret);
+    expect(serialized).not.toContain(token.publicId);
+    // Le jeton d'accès Admin ne sort pas non plus du processus.
+    expect(JSON.stringify(result)).not.toContain('access-test-sentinel');
+  });
+
+  it('jeton local révoqué : rien ne reste reconnu comme courant', async () => {
+    decryptToken.mockReturnValue('access-test-sentinel');
+    const token = generateWebhookToken();
+    shopifyGraphQL.mockResolvedValue(
+      page([
+        {
+          id: 'gid://1',
+          topic: 'ORDERS_CREATE',
+          uri: `https://webhooks.example.test/api/shopify/ingest/${token.raw}`,
+        },
+      ]),
+    );
+
+    const result = await planConnection(planInput(validShop, localToken(token, true)));
+
+    expect(result.localToken).toBe('révoqué');
+    expect(result.inventory?.[0].classification).toBe('non reconnu (notre origine)');
+    expect(result.outlook).toBe('rotation');
   });
 });

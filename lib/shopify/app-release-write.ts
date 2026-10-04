@@ -15,7 +15,7 @@
 // local (`\d public.store_connection` / `\d public.store_connection_webhook_token`) : aucune des
 // deux tables ne porte de policy INSERT/UPDATE pour `authenticated`, seule `store_connection_select`
 // existe. Un client RLS ne pourrait donc jamais modifier ces deux tables — ce n'est pas un choix,
-// c'est la seule voie possible pour ces deux écritures précises, comme pour `processAppUninstalledCore`
+// c'est la seule voie possible pour ces deux écritures précises, comme pour `processAppUninstalledOrdered`
 // et `completeCredentialsLink` qui écrivent déjà `store_connection` en service-role pour la même
 // raison structurelle.
 //
@@ -235,7 +235,7 @@ export async function performShopifyAppRelease(
   }
 
   // Révocation du jeton opaque, si une ligne existe et n'est pas déjà révoquée — mesuré au
-  // préalable (`processAppUninstalledCore` ne le fait pas) : c'est ici que cette révocation a
+  // préalable (`processAppUninstalledOrdered` ne le fait pas) : c'est ici que cette révocation a
   // réellement lieu pour la première fois dans ce dépôt.
   const { error: tokenRevokeError } = await admin
     .from('store_connection_webhook_token')

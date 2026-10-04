@@ -9,7 +9,8 @@
 //   3. `consume_shopify_pending_installation`, UNE transaction : propriété, app, attente périmée
 //      (D22), persistance fencée, audit `shopify.connected`, ticket consommé ;
 //   4. selon le verdict :
-//        inserted / updated   store_connection sous le bail, libération, synchronisation (R2) ;
+//        inserted / updated   store_connection sous le bail, libération, abonnements webhook,
+//                             synchronisation (R2) ;
 //        already_connected    libération, arrivée (D22) ;
 //        refused              libération, audit `shopify.claim_refused` chez le DEMANDEUR (D6) ;
 //        ticket_invalid, forbidden, lease_lost : libération éventuelle, refus nommé.
@@ -20,6 +21,7 @@ import { hashShopifyClaimTicket } from '@/lib/shopify/claim-ticket';
 import { readShopifyPendingInstallation } from '@/lib/shopify/claim-view';
 import {
   type PostConnectApp,
+  reconcileWebhooksAfterConnect,
   reportPostConnectEffectFailed,
   syncProductsAfterConnect,
   writeStoreConnectionUnderLease,
@@ -52,9 +54,13 @@ export type ShopifyClaimInput = {
 
 export type ShopifyClaimDeps = {
   syncProducts: typeof syncProductsAfterConnect;
+  reconcileWebhooks: typeof reconcileWebhooksAfterConnect;
 };
 
-const defaultDeps: ShopifyClaimDeps = { syncProducts: syncProductsAfterConnect };
+const defaultDeps: ShopifyClaimDeps = {
+  syncProducts: syncProductsAfterConnect,
+  reconcileWebhooks: reconcileWebhooksAfterConnect,
+};
 
 // Un seul verdict retient le ticket : un bail tenu ou repris est une collision passagère, et le
 // même ticket reste valable pour réessayer. Tout autre verdict est terminal.
@@ -192,7 +198,11 @@ export async function performShopifyClaim(
     return { kind: 'error', code: 'unknown' };
   }
 
-  // Bail libéré : synchronisation des produits (au moins une fois, R2).
+  // Bail des jetons libéré : abonnements webhook (E1), puis synchronisation des produits. Chacun
+  // au moins une fois (R2) : un échec n'est qu'observé, le rattachement reste acquis.
+  const webhooksReconciled = connected.app
+    ? await deps.reconcileWebhooks(admin, { shopId: connected.shopId, app: connected.app })
+    : false;
   const synced = connected.app
     ? await deps.syncProducts(admin, {
         shopId: connected.shopId,
@@ -200,5 +210,8 @@ export async function performShopifyClaim(
         actorUserId: input.userId,
       })
     : false;
-  return { kind: 'connected', syncPending: connected.syncPending || !synced };
+  return {
+    kind: 'connected',
+    syncPending: connected.syncPending || !webhooksReconciled || !synced,
+  };
 }

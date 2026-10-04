@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/nextjs';
-import { sanitizeSentryEvent } from './lib/security/telemetry-sanitize';
+import { sanitizeSentryEvent, sanitizeSentryTransaction } from './lib/security/telemetry-sanitize';
 
 // Sentry désactivé pendant les E2E prod-build (`E2E_PROD_BUILD=1`) : `next start` charge
 // `.env.local` au runtime (qui porte le DSN en local) → le SDK tente un flush réseau au
@@ -14,4 +14,7 @@ Sentry.init({
   enabled: sentryEnabled,
   tracesSampleRate: 0.1,
   beforeSend: (event) => sanitizeSentryEvent(event),
+  // Les transactions ne passent pas par `beforeSend` : sans ceci, l'URL brute d'une requête
+  // d'ingestion — donc le secret du jeton L3 — partait avec les traces échantillonnées.
+  beforeSendTransaction: (event) => sanitizeSentryTransaction(event),
 });

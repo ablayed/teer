@@ -13,8 +13,8 @@
 //     et persistance (persistShopifyOrder/persistShopifyProductWebhook), garde hors-ordre incluse
 //     (interne à persistShopifyOrder via isStaleShopifyUpdate, lib/shopify/orders-sync.ts) ;
 //   - refunds/create avec son idempotence métier (migration 0144, record_shopify_refund_receipt) ;
-//   - app/uninstalled (shop + store_connection + audit_log) — REMPLACE la copie qui vivait dans
-//     app/api/shopify/ingest/[token]/route.ts (lot précédent, dédupliquée ici) ;
+//   - app/uninstalled (shop + store_connection + audit_log), par la primitive de désinstallation
+//     ORDONNÉE de 0161 sur les DEUX chemins (SHOPIFY-WEBHOOKS-PER-SHOP-1B, G6/G7) ;
 //   - double écriture L2 vers ingestion_event/external_ref (déjà partagée via
 //     lib/ingestion/shopify-dual-write.ts, appelée identiquement par les deux chemins) ;
 //   - journalisation d'audit et pré-audit PCD.
@@ -47,10 +47,14 @@ import { deriveRefundWebhook } from '@/lib/shopify/refunds';
 import {
   SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
   isLeaseableShopDomain,
-  markShopifyConnectionUninstalled,
   markShopifyStoreConnectionUninstalledFenced,
   releaseShopifyTokenLease,
 } from '@/lib/shopify/token-lease';
+import {
+  SHOPIFY_UNINSTALL_ORDER_MARGIN_SECONDS,
+  isIsoTimestamp,
+  parseShopifyTriggeredAt,
+} from '@/lib/shopify/uninstall-order';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import * as Sentry from '@sentry/nextjs';
@@ -391,6 +395,8 @@ const CONTROLLED_WEBHOOK_ERROR_CODES = new Set([
   'shopify_pcd_audit_failed',
   'shopify_uninstall_shop_domain_missing',
   'shopify_uninstall_shop_domain_mismatch',
+  // SHOPIFY-WEBHOOKS-PER-SHOP-1B — échec de la primitive ordonnée : transaction annulée, rejouable.
+  'shopify_uninstall_ordered_failed',
 ]);
 
 export function sanitizeWebhookError(error: unknown): string {
@@ -467,7 +473,11 @@ export async function recordWebhookReceipt({
       shop_domain: shopDomain,
       shop_id: shopId,
       merchant_account_id: merchantAccountId,
-      triggered_at: triggeredAt,
+      // SHOPIFY-WEBHOOKS-PER-SHOP-1B / W9 — l'en-tête n'est pas signé et peut être illisible : écrit
+      // tel quel dans une colonne `timestamptz`, il faisait échouer l'insertion, donc répondre 503
+      // à CHAQUE tentative de Shopify. Une valeur illisible est consignée NULL ; le cœur, lui,
+      // reçoit toujours l'en-tête brut et le traite comme absent.
+      triggered_at: isIsoTimestamp(triggeredAt) ? triggeredAt : null,
       payload,
       status: 'processing',
       attempt_count: 1,
@@ -692,41 +702,25 @@ async function processProductCore({
   }
 }
 
-// app/uninstalled : marque UNIQUEMENT cette boutique + révoque ses tokens (access + refresh + les
-// expirations) → sa sync s'arrête (les selects filtrent status='active'). Défense en profondeur :
-// id + merchant_account_id + shop_domain, jamais une seule colonne.
+// app/uninstalled, domaine NON canonique — exception inventoriée, hors protocole de bail.
 //
-// `access_token_encrypted` était auparavant OMIS de cette écriture (seuls `refresh_token_encrypted`
-// et les deux `*_expires_at` étaient nettoyés) — trouvé en écrivant la garde de libération
-// d'identité d'app (lib/shopify/app-release-guard.ts) : sa précondition « aucun credential
-// exploitable » (`access_token_encrypted IS NULL`) ne pouvait jamais être satisfaite après une
-// désinstallation réelle, puisque rien ne nullait cette colonne. Aucun appelant ne dépend de sa
-// persistance après désinstallation : tous les lecteurs de `access_token_encrypted`
-// (`getValidShopAccessToken`, `lib/shopify/token.ts`) ne sont atteints qu'après un filtre
-// `status='active'` en amont (`lib/shopify/shop-sync.ts#getShop`,
-// `app/api/cron/shopify-reconcile/route.ts`, et désormais `resolveShopActive` ci-dessus) — nuller
-// cette colonne ici ne change leur comportement pour aucune boutique déjà désinstallée.
+// Un domaine qui n'a pas la forme canonique `*.myshopify.com` n'a ni bail (0158) ni attente
+// (0160), et la primitive ordonnée de 0161 le refuse (`invalid_input`). Pour lui seul, l'écriture
+// historique est conservée telle quelle : `uninstall_shopify_shop_fenced` (qui ne prend pas de
+// bail pour ces domaines), `store_connection` en écriture directe, audit. Aucune garde
+// d'ancienneté ne s'y applique. L'existence de tels domaines en production reste non vérifiée.
 //
-// SHOPIFY-EXPIRING-TOKENS-01 — l'écriture passe par `uninstall_shopify_shop_fenced` (0159) :
-// préemption du bail (toute acquisition ou tout rafraîchissement en cours devient périmé), puis
-// effacement dans la MÊME transaction. `validatedClientId` est l'app dont le HMAC a été validé
-// — jamais `shop.shopify_client_id`, qui rendrait la garde d'app tautologique. Un
-// `app/uninstalled` d'une app A ne désinstalle donc pas une boutique désormais rattachée à B.
-async function processAppUninstalledCore({
+// `validatedClientId` est l'app dont le HMAC a été validé — jamais `shop.shopify_client_id`, qui
+// rendrait la garde d'app tautologique.
+async function processAppUninstalledNonCanonicalCore({
   supabase,
   shop,
   validatedClientId,
 }: {
   supabase: AdminClient;
   shop: WebhookShopRow;
-  validatedClientId: string | null;
+  validatedClientId: string;
 }) {
-  if (!validatedClientId) {
-    // Aucun appelant légitime n'atteint ce cas : les deux points d'entrée identifient l'app avant
-    // de déléguer. Terminal, jamais une désinstallation sans garde d'app.
-    throw new Error('shopify_uninstall_app_unidentified');
-  }
-
   const { data, error: uninstallError } = await supabase.rpc('uninstall_shopify_shop_fenced', {
     p_shop_domain: shop.shop_domain,
     p_shop_id: shop.id,
@@ -736,26 +730,14 @@ async function processAppUninstalledCore({
   });
 
   if (uninstallError) {
-    logWebhookError('[webhook-core] app/uninstalled update failed', {
-      code: uninstallError.code,
-      details: uninstallError.details,
-      hint: uninstallError.hint,
-      message: uninstallError.message,
-      shopDomain: shop.shop_domain,
-    });
+    logWebhookError('[webhook-core] app/uninstalled update failed', { code: uninstallError.code });
     return;
   }
 
-  const verdict = data?.[0];
-  const outcome = verdict?.outcome ?? 'write_failed';
-
+  const outcome = data?.[0]?.outcome ?? 'write_failed';
   if (outcome !== 'uninstalled' && outcome !== 'already_uninstalled') {
     // Refus de la primitive : aucune écriture n'a eu lieu, et aucune ne doit suivre.
-    // `app_identity_mismatch` : le HMAC vient d'une autre app que celle rattachée à la boutique.
-    logWebhookError('[webhook-core] app/uninstalled refused', {
-      outcome,
-      shopDomain: shop.shop_domain,
-    });
+    logWebhookError('[webhook-core] app/uninstalled refused', { outcome });
     if (outcome === 'app_identity_mismatch') {
       Sentry.captureMessage('shopify_uninstall_app_identity_mismatch', {
         level: 'warning',
@@ -766,27 +748,11 @@ async function processAppUninstalledCore({
   }
 
   await runDualWrite('app_uninstalled_connection_status', async () => {
-    if (!isLeaseableShopDomain(shop.shop_domain)) {
-      // Domaine non canonique : hors bail par construction (aucune écriture fencée n'accepte ce
-      // domaine). Écriture directe conservée — exception inventoriée hors protocole de bail.
-      await supabase
-        .from('store_connection')
-        .update({ status: 'uninstalled', uninstalled_at: new Date().toISOString() })
-        .eq('platform', 'shopify')
-        .eq('external_identifier', shop.shop_domain);
-      return;
-    }
-
-    // Génération de la préemption, ou NULL sur un verdict idempotent : dans ce second cas, la
-    // reprise acquiert un bail normal avant d'écrire (0159, point 1 du lot).
-    const connectionOutcome = await markShopifyConnectionUninstalled(supabase, {
-      shopDomain: shop.shop_domain,
-      generation: verdict?.generation ?? null,
-      merchantAccountId: shop.merchant_account_id,
-    });
-    if (connectionOutcome !== 'written' && connectionOutcome !== 'connection_not_found') {
-      throw new Error(`store_connection_uninstall_${connectionOutcome}`);
-    }
+    await supabase
+      .from('store_connection')
+      .update({ status: 'uninstalled', uninstalled_at: new Date().toISOString() })
+      .eq('platform', 'shopify')
+      .eq('external_identifier', shop.shop_domain);
   });
 
   const { error: auditError } = await supabase.from('audit_log').insert({
@@ -797,73 +763,107 @@ async function processAppUninstalledCore({
     resource_id: shop.id,
     payload: { shopDomain: shop.shop_domain },
   });
-
   if (auditError) {
-    logWebhookError('[webhook-core] app/uninstalled audit failed', {
-      code: auditError.code,
-      details: auditError.details,
-      hint: auditError.hint,
-      message: auditError.message,
-      shopDomain: shop.shop_domain,
-    });
+    logWebhookError('[webhook-core] app/uninstalled audit failed', { code: auditError.code });
     return;
   }
 
-  logWebhookInfo('[webhook-core] app/uninstalled processed', { shopDomain: shop.shop_domain });
+  logWebhookInfo('[webhook-core] app/uninstalled processed (non canonical domain)', {});
 }
 
-// SHOPIFY-OAUTH-FIRST-01 / B6 — app/uninstalled pour un domaine SANS boutique rattachée au
-// moment de la résolution : une installation en attente (branche 2 de D16b) peut exister.
+export type OrderedUninstallOutcome = {
+  shopEffect: string;
+  pendingEffect: string;
+  shopTransitioned: boolean;
+  pendingDeleted: boolean;
+};
+
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / C6 — désinstallation ORDONNÉE (G6), sur les DEUX chemins.
 //
-// AVERTISSEMENT (D20b) : `shopDomain` N'EST PAS authentifié. Le HMAC Shopify ne couvre que le
-// corps brut, et le chemin legacy retombe sur l'en-tête non signé `x-shopify-shop-domain` quand
-// le corps de `app/uninstalled` ne porte pas de domaine. Une livraison authentique rejouée avec un
-// autre domaine peut donc viser l'attente d'un tiers utilisant la même app. Risque ACCEPTÉ jusqu'au
-// lot 1b (abonnement par boutique sur URL opaque) ; ne jamais présenter ce domaine comme lié au
-// corps signé. La garde d'app, elle, est réelle : seule l'app dont le HMAC a été validé est visée.
+// Une seule primitive, `uninstall_shopify_pending_or_shop_ordered` (0161), décide SOUS VERROU du
+// sort de la boutique ET de l'attente du couple (domaine, app validée), en comparant l'horodatage
+// de l'événement à la borne d'acquisition des credentials. Elle remplace, pour tout domaine
+// canonique, `uninstall_shopify_shop_fenced` appelée directement, `uninstall_shopify_pending_or_shop`
+// (0160) et la lecture hors verrou de l'attente du lot 1 : plus aucun de ces trois chemins n'est
+// appelé d'ici.
 //
-// `uninstall_shopify_pending_or_shop` (0160) décide SOUS VERROU : attente du couple supprimée,
-// et boutique désinstallée par composition si elle a été créée entre la résolution et cet appel.
-// Le bail préempté par la primitive est TOUJOURS libéré, avec la génération qu'elle rend.
-async function processAppUninstalledPendingCore({
+// HYPOTHÈSES, à ne jamais présenter autrement :
+//   H1  l'horodatage vient de `X-Shopify-Triggered-At`, en-tête NON SIGNÉ. Indication d'ordre,
+//       jamais une preuve. Absent, illisible ou dans le futur : NULL, et sentinelle expurgée ;
+//   H2  l'écart entre l'horloge de Shopify et celle de la base reste inférieur à la marge ;
+//   D20b / G7  `shopDomain` n'est lié cryptographiquement à la livraison QUE sur le chemin opaque
+//       (jeton d'URL → connexion). Sur l'endpoint historique, il peut venir de l'en-tête non signé
+//       `x-shopify-shop-domain` : le risque de désinstallation tardive y est RÉDUIT à la marge,
+//       jamais fermé, jusqu'au retrait de l'abonnement global (E11).
+// La garde d'app, elle, est réelle sur les deux chemins : seule l'app dont le HMAC a été validé
+// est visée.
+//
+// CHAQUE EFFET DÉPEND DE SON PROPRE BOOLÉEN — jamais d'un verdict global :
+//   shop_transitioned   → écriture de `store_connection` et audit `shopify.app_uninstalled` ;
+//   pending_deleted     → sentinelle de suppression de l'attente ;
+//   generation non NULL → libération du bail de jetons avec CETTE génération ; NULL
+//                         (`stale_ignored`, `other_app`) → aucune libération : le bail appartient à
+//                         un autre détenteur.
+export async function processAppUninstalledOrdered({
   supabase,
   shopDomain,
   validatedClientId,
+  triggeredAt,
+  marginSeconds = SHOPIFY_UNINSTALL_ORDER_MARGIN_SECONDS,
+  nowMs = Date.now(),
 }: {
   supabase: AdminClient;
   shopDomain: string;
   validatedClientId: string;
-}) {
-  if (!isLeaseableShopDomain(shopDomain)) {
-    logWebhookInfo('[webhook-core] app/uninstalled shop not found', {});
-    return;
+  // Valeur brute de `X-Shopify-Triggered-At`.
+  triggeredAt: string | null;
+  marginSeconds?: number;
+  nowMs?: number;
+}): Promise<OrderedUninstallOutcome> {
+  const parsed = parseShopifyTriggeredAt(triggeredAt, nowMs, marginSeconds);
+  if (parsed.anomaly) {
+    // Sentinelle expurgée : ni domaine, ni valeur reçue — seule la nature de l'anomalie.
+    Sentry.captureMessage('shopify_uninstall_triggered_at_unusable', {
+      level: 'warning',
+      tags: { module: 'shopify.webhook-core', anomaly: parsed.anomaly },
+    });
   }
 
-  const { data, error } = await supabase.rpc('uninstall_shopify_pending_or_shop', {
+  const { data, error } = await supabase.rpc('uninstall_shopify_pending_or_shop_ordered', {
     p_shop_domain: shopDomain,
     p_client_id: validatedClientId,
     p_ttl_seconds: SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
+    // Les types générés ne portent pas la nullabilité des arguments SQL : NULL est accepté, et
+    // désigne un horodatage absent (issue récupérable).
+    p_event_triggered_at: parsed.value as string,
+    p_margin_seconds: marginSeconds,
   });
 
   if (error) {
-    // Transaction annulée : aucune préemption n'a eu lieu.
-    logWebhookError('[webhook-core] app/uninstalled pending failed', { code: error.code });
-    throw new Error('shopify_uninstall_pending_failed');
+    // Transaction annulée : aucune préemption n'a eu lieu, rien à libérer.
+    logWebhookError('[webhook-core] app/uninstalled ordered failed', { code: error.code });
+    throw new Error('shopify_uninstall_ordered_failed');
   }
 
   const verdict = data?.[0];
   const generation = verdict?.generation ?? null;
+  const outcome: OrderedUninstallOutcome = {
+    shopEffect: verdict?.shop_effect ?? 'missing',
+    pendingEffect: verdict?.pending_effect ?? 'none',
+    shopTransitioned: verdict?.shop_transitioned === true,
+    pendingDeleted: verdict?.pending_deleted === true,
+  };
 
   try {
+    // (a) `shop_transitioned` : la boutique est passée d'active à désinstallée DANS cet appel.
     if (
-      (verdict?.outcome === 'shop_uninstalled' || verdict?.outcome === 'both') &&
-      verdict.shop_id &&
+      outcome.shopTransitioned &&
+      verdict?.shop_id &&
       verdict.merchant_account_id &&
       generation !== null
     ) {
       const merchantAccountId = verdict.merchant_account_id;
       const shopId = verdict.shop_id;
-      // Même motif que processAppUninstalledCore, sous la génération rendue par la primitive.
       await runDualWrite('app_uninstalled_connection_status', async () => {
         const connectionOutcome = await markShopifyStoreConnectionUninstalledFenced(supabase, {
           shopDomain,
@@ -887,46 +887,44 @@ async function processAppUninstalledPendingCore({
         logWebhookError('[webhook-core] app/uninstalled audit failed', { code: auditError.code });
       }
     }
+
+    // (b) `pending_deleted` : une installation en attente a été supprimée DANS cet appel.
+    if (outcome.pendingDeleted) {
+      Sentry.captureMessage('shopify_pending_installation_deleted_on_uninstall', {
+        level: 'info',
+        tags: { module: 'shopify.webhook-core' },
+      });
+    }
+
+    if (outcome.shopEffect === 'stale_ignored') {
+      // Événement antérieur à l'acquisition des credentials en place : la boutique reste connectée.
+      Sentry.captureMessage('shopify_uninstall_stale_ignored', {
+        level: 'info',
+        tags: { module: 'shopify.webhook-core' },
+      });
+    } else if (outcome.shopEffect === 'other_app') {
+      Sentry.captureMessage('shopify_uninstall_app_identity_mismatch', {
+        level: 'warning',
+        tags: { module: 'shopify.webhook-core' },
+      });
+    } else if (outcome.shopEffect === 'invalid_input' || outcome.shopEffect === 'missing') {
+      logWebhookError('[webhook-core] app/uninstalled ordered refused', {
+        shopEffect: outcome.shopEffect,
+      });
+    }
   } finally {
+    // (c) Libération du bail de jetons : avec la génération rendue, et seulement elle. NULL :
+    // aucun bail n'a été pris par cet appel, et libérer serait libérer celui d'un autre.
     if (generation !== null) {
       await releaseShopifyTokenLease(supabase, shopDomain, generation);
     }
   }
 
-  logWebhookInfo('[webhook-core] app/uninstalled pending processed', {
-    outcome: verdict?.outcome ?? null,
+  logWebhookInfo('[webhook-core] app/uninstalled processed', {
+    shopEffect: outcome.shopEffect,
+    pendingEffect: outcome.pendingEffect,
   });
-}
-
-// SHOPIFY-OAUTH-FIRST-01 — attente active du couple (domaine, app validée) quand la boutique
-// existe. Seule primitive existante qui la supprime sous le bail :
-// `uninstall_shopify_pending_or_shop` (0160, via processAppUninstalledPendingCore, qui libère le
-// bail qu'elle a préempté — R3). Cette primitive préempte TOUJOURS le bail : elle n'est appelée
-// que si une attente active existe, pour que le chemin historique sans attente (KOBA, apps
-// historiques) garde exactement ses effets. Si la lecture échoue, la suppression est tentée
-// quand même : mieux vaut une préemption de trop qu'une attente survivante.
-async function deletePendingInstallationOnUninstall({
-  supabase,
-  shopDomain,
-  validatedClientId,
-}: {
-  supabase: AdminClient;
-  shopDomain: string;
-  validatedClientId: string;
-}) {
-  const { data, error } = await supabase
-    .from('shopify_pending_installation')
-    .select('id')
-    .eq('shop_domain', shopDomain)
-    .eq('shopify_client_id', validatedClientId)
-    .is('consumed_at', null)
-    .limit(1);
-
-  if (!error && (data ?? []).length === 0) {
-    return;
-  }
-
-  await processAppUninstalledPendingCore({ supabase, shopDomain, validatedClientId });
+  return outcome;
 }
 
 async function processRefundCore({
@@ -1237,10 +1235,11 @@ export async function dispatchWebhookCore({
   webhookId: string | null;
   triggeredAt: string | null;
   // App dont le HMAC a été validé par le point d'entrée (SHOPIFY-EXPIRING-TOKENS-01). Seul
-  // `app/uninstalled` la consomme, comme garde d'app de la primitive destructive.
+  // `app/uninstalled` la consomme, comme garde d'app de la primitive de désinstallation.
   validatedClientId: string | null;
-  // SHOPIFY-OAUTH-FIRST-01 / B6 — domaine résolu par le point d'entrée, transmis pour le seul
-  // `app/uninstalled` sans boutique. NON AUTHENTIFIÉ sur le chemin legacy (D20b).
+  // Domaine résolu par le point d'entrée, transmis pour le seul `app/uninstalled` quand aucune
+  // boutique n'a été résolue (installation en attente). NON AUTHENTIFIÉ sur le chemin legacy
+  // (D20b, G7).
   resolvedShopDomain?: string | null;
 }): Promise<GdprProcessResult | null> {
   // Pré-audit PCD : `shop` est déjà résolu (avec la bonne tolérance topic-par-topic) au moment où
@@ -1305,32 +1304,39 @@ export async function dispatchWebhookCore({
       }
       await processProductCore({ supabase, shop, topic, payload, webhookId, triggeredAt });
       return null;
-    case 'app/uninstalled':
-      if (!shop) {
-        if (resolvedShopDomain && validatedClientId) {
-          await processAppUninstalledPendingCore({
-            supabase,
-            shopDomain: resolvedShopDomain,
-            validatedClientId,
-          });
-          return null;
+    case 'app/uninstalled': {
+      if (!validatedClientId) {
+        if (shop) {
+          // Aucun appelant légitime n'atteint ce cas : les deux points d'entrée identifient l'app
+          // avant de déléguer. Terminal, jamais une désinstallation sans garde d'app.
+          throw new Error('shopify_uninstall_app_unidentified');
         }
         logWebhookInfo('[webhook-core] app/uninstalled shop not found', {});
         return null;
       }
-      await processAppUninstalledCore({ supabase, shop, validatedClientId });
-      // SHOPIFY-OAUTH-FIRST-01 — une boutique déjà rattachée (typiquement `uninstalled`, puis
-      // réautorisée en branche 2) peut porter une attente active. `app/uninstalled` la supprime
-      // aussi, quel que soit l'état de la ligne `shop` : sinon un POST ultérieur la
-      // réactiverait avec des jetons que Shopify vient de révoquer.
-      if (validatedClientId) {
-        await deletePendingInstallationOnUninstall({
-          supabase,
-          shopDomain: shop.shop_domain,
-          validatedClientId,
-        });
+      // Chemin opaque : domaine de la connexion résolue par le jeton d'URL. Chemin global : domaine
+      // résolu par l'en-tête, NON AUTHENTIFIÉ (D20b, G7) — jamais présenté comme lié au corps signé.
+      const uninstallDomain = shop?.shop_domain ?? resolvedShopDomain;
+      if (!uninstallDomain) {
+        logWebhookInfo('[webhook-core] app/uninstalled shop not found', {});
+        return null;
       }
+      if (!isLeaseableShopDomain(uninstallDomain)) {
+        if (shop) {
+          await processAppUninstalledNonCanonicalCore({ supabase, shop, validatedClientId });
+        } else {
+          logWebhookInfo('[webhook-core] app/uninstalled shop not found', {});
+        }
+        return null;
+      }
+      await processAppUninstalledOrdered({
+        supabase,
+        shopDomain: uninstallDomain,
+        validatedClientId,
+        triggeredAt,
+      });
       return null;
+    }
     case 'customers/data_request':
     case 'customers/redact':
     case 'shop/redact':

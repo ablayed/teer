@@ -10,13 +10,19 @@
 //      AVANT la libération du bail (D11) ;
 //   2. synchronisation des produits, APRÈS la libération (D3) : `getValidShopAccessToken` peut
 //      reprendre un bail pour rafraîchir, et `runWithShopifyUnauthorizedRetry` rejoue une fois
-//      après un 401. Jamais un jeton brut transmis depuis l'échange (modèle lib/shopify/shop-sync.ts).
+//      après un 401. Jamais un jeton brut transmis depuis l'échange (modèle lib/shopify/shop-sync.ts) ;
+//   3. abonnements webhook par boutique (SHOPIFY-WEBHOOKS-PER-SHOP-1B, E1), APRÈS la libération
+//      du bail des jetons elle aussi : la réconciliation tient son propre bail, et obtient son
+//      jeton par `getValidShopAccessToken`. Au moins une fois : `syncShopAction` et le cron la
+//      relancent.
 //
 // Module pur de toute dépendance d'environnement : importable par les suites RLS.
 import { ShopifyGraphQLHttpError } from '@/lib/shopify/graphql';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import { getValidShopAccessToken, runWithShopifyUnauthorizedRetry } from '@/lib/shopify/token';
 import { writeShopifyStoreConnectionFenced } from '@/lib/shopify/token-lease';
+import { readWebhookPublicBaseUrl } from '@/lib/shopify/webhook-base-url';
+import { reconcileShopifyWebhookSubscriptions } from '@/lib/shopify/webhook-subscription-reconcile';
 import type { Database } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -27,7 +33,7 @@ export type PostConnectApp = { clientId: string; clientSecret: string };
 
 // Sentinelles expurgées : ni domaine, ni locataire, ni jeton — seul le verdict technique.
 export function reportPostConnectEffectFailed(
-  effect: 'store_connection' | 'products_sync',
+  effect: 'store_connection' | 'products_sync' | 'webhook_subscriptions',
   reason: string,
 ): void {
   Sentry.captureMessage('shopify_post_connect_effect_failed', {
@@ -108,6 +114,32 @@ export async function syncProductsAfterConnect(
     return true;
   } catch {
     reportPostConnectEffectFailed('products_sync', 'exception');
+    return false;
+  }
+}
+
+// Abonnements webhook de la boutique qui vient d'être connectée. Mode `installation` : c'est une
+// finalisation (la réconciliation bascule d'elle-même en réparation si l'inventaire porte encore
+// d'anciens abonnements). Un échec est observé et rend `false` ; il ne défait jamais le
+// rattachement.
+export async function reconcileWebhooksAfterConnect(
+  admin: AdminClient,
+  input: { shopId: string; app: PostConnectApp },
+): Promise<boolean> {
+  try {
+    const result = await reconcileShopifyWebhookSubscriptions(admin, {
+      shopId: input.shopId,
+      app: input.app,
+      mode: 'installation',
+      webhookBaseUrl: readWebhookPublicBaseUrl(),
+    });
+    if (!result.ok) {
+      reportPostConnectEffectFailed('webhook_subscriptions', result.reason);
+      return false;
+    }
+    return true;
+  } catch {
+    reportPostConnectEffectFailed('webhook_subscriptions', 'exception');
     return false;
   }
 }

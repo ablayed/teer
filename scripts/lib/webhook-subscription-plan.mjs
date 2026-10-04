@@ -1,21 +1,24 @@
-// Phase 2 — Clôture : logique de décision PURE (aucun import Supabase, aucun appel réseau) du
-// bascule des abonnements webhook Shopify. Extraite de webhook-subscription-migration.mjs pour
-// être unit-testable — en particulier l'invariant d'idempotence de --apply : un jeton EXISTANT
-// n'est jamais touché par un simple --apply, jamais en effet de bord d'une mutation par ailleurs
-// nécessaire. Voir tests/unit/shopify/webhook-subscription-plan.test.ts.
+// Logique de décision PURE (aucun import Supabase, aucun appel réseau) du diagnostic des
+// abonnements webhook Shopify (scripts/webhook-subscription-migration.mjs --plan). Extraite du
+// script pour être testable — voir tests/unit/shopify/webhook-subscription-plan.test.ts.
+//
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / G10 — ce module ne porte plus aucune décision de MUTATION :
+// `--apply` et `--rotate-token` sont retirés, et avec eux l'orchestration du rafraîchissement
+// d'un jeton (qui n'existe plus que dans lib/shopify/oauth.ts et lib/shopify/token.ts). Les
+// abonnements sont créés, réparés et tournés par l'application
+// (lib/shopify/webhook-subscription-reconcile.ts).
 
-// rest = forme historique (webhook_event.topic, ingestion_event.topic) ; graphql = valeur de
-// l'enum WebhookSubscriptionTopic attendue par webhookSubscriptionCreate/Update.
-export const ADMIN_API_TOPICS = [
-  { rest: 'orders/create', graphql: 'ORDERS_CREATE' },
-  { rest: 'orders/updated', graphql: 'ORDERS_UPDATED' },
-  { rest: 'orders/cancelled', graphql: 'ORDERS_CANCELLED' },
-  { rest: 'orders/fulfilled', graphql: 'ORDERS_FULFILLED' },
-  { rest: 'products/create', graphql: 'PRODUCTS_CREATE' },
-  { rest: 'products/update', graphql: 'PRODUCTS_UPDATE' },
-  { rest: 'refunds/create', graphql: 'REFUNDS_CREATE' },
-  { rest: 'bulk_operations/finish', graphql: 'BULK_OPERATIONS_FINISH' },
-];
+import { INGEST_PATH_PREFIX } from '../../lib/shopify/webhook-subscription-inventory.ts';
+
+// Les topics créés PAR BOUTIQUE vivent dans lib/shopify/webhook-subscription-topics.ts, source
+// unique partagée avec la réconciliation applicative. ADMIN_API_TOPICS : les huit topics métier.
+// PER_SHOP_SUBSCRIPTION_TOPICS : ces huit, plus `app/uninstalled` (lot 1b, E0).
+export {
+  ADMIN_API_TOPICS,
+  PER_SHOP_SUBSCRIPTION_TOPICS,
+} from '../../lib/shopify/webhook-subscription-topics.ts';
+
+export { INGEST_PATH_PREFIX };
 
 // Non souscriptibles par l'Admin API (absents de l'enum WebhookSubscriptionTopic, vérifié
 // contre la documentation Shopify avant d'écrire ce script — jamais supposé). Restent
@@ -23,32 +26,24 @@ export const ADMIN_API_TOPICS = [
 export const APP_LEVEL_ONLY_TOPICS = ['customers/data_request', 'customers/redact', 'shop/redact'];
 
 // `app/uninstalled` est, LUI, parfaitement souscriptible par l'Admin API — il figure bien dans
-// l'enum WebhookSubscriptionTopic. Il est retiré d'ADMIN_API_TOPICS par DÉCISION, pas par
+// l'enum WebhookSubscriptionTopic. Il reste déclaré au niveau app par DÉCISION, pas par
 // incapacité : les deux raisons sont différentes et ne doivent jamais être fusionnées.
 //
-// Raison, établie depuis la documentation Shopify (query `webhookSubscriptions`, Admin GraphQL) :
-// « Retrieves a paginated list of webhook subscriptions created using the API for the current app
-// and shop », avec la note « Returns only shop-scoped subscriptions, not app-scoped subscriptions
-// configured in TOML files ». Un abonnement déclaré dans `shopify.app.*.toml` est donc
-// STRUCTURELLEMENT invisible à `listSubscriptions`.
+// Fait Shopify, établi depuis la documentation (query `webhookSubscriptions`, Admin GraphQL) :
+// « Returns only shop-scoped subscriptions, not app-scoped subscriptions configured in TOML
+// files ». Un abonnement déclaré dans `shopify.app.*.toml` est donc STRUCTURELLEMENT invisible à
+// l'inventaire, et ne se supprime pas par l'Admin API.
 //
-// Conséquence si `app/uninstalled` restait ici : `--apply` ne verrait jamais l'abonnement
-// app-scoped du TOML, en créerait un second, shop-scoped, vers l'URL opaque — et
-// `verifyAndCleanup` ne pourrait pas davantage retirer le premier (invisible, et un abonnement
-// app-scoped ne se supprime pas par l'Admin API). Résultat : DOUBLE LIVRAISON de
-// `app/uninstalled`, sur les deux endpoints, sans aucun moyen de la voir depuis l'outil.
-//
-// Cible retenue : 4 abonnements au niveau app (3 GDPR + celui-ci, endpoint fixe
-// `/api/shopify/webhooks`) et 8 abonnements métier par boutique sur l'URL opaque.
+// Depuis le lot 1b (E0), `app/uninstalled` est AUSSI souscrit par boutique sur l'URL opaque
+// (PER_SHOP_SUBSCRIPTION_TOPICS), pour que la désinstallation soit résolue par le jeton d'URL.
+// Tant que la déclaration du TOML n'est pas retirée (E11, hors de ce lot), chaque désinstallation
+// produit donc DEUX livraisons, sur les deux endpoints. C'est assumé : la primitive ordonnée
+// (`uninstall_shopify_pending_or_shop_ordered`, 0161) rend la seconde sans effet.
 export const APP_LEVEL_BY_DECISION_TOPICS = ['app/uninstalled'];
 
 // Les 4 topics déclarés dans le TOML de l'app, tous servis par l'endpoint legacy signé par corps.
-// `app/uninstalled` fait partie des topics dont le CORPS porte une identité boutique signée
-// (`resolveSignedShopDomain`), il reste donc couvert par la garde anti cross-tenant sur ce
-// chemin — le laisser sur l'endpoint legacy n'ouvre aucune régression de sécurité.
 export const APP_LEVEL_TOPICS = [...APP_LEVEL_ONLY_TOPICS, ...APP_LEVEL_BY_DECISION_TOPICS];
 
-export const INGEST_PATH_PREFIX = '/api/shopify/ingest/';
 const OPAQUE_INGEST_SEGMENT = /\/api\/shopify\/ingest\/[^\s"'`),;]+/g;
 
 const CANONICAL_SHOP_DOMAIN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/;
@@ -98,6 +93,9 @@ export function accessTokenNeedsRenewal(
   return !Number.isFinite(timestamp) || timestamp - now <= refreshBufferMs;
 }
 
+// Jeton d'accès pour le diagnostic : DÉCHIFFRÉ, jamais renouvelé. Un jeton expirant proche de son
+// échéance rend `renewal_required` : le script ne rafraîchit rien. Pour obtenir un jeton frais,
+// lancer une synchronisation depuis Tëër (Paramètres > Boutiques), puis relancer le diagnostic.
 export function resolvePlanAccessToken({
   encryptedToken,
   expiresAt,
@@ -121,100 +119,6 @@ export function resolvePlanAccessToken({
   }
 
   return { ok: true, accessToken };
-}
-
-export async function resolveAccessTokenForMode({
-  mode,
-  shop,
-  app,
-  decrypt,
-  refresh,
-  persistRefreshedToken,
-  acquireLease,
-  releaseLease,
-  now = Date.now(),
-  refreshBufferMs,
-}) {
-  if (mode === 'plan') {
-    return resolvePlanAccessToken({
-      encryptedToken: shop.access_token_encrypted,
-      expiresAt: shop.access_token_expires_at,
-      decrypt,
-      now,
-      refreshBufferMs,
-    });
-  }
-
-  if (!shop.access_token_encrypted) {
-    return { ok: false, reason: 'needs_reauth' };
-  }
-
-  let accessToken;
-  try {
-    accessToken = decrypt(shop.access_token_encrypted);
-  } catch {
-    return { ok: false, reason: 'token_error' };
-  }
-
-  if (!accessTokenNeedsRenewal(shop.access_token_expires_at, now, refreshBufferMs)) {
-    return { ok: true, accessToken };
-  }
-
-  if (!shop.refresh_token_encrypted) {
-    return { ok: false, reason: 'needs_reauth' };
-  }
-  const refreshExpiresAt = shop.refresh_token_expires_at
-    ? Date.parse(shop.refresh_token_expires_at)
-    : null;
-  if (refreshExpiresAt !== null && refreshExpiresAt <= now) {
-    return { ok: false, reason: 'needs_reauth' };
-  }
-
-  let refreshToken;
-  try {
-    refreshToken = decrypt(shop.refresh_token_encrypted);
-  } catch {
-    return { ok: false, reason: 'token_error' };
-  }
-
-  // SHOPIFY-EXPIRING-TOKENS-01 — même bail que lib/shopify/token.ts : acquisition AVANT l'appel
-  // réseau (bail tenu → aucun appel Shopify), écriture sous la génération obtenue, libération
-  // toujours tentée. Divergence assumée avec token.ts : pas de relecture de la paire du gagnant
-  // (§6) — le script rend `lease_held` / `lease_lost` et l'opérateur relance.
-  const lease = await acquireLease({ shop });
-  if (!lease.ok) {
-    return { ok: false, reason: lease.reason === 'lease_held' ? 'lease_held' : 'token_error' };
-  }
-
-  try {
-    let refreshed;
-    try {
-      refreshed = await refresh({
-        shop: shop.shop_domain,
-        clientId: app.clientId,
-        clientSecret: app.clientSecret,
-        refreshToken,
-      });
-    } catch {
-      return { ok: false, reason: 'needs_reauth' };
-    }
-
-    const persisted = await persistRefreshedToken({
-      refreshed,
-      shop,
-      generation: lease.generation,
-    });
-    if (persisted.outcome === 'lease_lost') {
-      return { ok: false, reason: 'lease_lost' };
-    }
-    if (!persisted.ok) {
-      return { ok: false, reason: 'token_error' };
-    }
-
-    return { ok: true, accessToken: refreshed.accessToken };
-  } finally {
-    await releaseLease({ shop, generation: lease.generation });
-  }
 }
 
 export function scopeShopQuery(query, shopDomain) {
@@ -252,144 +156,51 @@ export function controlledErrorMessage(error) {
   return `cause=${PLAN_FAILURE_CODES.has(code) ? code : 'unknown_failure'}`;
 }
 
+// Masquage d'un texte libre : tout segment de jeton opaque y est remplacé, systématiquement.
 export function maskSensitiveText(value) {
   return typeof value === 'string'
     ? value.replace(OPAQUE_INGEST_SEGMENT, `${INGEST_PATH_PREFIX}***`)
     : value;
 }
 
-// ── Masquage : tout jeton opaque présent dans une URL est masqué, systématiquement. ────
-export function maskIngestUrl(rawUrl) {
-  if (typeof rawUrl !== 'string') {
-    return '<absente>';
-  }
-  const idx = rawUrl.indexOf(INGEST_PATH_PREFIX);
-  if (idx === -1) {
-    try {
-      const u = new URL(rawUrl);
-      return `${u.origin}${u.pathname}`;
-    } catch {
-      return '<url non parseable>';
-    }
-  }
-  return `${rawUrl.slice(0, idx)}${INGEST_PATH_PREFIX}***`;
-}
-
-export function subscriptionsByGraphqlTopic(subscriptions) {
-  const map = new Map();
-  for (const sub of subscriptions) {
-    const list = map.get(sub.topic) ?? [];
-    list.push(sub);
-    map.set(sub.topic, list);
-  }
-  return map;
-}
-
-// Décide l'action pour UN topic Admin-API-souscriptible d'UNE boutique, à partir de
-// l'inventaire réel et du jeton local connu (jamais son secret — seul public_id est comparé,
-// stocké en clair, cf. 0143). Ne calcule QUE le diagnostic ; aucune mutation ici.
+// Diagnostic par topic attendu, à partir de l'inventaire CLASSÉ
+// (lib/shopify/webhook-subscription-inventory.ts `classifySubscriptions`). PURE : ne décide
+// d'aucune mutation, elle dit ce que la réconciliation applicative ferait.
 //
-// `existingId` est TOUJOURS renvoyé quand une souscription existe (y compris 'conforme') : c'est
-// ce qui permet de vérifier, à un second passage, que l'identifiant Shopify n'a pas changé
-// (invariant d'idempotence #3 — cf. rapport de session).
-export function planTopicAction({ existingForTopic, knownPublicId, ourOrigin }) {
-  if (existingForTopic.length > 1) {
+//   conforme   au moins un abonnement COURANT sur ce topic (`doublons` s'il y en a plusieurs) ;
+//   precedent  aucun courant, au moins un abonnement sur l'empreinte PRÉCÉDENTE ;
+//   absent     aucun abonnement reconnu sur ce topic.
+export function summarizeTopicStates(classified, expectedTopics) {
+  return expectedTopics.map((topic) => {
+    const forTopic = classified.filter((subscription) => subscription.topic === topic.graphql);
+    const current = forTopic.filter((s) => s.classification.kind === 'current').length;
+    const previous = forTopic.filter((s) => s.classification.kind === 'previous').length;
+    const foreign = forTopic.filter((s) => s.classification.kind === 'foreign').length;
+    const state = current > 0 ? 'conforme' : previous > 0 ? 'precedent' : 'absent';
     return {
-      action: 'anomalie_multiple',
-      detail: `${existingForTopic.length} abonnements actifs simultanés sur ce topic (invariant violé) — résolution manuelle requise, jamais automatique.`,
+      topic: topic.rest,
+      graphqlTopic: topic.graphql,
+      state,
+      current,
+      previous,
+      foreign,
+      doublons: Math.max(current - 1, 0),
     };
-  }
-
-  if (existingForTopic.length === 0) {
-    return { action: 'creer', detail: 'aucun abonnement existant sur ce topic.' };
-  }
-
-  const sub = existingForTopic[0];
-  const endpoint = sub.endpoint;
-
-  if (endpoint?.__typename !== 'WebhookHttpEndpoint' || !endpoint.callbackUrl) {
-    return {
-      action: 'remplacer',
-      detail: `endpoint non-HTTP ou illisible (${endpoint?.__typename ?? 'inconnu'}) — remplacé par l'URL opaque.`,
-      existingId: sub.id,
-    };
-  }
-
-  let existingUrl;
-  try {
-    existingUrl = new URL(endpoint.callbackUrl);
-  } catch {
-    return {
-      action: 'remplacer',
-      detail: `callbackUrl illisible (${maskIngestUrl(endpoint.callbackUrl)}).`,
-      existingId: sub.id,
-    };
-  }
-
-  if (existingUrl.origin !== ourOrigin || !existingUrl.pathname.startsWith(INGEST_PATH_PREFIX)) {
-    return {
-      action: 'remplacer',
-      detail: `pointe ailleurs (${maskIngestUrl(endpoint.callbackUrl)}) — probablement l'ancien endpoint ou une configuration de test.`,
-      existingId: sub.id,
-    };
-  }
-
-  const tokenSegment = existingUrl.pathname.slice(INGEST_PATH_PREFIX.length);
-  const existingPublicId = tokenSegment.split('.')[0];
-
-  if (!knownPublicId) {
-    return {
-      action: 'anomalie_token_local_absent',
-      detail:
-        "Shopify pointe déjà vers l'URL opaque mais aucun jeton local n'existe pour cette connexion — état incohérent, résolution manuelle requise.",
-      existingId: sub.id,
-    };
-  }
-
-  if (existingPublicId === knownPublicId) {
-    return {
-      action: 'conforme',
-      detail: 'abonnement déjà aligné sur le jeton actuel.',
-      existingId: sub.id,
-    };
-  }
-
-  return {
-    action: 'remplacer',
-    detail: 'abonnement pointe vers un jeton différent (rotation antérieure jamais propagée).',
-    existingId: sub.id,
-  };
+  });
 }
 
-// Décide l'action GLOBALE pour une connexion, à partir du diagnostic par topic + de la présence
-// d'un jeton local. PURE — aucun appel réseau, aucune mutation. C'est CETTE fonction qui porte
-// l'invariant central : un jeton EXISTANT n'entraîne jamais de rotation implicite.
-//
-//   'blocked_anomalie'   — au moins une anomalie non résolue automatiquement ; rien n'est touché.
-//   'already_conformant' — aucun topic actionnable ; --apply ne fait STRICTEMENT rien (les 3
-//                          invariants — jeton, URL cible, id d'abonnement — restent inchangés
-//                          par construction, puisqu'aucune mutation n'est même tentée).
-//   'requires_rotation'  — des topics sont actionnables MAIS un jeton local existe déjà : le
-//                          construire nécessiterait de faire tourner un secret déjà en usage par
-//                          d'autres topics potentiellement conformes → --apply refuse de toucher
-//                          cette connexion, --rotate-token est requis explicitement.
-//   'provision'          — des topics sont actionnables et AUCUN jeton local n'existe encore :
-//                          première provision, sans risque d'invalider une URL déjà enregistrée.
-export function decideConnectionApplyPlan({ topics, hasLocalToken }) {
-  const actionable = topics.filter((t) => t.action === 'creer' || t.action === 'remplacer');
-  const blocking = topics.filter((t) => t.action.startsWith('anomalie'));
-
-  if (blocking.length > 0) {
-    return { kind: 'blocked_anomalie', blocking, actionable };
+// Ce que la prochaine réconciliation ferait de cette boutique, sans le faire.
+//   aucune_action          les neuf topics sont conformes ;
+//   creation_sans_rotation au moins un abonnement courant existe : les topics manquants seront
+//                          recréés avec son `uri`, sans rotation ;
+//   rotation               aucun abonnement courant : le jeton sera créé ou tourné, puis les neuf
+//                          topics créés.
+export function summarizeReconcileOutlook(topicStates) {
+  const anyCurrent = topicStates.some((topic) => topic.current > 0);
+  if (!anyCurrent) {
+    return 'rotation';
   }
-
-  if (actionable.length === 0) {
-    return { kind: 'already_conformant', topics };
-  }
-
-  if (hasLocalToken) {
-    return { kind: 'requires_rotation', actionable };
-  }
-
-  return { kind: 'provision', actionable };
+  return topicStates.every((topic) => topic.state === 'conforme')
+    ? 'aucune_action'
+    : 'creation_sans_rotation';
 }

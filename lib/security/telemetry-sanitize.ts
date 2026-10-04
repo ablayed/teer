@@ -241,3 +241,48 @@ export function sanitizePostHogEvent(event: CaptureResult | null): CaptureResult
 
   return { ...safeEvent, properties };
 }
+
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / C8 — secret du jeton L3 dans le CHEMIN de la requête.
+//
+// L'URL d'ingestion Shopify porte son secret dans son dernier segment
+// (`/api/shopify/ingest/{publicId}.{secret}`). Les événements d'ERREUR passent par
+// `sanitizeSentryEvent`, qui réduit déjà ce segment à `:id`. Les TRANSACTIONS (traces de
+// performance, échantillonnées) n'y passent pas : Sentry ne leur applique pas `beforeSend`, et
+// elles portent l'URL brute de la requête (`request.url`, attributs `http.target`, `http.url`,
+// `url.full` des spans). Sans `beforeSendTransaction`, le secret partait donc avec elles.
+//
+// Les journaux de requêtes de la plateforme d'hébergement sont hors de portée de ce code.
+const OPAQUE_INGEST_PATH = /(\/api\/shopify\/ingest\/)[^/?#\s"'<>\\]+/g;
+const MAX_SANITIZE_DEPTH = 12;
+
+export function maskOpaqueIngestPath(value: string): string {
+  return value.replace(OPAQUE_INGEST_PATH, '$1:token');
+}
+
+function maskDeep(value: unknown, depth: number): unknown {
+  if (typeof value === 'string') {
+    return maskOpaqueIngestPath(value);
+  }
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (depth >= MAX_SANITIZE_DEPTH) {
+    // Au-delà de la profondeur bornée, rien n'est transmis plutôt que transmis non masqué.
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => maskDeep(entry, depth + 1));
+  }
+  const output: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    output[maskOpaqueIngestPath(key)] = maskDeep(entry, depth + 1);
+  }
+  return output;
+}
+
+// `beforeSendTransaction` : toute chaîne de l'événement est masquée, où qu'elle se trouve (nom de
+// transaction, requête, contexte de trace, attributs et description de chaque span). Le reste de
+// l'événement est transmis tel quel.
+export function sanitizeSentryTransaction<T extends object>(event: T): T {
+  return maskDeep(event, 0) as T;
+}

@@ -69,6 +69,9 @@ async function authorize(domain: string, clientId = APP): Promise<string> {
         refreshTokenExpiresAt: new Date(Date.now() + 86_400_000),
       })) as never,
       syncProducts: async () => true,
+      // SHOPIFY-WEBHOOKS-PER-SHOP-1B : la réconciliation des abonnements est prouvée dans ses
+      // propres suites (tests/rls/shopify-webhooks-1b-*.rls.test.ts) ; ici, elle est neutre.
+      reconcileWebhooks: async () => true,
     },
   );
   if (result.kind !== 'pending') throw new Error(`attendu : pending, reçu ${result.kind}`);
@@ -85,7 +88,7 @@ async function claim(ticket: string, admin = service()) {
       merchantAccountId: tenant.merchantAccountId,
       resolveApp: (clientId) => (clientId === APP ? APP_CONFIG : null),
     },
-    { syncProducts: async () => true },
+    { syncProducts: async () => true, reconcileWebhooks: async () => true },
   );
 }
 
@@ -391,7 +394,7 @@ describe('T12b — app/uninstalled sur une boutique existante porteuse d’une a
   );
 
   it.skipIf(!hasStack)(
-    'chemin historique sans attente (KOBA) : effets inchangés, aucune préemption supplémentaire',
+    'chemin historique sans attente (KOBA) : effets inchangés, par la seule primitive ordonnée',
     async () => {
       const domain = freshDomain('t12b-historical');
       await seedShop(domain, { status: 'active', token: true });
@@ -399,10 +402,27 @@ describe('T12b — app/uninstalled sur une boutique existante porteuse d’une a
 
       await deliverResolvedUninstall(domain, admin);
 
+      // Effets identiques à ceux d'avant le lot 1b : boutique désinstallée, credentials effacés,
+      // bail rendu. Une connexion historique n'a pas de borne d'acquisition (NULL) : aucune
+      // garde d'ancienneté ne s'y applique.
       expect(await shopStatus(domain)).toBe('uninstalled');
-      expect(calls).toContain('uninstall_shopify_shop_fenced');
-      expect(calls).not.toContain('uninstall_shopify_pending_or_shop');
+      const { rows } = await (await pg()).query(
+        `select access_token_encrypted, refresh_token_encrypted, credentials_acquired_at
+           from public.shop where shop_domain = $1`,
+        [domain],
+      );
+      expect(rows[0]).toEqual({
+        access_token_encrypted: null,
+        refresh_token_encrypted: null,
+        credentials_acquired_at: null,
+      });
       expect(await leaseExpiresAt(domain)).toBeNull();
+      // SHOPIFY-WEBHOOKS-PER-SHOP-1B : la désinstallation passe par la primitive ORDONNÉE, qui
+      // compose `uninstall_shopify_shop_fenced` en SQL. Ni l'ancienne primitive de 0160, ni un
+      // appel direct de la primitive fencée ne subsistent côté application.
+      expect(calls).toContain('uninstall_shopify_pending_or_shop_ordered');
+      expect(calls).not.toContain('uninstall_shopify_pending_or_shop');
+      expect(calls).not.toContain('uninstall_shopify_shop_fenced');
     },
   );
 });

@@ -7,19 +7,14 @@ const mocks = vi.hoisted(() => {
     createMaintenanceSupabaseClient: vi.fn(() => admin),
     decryptToken: vi.fn(),
     shopifyGraphQL: vi.fn(),
-    refreshAccessToken: vi.fn(),
   };
 });
 
 vi.mock('../../../scripts/lib/maintenance-supabase-client.mjs', () => ({
   createMaintenanceSupabaseClient: mocks.createMaintenanceSupabaseClient,
 }));
-vi.mock('../../../lib/shopify/crypto.ts', () => ({
-  decryptToken: mocks.decryptToken,
-  encryptToken: vi.fn(),
-}));
+vi.mock('../../../lib/shopify/crypto.ts', () => ({ decryptToken: mocks.decryptToken }));
 vi.mock('../../../lib/shopify/graphql.ts', () => ({ shopifyGraphQL: mocks.shopifyGraphQL }));
-vi.mock('../../../lib/shopify/oauth.ts', () => ({ refreshAccessToken: mocks.refreshAccessToken }));
 
 type MigrationModule = {
   planConnection(input: ReturnType<typeof planInput>): Promise<{
@@ -185,14 +180,23 @@ describe('erreurs des frontières du plan', () => {
 
   it('retombe sur unknown_failure hors des frontières marquées', async () => {
     mocks.decryptToken.mockReturnValue('access-token-sentinel');
-    const node = {
-      get topic(): never {
+    mocks.shopifyGraphQL.mockResolvedValue({
+      webhookSubscriptions: {
+        edges: [{ node: { id: 'gid://1', topic: 'ORDERS_CREATE', uri: null } }],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    });
+    // L'échec survient APRÈS la lecture Shopify, pendant la reconnaissance : hors de toute
+    // frontière marquée.
+    const knownToken = {
+      get public_id(): never {
         throw sensitiveError('unknown');
       },
     };
-    mocks.shopifyGraphQL.mockResolvedValue({ webhookSubscriptions: { edges: [{ node }] } });
 
-    const output = await captureFailure(() => migration.planConnection(planInput()));
+    const output = await captureFailure(() =>
+      migration.planConnection({ ...planInput(), knownToken } as never),
+    );
 
     expect(output.stderr).toContain('cause=unknown_failure');
     expect(output.stderr).not.toContain('sentinel');
@@ -200,7 +204,9 @@ describe('erreurs des frontières du plan', () => {
 
   it('poursuit avec un jeton valide et des lectures saines', async () => {
     mocks.decryptToken.mockReturnValue('access-token-sentinel');
-    mocks.shopifyGraphQL.mockResolvedValue({ webhookSubscriptions: { edges: [] } });
+    mocks.shopifyGraphQL.mockResolvedValue({
+      webhookSubscriptions: { edges: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    });
 
     const output = await captureFailure(() => migration.planConnection(planInput()));
 
