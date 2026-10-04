@@ -261,13 +261,13 @@ Ce qui unit les quatre formes reste donc : un **pull réseau non caché, non bor
 
 **(l) Ouvert — le parcours WooCommerce n'a AUCUN test de bout en bout (2026-09-12).** `createWooCommerceConnectionIntentAction` → `/wc-auth` → callback → `finalize_woocommerce_connection` → abonnements → synchronisation initiale : chaque maillon est testé isolément, la chaîne ne l'est pas. **Deux régimes inégalement exercés** : `new_shop` a été écrit et testé ; **`existing_shop` n'a jamais tourné hors RLS**, puisqu'aucune connexion n'a jamais existé au moment où il a été écrit. C'est l'objet du lot `VAL-WOO-01` (voir la section « Connecteurs » ci-dessous). **État au 2026-09-16 : préflight terminé, exécution suspendue** faute de boutique publique synthétique — la dette reste ouverte.
 
-**(m) Ouvert — instabilités et défauts d'isolation de la boucle RLS locale.** Les pollutions parallèles R2.3/R2.4 ont nécessité trois `supabase db reset --local` ; elles sont sans effet en CI, où chaque job part d'une base neuve. Quatre sous-familles récentes, à garder distinctes : `r2-woocommerce-*`, 13 échecs au second passage sans réinitialisation, disparus après `db reset` (**pollution d'état confirmée**) ; `invitation-organization-guard`, vert 3/3 isolé, rouge en suite complète après `db reset` (**interférence de groupe fortement indiquée, cause exacte non établie**) ; `sec-shop-claim-01`, échec en exécution groupée, puis 21/21 seul et 87/87 deux fois (**même niveau de preuve, cause exacte non établie**) ; `product-bundle-cascade-shop-scope`, `An invalid response was received from the upstream server` avant toute assertion (**instabilité de passerelle `kong`, pas une preuve de pollution par l'ordre**). Cette dernière sous-famille n'est pas de même nature que les trois premières. **Cinquième sous-famille, horodatage (SHOPIFY-OAUTH-FIRST-01, 2026-09-29)** : `orders-dimensions.rls.test.ts:699` et `:828`, voir la section « Dettes et réserves ouvertes par SHOPIFY-OAUTH-FIRST-01 ». À distinguer de (k), qui porte sur une suite précise et un verdict dépendant de données résiduelles.
+**(m) Ouvert — instabilités et défauts d'isolation de la boucle RLS locale.** Les pollutions parallèles R2.3/R2.4 ont nécessité trois `supabase db reset --local` ; elles sont sans effet en CI, où chaque job part d'une base neuve. Quatre sous-familles récentes, à garder distinctes : `r2-woocommerce-*`, 13 échecs au second passage sans réinitialisation, disparus après `db reset` (**pollution d'état confirmée**) ; `invitation-organization-guard`, vert 3/3 isolé, rouge en suite complète après `db reset` (**interférence de groupe fortement indiquée, cause exacte non établie**) ; `sec-shop-claim-01`, échec en exécution groupée, puis 21/21 seul et 87/87 deux fois (**même niveau de preuve, cause exacte non établie**) ; `product-bundle-cascade-shop-scope`, `An invalid response was received from the upstream server` avant toute assertion (**instabilité de passerelle `kong`, pas une preuve de pollution par l'ordre**). Cette dernière sous-famille n'est pas de même nature que les trois premières. **Cinquième sous-famille, horodatage (SHOPIFY-OAUTH-FIRST-01, 2026-09-29)** : `orders-dimensions.rls.test.ts:699` et `:828`, voir la section « Dettes et réserves ouvertes par SHOPIFY-OAUTH-FIRST-01 ». **Sixième sous-famille, boucle RLS locale : imports lents et fuite réseau possible en 9B (SHOPIFY-WEBHOOKS-PER-SHOP-1B, consignée le 2026-10-04)** : `[Fait]` en local (Windows), le chargement d'une suite RLS qui tire la chaîne `lib/shopify/token` → `@sentry/nextjs` est lent — `collect 36,64 s` mesuré pour UN fichier à froid (`tests/rls/shopify-webhooks-1b-reconcile.rls.test.ts`), contre un `testTimeout` de 15 s ; tout `await import()` fait DANS un test ou un hook en hérite. `[Fait, par lecture]` `tests/rls/shopify-expiring-tokens-01.rls.test.ts` (preuve 9B) remplace `globalThis.fetch` et le restaure en tête de son `afterEach` (`:213-214`) : un appel encore en vol à ce moment (relecture bornée du perdant, cinq tentatives à une seconde) repartirait sur le VRAI réseau. `[Non vérifié]` Qu'une telle fuite se soit produite : l'instabilité de 9B est rapportée par le mandat de la phase 2, elle n'a pas été reproduite dans ce lot (6 sur 6, trois passages). Les suites du lot 1b n'ont pas ce défaut par construction — Shopify y est un double INJECTÉ, jamais un `fetch` remplacé, et une garde fait échouer tout appel sortant vers un domaine Shopify (`tests/helpers/shopify-webhooks-1b.ts`). À distinguer de (k), qui porte sur une suite précise et un verdict dépendant de données résiduelles.
 
 **(n) Ouvert — aucun `supabase stop` en CI, conflit de port au démarrage.** Les incidents historiques de `54324` et `54326` demeurent distincts de (i). Nouvelle occurrence : `failed to bind host port for 0.0.0.0:54324 … address already in use`, sur un runner éphémère — ce n'est donc pas un conflit avec une machine locale. **[Non vérifié] Cause exacte** : processus ou conteneur résiduel dans l'environnement du job, collision interne au démarrage, ou anomalie du runner ; aucune hypothèse n'est établie. La dette est probablement diagnosticable et ne dépend d'aucun tiers, ce qui en fait la plus abordable des deux pour le lot d'infrastructure. (i) et (n) relèvent de la même étape `Start Supabase`, qui démarre neuf conteneurs ; ouvrir le lot après une fenêtre de décantation. Le coût en exécutions perdues n'est pas chiffré sans inventaire des identifiants de run et de leur motif.
 
 ### Points ouverts après les jetons
 
-- **Migration de fermeture des anciennes primitives non fencées — RENUMÉROTÉE : ce n'est plus `0160` (prise par SHOPIFY-OAUTH-FIRST-01), numéro à attribuer à l'ouverture du lot, `0161` au plus tôt.** `link_shopify_embedded_shop` et `release_shopify_shop_app_identity` sont `service_role` et sans appelant applicatif, vérifié par la preuve 12 de `SHOPIFY-EXPIRING-TOKENS-01`. Ce n'est pas urgent opérationnellement, mais **tant que les anciennes primitives non fencées existent, la sérialisation est utilisée par l'application sans être imposée par la surface SQL**. À l'ouverture de ce lot, mesurer à nouveau sur le dépôt la preuve de zéro appelant ; ne rien préparer avant. Écart immuable : voir la section SHOPIFY-OAUTH-FIRST-01 ci-dessous.
+- **Migration de fermeture des anciennes primitives non fencées — RENUMÉROTÉE DEUX FOIS : ni `0160` (prise par SHOPIFY-OAUTH-FIRST-01), ni `0161` (prise par SHOPIFY-WEBHOOKS-PER-SHOP-1B) ; numéro à attribuer à l'ouverture du lot, `0162` au plus tôt.** `link_shopify_embedded_shop` et `release_shopify_shop_app_identity` sont `service_role` et sans appelant applicatif, vérifié par la preuve 12 de `SHOPIFY-EXPIRING-TOKENS-01`. **S'y ajoute `uninstall_shopify_pending_or_shop` (`0160`)** : elle n'est plus appelée depuis la phase 2 du lot 1b, qui passe par `uninstall_shopify_pending_or_shop_ordered` (`0161`) sur les deux chemins ; à révoquer puis supprimer dans ce même lot de fermeture. Ce n'est pas urgent opérationnellement, mais **tant que les anciennes primitives non fencées existent, la sérialisation est utilisée par l'application sans être imposée par la surface SQL**. À l'ouverture de ce lot, mesurer à nouveau sur le dépôt la preuve de zéro appelant ; ne rien préparer avant. Écart immuable : voir la section SHOPIFY-OAUTH-FIRST-01 ci-dessous.
 - **Microcopie de déconnexion Shopify.** Le bouton dit « Déconnecter » et la confirmation actuelle est « Déconnecter cette boutique de Tëër ? » (`messages/fr.json`). Elle n'annonce pas qu'une nouvelle autorisation Shopify sera nécessaire, alors que la déconnexion efface les credentials. Dette UI à corriger dans un lot dédié ; non corrigée ici.
 
 **(o) Ouvert — la CI visuelle garde peut-être moins qu'elle ne le paraît (2026-09-18, lot COHERENCE-01).** Une baseline **périmée de deux PR** (`livreurs-chromium-linux.png`, régénérée le 2026-09-01 ; `sidebar.tsx` modifié le 2026-09-03 par #183 puis le 2026-09-05 par #186) **passait sur `main`** alors que son écart avec le rendu courant valait **2,272 % pour un `maxDiffPixelRatio` de 1 %** — plus du double du seuil. Mesuré pixel par pixel : la barre latérale de la baseline porte 10 entrées au pas de 48 px, le composant n'en rend que 9 au pas de 52 px (confirmé par le snapshot d'accessibilité).
@@ -286,11 +286,11 @@ Verdict de clôture et réserves acceptées : `docs/lots/SHOPIFY-OAUTH-FIRST-01-
 
 1. **Dette (m), sous-famille horodatage.** `[Fait]` `tests/rls/orders-dimensions.rls.test.ts:699` et `:828` ont échoué une fois en local (2026-09-29, `test:rls` complet, 537 sur 539), sur des écarts de **4 ms** et **21 ms** : l'assertion compare `cash_collected_at` (`now()` de Postgres, horloge du conteneur) à `Date.now()` de Node pris avant l'appel. Le fichier passe 19/19 seul, deux fois ; vert en CI. `[Non vérifié]` Cause : un décalage d'horloge VM Docker / hôte est plausible, non mesuré (un `docker exec` coûte ~200 ms, plus que l'écart). Assertion à fenêtre comparant deux horloges : ne satisfait **pas** le critère d'exclusion CI.
 2. **Flaky `tests/e2e/orders-transitions.spec.ts:2599`.** `[Fait]` Une occurrence, iphone-14 shard 2, exécution `36759063607` : `page.goto: Navigation to "/commandes?vue=a-appeler" is interrupted by another navigation`, vert au rejeu ; absent de `36761506950`. Domaine sans lien avec le lot. `[Non vérifié]` Cause.
-3. **Fenêtre concurrente de désinstallation — traitée dans le lot 1b.** `[Fait]` L'existence d'une attente est lue **hors verrou** (`lib/shopify/webhook-core.ts:918-927`) avant la primitive, et la désinstallation de la boutique et la suppression de l'attente sont deux transactions distinctes. Une attente créée entre la lecture et la fin du traitement survit à cette livraison `app/uninstalled`.
+3. **Fenêtre concurrente de désinstallation — FERMÉE par la phase 2 du lot 1b (2026-10-04).** `[Fait, état antérieur]` L'existence d'une attente était lue **hors verrou** avant la primitive, et la désinstallation de la boutique et la suppression de l'attente étaient deux transactions distinctes. `[Fait]` Cette lecture n'existe plus : une seule primitive (`uninstall_shopify_pending_or_shop_ordered`, `0161`) décide de la boutique ET de l'attente dans une transaction, sous le verrou du bail. Ne pas rouvrir.
 4. **Charge utile RGPD bloquée en `processing` — lot 2.** `[Fait]` Si `finish_shopify_webhook_event` échoue (erreur RPC, ou ligne qui n'est plus en `processing`), la charge utile reçue (`app/api/shopify/webhooks/route.ts:440`) reste en base sous `processing`. L'échec n'est que journalisé (`lib/shopify/webhook-core.ts:567-572`). Sur le chemin nominal, la remise à NULL est établie **par le code** (`0121_shopify_gdpr_lifecycle.sql:230-244`), jamais par une mesure directe : aucun test ne lit `payload`.
 5. **Sentinelle D20a absente.** `[Fait]` Un rejet D20a (divergence, domaine invalide ou absent) répond 200 (`route.ts:481`) et ne laisse que `console.error` (`route.ts:192`) et `webhook_event.last_error_code` ; la route n'importe pas Sentry. Une livraison forgée rejetée est donc invisible sans requête sur `webhook_event`.
 6. **Inventaire service-role : un appelant `.tsx` non cité, et un contrôle limité aux `*.ts`.** `[Fait]` `app/(app)/finances/page.tsx:526` et `:563` créent un client service-role via `createFinanceAdminClient`. La page est gardée : locataire tiré de la session (`:172-195`), refus de tout rôle autre qu'`owner` (`:749`). L'entrée de `lib/finance/report-data.ts` dans `supabase/security/service-role-inventory.json` ne cite pas cet appelant, et `scripts/s4-check-service-role-inventory.mjs` ne lit que les `*.ts` : une référence à la clé dans un `.tsx` lui échappe.
-7. **`scripts/webhook-subscription-migration.mjs` sans D17 — contrainte du lot 1b.** `[Fait]` Le script rafraîchit lui-même (`refreshAccessToken`, `:5`, `:130`) et persiste (`:159-163`) sans jamais marquer `reauthorization_required_at`. Le lot 1b, qui utilisera cet outillage, doit l'aligner sur D17 avant tout `--apply`.
+7. **`scripts/webhook-subscription-migration.mjs` sans D17 — SANS OBJET depuis la phase 2 du lot 1b (2026-10-04).** `[Fait]` Le script ne rafraîchit plus aucun jeton et n'écrit plus rien : `--apply` et `--rotate-token` sont retirés, il ne garde que `--plan`, en lecture seule. `refreshAccessToken` et `grant_type=refresh_token` n'existent plus que dans `lib/shopify/oauth.ts` et `lib/shopify/token.ts`, ce qu'un test verrouille (`tests/unit/shopify/webhook-subscription-script-node-load.test.ts`).
 8. **FAQ au tutoiement.** `[Fait]` `lib/support/faq.ts` tutoie encore, sauf `shopify-connecter` et `shopify-reprise`, réécrites au vouvoiement par le lot. Contraire au registre de `docs/lexique-microcopie.md` (vouvoiement, sans exception) ; lot de microcopie dédié.
 9. **Canari de clé (D19).** `[Fait]` D19 ne vérifie le déchiffrement qu'**à l'entrée**, et seulement pour les classes `installed_valid` et `installed_refreshable`. `[Décision]` Le canari attendu est une **référence chiffrée connue, indépendante du démarrage** ; il n'existe pas. Sans lui, une clé de chiffrement mal configurée n'est découverte que lorsqu'un marchand rencontre `credentials_unavailable`.
 10. **Reprise des apps custom vers `/tableau`.** `[Fait]` Sans session, `/api/shopify/install` reprend après connexion par `/s?next=/api/…` ; `resolveWorkspaceEntryPath` ramène cette cible à `/tableau`, comme pour `embedded/install`. `[Non vérifié]` Le parcours exact du marchand après ce retour n'a pas été mesuré.
@@ -527,6 +527,8 @@ Trois limites restent ouvertes et **ne rouvrent pas le lot fonctionnel** :
 
 **`scripts/l2-consistency-check.mjs`** compare `webhook_event` (autoritaire en lecture) à `ingestion_event` par identité de livraison — mesure l'ÉCART entre les deux représentations, **jamais** une attestation d'autorité. Post-Temps-1 réel de la bascule (abonnements réels basculés), une section dédiée du script signale les lignes `ingestion_event` de topics opérationnels sans `webhook_event` correspondant comme NORMALES (pas un écart).
 
+**AMENDÉ par SHOPIFY-WEBHOOKS-PER-SHOP-1B (2026-10-04) — lire le paragraphe suivant avec cette correction.** Le FAIT Shopify reste vrai (un abonnement du TOML est invisible à l'inventaire). La DÉCISION qu'il portait a changé : `app/uninstalled` est désormais AUSSI souscrit par boutique sur l'URL opaque, soit **neuf** abonnements par boutique (`PER_SHOP_SUBSCRIPTION_TOPICS`, `lib/shopify/webhook-subscription-topics.ts`), et non plus huit. Tant que la déclaration du TOML n'est pas retirée (E11, sous-lot distinct), chaque désinstallation est donc livrée DEUX fois : c'est assumé, et c'est la désinstallation ordonnée qui absorbe la seconde. `--apply` et `verifyAndCleanup`, cités ci-dessous, n'existent plus.
+
 **Partage 4 / 8 des abonnements — fait Shopify établi, jamais à re-supposer (lot APP-TOML).** La query Admin `webhookSubscriptions` est décrite comme « Retrieves a paginated list of webhook subscriptions created using the API for the current app and shop », avec la note « Returns only shop-scoped subscriptions, **not app-scoped subscriptions configured in TOML files** ». Un abonnement déclaré dans un `shopify.app.*.toml` est donc **structurellement invisible** à `listSubscriptions`/`--plan`/`--apply`/`verifyAndCleanup`. Conséquence appliquée : `app/uninstalled` est **sorti d'`ADMIN_API_TOPICS`** (8 topics métier désormais) et déclaré au niveau app, aux côtés des 3 topics GDPR — 4 abonnements app-level sur l'endpoint historique, 8 abonnements métier par boutique sur l'URL opaque. **Deux raisons distinctes, à ne jamais fusionner** : les GDPR sont *non souscriptibles* (absents de l'enum `WebhookSubscriptionTopic`), `app/uninstalled` l'est parfaitement mais reste app-level *par décision* — le souscrire aussi par boutique produirait une double livraison que l'outillage ne pourrait ni voir ni corriger. Verrouillé par `tests/unit/shopify/teer-public-app-config.test.ts` ; procédure de déploiement/vérification dans `docs/shopify/teer-public-app-config.md`. Effet voulu : le parcours désinstallation → libération d'identité fonctionne **sans attendre `WEBHOOK_PUBLIC_BASE_URL`**.
 
 **TEST-NONEMBED-01, Test A — le dépôt porte `embedded = false` pour Teer Public ; la version Shopify publiée, non.** Le lot a changé trois choses et rien d'autre : `embedded = false` dans `shopify.app.teer-public.toml`, l'assertion correspondante de `tests/unit/shopify/teer-public-app-config.test.ts`, et le **retrait du refus fermé `teer-public`** de `app/api/shopify/install/route.ts` — ce refus tenait à `embedded = true` (une app embarquée n'a que le token exchange App Bridge), il n'a plus d'objet. **`use_legacy_install_flow` reste `false`** : il ne se touche QUE sur le verdict « échec du régime géré » du protocole (Tëër a prouvablement demandé l'autorisation et aucun code exploitable n'arrive), jamais sur un échec interne.
@@ -537,7 +539,7 @@ Trois limites restent ouvertes et **ne rouvrent pas le lot fonctionnel** :
 
 **Test B et les jetons expirants sont deux lots distincts — la séparation est une décision, pas un découpage de confort.** **Test B** porte l'entrée admin : `application_url` rend App Bridge et `EmbeddedAppShell` rebondit vers l'admin dès que `host` arrive sans `embedded=1`, d'où une boucle de rafraîchissement (prévue, jamais une régression) ; il porte aussi le **double appel du callback**, consigné **comme anomalie à diagnostiquer** et non comme correctif acquis, puisqu'il peut n'être qu'une conséquence de cette boucle. **`SHOPIFY-EXPIRING-TOKENS-01`** porte les jetons hors-ligne expirants (échange mesuré **sans** `expiring=1`, donc `refresh_token_encrypted` et `access_token_expires_at` nuls ; obligation Shopify au 1er janvier 2027, et **déjà** pour les apps publiques créées **le 1er avril 2026 ou après** — **la date de création de Teer Public n'a jamais été relevée**, et elle décide si l'écart est lointain ou déjà courant). **Motif de la séparation** : les jetons expirants changent le cycle de vie, le rafraîchissement, les expirations et les scénarios de reprise ; mêlés à Test B, ils rendraient impossible de distinguer **une panne de navigation d'une panne d'authentification longue durée**. Enfin, **l'acceptation technique d'un jeton ne vaut pas conformité de distribution** : Shopify a délivré un jeton non expirant, cela prouve que le grant fonctionne, pas que la configuration est conforme.
 
-**Bail de jeton Shopify : HUIT écrivains de `shop`, pas six, et une fermeture en cinq temps (SCHEMA-LEASE-CLOSURE-01, `0159`).** Le réinventaire de `SHOPIFY-EXPIRING-TOKENS-01` a ajouté `disconnectShopAction` (`lib/actions/shops.ts:161-175`) et `link_shopify_embedded_shop` (`0155`) aux six chemins connus, et établi que `0158` ne sait pas **effacer** sous contrôle de génération. `0159` ajoute, **sans rien retirer ni surcharger**, une primitive atomique par intention — `uninstall_shopify_shop_fenced`, `disconnect_shop_fenced`, `release_shopify_shop_app_identity_fenced` (préemption destructive), `link_shopify_embedded_shop_fenced` (bail normal, génération vérifiée) et `mark_shopify_store_connection_uninstalled_fenced`. **Séquence, à ne pas raccourcir** : (1) `0159` additive ; (2) attestation de `0159` ; (3) lot applicatif — les huit écrivains basculent, preuve 9B ; (4) **migration de fermeture** (annoncée `0160` par l'en-tête immuable de `0159` ; renumérotée, `0160` étant prise par SHOPIFY-OAUTH-FIRST-01) — révocation puis suppression de `link_shopify_embedded_shop` et `release_shopify_shop_app_identity`, **après une preuve de zéro appelant mesurée sur le dépôt** ; (5) attestation de cette migration. **Sans elle, le bail n'est exhaustif que par convention.** L'étape 3 est livrée par `SHOPIFY-EXPIRING-TOKENS-01` (ci-dessous) : les huit écrivains appellent désormais les primitives fencées, et `link_shopify_embedded_shop` / `release_shopify_shop_app_identity` n'ont plus d'appelant applicatif — vérifié par recherche (`tests/unit/shopify/credential-writers-inventory.test.ts`), pas par revue.
+**Bail de jeton Shopify : HUIT écrivains de `shop`, pas six, et une fermeture en cinq temps (SCHEMA-LEASE-CLOSURE-01, `0159`).** Le réinventaire de `SHOPIFY-EXPIRING-TOKENS-01` a ajouté `disconnectShopAction` (`lib/actions/shops.ts:161-175`) et `link_shopify_embedded_shop` (`0155`) aux six chemins connus, et établi que `0158` ne sait pas **effacer** sous contrôle de génération. `0159` ajoute, **sans rien retirer ni surcharger**, une primitive atomique par intention — `uninstall_shopify_shop_fenced`, `disconnect_shop_fenced`, `release_shopify_shop_app_identity_fenced` (préemption destructive), `link_shopify_embedded_shop_fenced` (bail normal, génération vérifiée) et `mark_shopify_store_connection_uninstalled_fenced`. **Séquence, à ne pas raccourcir** : (1) `0159` additive ; (2) attestation de `0159` ; (3) lot applicatif — les huit écrivains basculent, preuve 9B ; (4) **migration de fermeture** (annoncée `0160` par l'en-tête immuable de `0159` ; renumérotée, `0160` étant prise par SHOPIFY-OAUTH-FIRST-01 puis `0161` par SHOPIFY-WEBHOOKS-PER-SHOP-1B : `0162` au plus tôt) — révocation puis suppression de `link_shopify_embedded_shop` et `release_shopify_shop_app_identity`, **après une preuve de zéro appelant mesurée sur le dépôt** ; (5) attestation de cette migration. **Sans elle, le bail n'est exhaustif que par convention.** L'étape 3 est livrée par `SHOPIFY-EXPIRING-TOKENS-01` (ci-dessous) : les huit écrivains appellent désormais les primitives fencées, et `link_shopify_embedded_shop` / `release_shopify_shop_app_identity` n'ont plus d'appelant applicatif — vérifié par recherche (`tests/unit/shopify/credential-writers-inventory.test.ts`), pas par revue.
 
 **SHOPIFY-EXPIRING-TOKENS-01 — le bail est branché sur les trois acquisitions, `expiring=1` suit la distribution.** Faits à ne pas refaire raisonner :
 - **Distribution** : champ obligatoire, sans défaut, de `SHOPIFY_APP_ENV_KEYS` (`lib/shopify/app-registry-sources.ts`) — `teer-public` seule est `public`. Son omission fait échouer `pnpm typecheck` (échec de **compilation**, les configurations étant statiques). La valeur `custom` de `teer-marchand` repose sur l'**attestation du porteur**, pas sur une mesure. `expiring=1` n'est envoyé que pour `public`, sur l'échange de code **et** sur l'échange par ID token (`requestsExpiringOfflineToken`, `lib/shopify/oauth.ts`).
@@ -604,17 +606,131 @@ pas de bail — y compris un GET répété, préchargé, ou sur une attente expi
 la base avec la lecture SQL mutée en écriture). Seule exception : le callback OAuth, imposé par
 le protocole. Toute mutation part d'un POST (action serveur).
 
-**D20b — risque ACCEPTÉ jusqu'au lot 1b.** `app/uninstalled` ne porte aucun domaine signé
-garanti ; sur l'endpoint historique, le domaine peut venir de l'en-tête non signé
+**D20b — risque RÉDUIT par le lot 1b, PAS FERMÉ avant E11.** `app/uninstalled` ne porte aucun
+domaine signé garanti ; sur l'endpoint historique, le domaine peut venir de l'en-tête non signé
 `x-shopify-shop-domain`. Une livraison authentique rejouée avec un autre domaine peut donc viser
-l'attente ou la boutique d'un tiers de la même app (`uninstall_shopify_pending_or_shop`,
-`processAppUninstalledPendingCore`). La garde d'app (HMAC validé) reste réelle. Correctif prévu
-au lot 1b (abonnement par boutique sur URL opaque) ; ne jamais présenter ce domaine comme
-authentifié. Les webhooks RGPD, eux, sont fermés par D20a (`lib/shopify/gdpr-shop-domain.ts`).
+l'attente ou la boutique d'un tiers de la même app. La garde d'app (HMAC validé) reste réelle.
+La phase 2 du lot 1b livre l'abonnement par boutique sur URL opaque, où le domaine vient du
+jeton d'URL ; mais l'abonnement GLOBAL du TOML reste en place, donc l'endpoint historique reçoit
+toujours `app/uninstalled` et reste résolu par l'en-tête. Le risque ne se ferme qu'au retrait de
+cet abonnement global (E11) ; ne jamais présenter ce domaine comme authentifié. Les webhooks
+RGPD, eux, sont fermés par D20a (`lib/shopify/gdpr-shop-domain.ts`).
 
 **Refus D23 (option a).** `/api/shopify/install` refuse toute app de distribution `public`
 avant tout state, cookie ou redirection OAuth : un grant hors du bail de D16b retirerait le
 refresh token de l'autre. Réservée à `owner`/`manager` (D4).
+
+## Shopify — abonnements par boutique et désinstallation ordonnée (SHOPIFY-WEBHOOKS-PER-SHOP-1B, migration `0161`)
+
+Phase 2 (code), consignée le 2026-10-04. Plan : `PLAN-LOT-SHOPIFY-WEBHOOKS-PER-SHOP-1B.md` v3.2
+(hors dépôt). **Aucune attestation de `0161` n'est écrite ici** : elle relève d'un lot
+documentaire, comme toute attestation.
+
+**Ce que le lot livre.** Chaque boutique Shopify connectée porte neuf abonnements webhook sur
+l'URL opaque de sa connexion : les huit topics métier et `app/uninstalled`. Ils sont créés,
+réparés et tournés par `lib/shopify/webhook-subscription-reconcile.ts`, sous le bail de
+réconciliation de `0161`, depuis cinq points d'appel : la finalisation (branche 1 de D16b, POST
+de rattachement, callback historique — mode `installation`, après `store_connection` et après la
+libération du bail des jetons), `syncShopAction` et le cron `shopify-reconcile` (mode `repair`).
+Un échec ne défait jamais un rattachement : il laisse une sentinelle, une ligne d'état, et
+`sync=pending`.
+
+**`WEBHOOK_PUBLIC_BASE_URL` est OBLIGATOIRE, sans valeur par défaut.** Lue à l'appel
+(`lib/shopify/webhook-base-url.ts`), HTTPS, sans slash final ni chemin. Absente ou inutilisable,
+la réconciliation rend `base_url_unavailable` et n'enregistre RIEN chez Shopify : aucune boutique
+ne reçoit ses webhooks par boutique, et chaque connexion arrive avec `sync=pending`. **Aucun repli
+sur `NEXT_PUBLIC_APP_URL`** — ne pas en ajouter un : c'est exactement la classe d'erreur de
+l'incident `NEXT_PUBLIC_APP_URL` (PWD-RESET-01). `[Non vérifié]` Sa présence dans
+l'environnement de production n'a pas été mesurée par ce lot.
+
+**Fencing des écritures SANS primitive SQL — ne pas « simplifier ».** `0161` ne fournit aucune
+fonction qui vérifie la génération sur l'état des abonnements. Trois conditions atomiques, dans
+l'instruction même, tiennent lieu de fencing :
+- état : écriture MONOTONE sur `last_observed_at`, dont la valeur est l'`acquired_at` du bail du
+  détenteur (horloge de la base, strictement croissante d'une génération à la suivante). Un
+  `upsert` à la place rouvrirait l'écrasement par un détenteur périmé ;
+- jeton L3 : compare-and-set sur l'empreinte lue (`lib/ingestion/webhook-token-provisioning.ts`) ;
+- appels Shopify qui créent ou suppriment : bail revérifié juste avant chacun ; une suppression
+  relit le jeton et ne vise jamais un abonnement redevenu courant.
+
+**Reconnaissance d'un abonnement, en quatre conditions réunies** : origine, chemin, `publicId`,
+empreinte du secret comparée en temps constant. Le secret n'étant stocké qu'en empreinte, c'est
+l'`uri` rendue par Shopify qui est hachée. Seule une `uri` courante est réutilisée. Le mode de
+rotation (`installation` sans grâce, `repair` avec grâce de 24 h) est DÉCLARÉ par l'appelant et
+ne se déduit jamais de la seule absence d'abonnement courant.
+
+**Route opaque (G8).** L'en-tête de domaine est obligatoire et égal au domaine résolu par l'URL.
+Le résolveur rend l'état de la connexion au lieu de refuser avant le HMAC ; sur une connexion
+inactive, `app/uninstalled` seul est traité, tout autre topic garde le 401. La garde « aucun
+contexte résolu pour une connexion inactive » vit dans `finalizeResolvedConnection`.
+
+**Désinstallation ordonnée, sur les deux chemins (G6, G7).** Une seule primitive,
+`uninstall_shopify_pending_or_shop_ordered`, décide sous verrou de la boutique et de l'attente.
+Chaque effet dépend de son booléen : `shop_transitioned` → `store_connection` et audit ;
+`pending_deleted` → sentinelle ; génération non NULL → libération du bail avec cette génération,
+NULL → aucune libération.
+
+### Réserves et hypothèses — à ne jamais présenter comme des garanties
+
+1. **H1 — horodatage non signé.** `X-Shopify-Triggered-At` n'est couvert ni par le HMAC, ni par
+   le secret d'URL. Il est une indication d'ordre. Absent, illisible ou postérieur à maintenant +
+   la marge, il vaut NULL : la boutique est désinstallée et l'attente supprimée (issue
+   récupérable), avec la sentinelle `shopify_uninstall_triggered_at_unusable`.
+2. **H2 — écart d'horloge inférieur à la marge : hypothèse ACCEPTÉE, NON DÉMONTRÉE.** Mesure M0
+   du 2026-10-03 : minimum **+2,385 s** sur **360 lignes**, aucune anomalie. M0 mesure un délai
+   apparent (livraison + écart d'horloge) : un minimum positif ne prouve pas H2, il n'a
+   seulement rien révélé.
+3. **Coût de la marge (G4, G9).** `SHOPIFY_UNINSTALL_ORDER_MARGIN_SECONDS = 10`
+   (`lib/shopify/uninstall-order.ts`), valeur PROVISOIRE, passée en paramètre. Dans les dix
+   secondes qui suivent un événement, une ancienne livraison peut encore supprimer une attente ou
+   désinstaller une installation nouvelle. Récupération : rouvrir Tëër depuis l'admin Shopify. La
+   borne étant l'`acquired_at` du bail, pris avant l'échange OAuth, ce coût peut s'étendre au-delà
+   de dix secondes si l'échange a été lent.
+4. **G7 — chemin global résolu par l'en-tête jusqu'à E11.** Voir D20b ci-dessus : réduit, pas
+   fermé.
+5. **G5 — borne NULL.** Une connexion antérieure au lot a `shop.credentials_acquired_at` NULL
+   jusqu'à son prochain grant : aucune garde d'ancienneté ne s'y applique, elle se comporte comme
+   avant le lot. Une attente en vol au déploiement retombe sur `created_at`.
+
+### Dettes et écarts ouverts par la phase 2
+
+- **E11 non livré** : l'abonnement global `app/uninstalled` du TOML reste en place. Double
+  livraison à chaque désinstallation, absorbée par la primitive ordonnée.
+- **Aucune reprise de `store_connection` après un échec partiel.** L'écriture de
+  `store_connection` dépend de `shop_transitioned`, vrai une seule fois : si elle échoue après la
+  transition de la boutique, une livraison ultérieure ne la rejoue pas (l'ancien chemin
+  `uninstall_connection_resume` a disparu avec le conditionnement par booléen). Conséquence
+  mesurée par lecture : la connexion reste `active` sur une boutique désinstallée ; les topics
+  métier n'y écrivent rien (`resolveShopActive` filtre la boutique), et une réinstallation la
+  réécrit.
+- **Un domaine non canonique garde l'écriture historique** (`processAppUninstalledNonCanonicalCore`),
+  sans garde d'ancienneté : la primitive ordonnée le refuse.
+- **Doublons et abonnements non reconnus sont SIGNALÉS, jamais supprimés** (E10). Le
+  comportement de Shopify face à deux abonnements identiques n'est pas supposé ; il reste à
+  mesurer en production (G12).
+- **Version d'API d'un abonnement** : elle ne se fixe pas par abonnement (documentation Admin
+  GraphQL : héritée de l'app). Elle est relue et consignée ; un écart avec `SHOPIFY_API_VERSION`
+  est signalé, pas corrigé.
+- **Rattachement embarqué (token exchange) non branché sur la réconciliation** : seuls les trois
+  points de finalisation du mandat le sont. Le cron répare au plus tard au passage suivant.
+- **Aucun affichage dédié d'un échec de réconciliation à la relance manuelle** : `syncShopAction`
+  rend `webhookSubscriptions: 'pending'`, que l'interface ne lit pas encore (pas de microcopie
+  ajoutée hors `docs/lexique-microcopie.md`).
+- **`scripts/l3-generate-webhook-token.mjs` supprimé** : il tournait le jeton hors bail et
+  affichait son secret. Le runbook de bascule est périmé en partie (bandeau en tête du document).
+- **Secret L3 dans la télémétrie.** `[Fait]` Les transactions Sentry (échantillonnées à 10 %)
+  ne passaient pas par `beforeSend` et portaient l'URL brute ; `beforeSendTransaction` masque
+  désormais le segment de jeton. `[Fait]` La route `/api/woocommerce/webhooks/[token]` porte
+  elle aussi un jeton dans son chemin, et ses transactions le même défaut : **non traité par ce
+  lot**. `[Non vérifié]` Les journaux de requêtes de la plateforme d'hébergement, hors de portée
+  du code : mesure de la phase 5.
+- **En-tête `X-Shopify-Triggered-At` illisible** : il faisait échouer l'insertion de
+  `webhook_event` (colonne `timestamptz`) et répondre 503 à chaque tentative. Il est désormais
+  consigné NULL (`recordWebhookReceipt`).
+- **Budget du cron** : 300 s pour l'ensemble des boutiques ; une boutique lancée à moins de 90 s
+  de l'échéance est sautée et consignée (`lib/shopify/cron-budget.ts`).
+- **Instabilité E2E `tests/e2e/shop-filter.spec.ts:271` (iphone-14)** : `[Rapporté]` observée sur
+  la PR #246 selon le mandat de la phase 2. `[Non vérifié]` Cause ; domaine sans lien avec ce lot.
 
 ## Connecteurs non-Shopify — WooCommerce livré, YouCan reporté (R2.3/R2.4, 2026-09-12)
 
