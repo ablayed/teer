@@ -1,7 +1,7 @@
 import { ShopifyAppSwitchRefusedError } from '@/lib/shopify/app-identity-errors';
 import { decideShopAppSwitch } from '@/lib/shopify/app-switch-guard';
 import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
-import { shopifyArrivalPath } from '@/lib/shopify/arrival';
+import { SHOPIFY_SYNC_PENDING_PARAM, shopifyArrivalPath } from '@/lib/shopify/arrival';
 import {
   SHOPIFY_CLAIM_PATH,
   SHOPIFY_CLAIM_TICKET_COOKIE,
@@ -11,6 +11,7 @@ import { encryptToken } from '@/lib/shopify/crypto';
 import { performNoSessionAuthorization } from '@/lib/shopify/no-session-authorization';
 import { exchangeCodeForToken, validateShopDomain, verifyOAuthHmac } from '@/lib/shopify/oauth';
 import { decideShopOwnership } from '@/lib/shopify/ownership-guard';
+import { reconcileWebhooksAfterConnect } from '@/lib/shopify/post-connect-effects';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import { type ShopifyPublicErrorCode, shopifyPublicErrorPath } from '@/lib/shopify/public-error';
 import { type ShopifyOAuthStatePayload, verifyState } from '@/lib/shopify/state';
@@ -383,7 +384,22 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return redirectTo(payload.returnTo ?? '/boutiques?connected=1', request);
+    // SHOPIFY-WEBHOOKS-PER-SHOP-1B / E1 — abonnements webhook par boutique, APRÈS la libération du
+    // bail des jetons (la réconciliation tient son propre bail). Au moins une fois : un échec ne
+    // défait jamais la connexion, il laisse un état observable et `sync=pending` sur l'arrivée ;
+    // `syncShopAction` et le cron relancent.
+    const webhooksReconciled = await reconcileWebhooksAfterConnect(supabase, {
+      shopId: savedShopId,
+      app: { clientId, clientSecret },
+    });
+
+    const arrival = payload.returnTo ?? '/boutiques?connected=1';
+    return redirectTo(
+      webhooksReconciled
+        ? arrival
+        : `${arrival}${arrival.includes('?') ? '&' : '?'}${SHOPIFY_SYNC_PENDING_PARAM}`,
+      request,
+    );
   } catch (error) {
     Sentry.captureException(error, {
       tags: { route: 'shopify.callback' },

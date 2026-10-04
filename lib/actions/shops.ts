@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { performShopifyAppRelease } from '@/lib/shopify/app-release-write';
 import { shopStatus } from '@/lib/shopify/shop-status';
-import { syncShopOrders } from '@/lib/shopify/shop-sync';
+import { reconcileShopWebhookSubscriptions, syncShopOrders } from '@/lib/shopify/shop-sync';
 import {
   SHOPIFY_TOKEN_LEASE_TTL_SECONDS,
   markShopifyConnectionUninstalled,
@@ -151,6 +151,14 @@ export const syncShopAction = requireRole('owner', 'manager')
   .metadata({ actionName: 'shops.sync', section: 'shops' })
   .inputSchema(z.object({ shopId: z.string().uuid() }))
   .action(async ({ ctx, parsedInput }) => {
+    // SHOPIFY-WEBHOOKS-PER-SHOP-1B / E4 — la relance manuelle réconcilie AUSSI les abonnements
+    // webhook, avant les commandes. Un échec est observable (sentinelle, table d'état) et rendu
+    // à l'appelant, sans jamais faire échouer la synchronisation des commandes.
+    const webhooks = await reconcileShopWebhookSubscriptions({
+      merchantAccountId: ctx.member.merchantAccountId,
+      shopId: parsedInput.shopId,
+    }).catch(() => ({ ok: false as const, reason: 'exception' as const }));
+
     const result = await syncShopOrders({
       actorUserId: ctx.user.id,
       auditAction: 'shop_synced',
@@ -166,7 +174,11 @@ export const syncShopAction = requireRole('owner', 'manager')
     revalidatePath('/commandes');
     revalidatePath('/boutiques');
 
-    return { ok: true as const, syncedCount: result.syncedCount };
+    return {
+      ok: true as const,
+      syncedCount: result.syncedCount,
+      webhookSubscriptions: webhooks.ok ? ('ok' as const) : ('pending' as const),
+    };
   });
 
 export const disconnectShopAction = requireRole('owner')

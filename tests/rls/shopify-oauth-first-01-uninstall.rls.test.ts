@@ -69,6 +69,9 @@ async function authorize(domain: string, clientId = APP): Promise<string> {
         refreshTokenExpiresAt: new Date(Date.now() + 86_400_000),
       })) as never,
       syncProducts: async () => true,
+      // SHOPIFY-WEBHOOKS-PER-SHOP-1B : la réconciliation des abonnements est prouvée dans ses
+      // propres suites (tests/rls/shopify-webhooks-1b-*.rls.test.ts) ; ici, elle est neutre.
+      reconcileWebhooks: async () => true,
     },
   );
   if (result.kind !== 'pending') throw new Error(`attendu : pending, reçu ${result.kind}`);
@@ -85,7 +88,7 @@ async function claim(ticket: string, admin = service()) {
       merchantAccountId: tenant.merchantAccountId,
       resolveApp: (clientId) => (clientId === APP ? APP_CONFIG : null),
     },
-    { syncProducts: async () => true },
+    { syncProducts: async () => true, reconcileWebhooks: async () => true },
   );
 }
 

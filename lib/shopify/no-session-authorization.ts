@@ -10,7 +10,8 @@
 //        - branche 1 (boutique installée pour cette app) : persistance chez le propriétaire résolu
 //          EN BASE et audit `shopify.connected` dans la transaction — aucun audit ici ;
 //        - branche 2 (tout le reste) : attente créée, AUCUNE écriture dans `shop` ;
-//   5. branche 1 : `store_connection` sous le même bail, libération, synchronisation (R2) ;
+//   5. branche 1 : `store_connection` sous le même bail, libération, puis abonnements webhook et
+//      synchronisation (R2) ;
 //      branche 2 : libération, ticket rendu à l'appelant pour son cookie.
 // R3 : le `finally` ne libère QUE le bail acquis par cette opération, avec SA génération ; après
 // `lease_lost`, aucune libération n'est tentée.
@@ -27,6 +28,7 @@ import {
 import { encryptToken } from '@/lib/shopify/crypto';
 import { type TokenResponse, exchangeCodeForToken } from '@/lib/shopify/oauth';
 import {
+  reconcileWebhooksAfterConnect,
   syncProductsAfterConnect,
   writeStoreConnectionUnderLease,
 } from '@/lib/shopify/post-connect-effects';
@@ -57,11 +59,13 @@ export type NoSessionAuthorizationResult =
 export type NoSessionAuthorizationDeps = {
   exchangeCode: typeof exchangeCodeForToken;
   syncProducts: typeof syncProductsAfterConnect;
+  reconcileWebhooks: typeof reconcileWebhooksAfterConnect;
 };
 
 const defaultDeps: NoSessionAuthorizationDeps = {
   exchangeCode: exchangeCodeForToken,
   syncProducts: syncProductsAfterConnect,
+  reconcileWebhooks: reconcileWebhooksAfterConnect,
 };
 
 function reportNoSessionFailure(reason: string): void {
@@ -200,11 +204,16 @@ export async function performNoSessionAuthorization(
     return { kind: 'error', code: 'unknown' };
   }
 
-  // Branche 1, bail libéré : synchronisation des produits (au moins une fois, R2).
+  // Branche 1, bail des jetons libéré : abonnements webhook (E1), puis synchronisation des
+  // produits. Chacun au moins une fois (R2) : un échec n'est qu'observé.
+  const webhooksReconciled = await deps.reconcileWebhooks(admin, {
+    shopId: branchOne.shopId,
+    app,
+  });
   const synced = await deps.syncProducts(admin, {
     shopId: branchOne.shopId,
     app,
     actorUserId: null,
   });
-  return { kind: 'arrived', syncPending: syncPending || !synced };
+  return { kind: 'arrived', syncPending: syncPending || !webhooksReconciled || !synced };
 }

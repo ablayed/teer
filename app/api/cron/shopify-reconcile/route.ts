@@ -1,8 +1,16 @@
 // Réconciliation nocturne Shopify (Phase 7a) : re-pull bulk par boutique active, rattrape les
 // webhooks ratés. Idempotent (upsert par (shop_id, shopify_order_id), garde hors-ordre).
+//
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / G13 — pour chaque boutique, la réconciliation des ABONNEMENTS
+// webhook passe AVANT celle des commandes, dans son propre try/catch : son échec ne prive jamais
+// la boutique de la réconciliation des commandes. Le temps restant sur le budget du cron est
+// contrôlé avant de lancer une boutique (lib/shopify/cron-budget.ts).
 
 import { getShopifyAppForShop } from '@/lib/shopify/apps';
+import { canStartShopReconcile } from '@/lib/shopify/cron-budget';
 import { reconcileShopOrders } from '@/lib/shopify/reconcile';
+import { readWebhookPublicBaseUrl } from '@/lib/shopify/webhook-base-url';
+import { reconcileShopifyWebhookSubscriptions } from '@/lib/shopify/webhook-subscription-reconcile';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
@@ -15,6 +23,7 @@ export const maxDuration = 300;
 type ShopRow = Tables<'shop'>;
 
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   const cronSecret = process.env.CRON_SECRET;
   const authorization = request.headers.get('authorization');
 
@@ -48,6 +57,8 @@ export async function GET(request: NextRequest) {
     shopId: string;
     ok: boolean;
     detail: string;
+    // Réconciliation des abonnements webhook : `ok`, ou la raison nommée de son échec.
+    webhooks?: string;
     examinedCount?: number;
     syncedCount?: number;
     failedCount?: number;
@@ -66,10 +77,41 @@ export async function GET(request: NextRequest) {
       anyDegraded = true;
       continue;
     }
+
+    // Temps restant insuffisant : la boutique est sautée et consignée, sans être lancée.
+    if (!canStartShopReconcile(startedAt, Date.now())) {
+      results.push({ shopId: shop.id, ok: false, detail: 'skipped_time_budget' });
+      anyDegraded = true;
+      Sentry.captureMessage('Shopify reconcile skipped for shop: time budget', {
+        level: 'warning',
+        tags: { route: 'cron.shopify-reconcile' },
+        extra: { shopId: shop.id },
+      });
+      continue;
+    }
+
+    // Abonnements webhook d'abord, en mode réparation. Son propre try/catch : quoi qu'il arrive,
+    // la réconciliation des commandes ci-dessous a lieu.
+    let webhooks: string;
+    try {
+      const webhookResult = await reconcileShopifyWebhookSubscriptions(supabase, {
+        shopId: shop.id,
+        app: { clientId: app.clientId, clientSecret: app.clientSecret },
+        mode: 'repair',
+        webhookBaseUrl: readWebhookPublicBaseUrl(),
+      });
+      webhooks = webhookResult.ok ? 'ok' : webhookResult.reason;
+    } catch {
+      webhooks = 'exception';
+    }
+    if (webhooks !== 'ok') {
+      anyDegraded = true;
+    }
+
     const result = await reconcileShopOrders(supabase, shop, app.clientId, app.clientSecret);
 
     if (!result.ok) {
-      results.push({ shopId: shop.id, ok: false, detail: result.reason });
+      results.push({ shopId: shop.id, ok: false, detail: result.reason, webhooks });
       anyDegraded = true;
       Sentry.captureMessage('Shopify reconcile failed for shop', {
         level: 'warning',
@@ -83,6 +125,7 @@ export async function GET(request: NextRequest) {
       shopId: shop.id,
       ok: true,
       detail: `examined=${result.examinedCount} synced=${result.syncedCount} failed=${result.failedCount}`,
+      webhooks,
       examinedCount: result.examinedCount,
       syncedCount: result.syncedCount,
       failedCount: result.failedCount,

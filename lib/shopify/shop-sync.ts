@@ -9,6 +9,11 @@ import {
 } from '@/lib/shopify/orders-sync';
 import { syncProductsForShop } from '@/lib/shopify/products-sync';
 import { getValidShopAccessToken, runWithShopifyUnauthorizedRetry } from '@/lib/shopify/token';
+import { readWebhookPublicBaseUrl } from '@/lib/shopify/webhook-base-url';
+import {
+  type WebhookReconcileFailureReason,
+  reconcileShopifyWebhookSubscriptions,
+} from '@/lib/shopify/webhook-subscription-reconcile';
 import type { Database, Tables } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
@@ -72,6 +77,43 @@ async function getShop({
   }
 
   return data;
+}
+
+// SHOPIFY-WEBHOOKS-PER-SHOP-1B / E4 — relance manuelle des abonnements webhook d'une boutique du
+// locataire, en mode RÉPARATION (rotation avec grâce si elle est nécessaire). Même résolution de
+// boutique que `syncShopOrders` : active, Shopify, du locataire de la session.
+export async function reconcileShopWebhookSubscriptions({
+  merchantAccountId,
+  shopId,
+}: {
+  merchantAccountId: string;
+  shopId: string;
+}): Promise<{ ok: true } | { ok: false; reason: WebhookReconcileFailureReason | 'no_shop' }> {
+  const admin = createSupabaseAdminClient();
+
+  let shop: ShopRow | null;
+  try {
+    shop = await getShop({ admin, merchantAccountId, shopId });
+  } catch (error) {
+    logSyncError('[sync] shop lookup failed (webhooks)', error);
+    return { ok: false, reason: 'shop_unavailable' };
+  }
+  if (!shop) {
+    return { ok: false, reason: 'no_shop' };
+  }
+
+  const app = getShopifyAppForShop(shop.shopify_client_id);
+  if (!app) {
+    return { ok: false, reason: 'access_token_unavailable' };
+  }
+
+  const result = await reconcileShopifyWebhookSubscriptions(admin, {
+    shopId: shop.id,
+    app: { clientId: app.clientId, clientSecret: app.clientSecret },
+    mode: 'repair',
+    webhookBaseUrl: readWebhookPublicBaseUrl(),
+  });
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason };
 }
 
 export async function syncShopOrders({
