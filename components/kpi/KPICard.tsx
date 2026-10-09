@@ -4,8 +4,7 @@ import { Sparkline } from '@/components/kpi/Sparkline';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import { formatFCFA } from '@/lib/format/fcfa';
 import { cn } from '@/lib/utils';
-import { animate, useReducedMotion } from 'framer-motion';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 
 type KPIUnit = 'currency' | '%' | 'count';
 type DeltaType = 'pct' | 'abs';
@@ -101,50 +100,6 @@ function DeltaChip({
   );
 }
 
-function useCountUp({
-  format,
-  loading,
-  value,
-}: {
-  format: (value: number) => string;
-  loading: boolean;
-  value: number;
-}) {
-  const outputRef = useRef<HTMLOutputElement>(null);
-  const hasAnimated = useRef(false);
-  const prefersReducedMotion = useReducedMotion();
-  const formattedValue = format(value);
-
-  useEffect(() => {
-    const output = outputRef.current;
-
-    if (!output || loading) {
-      return;
-    }
-
-    if (hasAnimated.current || prefersReducedMotion) {
-      output.textContent = formattedValue;
-      hasAnimated.current = true;
-      return;
-    }
-
-    hasAnimated.current = true;
-    const controls = animate(0, value, {
-      duration: 0.5,
-      ease: [0.2, 0, 0, 1],
-      onUpdate: (latest) => {
-        output.textContent = format(latest);
-      },
-    });
-
-    return () => {
-      controls.stop();
-    };
-  }, [format, formattedValue, loading, prefersReducedMotion, value]);
-
-  return { formattedValue, outputRef };
-}
-
 function resolveTone({ accentColor, tone }: Pick<KPICardProps, 'accentColor' | 'tone'>): Tone {
   if (tone) {
     return tone;
@@ -180,7 +135,9 @@ export function KPICard({
 }: KPICardProps) {
   const cardTone = resolveTone({ accentColor, tone });
   const format = useMemo(() => (nextValue: number) => formatValue(nextValue, unit), [unit]);
-  const { formattedValue, outputRef } = useCountUp({ format, loading: loading || error, value });
+  // L07 : la valeur rendue par le serveur est la valeur affichée. Plus de compteur rejoué
+  // depuis 0 au montage : il réécrivait une valeur juste, déjà visible avant l'hydratation.
+  const formattedValue = format(value);
   const chartData = useMemo(() => sparkline ?? [], [sparkline]);
 
   return (
@@ -212,7 +169,6 @@ export function KPICard({
             <output
               aria-label={`${label}: ${formattedValue}`}
               className="block whitespace-nowrap font-mono text-[clamp(1.5rem,4cqw,2.25rem)] leading-none text-text tabular-nums @max-[13rem]:text-[clamp(1rem,6cqw,1.5rem)]"
-              ref={outputRef}
             >
               {formattedValue}
             </output>
