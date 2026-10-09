@@ -12,6 +12,7 @@ import type { ShopifyEmbeddedLinkContext } from '@/lib/shopify/embedded-link-wri
 import type { Database } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { leaveSignupAccount } from '../helpers/membership-fixtures';
 
 const SYNTHETIC_PUBLIC_APP = {
   label: 'teer-public' as const,
@@ -161,16 +162,11 @@ describe('performShopifyEmbeddedLink — preuve réelle RLS (Postgres)', () => {
       // Négatif — un agent du MÊME tenant est refusé par la garde applicative (rôle explicite),
       // avant toute écriture — passe la vérification d'appartenance (n'importe quel rôle), pas
       // celle du rôle. `enforce_single_organization_membership` (BEFORE INSERT sur
-      // merchant_member) interdit une double appartenance : on retire d'abord l'appartenance à
-      // l'organisation auto-créée par la création du compte (handle_new_user), comme le ferait
-      // une acceptation d'invitation réelle, avant de rattacher cet utilisateur comme agent au
-      // tenant testé.
+      // merchant_member) interdit une double appartenance : on supprime d'abord l'organisation
+      // auto-créée par la création du compte (handle_new_user), dont il est l'unique owner
+      // (0162), avant de rattacher cet utilisateur comme agent au tenant testé.
       const agent = await createSignedInUser('rls-embedded-link-agent');
-      const { error: deleteOwnOrgMembershipError } = await service
-        .from('merchant_member')
-        .delete()
-        .eq('user_id', agent.userId);
-      expect(deleteOwnOrgMembershipError).toBeNull();
+      await leaveSignupAccount(service, agent.userId);
 
       const { error: memberError } = await service.from('merchant_member').insert({
         merchant_account_id: ownerMerchantAccountId,

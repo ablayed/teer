@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterAll, describe, expect, it } from 'vitest';
+import { leaveSignupAccount } from '../helpers/membership-fixtures';
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -451,7 +452,7 @@ describe('0133 — RLS de la table d appartenance', () => {
     const agentEmail = `driver-scope-agent-${Date.now()}-${randomUUID()}@example.com`;
     const agentUserId = await createConfirmedUser(t.admin, agentEmail);
 
-    await t.admin.from('merchant_member').delete().eq('user_id', agentUserId);
+    await leaveSignupAccount(t.admin, agentUserId);
     await t.admin
       .from('merchant_member')
       .insert({ merchant_account_id: t.merchantAccountId, user_id: agentUserId, role: 'agent' });

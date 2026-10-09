@@ -132,6 +132,8 @@ afterEach(async () => {
 
   if (createdUserIds.length > 0) {
     await service.from('audit_log').delete().in('actor_user_id', createdUserIds);
+    // Le compte d'abord : la base refuse de retirer son unique owner (0162), la cascade l'emporte.
+    await service.from('merchant_account').delete().in('owner_user_id', createdUserIds);
     await service.from('merchant_member').delete().in('user_id', createdUserIds);
     await service.from('invitation').delete().in('invited_by', createdUserIds);
     await service.from('invitation').delete().in('accepted_by', createdUserIds);

@@ -14,6 +14,7 @@ import {
   revokeInviteAction,
   updateDriverAction,
 } from '@/lib/actions/team';
+import { teamErrorMessageKey } from '@/lib/team/last-owner';
 import { cn } from '@/lib/utils';
 import {
   Check,
@@ -117,9 +118,9 @@ export function SettingsTeam({ currentRole, orgName }: SettingsTeamProps) {
     listTeam.execute({});
   }
 
-  function fail() {
+  function fail(errorCode?: string | null) {
     setNotice(null);
-    setError(t('errors.generic'));
+    setError(t(teamErrorMessageKey(errorCode)));
   }
 
   if (!canManage) {
@@ -235,12 +236,12 @@ export function SettingsTeam({ currentRole, orgName }: SettingsTeamProps) {
 
   async function onChangeRole(memberId: string, newRole: Role) {
     const result = await changeRole.executeAsync({ memberId, newRole });
-    result?.data?.ok ? refresh(t('notices.roleChanged')) : fail();
+    result?.data?.ok ? refresh(t('notices.roleChanged')) : fail(result?.data?.errorCode);
   }
 
   async function onRemoveMember(memberId: string) {
     const result = await removeMember.executeAsync({ memberId });
-    result?.data?.ok ? refresh(t('notices.memberRemoved')) : fail();
+    result?.data?.ok ? refresh(t('notices.memberRemoved')) : fail(result?.data?.errorCode);
   }
 
   async function onUpdateDriver(

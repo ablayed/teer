@@ -1488,6 +1488,23 @@
     },
     {
       "aclIsDefault": false,
+      "anonExec": false,
+      "args": "",
+      "authenticatedExec": false,
+      "key": "public.prevent_last_owner_removal()",
+      "name": "prevent_last_owner_removal",
+      "owner": "postgres",
+      "parallelSafety": "unsafe",
+      "proaclSorted": "postgres=X/postgres",
+      "returnType": "trigger",
+      "schema": "public",
+      "searchPathConfig": "search_path=\"\"",
+      "securityDefiner": true,
+      "serviceRoleExec": false,
+      "volatility": "volatile"
+    },
+    {
+      "aclIsDefault": false,
       "anonExec": true,
       "args": "",
       "authenticatedExec": true,
