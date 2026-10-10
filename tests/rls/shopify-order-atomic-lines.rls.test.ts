@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type ShopifyOrderNode, persistShopifyOrder } from '@/lib/shopify/orders-sync';
+import { persistBulkOrderNodes } from '@/lib/shopify/reconcile';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -430,6 +431,109 @@ describe('0165 — import Shopify : commande et lignes atomiques', () => {
       });
       expect(created.error).toMatchObject({ code: '22023', message: 'invalid_shopify_order_line' });
       expect((await state(f, '777')).orders).toBe(0);
+    },
+  );
+
+  const newerNode = (f: Fixture, id: string): ShopifyOrderNode => ({
+    ...orderNode(f, id),
+    currentTotalPriceSet: { shopMoney: { amount: '21000', currencyCode: 'XOF' } },
+    updatedAt: '2026-08-05T00:00:00Z',
+  });
+  const stockOf = async (f: Fixture) => {
+    const { data, error } = await f.admin
+      .from('product_stock')
+      .select('product_id, qty_on_hand, qty_reserved')
+      .in('product_id', [f.productId, f.otherShopProductId])
+      .order('product_id');
+    if (error) throw error;
+    return data ?? [];
+  };
+
+  run(
+    'charge PLUS RÉCENTE sur une commande confirmée sans lignes : champs mis à jour, aucune ligne, aucune réserve, aucun mouvement, curseur non bloqué',
+    async () => {
+      const f = await fixture();
+      const id = `${Date.now()}7`;
+      expect(await persist(f, orderNode(f, id))).toEqual({ ok: true });
+      const created = await state(f, id);
+      if (!created.order) throw new Error('order');
+      await dropLines(f, created.order.id);
+      // Confirmée, non assignée, cash non dû : l'état que la resynchronisation de panier accepte
+      // (règle de 0111) alors qu'aucune réserve n'a pu être posée, faute de lignes.
+      const confirmed = await f.admin
+        .from('orders')
+        .update({ call_state: 'validated' })
+        .eq('id', created.order.id);
+      expect(confirmed.error).toBeNull();
+      const stockBefore = await stockOf(f);
+
+      // Par la réconciliation réelle : le curseur doit avancer, la commande n'est pas un échec.
+      const shop = await f.admin.from('shop').select('*').eq('id', f.shopId).single();
+      if (shop.error || !shop.data) throw shop.error ?? new Error('shop');
+      const runStartedAt = '2026-08-27T02:00:00.000Z';
+      const outcome = await persistBulkOrderNodes(
+        f.admin,
+        shop.data,
+        [newerNode(f, id)],
+        runStartedAt,
+      );
+      expect(outcome).toMatchObject({ cursorAfter: runStartedAt, failedCount: 0, syncedCount: 1 });
+      const cursor = await f.admin
+        .from('shop')
+        .select('last_reconciled_at')
+        .eq('id', f.shopId)
+        .single();
+      expect(Date.parse(cursor.data?.last_reconciled_at ?? '')).toBe(Date.parse(runStartedAt));
+
+      const after = await state(f, id);
+      // Aucune ligne reconstruite, aucun mouvement, aucune réserve.
+      expect(after.lines).toEqual([]);
+      expect(after.movements).toBe(0);
+      expect(await stockOf(f)).toEqual(stockBefore);
+      // Les autres mises à jour autorisées sont conservées.
+      expect(Number(after.order?.total_amount)).toBe(21000);
+      expect(Date.parse(after.order?.shopify_updated_at ?? '')).toBe(
+        Date.parse('2026-08-05T00:00:00Z'),
+      );
+      const kept = await f.admin
+        .from('orders')
+        .select('call_state, delivery_state, cash_state, order_state')
+        .eq('id', created.order.id)
+        .single();
+      expect(kept.data).toEqual({
+        call_state: 'validated',
+        cash_state: 'not_due',
+        delivery_state: 'unassigned',
+        order_state: 'open',
+      });
+
+      // Charge encore plus récente, par l'appel direct : même verdict, signalé à l'appelant.
+      expect(await persist(f, { ...newerNode(f, id), updatedAt: '2026-08-06T00:00:00Z' })).toEqual({
+        lines: 'missing',
+        ok: true,
+      });
+      expect((await state(f, id)).lines).toEqual([]);
+    },
+  );
+
+  run(
+    'contrôle positif : charge plus récente sur une commande NON confirmée sans lignes → lignes reconstruites',
+    async () => {
+      const f = await fixture();
+      const id = `${Date.now()}8`;
+      expect(await persist(f, orderNode(f, id))).toEqual({ ok: true });
+      const created = await state(f, id);
+      if (!created.order) throw new Error('order');
+      await dropLines(f, created.order.id);
+
+      expect(await persist(f, newerNode(f, id))).toEqual({ lines: 'repaired', ok: true });
+      const after = await state(f, id);
+      expect(after.lines.map((line) => `${line.raw_title}:${line.qty}`)).toEqual([
+        'Article inconnu:1',
+        'Produit rapproché:2',
+      ]);
+      expect(after.movements).toBe(0);
+      expect(Number(after.order?.total_amount)).toBe(21000);
     },
   );
 
