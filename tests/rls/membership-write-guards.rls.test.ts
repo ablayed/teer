@@ -18,6 +18,12 @@ import { type TestPostgresClient, createTestPostgresClient } from '../helpers/po
 //   * recréer shop_member_update (0126:161)  → « B · manager · PATCH shop_member … » ;
 //   * recréer shop_member_insert (0126:158)  → « B · manager · POST shop_member … » ;
 //   * supprimer le trigger du dernier owner  → « C · … » (service-role, SQL direct, concurrence).
+//
+// Les essais de concurrence répétés tournent sur des connexions PostgreSQL directes, sous le RÔLE
+// de base concerné (`set local role`), et non par la passerelle HTTP. Motif mesuré : en CI, deux
+// exécutions initiales de ce fichier ont échoué sur « An invalid response was received from the
+// upstream server » au milieu de ces boucles, erreur de la passerelle que la suite connaît déjà
+// sur des requêtes non idempotentes. La garde vit en base : c'est là que la course se joue.
 
 const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -101,6 +107,43 @@ async function addMember(a: Client, merchantId: string, role: Role, tag: string)
     .single();
   if (joined.error || !joined.data) throw joined.error ?? new Error('member');
   return { email, memberId: joined.data.id, userId };
+}
+
+type DbRole = 'authenticated' | 'service_role';
+
+/**
+ * Exécute une instruction sous un rôle de base, dans sa propre transaction. `sub` pose
+ * l'identité que lit `auth.uid()` ; sans lui, c'est un appel de service.
+ */
+async function runAs(
+  client: TestPostgresClient,
+  role: DbRole,
+  sub: string | null,
+  sql: string,
+  params: unknown[],
+) {
+  await client.query('begin');
+  try {
+    await client.query(`set local role ${role}`);
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify(sub ? { role, sub } : { role }),
+    ]);
+    const result = await client.query(sql, params);
+    await client.query('commit');
+    return { code: null as string | null, rows: result.rowCount ?? 0 };
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    return { code: (error as { code?: string }).code ?? 'inconnu', rows: 0 };
+  }
+}
+
+async function ownerCountSql(client: TestPostgresClient, merchantId: string) {
+  const { rows } = await client.query(
+    `select count(*)::int as n from public.merchant_member
+      where merchant_account_id = $1 and role = 'owner'`,
+    [merchantId],
+  );
+  return rows[0].n as number;
 }
 
 async function ownerCount(a: Client, merchantId: string) {
@@ -295,26 +338,21 @@ suite('0162 — écritures directes d appartenance par une session', () => {
     expect(await ownerCount(a, m1)).toBe(2);
   });
 
-  it(`A · A12 · deux owners · DELETE croisés simultanés, ${CONCURRENCY_TRIALS} essais : jamais une ligne supprimée`, async () => {
+  it(`A · A12 · deux owners · DELETE croisés simultanés sous le rôle authenticated, ${CONCURRENCY_TRIALS} essais : jamais une ligne supprimée`, async () => {
     await canon();
+    const [left, right] = await Promise.all([connect(), connect()]);
+    const sql =
+      'delete from public.merchant_member where merchant_account_id = $1 and user_id = $2';
     for (let trial = 0; trial < CONCURRENCY_TRIALS; trial++) {
-      const results = await Promise.all(
-        (
-          [
-            ['owner1', 'owner1b'],
-            ['owner1b', 'owner1'],
-          ] as const
-        ).map(([actor, target]) =>
-          sessions[actor]
-            .from('merchant_member')
-            .delete()
-            .eq('merchant_account_id', m1)
-            .eq('user_id', users[target])
-            .select('id'),
-        ),
-      );
-      for (const res of results) expect(res.data, `essai ${trial}`).toEqual([]);
-      expect(await ownerCount(a, m1), `essai ${trial}`).toBe(2);
+      const results = await Promise.all([
+        runAs(left, 'authenticated', users.owner1, sql, [m1, users.owner1b]),
+        runAs(right, 'authenticated', users.owner1b, sql, [m1, users.owner1]),
+      ]);
+      expect(results, `essai ${trial}`).toEqual([
+        { code: null, rows: 0 },
+        { code: null, rows: 0 },
+      ]);
+      expect(await ownerCountSql(pg, m1), `essai ${trial}`).toBe(2);
     }
   });
 
@@ -682,6 +720,10 @@ suite('0162 — dernier owner : garde en base pour tous les rôles', () => {
   });
 
   type Attempt = 'delete' | 'demote';
+  const attemptSql: Record<Attempt, string> = {
+    delete: 'delete from public.merchant_member where id = $1',
+    demote: "update public.merchant_member set role = 'manager' where id = $1",
+  };
   const concurrentPairs: Array<[string, Attempt, Attempt]> = [
     ['deux retraits', 'delete', 'delete'],
     ['deux rétrogradations', 'demote', 'demote'],
@@ -689,52 +731,40 @@ suite('0162 — dernier owner : garde en base pour tous les rôles', () => {
   ];
 
   it.each(concurrentPairs)(
-    `C · service-role · concurrence · %s croisés, ${CONCURRENCY_TRIALS} essais : exactement un aboutit, il reste un owner`,
+    `C · service_role · concurrence · %s croisés, ${CONCURRENCY_TRIALS} essais : exactement un aboutit, il reste un owner`,
     async (_label, left, right) => {
       const account = await soloAccount(a, 'c-race');
-      let other = await addMember(a, account.merchantId, 'owner', 'c-race-b');
-      const creator = await a
-        .from('merchant_member')
-        .select('id')
-        .eq('merchant_account_id', account.merchantId)
-        .eq('user_id', account.userId)
-        .single();
-      if (!creator.data) throw creator.error;
-      let creatorId = creator.data.id;
-
-      const attempt = (kind: Attempt, memberId: string) =>
-        kind === 'delete'
-          ? a.from('merchant_member').delete().eq('id', memberId).select('id')
-          : a.from('merchant_member').update({ role: 'manager' }).eq('id', memberId).select('id');
+      const other = await addMember(a, account.merchantId, 'owner', 'c-race-b');
+      const [first, second, control] = await Promise.all([connect(), connect(), connect()]);
+      const memberIds = async () => {
+        const { rows } = await control.query(
+          'select id, user_id from public.merchant_member where merchant_account_id = $1',
+          [account.merchantId],
+        );
+        const idOf = (userId: string) => rows.find((row) => row.user_id === userId)?.id as string;
+        return { creator: idOf(account.userId), other: idOf(other.userId) };
+      };
 
       for (let trial = 0; trial < CONCURRENCY_TRIALS; trial++) {
+        const ids = await memberIds();
         const results = await Promise.all([
-          attempt(left, creatorId),
-          attempt(right, other.memberId),
+          runAs(first, 'service_role', null, attemptSql[left], [ids.creator]),
+          runAs(second, 'service_role', null, attemptSql[right], [ids.other]),
         ]);
-        const refused = results.filter((res) => res.error);
+        const refused = results.filter((result) => result.code !== null);
         expect(refused, `essai ${trial}`).toHaveLength(1);
-        expect(refused[0]?.error?.code, `essai ${trial}`).toBe('23514');
-        expect(results.filter((res) => res.data?.length === 1)).toHaveLength(1);
-        expect(await ownerCount(a, account.merchantId), `essai ${trial}`).toBe(1);
+        expect(refused[0]?.code, `essai ${trial}`).toBe('23514');
+        expect(results.filter((result) => result.rows === 1)).toHaveLength(1);
+        expect(await ownerCountSql(control, account.merchantId), `essai ${trial}`).toBe(1);
 
         // Remise à deux owners pour l'essai suivant.
-        const restored = await a
-          .from('merchant_member')
-          .upsert(
-            [
-              { merchant_account_id: account.merchantId, role: 'owner', user_id: account.userId },
-              { merchant_account_id: account.merchantId, role: 'owner', user_id: other.userId },
-            ],
-            { onConflict: 'merchant_account_id,user_id' },
-          )
-          .select('id, user_id');
-        if (restored.error || !restored.data) throw restored.error ?? new Error('restore');
-        for (const row of restored.data) {
-          if (row.user_id === account.userId) creatorId = row.id;
-          else other = { ...other, memberId: row.id };
-        }
-        expect(await ownerCount(a, account.merchantId)).toBe(2);
+        await control.query(
+          `insert into public.merchant_member (merchant_account_id, user_id, role)
+           values ($1, $2, 'owner'), ($1, $3, 'owner')
+           on conflict (merchant_account_id, user_id) do update set role = excluded.role`,
+          [account.merchantId, account.userId, other.userId],
+        );
+        expect(await ownerCountSql(control, account.merchantId)).toBe(2);
       }
     },
     120_000,
