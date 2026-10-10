@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { addSecondOwnerSql, removeSecondOwnerSql } from '../helpers/membership-fixtures';
 import { type TestPostgresClient, createTestPostgresClient } from '../helpers/postgres-client';
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -259,6 +260,10 @@ describe.skipIf(!serviceRoleKey)('0153 — finalisation WooCommerce', () => {
     await client.connect();
     try {
       const unauthorizedIntent = await createIntent(client, tenant, 'https://guards.example/');
+      // Le créateur est l'unique owner : la base refuse de le rétrograder (0162) tant qu'un
+      // second owner n'existe pas.
+      const cover = await createTenant('guards-cover');
+      await addSecondOwnerSql(client, tenant.accountId, cover.userId);
       await client.query(`update public.merchant_member set role = 'agent' where id = $1`, [
         tenant.memberId,
       ]);
@@ -275,6 +280,7 @@ describe.skipIf(!serviceRoleKey)('0153 — finalisation WooCommerce', () => {
       await client.query(`update public.merchant_member set role = 'owner' where id = $1`, [
         tenant.memberId,
       ]);
+      await removeSecondOwnerSql(client, tenant.accountId, cover.userId);
       await client.query(
         `update public.shop_member set role = 'owner' where merchant_account_id = $1 and shop_id = $2 and user_id = $3`,
         [tenant.accountId, tenant.shopId, tenant.userId],

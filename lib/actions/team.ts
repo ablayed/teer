@@ -7,6 +7,7 @@ import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { generateInvitationToken, hashInvitationToken } from '@/lib/team/invitation-token';
+import { isLastOwnerViolation } from '@/lib/team/last-owner';
 import {
   canChangeMemberRole,
   canInviteRole,
@@ -230,6 +231,9 @@ async function getAuthUsersById(userIds: string[]): Promise<Map<string, AuthUser
   );
 }
 
+// Décompte NON atomique : il sert à répondre tôt, jamais de garde. Deux retraits concurrents
+// le franchissent tous les deux ; c'est le trigger de 0162 qui tranche, sous verrou du compte
+// (`isLastOwnerViolation`).
 async function countOwners(merchantAccountId: string): Promise<number> {
   const admin = createSupabaseAdminClient();
   const { count, error } = await admin
@@ -564,7 +568,9 @@ export const changeRoleAction = requireRole('owner', 'manager')
       .eq('merchant_account_id', ctx.member.merchantAccountId);
 
     if (updateError) {
-      return { ok: false as const, errorCode: 'update_failed' as const };
+      return isLastOwnerViolation(updateError)
+        ? { ok: false as const, errorCode: 'last_owner' as const }
+        : { ok: false as const, errorCode: 'update_failed' as const };
     }
 
     const auditError = await writeTeamAuditLog({
@@ -620,7 +626,9 @@ export const removeMemberAction = requireRole('owner', 'manager')
       .eq('merchant_account_id', ctx.member.merchantAccountId);
 
     if (deleteError) {
-      return { ok: false as const, errorCode: 'update_failed' as const };
+      return isLastOwnerViolation(deleteError)
+        ? { ok: false as const, errorCode: 'last_owner' as const }
+        : { ok: false as const, errorCode: 'update_failed' as const };
     }
 
     const auditError = await writeTeamAuditLog({

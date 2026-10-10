@@ -701,7 +701,8 @@
         "driverDeleted": "Livreur supprimé."
       },
       "errors": {
-        "generic": "Une erreur est survenue. Réessayez."
+        "generic": "Une erreur est survenue. Réessayez.",
+        "last_owner": "Ce compte doit garder au moins un propriétaire. Donnez d’abord le rôle Propriétaire à un autre membre, puis réessayez."
       }
     },
     "shops": {

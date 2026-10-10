@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterAll, describe, expect, it } from 'vitest';
+import { leaveSignupAccount } from '../helpers/membership-fixtures';
 import { createTestPostgresClient } from '../helpers/postgres-client';
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
@@ -980,9 +981,9 @@ describe('0132 — invalidation par événement', () => {
     expect((await projectionRow(t.admin, customerId))?.cancelled_count).toBe(1);
 
     // L'acteur rejoint l'organisation : la même annulation devient interne.
-    // `enforce_single_organization_membership` impose de retirer d'abord son
-    // appartenance d'origine.
-    await t.admin.from('merchant_member').delete().eq('user_id', guest.userId);
+    // `enforce_single_organization_membership` impose de le sortir d'abord de son compte
+    // d'origine ; il en est l'unique owner, c'est donc le compte qui est supprimé (0162).
+    await leaveSignupAccount(t.admin, guest.userId);
     const { error: joinError } = await t.admin.from('merchant_member').insert({
       merchant_account_id: t.merchantAccountId,
       user_id: guest.userId,

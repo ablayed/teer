@@ -1,6 +1,7 @@
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
+import { leaveSignupAccount } from '../helpers/membership-fixtures';
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -88,7 +89,18 @@ describe('workspace store isolation', () => {
     const merchantB = await merchantForUser(admin, userB);
     const emailB = await emailFor(userB);
 
-    await admin.from('merchant_member').delete().eq('user_id', userB);
+    // Le compte B doit survivre au départ de B (il sert de locataire étranger plus bas) : la
+    // base refuse de retirer son unique owner (0162), un second owner le garde donc.
+    const keeperB = await createUser(admin, 'b-keeper');
+    await leaveSignupAccount(admin, keeperB);
+    const { error: keeperError } = await admin.from('merchant_member').insert({
+      merchant_account_id: merchantB,
+      role: 'owner',
+      user_id: keeperB,
+    });
+    if (keeperError) throw keeperError;
+    const { error: leaveError } = await admin.from('merchant_member').delete().eq('user_id', userB);
+    if (leaveError) throw leaveError;
     const { error: memberError } = await admin.from('merchant_member').insert({
       merchant_account_id: merchantA,
       role: 'agent',

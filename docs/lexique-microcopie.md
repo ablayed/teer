@@ -396,3 +396,24 @@ confirmation ouvert sur un autre appareil oblige à rouvrir Tëër depuis l'admi
 FAQ tutoie encore (« Va dans… ») : écart préexistant à la règle du vouvoiement, non corrigé par
 ce lot (hors périmètre), à traiter dans un lot de microcopie dédié.
 
+
+## Dernier propriétaire d'un compte (migration `0162`, 2026-10-09)
+
+Un refus nommé, un texte : « Ce compte doit garder au moins un propriétaire. Donnez d’abord le
+rôle Propriétaire à un autre membre, puis réessayez. » (`settings.team.errors.last_owner`).
+
+**Ce qu'il couvre.** Un retrait ou un changement de rôle qui laisserait le compte sans
+propriétaire. L'action `lib/actions/team.ts` rend `last_owner` dans deux cas : son décompte
+préalable ne trouve qu'un propriétaire, ou la base refuse l'écriture (`23514 / last_owner`,
+trigger `merchant_member_last_owner_guard`). Le second cas est celui d'une course entre deux
+gestes simultanés, que le décompte ne voit pas. Dans les deux cas rien n'a été écrit.
+
+**Pourquoi le message dit quoi faire.** L'erreur générique (« Une erreur est survenue.
+Réessayez. ») invitait à répéter un geste qui échouera toujours. Le seul geste qui débloque est
+de nommer un autre propriétaire ; il est dans le texte.
+
+**Vocabulaire.** « Propriétaire », comme `settings.team.roles.owner`, jamais « owner » ni
+« administrateur ». Le choix de la clé (`teamErrorMessageKey`, `lib/team/last-owner.ts`) est
+partagé par le retrait et le changement de rôle ; tout autre refus garde le message générique.
+
+Vouvoiement, comme tout `settings.team.*`.

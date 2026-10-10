@@ -22,6 +22,7 @@ import { performShopifyAppRelease } from '@/lib/shopify/app-release-write';
 import type { Database } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
+import { leaveSignupAccount } from '../helpers/membership-fixtures';
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -80,7 +81,8 @@ async function getOwnMerchantAccountId(userId: string): Promise<string> {
   return data.id;
 }
 
-// Retire l'appartenance auto-créée (handle_new_user) puis, si un rôle est fourni, rattache
+// Supprime le compte auto-créé (handle_new_user), dont l'utilisateur est l'unique owner — la
+// base refuse d'en retirer la seule appartenance (0162) — puis, si un rôle est fourni, rattache
 // l'utilisateur au tenant cible avec ce rôle — sinon le laisse réellement memberless
 // (`enforce_single_organization_membership` interdit une double appartenance).
 async function reassignMembership(
@@ -88,11 +90,7 @@ async function reassignMembership(
   target: { merchantAccountId: string; role: 'owner' | 'manager' | 'agent' } | null,
 ) {
   const service = serviceClient();
-  const { error: deleteError } = await service
-    .from('merchant_member')
-    .delete()
-    .eq('user_id', userId);
-  if (deleteError) throw deleteError;
+  await leaveSignupAccount(service, userId);
 
   if (target) {
     const { error: insertError } = await service.from('merchant_member').insert({

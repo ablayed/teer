@@ -1,6 +1,7 @@
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
+import { leaveSignupAccount } from '../helpers/membership-fixtures';
 
 // 0117 — `finance_kpis.delivered_orders_count` ferme le gap « Invalider » (0116) sur /finances.
 //
@@ -296,7 +297,7 @@ describe('0117 — finance_kpis.delivered_orders_count suit l’état COURANT de
 
     const agentEmail = `finance-delivered-count-agent-${Date.now()}@example.com`;
     const agentUserId = await createConfirmedUser(admin, agentEmail);
-    await admin.from('merchant_member').delete().eq('user_id', agentUserId);
+    await leaveSignupAccount(admin, agentUserId);
     await admin.from('merchant_member').insert({
       merchant_account_id: merchantAccountId,
       user_id: agentUserId,

@@ -20,6 +20,7 @@ import type { Database } from '@/lib/supabase/database.types';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { leaveSignupAccount } from '../helpers/membership-fixtures';
 import { type TestPostgresClient, createTestPostgresClient } from '../helpers/postgres-client';
 
 const SYNTHETIC_PUBLIC_APP = {
@@ -142,8 +143,8 @@ async function createSignedInOwner(emailPrefix: string) {
 }
 
 // Rattache un nouvel utilisateur au locataire donné avec le rôle demandé. Une seule organisation
-// par utilisateur (`enforce_single_organization_membership`) : l'appartenance auto-créée est
-// retirée d'abord, comme le fait une acceptation d'invitation. `sync_shop_memberships_for_member`
+// par utilisateur (`enforce_single_organization_membership`) : le compte auto-créé, dont il est
+// l'unique owner, est supprimé d'abord (0162). `sync_shop_memberships_for_member`
 // crée alors ses `shop_member` sur toutes les boutiques existantes du locataire.
 async function createSignedInMember(
   emailPrefix: string,
@@ -152,11 +153,7 @@ async function createSignedInMember(
 ) {
   const user = await createSignedInUser(emailPrefix);
   const service = serviceClient();
-  const { error: deleteError } = await service
-    .from('merchant_member')
-    .delete()
-    .eq('user_id', user.userId);
-  if (deleteError) throw new Error(`membership reset failed: ${deleteError.message}`);
+  await leaveSignupAccount(service, user.userId);
   const { error: insertError } = await service
     .from('merchant_member')
     .insert({ merchant_account_id: merchantAccountId, user_id: user.userId, role });
