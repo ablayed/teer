@@ -30,7 +30,7 @@ type SyncShopOrdersInput = {
 };
 
 type SyncShopOrdersResult =
-  | { ok: true; shopId: string; syncedCount: number }
+  | { ok: true; shopId: string; syncedCount: number; ordersWithoutLines: number }
   | { ok: false; errorCode: 'no_shop' | 'sync_failed' | 'token_error' };
 
 function createSupabaseAdminClient() {
@@ -210,6 +210,7 @@ export async function syncShopOrders({
       return { ok: false, errorCode: 'sync_failed' };
     }
     let syncedCount = 0;
+    let ordersWithoutLines = 0;
     let failedCount = 0;
     const syncFailures: Array<{ error: unknown; orderId: string; step: string }> = [];
 
@@ -223,6 +224,16 @@ export async function syncShopOrders({
 
       if (result.ok) {
         syncedCount += 1;
+        if (result.lines === 'missing') {
+          // Commande présente, sans aucune ligne, que l'import ne répare pas (0165). Même signal
+          // que la réconciliation et le webhook. Identifiants techniques seuls.
+          ordersWithoutLines += 1;
+          Sentry.captureMessage('shopify_order_lines_missing_unrepairable', {
+            level: 'warning',
+            tags: { route: 'shopify.manual-sync' },
+            extra: { shopId: shop.id, shopifyOrderGid: node.id },
+          });
+        }
       } else {
         failedCount += 1;
         syncFailures.push({
@@ -251,7 +262,7 @@ export async function syncShopOrders({
       logSyncError('[sync] audit insert failed', auditError, { failedCount, syncedCount });
     }
 
-    return { ok: true, shopId: shop.id, syncedCount };
+    return { ok: true, shopId: shop.id, syncedCount, ordersWithoutLines };
   } catch (error) {
     logSyncError('[sync] sync failed', error);
     return { ok: false, errorCode: 'sync_failed' };
