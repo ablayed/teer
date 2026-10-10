@@ -244,14 +244,17 @@ describe('0118 — note libre sur la commande', () => {
       expect(read.error).toBeNull();
       expect(read.data).toBeNull();
 
-      // ÉCRITURE refusee : la garde NULL-safe de set_order_note leve `forbidden`
-      // (current_member_role renvoie NULL pour un non-membre).
+      // ÉCRITURE refusee : depuis 0163, une commande interdite par le compte ou par la
+      // boutique repond comme une commande inexistante (P0002 / order_not_found), sans
+      // reveler qu'elle existe. La garde reste NULL-safe (current_member_role renvoie NULL
+      // pour un non-membre).
       const write = await outsider.rpc('set_order_note', {
         p_order_id: order.id,
         p_note: 'tentative cross-tenant',
       });
       expect(write.error).not.toBeNull();
-      expect(write.error?.message).toContain('forbidden');
+      expect(write.error?.code).toBe('P0002');
+      expect(write.error?.message).toContain('order_not_found');
 
       // La note du marchand A est intacte.
       const { data: untouched } = await admin
