@@ -191,12 +191,6 @@ type OrderShopifyUpdate = Pick<
   | 'shopify_line_item_attributes'
 >;
 
-type ReplaceShopifyOrderCartArgs = {
-  p_order_id: string;
-  p_lines: Json;
-  p_order_update: Json;
-};
-
 // Les deux fonctions de 0165 ne sont pas encore dans `database.types.ts` (régénéré depuis la
 // base liée, après le db push) : même enveloppe typée que `replace_shopify_order_cart`.
 type ShopifyOrderLinesRpc = {
@@ -208,7 +202,14 @@ type ShopifyOrderLinesRpc = {
     fn: 'repair_shopify_order_lines',
     args: { p_order_id: string; p_lines: Json },
   ): Promise<{ data: number | null; error: { message: string } | null }>;
+  (
+    fn: 'resync_shopify_order_cart',
+    args: { p_order_id: string; p_lines: Json; p_order_update: Json },
+  ): Promise<{ data: 'resynced' | 'lines_missing' | null; error: { message: string } | null }>;
 };
+
+// Refus de `repair_shopify_order_lines` quand, sous verrou, la commande n'est plus réparable.
+const LINES_NOT_REPAIRABLE = 'shopify_order_lines_not_repairable';
 
 function shopifyOrderLinesRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
   return client.rpc.bind(client) as unknown as ShopifyOrderLinesRpc;
@@ -217,13 +218,6 @@ function shopifyOrderLinesRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) 
 // Forme attendue par les fonctions SQL : `quantity`, pas `qty`.
 function toRpcLines(lines: ResolvedOrderLine[]): Json {
   return lines.map(({ qty, ...line }) => ({ ...line, quantity: qty })) as unknown as Json;
-}
-
-function replaceShopifyOrderCartRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
-  return client.rpc.bind(client) as unknown as (
-    fn: 'replace_shopify_order_cart',
-    args: ReplaceShopifyOrderCartArgs,
-  ) => Promise<{ data: null; error: { message: string } | null }>;
 }
 
 export function shouldResyncShopifyOrderCart(
@@ -725,6 +719,12 @@ export async function persistShopifyOrder({
             ),
           },
         );
+        // La décision prise à la lecture est revérifiée en base, sous le verrou de la commande :
+        // confirmée entre-temps, elle n'est plus réparable. Rien n'est écrit, et ce n'est pas un
+        // échec d'import.
+        if (repairError?.message === LINES_NOT_REPAIRABLE) {
+          return { ok: true, skipped: 'stale', lines: 'missing' };
+        }
         return repairError
           ? { ok: false, error: repairError.message }
           : { ok: true, skipped: 'stale', lines: 'repaired' };
@@ -738,38 +738,46 @@ export async function persistShopifyOrder({
       );
 
       // Une commande sans lignes qui n'est plus réparable (confirmée, annulée…) ne reçoit pas de
-      // lignes par le chemin de resynchronisation non plus : `replace_shopify_order_cart` ne
-      // connaît ni la confirmation ni les réserves. Ses autres champs restent mis à jour.
-      const rebuildsLines = resyncsCart && !(linesMissing && !repairable);
+      // lignes par le chemin de resynchronisation non plus. Ce refus n'est PAS décidé ici, sur un
+      // état lu avant l'écriture : il l'est en base, sous verrou (`resync_shopify_order_cart`).
+      const rebuildsLines = resyncsCart;
 
-      const orderUpdateError = rebuildsLines
-        ? (
-            await replaceShopifyOrderCartRpc(supabaseServiceClient)('replace_shopify_order_cart', {
-              p_order_id: existingOrder.id,
-              p_lines: (
-                await resolveOrderLines(supabaseServiceClient, {
-                  merchantAccountId,
-                  lineItems: parseItemsummary(orderData.items_summary as Json),
-                  shopId,
-                })
-              ).map(({ qty, ...line }) => ({ ...line, quantity: qty })) as unknown as Json,
-              p_order_update: orderUpdate as unknown as Json,
-            })
-          ).error
-        : (
-            await supabaseServiceClient
-              .from('orders')
-              .update(orderUpdate)
-              .eq('id', existingOrder.id)
-          ).error;
+      // `resync_shopify_order_cart` (0165) revérifie cette décision sous le verrou de la
+      // commande : si elle a été confirmée depuis la lecture ci-dessus et ne porte toujours aucune
+      // ligne, la fonction n'écrit rien et le dit.
+      let resyncRefused = false;
+      let orderUpdateError: { message: string } | null = null;
+      if (rebuildsLines) {
+        const resync = await shopifyOrderLinesRpc(supabaseServiceClient)(
+          'resync_shopify_order_cart',
+          {
+            p_order_id: existingOrder.id,
+            p_lines: toRpcLines(
+              await resolveOrderLines(supabaseServiceClient, {
+                merchantAccountId,
+                lineItems: expectedLines,
+                shopId,
+              }),
+            ),
+            p_order_update: orderUpdate as unknown as Json,
+          },
+        );
+        orderUpdateError = resync.error;
+        resyncRefused = !resync.error && resync.data === 'lines_missing';
+      }
+      if (!rebuildsLines || resyncRefused) {
+        orderUpdateError = (
+          await supabaseServiceClient.from('orders').update(orderUpdate).eq('id', existingOrder.id)
+        ).error;
+      }
 
       if (orderUpdateError) {
         return { ok: false, error: orderUpdateError.message };
       }
 
       // Le chemin de resynchronisation a reconstruit les lignes ; l'autre n'y touche pas.
-      if (linesMissing) {
-        return { ok: true, lines: rebuildsLines ? 'repaired' : 'missing' };
+      if (linesMissing || resyncRefused) {
+        return { ok: true, lines: rebuildsLines && !resyncRefused ? 'repaired' : 'missing' };
       }
     } else {
       // En-tête et lignes dans une seule transaction (0165) : une commande n'existe pas sans ses

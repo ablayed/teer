@@ -19,8 +19,14 @@
 --   * la réparation n'écrit que des order_line : aucun mouvement de stock, aucun champ de la
 --     commande. La rejouer n'ajoute rien.
 --
--- Les deux fonctions sont réservées au rôle de service : SECURITY INVOKER, sans garde de rôle,
--- EXECUTE au seul service_role. `replace_shopify_order_cart` n'est pas modifiée.
+--   * la décision d'écrire des lignes manquantes est prise EN BASE, sous le verrou de la
+--     commande, sur les deux chemins de reconstruction (réparation, resynchronisation par une
+--     charge plus récente). Une commande confirmée entre la lecture de l'import et son écriture
+--     ne reçoit aucune ligne ; la fonction le dit à l'appelant, qui le signale.
+--
+-- Les trois fonctions sont réservées au rôle de service : SECURITY INVOKER, sans garde de rôle,
+-- EXECUTE au seul service_role. `replace_shopify_order_cart` n'est pas modifiée : elle n'est plus
+-- appelée par l'import qu'à travers `resync_shopify_order_cart`.
 
 -- ── 1. Lignes d'une commande Shopify qui n'en a aucune ──────────────────────────────────────
 -- Rend le nombre de lignes écrites ; 0 si la commande en porte déjà (rejeu sans effet).
@@ -247,3 +253,55 @@ $$;
 revoke all on function public.create_shopify_order_with_lines(jsonb, jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function public.create_shopify_order_with_lines(jsonb, jsonb) to service_role;
+
+-- ── 3. Resynchronisation du panier par une charge plus récente, gardée sous verrou ──────────
+-- `replace_shopify_order_cart` (0111) verrouille la commande mais ne connaît ni la confirmation
+-- ni les réserves. Cette enveloppe prend le verrou d'abord et revérifie : une commande qui ne
+-- porte AUCUNE ligne et n'est plus réparable n'en reçoit pas. Elle rend alors 'lines_missing'
+-- sans rien écrire ; l'appelant met à jour les autres champs et signale. Dans tous les autres
+-- cas, elle délègue à `replace_shopify_order_cart`, dans la même transaction, et rend 'resynced'.
+create function public.resync_shopify_order_cart(
+  p_order_id uuid,
+  p_lines jsonb,
+  p_order_update jsonb
+)
+returns text
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_order public.orders%rowtype;
+begin
+  select *
+    into v_order
+    from public.orders
+   where id = p_order_id
+     for update;
+
+  if not found then
+    raise exception 'order_not_found'
+      using errcode = 'P0002';
+  end if;
+
+  -- Même prédicat que repair_shopify_order_lines, évalué sous verrou.
+  if not exists (select 1 from public.order_line ol where ol.order_id = v_order.id)
+     and (
+       v_order.order_state is distinct from 'open'
+       or v_order.call_state is not distinct from 'validated'
+       or v_order.delivery_state is distinct from 'unassigned'
+       or v_order.cash_state is distinct from 'not_due'
+       or v_order.cart_locally_modified_at is not null
+     )
+  then
+    return 'lines_missing';
+  end if;
+
+  perform public.replace_shopify_order_cart(p_order_id, p_lines, p_order_update);
+  return 'resynced';
+end;
+$$;
+
+revoke all on function public.resync_shopify_order_cart(uuid, jsonb, jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.resync_shopify_order_cart(uuid, jsonb, jsonb) to service_role;
