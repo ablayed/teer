@@ -1,5 +1,5 @@
 import { CODStatusBreakdown } from '@/components/dashboard/CODStatusBreakdown';
-import { DashboardMotion } from '@/components/dashboard/DashboardMotion';
+import { DashboardSections } from '@/components/dashboard/DashboardSections';
 import { OrderExceptionsGrid } from '@/components/dashboard/OrderExceptionsGrid';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
@@ -691,7 +691,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
   // Suffixe de boutique pour les clés Suspense : il DOIT être combiné a un prefixe
   // unique par bloc. Plusieurs Suspense freres partageant la meme clé littérale
   // (« all ») produisent des clés dupliquees (aggravé par le React.Children.map de
-  // DashboardMotion) → au changement de boutique la réconciliation empile les blocs
+  // DashboardSections) → au changement de boutique la réconciliation empile les blocs
   // au lieu de les remplacer. Cf. régression empilement KpiStrip.
   const shopKey = selectedShopId ?? 'all';
   const role =
@@ -712,7 +712,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
       <Suspense fallback={null}>
         <TableauPeriodPersistence storeId={requestStoreId} />
       </Suspense>
-      <DashboardMotion>
+      <DashboardSections>
         <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
             <h1 className="font-display text-4xl md:text-5xl">
@@ -802,7 +802,7 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
             <RecentActivitySection shopId={selectedShopId} />
           </Suspense>
         </section>
-      </DashboardMotion>
+      </DashboardSections>
     </main>
   );
 }
