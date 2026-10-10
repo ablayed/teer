@@ -737,7 +737,12 @@ export async function persistShopifyOrder({
         existingOrder.cart_locally_modified_at,
       );
 
-      const orderUpdateError = resyncsCart
+      // Une commande sans lignes qui n'est plus réparable (confirmée, annulée…) ne reçoit pas de
+      // lignes par le chemin de resynchronisation non plus : `replace_shopify_order_cart` ne
+      // connaît ni la confirmation ni les réserves. Ses autres champs restent mis à jour.
+      const rebuildsLines = resyncsCart && !(linesMissing && !repairable);
+
+      const orderUpdateError = rebuildsLines
         ? (
             await replaceShopifyOrderCartRpc(supabaseServiceClient)('replace_shopify_order_cart', {
               p_order_id: existingOrder.id,
@@ -764,7 +769,7 @@ export async function persistShopifyOrder({
 
       // Le chemin de resynchronisation a reconstruit les lignes ; l'autre n'y touche pas.
       if (linesMissing) {
-        return { ok: true, lines: resyncsCart ? 'repaired' : 'missing' };
+        return { ok: true, lines: rebuildsLines ? 'repaired' : 'missing' };
       }
     } else {
       // En-tête et lignes dans une seule transaction (0165) : une commande n'existe pas sans ses
