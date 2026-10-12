@@ -108,6 +108,21 @@ export async function persistBulkOrderNodes(
 
     if (result.ok) {
       syncedCount += 1;
+      if (result.lines === 'missing') {
+        // La commande existe, sans aucune ligne, dans un état que l'import ne peut pas réparer
+        // sans désaccorder le stock. Elle ne bloque pas le curseur ; elle est rendue visible.
+        // Aucune donnée client dans le message : identifiants techniques uniquement.
+        Sentry.captureMessage('Shopify reconcile: order has no lines and is not repairable', {
+          level: 'warning',
+          tags: { route: 'cron.shopify-reconcile' },
+          extra: {
+            shopId: shop.id,
+            shopDomain: shop.shop_domain,
+            shopifyOrderGid: node.id,
+            shopifyOrderUpdatedAt: node.updatedAt ?? null,
+          },
+        });
+      }
     } else {
       failedCount += 1;
       // Aucune donnée client dans le message : identifiants techniques uniquement.

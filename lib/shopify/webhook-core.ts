@@ -618,6 +618,15 @@ async function processOrderCore({
   });
 
   if (result.ok) {
+    if (result.lines === 'missing') {
+      // Commande présente, sans aucune ligne, dans un état que l'import ne répare pas (0165).
+      // La livraison est acceptée ; l'anomalie est rendue visible. Identifiants techniques seuls.
+      Sentry.captureMessage('shopify_order_lines_missing_unrepairable', {
+        level: 'warning',
+        tags: { route: 'shopify.webhook', topic },
+        extra: { shopDomain: shop.shop_domain, shopId: shop.id, shopifyOrderGid: orderNode.id },
+      });
+    }
     logWebhookInfo('[webhook-core] order persisted', {
       orderId: orderNode.id,
       topic,

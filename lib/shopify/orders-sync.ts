@@ -1,13 +1,13 @@
 import { normalizeSenegalPhone } from '@/lib/address/phone-sn';
 import {
+  compareOrderUpdate,
   defaultOrderCurrency,
-  isStaleOrderUpdate,
   mapFlexibleOrderAddress,
 } from '@/lib/ingestion/order-normalization';
 import { isShopifyCustomerActivityRetained } from '@/lib/shopify/pcd-retention';
 import {
+  type ResolvedOrderLine,
   parseItemsummary,
-  resolveAndInsertOrderLines,
   resolveOrderLines,
 } from '@/lib/stock/order-line-resolution';
 import type { Database, Json, TablesInsert, TablesUpdate } from '@/lib/supabase/database.types';
@@ -191,17 +191,33 @@ type OrderShopifyUpdate = Pick<
   | 'shopify_line_item_attributes'
 >;
 
-type ReplaceShopifyOrderCartArgs = {
-  p_order_id: string;
-  p_lines: Json;
-  p_order_update: Json;
+// Les deux fonctions de 0165 ne sont pas encore dans `database.types.ts` (régénéré depuis la
+// base liée, après le db push) : même enveloppe typée que `replace_shopify_order_cart`.
+type ShopifyOrderLinesRpc = {
+  (
+    fn: 'create_shopify_order_with_lines',
+    args: { p_order: Json; p_lines: Json },
+  ): Promise<{ data: string | null; error: { message: string } | null }>;
+  (
+    fn: 'repair_shopify_order_lines',
+    args: { p_order_id: string; p_lines: Json },
+  ): Promise<{ data: number | null; error: { message: string } | null }>;
+  (
+    fn: 'resync_shopify_order_cart',
+    args: { p_order_id: string; p_lines: Json; p_order_update: Json },
+  ): Promise<{ data: 'resynced' | 'lines_missing' | null; error: { message: string } | null }>;
 };
 
-function replaceShopifyOrderCartRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
-  return client.rpc.bind(client) as unknown as (
-    fn: 'replace_shopify_order_cart',
-    args: ReplaceShopifyOrderCartArgs,
-  ) => Promise<{ data: null; error: { message: string } | null }>;
+// Refus de `repair_shopify_order_lines` quand, sous verrou, la commande n'est plus réparable.
+const LINES_NOT_REPAIRABLE = 'shopify_order_lines_not_repairable';
+
+function shopifyOrderLinesRpc(client: { rpc: SupabaseClient<Database>['rpc'] }) {
+  return client.rpc.bind(client) as unknown as ShopifyOrderLinesRpc;
+}
+
+// Forme attendue par les fonctions SQL : `quantity`, pas `qty`.
+function toRpcLines(lines: ResolvedOrderLine[]): Json {
+  return lines.map(({ qty, ...line }) => ({ ...line, quantity: qty })) as unknown as Json;
 }
 
 export function shouldResyncShopifyOrderCart(
@@ -214,6 +230,24 @@ export function shouldResyncShopifyOrderCart(
     existingOrder.cart_locally_modified_at === null &&
     existingOrder.delivery_state === 'unassigned' &&
     existingOrder.cash_state === 'not_due'
+  );
+}
+
+// Une commande sans lignes ne peut les recevoir de l'import que si aucune transition n'a pu
+// poser — ou sauter — un mouvement de stock pour elle. `transition_order` pose une réserve dès
+// la confirmation : au-delà de « ouverte, non confirmée, non assignée », écrire des lignes
+// ferait partir un stock jamais réservé. Même règle que `repair_shopify_order_lines` (0165),
+// qui la revérifie sous verrou.
+export function canRepairShopifyOrderLines(
+  existingOrder: Pick<
+    TablesUpdate<'orders'>,
+    'call_state' | 'cart_locally_modified_at' | 'cash_state' | 'delivery_state' | 'order_state'
+  >,
+): boolean {
+  return (
+    shouldResyncShopifyOrderCart(existingOrder) &&
+    existingOrder.order_state === 'open' &&
+    existingOrder.call_state !== 'validated'
   );
 }
 
@@ -571,12 +605,25 @@ async function resolveShopifyCustomer(
   return { ok: true, customerId: inserted.id, tombstoned: false };
 }
 
+// `lines` ne dit quelque chose que d'une commande DÉJÀ présente et sans aucune ligne :
+//   * 'repaired' — ses lignes ont été reconstruites par ce passage ;
+//   * 'missing'  — elle reste sans lignes : son état (assignée, cash dû, panier modifié
+//     localement) interdit de les écrire sans désaccorder le stock. L'import n'échoue pas pour
+//     autant — un échec bloquerait le curseur de réconciliation sur une commande qu'aucun
+//     réimport ne peut réparer ; l'appelant la signale.
+export type PersistShopifyOrderResult = {
+  ok: boolean;
+  error?: string;
+  skipped?: 'stale';
+  lines?: 'repaired' | 'missing';
+};
+
 export async function persistShopifyOrder({
   merchantAccountId,
   orderNode,
   shopId,
   supabaseServiceClient,
-}: PersistShopifyOrderInput): Promise<{ ok: boolean; error?: string; skipped?: 'stale' }> {
+}: PersistShopifyOrderInput): Promise<PersistShopifyOrderResult> {
   try {
     const customerData = mapShopifyCustomer(orderNode, merchantAccountId, shopId);
     let customerId: string | null = null;
@@ -616,21 +663,71 @@ export async function persistShopifyOrder({
     const { data: existingOrder, error: orderSelectError } = await supabaseServiceClient
       .from('orders')
       .select(
-        'id, cod_status, shopify_updated_at, cart_locally_modified_at, delivery_state, cash_state',
+        'id, cod_status, shopify_updated_at, cart_locally_modified_at, order_state, call_state, delivery_state, cash_state, order_line(id)',
       )
       .eq('merchant_account_id', merchantAccountId)
       .eq('shop_id', shopId)
       .eq('shopify_order_id', shopifyOrderId)
+      // Une seule ligne suffit à savoir si la commande en porte : même aller-retour.
+      .limit(1, { referencedTable: 'order_line' })
       .maybeSingle();
 
     if (orderSelectError) {
       return { ok: false, error: orderSelectError.message };
     }
 
+    const expectedLines = parseItemsummary(orderData.items_summary as Json);
+
     if (existingOrder) {
-      // Garde hors-ordre : ignorer un webhook plus ancien que le dernier déjà appliqué.
-      if (isStaleOrderUpdate(orderData.shopify_updated_at, existingOrder.shopify_updated_at)) {
-        return { ok: true, skipped: 'stale' };
+      const recency = compareOrderUpdate(
+        orderData.shopify_updated_at,
+        existingOrder.shopify_updated_at,
+      );
+      // Commande présente, lignes attendues, aucune ligne en base : état laissé par l'ancien
+      // chemin d'import, qui écrivait les lignes après l'en-tête et avalait leur erreur.
+      const linesMissing = expectedLines.length > 0 && existingOrder.order_line.length === 0;
+      const repairable = canRepairShopifyOrderLines(existingOrder);
+      const resyncsCart = shouldResyncShopifyOrderCart(existingOrder);
+
+      // Garde hors-ordre : ignorer une charge plus ancienne que la dernière appliquée.
+      if (recency === 'older') {
+        return linesMissing
+          ? { ok: true, skipped: 'stale', lines: 'missing' }
+          : { ok: true, skipped: 'stale' };
+      }
+
+      // Charge identique à celle déjà appliquée : rien à mettre à jour. C'est pourtant le cas
+      // exact d'un réimport, et le seul moment où réparer une commande restée sans lignes —
+      // l'écarter ici la laisserait sans lignes à chaque passage.
+      if (recency === 'same') {
+        if (!linesMissing) {
+          return { ok: true, skipped: 'stale' };
+        }
+        if (!repairable) {
+          return { ok: true, skipped: 'stale', lines: 'missing' };
+        }
+        const { error: repairError } = await shopifyOrderLinesRpc(supabaseServiceClient)(
+          'repair_shopify_order_lines',
+          {
+            p_order_id: existingOrder.id,
+            p_lines: toRpcLines(
+              await resolveOrderLines(supabaseServiceClient, {
+                merchantAccountId,
+                lineItems: expectedLines,
+                shopId,
+              }),
+            ),
+          },
+        );
+        // La décision prise à la lecture est revérifiée en base, sous le verrou de la commande :
+        // confirmée entre-temps, elle n'est plus réparable. Rien n'est écrit, et ce n'est pas un
+        // échec d'import.
+        if (repairError?.message === LINES_NOT_REPAIRABLE) {
+          return { ok: true, skipped: 'stale', lines: 'missing' };
+        }
+        return repairError
+          ? { ok: false, error: repairError.message }
+          : { ok: true, skipped: 'stale', lines: 'repaired' };
       }
 
       // JAMAIS les 4 dimensions (order_state/call_state/delivery_state/cash_state) : Shopify
@@ -640,48 +737,70 @@ export async function persistShopifyOrder({
         existingOrder.cart_locally_modified_at,
       );
 
-      const orderUpdateError = shouldResyncShopifyOrderCart(existingOrder)
-        ? (
-            await replaceShopifyOrderCartRpc(supabaseServiceClient)('replace_shopify_order_cart', {
-              p_order_id: existingOrder.id,
-              p_lines: (
-                await resolveOrderLines(supabaseServiceClient, {
-                  merchantAccountId,
-                  lineItems: parseItemsummary(orderData.items_summary as Json),
-                  shopId,
-                })
-              ).map(({ qty, ...line }) => ({ ...line, quantity: qty })) as unknown as Json,
-              p_order_update: orderUpdate as unknown as Json,
-            })
-          ).error
-        : (
-            await supabaseServiceClient
-              .from('orders')
-              .update(orderUpdate)
-              .eq('id', existingOrder.id)
-          ).error;
+      // Une commande sans lignes qui n'est plus réparable (confirmée, annulée…) ne reçoit pas de
+      // lignes par le chemin de resynchronisation non plus. Ce refus n'est PAS décidé ici, sur un
+      // état lu avant l'écriture : il l'est en base, sous verrou (`resync_shopify_order_cart`).
+      const rebuildsLines = resyncsCart;
+
+      // `resync_shopify_order_cart` (0165) revérifie cette décision sous le verrou de la
+      // commande : si elle a été confirmée depuis la lecture ci-dessus et ne porte toujours aucune
+      // ligne, la fonction n'écrit rien et le dit.
+      let resyncRefused = false;
+      let orderUpdateError: { message: string } | null = null;
+      if (rebuildsLines) {
+        const resync = await shopifyOrderLinesRpc(supabaseServiceClient)(
+          'resync_shopify_order_cart',
+          {
+            p_order_id: existingOrder.id,
+            p_lines: toRpcLines(
+              await resolveOrderLines(supabaseServiceClient, {
+                merchantAccountId,
+                lineItems: expectedLines,
+                shopId,
+              }),
+            ),
+            p_order_update: orderUpdate as unknown as Json,
+          },
+        );
+        orderUpdateError = resync.error;
+        resyncRefused = !resync.error && resync.data === 'lines_missing';
+      }
+      if (!rebuildsLines || resyncRefused) {
+        orderUpdateError = (
+          await supabaseServiceClient.from('orders').update(orderUpdate).eq('id', existingOrder.id)
+        ).error;
+      }
 
       if (orderUpdateError) {
         return { ok: false, error: orderUpdateError.message };
       }
-    } else {
-      const { data: insertedOrder, error: orderInsertError } = await supabaseServiceClient
-        .from('orders')
-        .insert(orderData)
-        .select('id')
-        .single();
 
-      if (orderInsertError || !insertedOrder) {
-        return { ok: false, error: orderInsertError?.message ?? 'Insert returned no row' };
+      // Le chemin de resynchronisation a reconstruit les lignes ; l'autre n'y touche pas.
+      if (linesMissing || resyncRefused) {
+        return { ok: true, lines: rebuildsLines && !resyncRefused ? 'repaired' : 'missing' };
       }
+    } else {
+      // En-tête et lignes dans une seule transaction (0165) : une commande n'existe pas sans ses
+      // lignes. Si l'écriture échoue, rien n'est écrit, et le prochain import la reprend en
+      // entier — aucune garde de date ne peut l'écarter, puisqu'elle n'existe pas.
+      // Un produit non rapproché n'est PAS un échec : sa ligne est écrite `unresolved`, et le
+      // stock, effet de bord, l'ignorera (règle 8).
+      const { data: createdOrderId, error: orderCreateError } = await shopifyOrderLinesRpc(
+        supabaseServiceClient,
+      )('create_shopify_order_with_lines', {
+        p_order: orderData as unknown as Json,
+        p_lines: toRpcLines(
+          await resolveOrderLines(supabaseServiceClient, {
+            merchantAccountId,
+            lineItems: expectedLines,
+            shopId,
+          }),
+        ),
+      });
 
-      // Best-effort: resolution failure never blocks ingestion.
-      await resolveAndInsertOrderLines(supabaseServiceClient, {
-        merchantAccountId,
-        orderId: insertedOrder.id,
-        lineItems: parseItemsummary(orderData.items_summary as Json),
-        shopId,
-      }).catch(() => undefined);
+      if (orderCreateError || !createdOrderId) {
+        return { ok: false, error: orderCreateError?.message ?? 'Order creation returned no id' };
+      }
     }
 
     return { ok: true };
