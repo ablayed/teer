@@ -46,8 +46,10 @@ import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
 import { getRequestStoreId } from '@/lib/workspace/store';
+import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 
 type CustomerSummary = Pick<Tables<'customer'>, 'full_name' | 'phone'>;
@@ -139,6 +141,15 @@ export type OrdersPageData = {
   totalCount: number;
   viewCounts: OrdersViewCounts;
 };
+
+// L04 — la liste sans ses compteurs : la page les demande à part, pour que la liste ne les
+// attende pas. Le type n'a volontairement AUCUN champ de compteur : « pas encore chargé » ne
+// doit jamais se lire comme zéro (règle 15).
+export type OrdersPageList = Omit<OrdersPageData, 'totalCount' | 'viewCounts'>;
+
+// Compteurs demandés à part. Un échec de lecture reste un échec : il n'est jamais rendu comme
+// des compteurs à zéro.
+export type DeferredOrderViewCounts = { ok: true; counts: OrdersViewCounts } | { ok: false };
 
 type OrdersPageFilters = {
   dateFrom?: string;
@@ -666,6 +677,7 @@ async function fetchOrdersPageData({
   activeView,
   cursor,
   filters,
+  includeViewCounts = true,
   member,
   search,
   signal,
@@ -678,13 +690,16 @@ async function fetchOrdersPageData({
   search: string;
   signal?: AbortSignal;
   supabase: SupabaseServerClient;
+  // L04 : la page lit ses compteurs à part (getOrderViewCountsForPage). Ne vaut que sur le
+  // chemin rapide ; avec une recherche, compteurs et liste sortent du même jeu de lignes.
+  includeViewCounts?: boolean;
 }): Promise<OrdersPageData> {
   if (!search && filters.dateFrom && filters.dateTo) {
     const dateFrom = filters.dateFrom;
     const dateTo = filters.dateTo;
 
     const [viewCounts, keysetPage] = await Promise.all([
-      cursor
+      cursor || !includeViewCounts
         ? Promise.resolve(emptyOrdersViewCounts())
         : fetchOrderViewCountsFromRpc(
             supabase,
@@ -1073,7 +1088,71 @@ async function auditOrdersPageAccess(
   );
 }
 
+type OrdersPageDataParams = {
+  cursor?: OrderListCursor | null;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  shopId?: string | null;
+  view?: string;
+  auditIdempotencyKey?: string | null;
+};
+
 export async function getOrdersPageData(
+  params: OrdersPageDataParams = {},
+  signal?: AbortSignal,
+): Promise<OrdersPageData> {
+  return loadOrdersPageData(params, signal, true);
+}
+
+// L04 — même lecture que getOrdersPageData (même client soumis à la RLS, mêmes gardes, même
+// quota et même journal d'accès), sans la requête des compteurs. Réservée au premier rendu de la
+// page SANS recherche : avec une recherche, les compteurs sortent du même jeu de lignes que la
+// liste, et les différer ne gagnerait rien.
+export async function getOrdersPageList(
+  params: Omit<OrdersPageDataParams, 'cursor'> = {},
+): Promise<OrdersPageList> {
+  const {
+    totalCount: _totalCount,
+    viewCounts: _viewCounts,
+    ...list
+  } = await loadOrdersPageData(params, undefined, false);
+  return list;
+}
+
+// L04 — les sept compteurs de vue, demandés à part de la liste. Même client soumis à la RLS et
+// même garde d'appartenance que la liste : un appelant sans appartenance reçoit des zéros, comme
+// de getOrdersPageData. Une erreur de lecture est rendue comme telle, jamais comme des zéros.
+export async function getOrderViewCountsForPage({
+  dateFrom,
+  dateTo,
+  shopId = null,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  shopId?: string | null;
+}): Promise<DeferredOrderViewCounts> {
+  try {
+    const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
+    const member = await getCurrentMember(supabase);
+    if (!member) {
+      return { ok: true, counts: emptyOrdersViewCounts() };
+    }
+    const counts = await fetchOrderViewCountsFromRpc(supabase, member.merchantAccountId, {
+      dateFrom,
+      dateTo,
+      shopId,
+    });
+    return { ok: true, counts };
+  } catch (error) {
+    // Les signaux internes de Next (redirection, rendu dynamique) ne sont pas des échecs de lecture.
+    unstable_rethrow(error);
+    Sentry.captureException(error, { tags: { section: 'orders', read: 'view_counts' } });
+    return { ok: false };
+  }
+}
+
+async function loadOrdersPageData(
   {
     cursor = null,
     dateFrom,
@@ -1082,16 +1161,9 @@ export async function getOrdersPageData(
     shopId = null,
     view,
     auditIdempotencyKey,
-  }: {
-    cursor?: OrderListCursor | null;
-    dateFrom?: string;
-    dateTo?: string;
-    search?: string;
-    shopId?: string | null;
-    view?: string;
-    auditIdempotencyKey?: string | null;
-  } = {},
-  signal?: AbortSignal,
+  }: OrdersPageDataParams,
+  signal: AbortSignal | undefined,
+  includeViewCounts: boolean,
 ): Promise<OrdersPageData> {
   const supabase = asTypedSupabaseClient(await createSupabaseServerClient());
   const member = await getCurrentMember(supabase, signal);
@@ -1148,6 +1220,7 @@ export async function getOrdersPageData(
     activeView: parseOrderSavedViewId(view),
     cursor,
     filters: { dateFrom, dateTo, shopId },
+    includeViewCounts,
     member,
     search,
     signal,

@@ -417,3 +417,24 @@ de nommer un autre propriétaire ; il est dans le texte.
 partagé par le retrait et le changement de rôle ; tout autre refus garde le message générique.
 
 Vouvoiement, comme tout `settings.team.*`.
+
+## Compteurs de vue qui arrivent après la liste (L04, 2026-10-12)
+
+Sur `/commandes`, la liste ne dépend plus de ses compteurs : ils peuvent arriver après elle.
+Une pastille de vue a donc trois états, jamais confondus (règle 15).
+
+| État des compteurs | Pastille | Pourquoi |
+|---|---|---|
+| Connus | « À appeler (30) », zéro compris : « À appeler (0) » | Inchangé. « (0) » est un fait vérifié. |
+| En attente | « À appeler », sans parenthèses | Aucun nombre n'est montré tant qu'il n'est pas lu. Pas de « (0) » provisoire, pas de « (…) » : le libellé seul reste juste et cliquable. |
+| Lecture échouée | « À appeler (—) » | Un tiret cadratin, jamais un zéro : « (0) » dirait qu'il n'y a aucune commande. Même signe que la valeur manquante de la rentabilité par arrivage (`kind: 'missing'`) : un tiret, pas un chiffre. |
+
+**Ce qui n'est pas affiché.** Aucun message d'erreur ne s'ajoute à l'écran quand les compteurs
+échouent : la liste, elle, est là et reste utilisable. L'échec est remonté à Sentry
+(`section: orders`, `read: view_counts`).
+
+**Compteurs d'une autre période.** Au changement de période ou de boutique, les anciens nombres
+ne restent jamais à l'écran en attendant les nouveaux : la pastille repasse au libellé seul. Au
+changement de vue, la portée est la même et les nombres restent affichés.
+
+Décision d'affichage unique : `formatViewChipLabel` (`lib/orders/deferred-view-counts.ts`).

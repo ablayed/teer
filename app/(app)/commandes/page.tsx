@@ -8,10 +8,16 @@ import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getActiveDrivers } from '@/lib/actions/drivers';
 import { getMerchantMemberForUser } from '@/lib/actions/merchant';
-import { getOrdersPageData } from '@/lib/actions/orders';
+import {
+  type OrdersViewCounts,
+  getOrderViewCountsForPage,
+  getOrdersPageData,
+  getOrdersPageList,
+} from '@/lib/actions/orders';
 import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderSavedViews } from '@/lib/domain/order-saved-views';
+import { settledValueOrNull } from '@/lib/orders/deferred-view-counts';
 import { normalizeOrderSearch } from '@/lib/orders/search';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import type { ShopFilterOption } from '@/lib/shops/shop-filter';
@@ -57,10 +63,13 @@ async function canReassignDrivers(): Promise<boolean> {
 }
 
 export default async function CommandesPage({ searchParams }: CommandesPageProps) {
-  const t = await getTranslations('orders');
-  const clientsT = await getTranslations('clients');
-  const params = await searchParams;
-  const storeId = await getRequestStoreId();
+  const [t, clientsT, params, storeId] = await Promise.all([
+    getTranslations('orders'),
+    getTranslations('clients'),
+    searchParams,
+    getRequestStoreId(),
+  ]);
+  // Garde de boutique : aucune lecture de données ne part avant elle.
   if (!storeId) redirect('/s');
   const search = normalizeOrderSearch(params.q);
   const { activePeriod, from, to } = resolvePeriodRange({
@@ -70,23 +79,58 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
     period: params.period,
     to: params.to,
   });
-  const [shopConnection, productCatalog, drivers, canReassign] = await Promise.all([
-    getShopConnection(storeId),
-    getProductCatalogPageData(storeId),
-    getActiveDrivers(),
-    canReassignDrivers(),
-  ]);
   const shops: ShopFilterOption[] = [{ id: storeId, label: 'Boutique active' }];
   const selectedShopId = storeId;
-  const [pageData] = await Promise.all([
-    getOrdersPageData({
-      dateFrom: from.toISOString(),
-      dateTo: to.toISOString(),
-      search,
-      shopId: selectedShopId,
-      view: params.vue,
-    }),
-  ]);
+  const listParams = {
+    dateFrom: from.toISOString(),
+    dateTo: to.toISOString(),
+    search,
+    shopId: selectedShopId,
+    view: params.vue,
+  };
+  // L04 — sans recherche, les compteurs partent à part : la liste ne les attend pas. Avec une
+  // recherche, compteurs et liste sortent du même jeu de lignes, rien n'est différé.
+  // Les deux lectures passent par le client soumis à la RLS et revérifient l'appartenance.
+  const deferredViewCounts =
+    search.length === 0
+      ? getOrderViewCountsForPage({
+          dateFrom: listParams.dateFrom,
+          dateTo: listParams.dateTo,
+          shopId: selectedShopId,
+        })
+      : null;
+  // Toutes les lectures indépendantes partent ensemble ; la liste n'attend plus les quatre autres.
+  const searchedPageData = deferredViewCounts ? null : getOrdersPageData(listParams);
+  const [shopConnection, productCatalog, drivers, canReassign, pageData, searchedData] =
+    await Promise.all([
+      getShopConnection(storeId),
+      getProductCatalogPageData(storeId),
+      getActiveDrivers(),
+      canReassignDrivers(),
+      searchedPageData ?? getOrdersPageList(listParams),
+      searchedPageData,
+    ]);
+  // Compteurs connus dès maintenant : ceux d'une recherche, ou ceux qui sont DÉJÀ arrivés quand la
+  // liste est prête — ils sont alors rendus avec elle, sans aucune attente supplémentaire.
+  let knownViewCounts: OrdersViewCounts | null = searchedData?.viewCounts ?? null;
+  if (!knownViewCounts && deferredViewCounts) {
+    const settled = await settledValueOrNull(deferredViewCounts);
+    if (settled?.ok) {
+      knownViewCounts = settled.counts;
+    }
+  }
+  // Liste VIDE : les états vides dépendent des compteurs et il n'y a rien d'autre à montrer, donc
+  // on les attend. Un échec de lecture y fait échouer la page, comme avant ce lot : il ne devient
+  // pas un état vide.
+  if (!knownViewCounts && deferredViewCounts && pageData.orders.length === 0) {
+    const resolved = await deferredViewCounts;
+    if (!resolved.ok) {
+      throw new Error('orders_view_counts_unavailable');
+    }
+    knownViewCounts = resolved.counts;
+  }
+  // Liste non vide et compteurs plus lents qu'elle (ou en échec) : ils arrivent dans le flux.
+  const streamedViewCounts = knownViewCounts ? null : deferredViewCounts;
   const activeView = pageData.activeView;
   const productOptions = productCatalog.ok
     ? productCatalog.products
@@ -105,7 +149,8 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
   const viewCounts = orderSavedViews.map((view) => ({
     id: view.id,
     label: view.label,
-    count: pageData.viewCounts[view.id],
+    // Valeur d'attente, jamais affichée tant que les compteurs ne sont pas arrivés.
+    count: knownViewCounts ? knownViewCounts[view.id] : 0,
   }));
   const reliabilityLabels = {
     new: clientsT('tiers.new'),
@@ -113,9 +158,11 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
     risk: clientsT('tiers.risk'),
     watch: clientsT('tiers.watch'),
   };
-  const searchedTotal = pageData.viewCounts.toutes;
-  const totalOrders = pageData.totalCount;
-  const visibleCount = pageData.viewCounts[activeView];
+  // Compteurs en route ⇒ la liste porte au moins une commande : l'espace de travail s'affiche,
+  // et aucun état vide ne peut s'appliquer.
+  const searchedTotal = knownViewCounts ? knownViewCounts.toutes : pageData.orders.length;
+  const totalOrders = searchedTotal;
+  const visibleCount = knownViewCounts ? knownViewCounts[activeView] : pageData.orders.length;
   const syncedCount = params.synced ? Number.parseInt(params.synced, 10) : null;
   const syncError =
     params.sync_error && isSyncErrorCode(params.sync_error) ? params.sync_error : null;
@@ -184,6 +231,7 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
             canReassign={canReassign}
             dateFrom={from.toISOString()}
             dateTo={to.toISOString()}
+            deferredViewCounts={streamedViewCounts}
             drivers={drivers}
             emptyValueLabel={t('table.emptyValue')}
             initialHasMore={pageData.hasMore}
