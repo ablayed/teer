@@ -17,7 +17,23 @@ import { notFound, redirect } from 'next/navigation';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import type { ReactNode } from 'react';
 
+// L05 — une lecture lancée d'avance n'est attendue qu'à la place de sa garde. Si une garde
+// antérieure redirige entre-temps, son échec éventuel ne doit pas devenir un rejet non géré ;
+// attendue à sa place, la promesse d'origine rend son résultat ou lève son erreur, comme avant.
+function startEarly<T>(promise: Promise<T>): Promise<T> {
+  promise.catch(() => undefined);
+  return promise;
+}
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
+  // L05 — ces trois lectures ne dépendent pas de l'utilisateur : elles partent tout de suite, au
+  // lieu d'attendre leur tour derrière les gardes. Aucune n'est LUE avant sa garde, plus bas.
+  // `getWorkspaceStores` passe par le client soumis à la RLS et est mémoïsée par requête : la
+  // page la demande déjà en parallèle du layout.
+  const messagesPromise = startEarly(getMessages());
+  const storesPromise = startEarly(getWorkspaceStores());
+  const headersPromise = startEarly(headers());
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -29,12 +45,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   // Everything below depends only on user.id and is mutually independent → one
   // parallel batch instead of a sequential cascade. Guards are still evaluated
-  // in the original priority order (consent before onboarding); the merchant
-  // account read (which depends on the member's merchant_account_id) follows.
+  // in the original priority order (consent before onboarding).
+  // L05 — the merchant account read depends on the member's merchant_account_id : it now starts
+  // as soon as the member is known, without waiting for the consent read to finish.
+  const memberPromise = getMerchantMemberForUser(user.id);
+  const merchantAccountPromise = startEarly(
+    memberPromise.then((knownMember) =>
+      knownMember ? getMerchantAccountById(knownMember.merchant_account_id) : null,
+    ),
+  );
   const [missingConsents, member, messages] = await Promise.all([
     getMissingCurrentConsents(user.id),
-    getMerchantMemberForUser(user.id),
-    getMessages(),
+    memberPromise,
+    messagesPromise,
   ]);
 
   if (!missingConsents.ok || missingConsents.documents.length > 0) {
@@ -52,13 +75,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   // Membre existant : fondateur en cours d'onboarding (compte non onboardé) reste
   // dirigé vers /onboarding, comme avant.
-  const merchantAccount = await getMerchantAccountById(member.merchant_account_id);
+  const merchantAccount = await merchantAccountPromise;
 
   if (!merchantAccount?.onboarded_at) {
     redirect('/onboarding');
   }
 
-  const [stores, requestHeaders] = await Promise.all([getWorkspaceStores(), headers()]);
+  const [stores, requestHeaders] = await Promise.all([storesPromise, headersPromise]);
   const isWorkspaceEntry = requestHeaders.get('x-teer-workspace-entry') === '1';
 
   if (stores.length === 0) {
