@@ -2,10 +2,13 @@
 
 import { PendingSpinner } from '@/components/app-shell/pending-spinner';
 import type { OrderSavedViewId } from '@/lib/domain/order-saved-views';
+import { type ViewCountsStatus, formatViewChipLabel } from '@/lib/orders/deferred-view-counts';
 import { cn } from '@/lib/utils';
 
 type OrdersViewChipsProps = {
   activeView: OrderSavedViewId;
+  // L04 : les compteurs peuvent arriver après la liste. Défaut : connus.
+  countsStatus?: ViewCountsStatus;
   onSelect: (viewId: OrderSavedViewId) => void;
   pendingViewId: OrderSavedViewId | null;
   views: Array<{
@@ -17,12 +20,18 @@ type OrdersViewChipsProps = {
 
 export function OrdersViewChips({
   activeView,
+  countsStatus = 'ready',
   onSelect,
   pendingViewId,
   views,
 }: OrdersViewChipsProps) {
   return (
-    <nav aria-label="Vues commandes" className="flex gap-2 overflow-x-auto pb-1">
+    <nav
+      aria-busy={countsStatus === 'pending' ? true : undefined}
+      aria-label="Vues commandes"
+      className="flex gap-2 overflow-x-auto pb-1"
+      data-counts-status={countsStatus}
+    >
       {views.map((view) => {
         const isActive = activeView === view.id;
         const isPending = pendingViewId === view.id;
@@ -48,7 +57,7 @@ export function OrdersViewChips({
             >
               <PendingSpinner className="size-3.5" />
             </span>
-            {view.label} ({view.count})
+            {formatViewChipLabel(view.label, view.count, countsStatus)}
           </button>
         );
       })}

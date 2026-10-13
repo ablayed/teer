@@ -6,7 +6,12 @@ import { OrdersViewChips } from '@/components/orders/orders-view-chips';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { SearchInput } from '@/components/ui/search-input';
 import type { ActiveDriverOption } from '@/lib/actions/drivers';
-import { type OrderListCursor, type OrderListItem, getOrdersPageData } from '@/lib/actions/orders';
+import {
+  type DeferredOrderViewCounts,
+  type OrderListCursor,
+  type OrderListItem,
+  getOrdersPageData,
+} from '@/lib/actions/orders';
 import {
   type OrderSavedViewId,
   applyOrderSavedViewCountTransition,
@@ -14,10 +19,27 @@ import {
   orderSavedViewIds,
 } from '@/lib/domain/order-saved-views';
 import { getClientErrorMessage, isAbortError } from '@/lib/monitoring/client-error-classification';
+import {
+  type AppliedViewCounts,
+  type ViewCountsStatus,
+  resolveArrivedViewCounts,
+  statusWhileWaiting,
+  viewCountsScope,
+  withViewCounts,
+} from '@/lib/orders/deferred-view-counts';
 import { normalizeOrderSearch } from '@/lib/orders/search';
 import { fetchOrdersSearchPageData } from '@/lib/orders/search-client';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import {
+  type ReactNode,
+  Suspense,
+  use,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
 
 type OrderViewCount = {
   count: number;
@@ -94,12 +116,47 @@ function patchOverlayViewCounts(
   return next;
 }
 
+// L04 — une clé par lecture de compteurs reçue du serveur. Une limite Suspense NEUVE montre son
+// attente tout de suite ; une limite déjà révélée retiendrait toute la navigation (liste
+// comprise) jusqu'à l'arrivée des compteurs — exactement ce que ce lot retire.
+const deferredCountsKeys = new WeakMap<object, number>();
+let nextDeferredCountsKey = 0;
+function deferredCountsKey(promise: object): number {
+  let key = deferredCountsKeys.get(promise);
+  if (key === undefined) {
+    nextDeferredCountsKey += 1;
+    key = nextDeferredCountsKey;
+    deferredCountsKeys.set(promise, key);
+  }
+  return key;
+}
+
+// Lit les compteurs dès qu'ils arrivent, les rend (HTML du serveur compris), puis les remet à
+// l'espace de travail, qui les fait vivre avec les gestes de l'utilisateur.
+function ArrivedViewCounts({
+  children,
+  onArrived,
+  promise,
+}: {
+  children: (result: DeferredOrderViewCounts) => ReactNode;
+  onArrived: (promise: Promise<DeferredOrderViewCounts>, result: DeferredOrderViewCounts) => void;
+  promise: Promise<DeferredOrderViewCounts>;
+}) {
+  const result = use(promise);
+  useEffect(() => {
+    onArrived(promise, result);
+  }, [onArrived, promise, result]);
+  return children(result);
+}
+
 type OrdersWorkspaceProps = {
   activePeriod: string;
   activeView: OrderSavedViewId;
   canReassign: boolean;
   dateFrom: string;
   dateTo: string;
+  // L04 : compteurs lus à part de la liste. `null` ⇒ ils sont déjà dans `views`.
+  deferredViewCounts: Promise<DeferredOrderViewCounts> | null;
   drivers: ActiveDriverOption[];
   emptyValueLabel: string;
   initialHasMore: boolean;
@@ -119,6 +176,7 @@ export function OrdersWorkspace({
   canReassign,
   dateFrom,
   dateTo,
+  deferredViewCounts,
   drivers,
   emptyValueLabel,
   initialHasMore,
@@ -136,6 +194,9 @@ export function OrdersWorkspace({
   const searchParams = useSearchParams();
   const [pendingViewId, setPendingViewId] = useState<OrderSavedViewId | null>(null);
   const [displayedViews, setDisplayedViews] = useState(views);
+  // L04 : quelle lecture de compteurs `displayedViews` reflète, et pour quelle portée.
+  const [appliedViewCounts, setAppliedViewCounts] = useState<AppliedViewCounts>(null);
+  const countsScope = viewCountsScope(dateFrom, dateTo, selectedShopId);
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const [isTransitionPending, startTransition] = useTransition();
   const [isSearchTransitionPending, startSearchTransition] = useTransition();
@@ -176,8 +237,25 @@ export function OrdersWorkspace({
   }, [activeView, pendingViewId]);
 
   useEffect(() => {
+    // Compteurs en route : `views` ne porte alors que des valeurs d'attente, à ne pas poser.
+    if (deferredViewCounts) {
+      return;
+    }
     setDisplayedViews(views);
-  }, [views]);
+    setAppliedViewCounts(null);
+  }, [deferredViewCounts, views]);
+
+  // Même rôle que l'effet ci-dessus, pour des compteurs arrivés après la liste : chaque rendu
+  // serveur remplace les compteurs affichés par les siens.
+  const handleViewCountsArrived = useCallback(
+    (promise: Promise<DeferredOrderViewCounts>, result: DeferredOrderViewCounts) => {
+      if (result.ok) {
+        setDisplayedViews((currentViews) => withViewCounts(currentViews, result.counts));
+      }
+      setAppliedViewCounts({ ok: result.ok, scope: countsScope, token: promise });
+    },
+    [countsScope],
+  );
 
   // Purge les surcouches UNIQUEMENT sur une vraie navigation de filtre (vue / période /
   // boutique → ces props changent). PAS sur le refresh implicite que Next déclenche après
@@ -390,6 +468,15 @@ export function OrdersWorkspace({
   // loader : tant que la saisie devance ce refetch, on filtre en mémoire les commandes
   // affichées ; dès qu'il rattrape, on bascule sur les résultats serveur (au-delà de p.1).
   const effectiveServerSearch = searchResult?.search ?? searchQuery;
+  const renderViewChips = (chipViews: OrderViewCount[], countsStatus: ViewCountsStatus) => (
+    <OrdersViewChips
+      activeView={effectiveView}
+      countsStatus={countsStatus}
+      onSelect={handleSelect}
+      pendingViewId={pendingViewId}
+      views={chipViews}
+    />
+  );
 
   return (
     <div className="space-y-4">
@@ -402,12 +489,32 @@ export function OrdersWorkspace({
         value={localSearchQuery}
       />
 
-      <OrdersViewChips
-        activeView={effectiveView}
-        onSelect={handleSelect}
-        pendingViewId={pendingViewId}
-        views={effectiveViews}
-      />
+      {deferredViewCounts ? (
+        <Suspense
+          fallback={renderViewChips(
+            effectiveViews,
+            overlayViewCounts ? 'ready' : statusWhileWaiting(appliedViewCounts, countsScope),
+          )}
+          key={deferredCountsKey(deferredViewCounts)}
+        >
+          <ArrivedViewCounts onArrived={handleViewCountsArrived} promise={deferredViewCounts}>
+            {(result) => {
+              if (overlayViewCounts) {
+                return renderViewChips(effectiveViews, 'ready');
+              }
+              const arrived = resolveArrivedViewCounts({
+                applied: appliedViewCounts,
+                displayedViews,
+                result,
+                token: deferredViewCounts,
+              });
+              return renderViewChips(arrived.views, arrived.status);
+            }}
+          </ArrivedViewCounts>
+        </Suspense>
+      ) : (
+        renderViewChips(effectiveViews, 'ready')
+      )}
 
       <OrdersPageLoader
         activeView={effectiveView}
