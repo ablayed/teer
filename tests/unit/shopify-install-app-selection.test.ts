@@ -67,7 +67,7 @@ const APPS = {
   },
 };
 
-vi.mock('@/lib/actions/merchant', () => ({
+vi.mock('@/lib/merchant/member-account', () => ({
   getMerchantMemberForUser: vi.fn(async () => member.value),
   getMerchantAccountById: vi.fn(async (id: string) => ({ id })),
 }));

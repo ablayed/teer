@@ -101,8 +101,8 @@
     "file": "lib/actions/merchant.ts",
     "boundaryType": "NONE",
     "boundaryFile": "lib/actions/merchant.ts",
-    "boundaryLine": 170,
-    "boundaryDetail": "completeOnboardingAction/updateMerchantProfileAction use authActionClient only (no requireRole), but both derive `account` via getMerchantAccountForUser(ctx.user.id) (lines 170, 190) — server-derived from the real session, never a client-supplied account id. Self-service pattern, not an unchecked foreign id."
+    "boundaryLine": 138,
+    "boundaryDetail": "completeOnboardingAction/updateMerchantProfileAction use authActionClient only (no requireRole), but both derive `account` via getMerchantAccountForUser(ctx.user.id) (lines 142, 160) — server-derived from the real session, never a client-supplied account id. Self-service pattern, not an unchecked foreign id. getMerchantAccount() (line 62) takes NO argument and derives the user from supabase.auth.getUser(). The service-role reads keyed by a caller-supplied id (getMerchantMemberForUser, getMerchantAccountById) live in lib/merchant/member-account.ts, which is not a 'use server' file, and must never be re-exported from here: every export of a 'use server' file is a Server Action. Guarded by tests/unit/security/use-server-service-role-exports.test.ts."
   },
   {
     "file": "lib/actions/orders.ts",
@@ -201,6 +201,13 @@
     "boundaryFile": "lib/legal/consent.ts",
     "boundaryLine": 25,
     "boundaryDetail": "Library functions take userId as a parameter (getMissingCurrentConsents, persistSignupConsents, deleteUserForFailedSignup) but do not check it themselves. Verified callers: lib/actions/legal.ts:25/32 pass ctx.user.id; lib/actions/auth.ts:182/192/197/236/238 pass the newly-created signup user's own id. Never a client-supplied foreign id at any current call site."
+  },
+  {
+    "file": "lib/merchant/member-account.ts",
+    "boundaryType": "NONE",
+    "boundaryFile": "lib/merchant/member-account.ts",
+    "boundaryLine": 33,
+    "boundaryDetail": "INTERNAL HELPERS, not Server Actions: the file carries no 'use server' directive, so Next registers no HTTP entry point for its exports. The module itself checks nothing: getMerchantMemberForUser(userId) and getMerchantAccountById(accountId) read with the service-role client on the id they are given. The boundary is at each caller, all server-side, each deriving the id from the session read in the same request: app/(app)/layout.tsx (getUser line 40 → member line 51 → account line 54, id taken from that member row), app/(app)/commandes/page.tsx (getUser 57 → 61), components/orders/order-detail-screen.tsx (getUser 49 → 53), app/api/shopify/install/route.ts (getUser 49 → 58 → 65), lib/actions/merchant.ts getMerchantAccountForUser (called with ctx.user.id or the getUser() user). One caller derives the id otherwise: app/invitation/accept/page.tsx line 76 passes the merchant_account_id RETURNED by the accept_invitation RPC (line 71), called with the session client for the invitation token — the database has just made this user a member of that account. Guard (static): tests/unit/security/use-server-service-role-exports.test.ts — no 'use server' file exports a function that builds a service-role client on an argument without reading the session, and none re-exports this module. Behaviour against the real PostgREST: tests/rls/merchant-member-account-reads.rls.test.ts."
   },
   {
     "file": "lib/security/environment-validation.ts",

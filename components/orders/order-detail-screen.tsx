@@ -1,8 +1,8 @@
 import { OrderDetailPanel } from '@/components/orders/order-detail-panel';
 import { OrderSideSheet } from '@/components/orders/order-side-sheet';
 import { getActiveDrivers } from '@/lib/actions/drivers';
-import { getMerchantMemberForUser } from '@/lib/actions/merchant';
 import { getOrderById } from '@/lib/actions/orders';
+import { getMerchantMemberForUser } from '@/lib/merchant/member-account';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 

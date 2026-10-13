@@ -1,4 +1,4 @@
-import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/actions/merchant';
+import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/merchant/member-account';
 import { getDefaultShopifyAppOrNull, getShopifyAppByClientId } from '@/lib/shopify/apps';
 import { buildAuthorizeUrl, validateShopDomain } from '@/lib/shopify/oauth';
 import { generateNonce, signState } from '@/lib/shopify/state';
