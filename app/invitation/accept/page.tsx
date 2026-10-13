@@ -3,7 +3,7 @@ import {
   type PendingInvitation,
 } from '@/components/invitation/invitation-chooser';
 import { Wordmark } from '@/components/wordmark';
-import { getMerchantAccountById } from '@/lib/actions/merchant';
+import { getMerchantAccountById } from '@/lib/merchant/member-account';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';

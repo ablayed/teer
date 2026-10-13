@@ -36,7 +36,7 @@ vi.mock('@/lib/supabase/server', () => ({
   createSupabaseServerClient: async () => ({ auth: { getUser: () => read('user') } }),
 }));
 vi.mock('@/lib/legal/consent', () => ({ getMissingCurrentConsents: () => read('consents') }));
-vi.mock('@/lib/actions/merchant', () => ({
+vi.mock('@/lib/merchant/member-account', () => ({
   getMerchantAccountById: () => read('account'),
   getMerchantMemberForUser: () => read('member'),
 }));

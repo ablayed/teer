@@ -3,7 +3,11 @@
 import { authActionClient } from '@/lib/actions/safe-action';
 import { env } from '@/lib/env';
 import { isValidPhoneSN, toWhatsAppLink } from '@/lib/format/phone';
-import type { Database, Tables } from '@/lib/supabase/database.types';
+import {
+  type MerchantAccount,
+  getMerchantAccountById,
+  getMerchantMemberForUser,
+} from '@/lib/merchant/member-account';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { z } from 'zod';
@@ -17,7 +21,6 @@ const merchantProfileSchema = z.object({
   whatsapp: z.string().trim().optional(),
 });
 
-type MerchantAccount = Tables<'merchant_account'>;
 type MerchantProfileInput = z.infer<typeof merchantProfileSchema>;
 type MerchantActionErrorCode =
   | 'invalid_whatsapp'
@@ -43,44 +46,9 @@ function normalizeWhatsapp(raw: string | undefined): string | null {
   return `+${toWhatsAppLink(raw).replace('https://wa.me/', '')}`;
 }
 
-type MerchantMember = { merchant_account_id: string; role: string };
-
-// Single `merchant_member` read returning both the tenant id and the role.
-// Used by the (app) layout to avoid a second `merchant_member` round-trip just
-// for the role. Admin client + `eq(user_id)` scopes to the authenticated user's
-// own row, so the result is identical to the previous RLS-scoped read.
-export async function getMerchantMemberForUser(userId: string): Promise<MerchantMember | null> {
-  const admin = createSupabaseAdminClient();
-  const { data: member, error } = await admin
-    .from('merchant_member')
-    .select('merchant_account_id, role')
-    .eq('user_id', userId)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return (member as MerchantMember | null) ?? null;
-}
-
-export async function getMerchantAccountById(accountId: string): Promise<MerchantAccount | null> {
-  const admin = createSupabaseAdminClient();
-  const { data: account, error } = await admin
-    .from('merchant_account')
-    .select('*')
-    .eq('id', accountId)
-    .is('deleted_at', null)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return account;
-}
-
+// Les deux lectures service-role par identifiant vivent dans lib/merchant/member-account.ts :
+// exportées d'ici, elles seraient des Server Actions appelables par HTTP avec un identifiant
+// choisi par l'appelant. Ne pas les réexporter de ce fichier.
 async function getMerchantAccountForUser(userId: string): Promise<MerchantAccount | null> {
   const member = await getMerchantMemberForUser(userId);
 

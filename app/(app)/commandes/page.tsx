@@ -7,7 +7,6 @@ import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getActiveDrivers } from '@/lib/actions/drivers';
-import { getMerchantMemberForUser } from '@/lib/actions/merchant';
 import {
   type OrdersViewCounts,
   getOrderViewCountsForPage,
@@ -17,6 +16,7 @@ import {
 import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderSavedViews } from '@/lib/domain/order-saved-views';
+import { getMerchantMemberForUser } from '@/lib/merchant/member-account';
 import { settledValueOrNull } from '@/lib/orders/deferred-view-counts';
 import { normalizeOrderSearch } from '@/lib/orders/search';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
