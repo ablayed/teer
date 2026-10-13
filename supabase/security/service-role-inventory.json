@@ -21,6 +21,13 @@
     "boundaryDetail": "if (!cronSecret || authorization !== `Bearer ${cronSecret}`) return 401 — before any admin-client construction. SHOPIFY-WEBHOOKS-PER-SHOP-1B / G13 : after the same cron-secret gate, the admin client also runs reconcileShopifyWebhookSubscriptions (lib/shopify/webhook-subscription-reconcile.ts, mode `repair`) for each active shop BEFORE reconcileShopOrders, in its own try/catch, and only when the remaining time budget allows (lib/shopify/cron-budget.ts). That reconciliation writes store_connection_webhook_token (compare-and-set), shopify_webhook_subscription_state (monotonic conditional writes) and the reconcile lease of 0161 (service_role-only RPCs); the shop and the app come from the `shop` rows selected by the cron itself, never from the request."
   },
   {
+    "file": "app/api/cron/shopify-webhook-retry/route.ts",
+    "boundaryType": "cron-secret",
+    "boundaryFile": "app/api/cron/shopify-webhook-retry/route.ts",
+    "boundaryLine": 26,
+    "boundaryDetail": "if (!cronSecret || authorization !== `Bearer ${cronSecret}`) return 401 — before any admin-client construction. After the gate, the admin client runs replayPendingShopifyWebhooks (lib/shopify/webhook-replay.ts): it reads pending webhook_event rows, claims each one by id through claim_shopify_webhook_events (service_role-only, row lock + lease), and replays it through the same core as the entry points (runResolvedWebhookEvent). Nothing comes from the request: the event, its signed payload and the shop recorded at reception (after HMAC verification) come from webhook_event; GDPR topics re-derive the shop from the signed body domain (resolveGdprShopDomain, D20a), exactly as the legacy entry point does. Topics, attempt cap, age window and clock margin: lib/shopify/webhook-replay-policy.ts. The response carries counts only. Proven by tests/rls/shopify-webhook-replay.integration.test.ts and tests/unit/shopify/webhook-replay-policy.test.ts."
+  },
+  {
     "file": "app/api/shopify/callback/route.ts",
     "boundaryType": "oauth-state-and-hmac",
     "boundaryFile": "app/api/shopify/callback/route.ts",

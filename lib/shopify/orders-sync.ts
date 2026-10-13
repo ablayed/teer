@@ -6,6 +6,12 @@ import {
 } from '@/lib/ingestion/order-normalization';
 import { isShopifyCustomerActivityRetained } from '@/lib/shopify/pcd-retention';
 import {
+  type ErrorOrigin,
+  UNIQUE_VIOLATION,
+  describeErrorOrigin,
+  errorWithStatus,
+} from '@/lib/shopify/webhook-error-origin';
+import {
   type ResolvedOrderLine,
   parseItemsummary,
   resolveOrderLines,
@@ -197,7 +203,7 @@ type ShopifyOrderLinesRpc = {
   (
     fn: 'create_shopify_order_with_lines',
     args: { p_order: Json; p_lines: Json },
-  ): Promise<{ data: string | null; error: { message: string } | null }>;
+  ): Promise<{ data: string | null; error: { message: string } | null; status?: number }>;
   (
     fn: 'repair_shopify_order_lines',
     args: { p_order_id: string; p_lines: Json },
@@ -503,7 +509,7 @@ async function resolveShopifyCustomer(
   | { ok: true; customerId: string; tombstoned: false }
   | { ok: true; customerId: string; tombstoned: true }
   | { ok: true; customerId: null; tombstoned: true }
-  | { ok: false; error: string }
+  | { ok: false; error: string; origin?: ErrorOrigin }
 > {
   const phoneE164 = incoming.phone_e164 ?? null;
   const gid = incoming.shopify_customer_id ?? null;
@@ -537,7 +543,7 @@ async function resolveShopifyCustomer(
       .eq('phone_e164', phoneE164)
       .maybeSingle();
     if (error) {
-      return { ok: false, error: error.message };
+      return { ok: false, error: error.message, origin: describeErrorOrigin(error) };
     }
     existing = data;
   }
@@ -555,7 +561,7 @@ async function resolveShopifyCustomer(
       .contains('shopify_customer_gids', JSON.stringify([gid]))
       .limit(1);
     if (error) {
-      return { ok: false, error: error.message };
+      return { ok: false, error: error.message, origin: describeErrorOrigin(error) };
     }
     existing = data?.[0] ?? null;
 
@@ -568,7 +574,7 @@ async function resolveShopifyCustomer(
         .eq('shopify_customer_id', gid)
         .maybeSingle();
       if (legacyError) {
-        return { ok: false, error: legacyError.message };
+        return { ok: false, error: legacyError.message, origin: describeErrorOrigin(legacyError) };
       }
       existing = legacy;
     }
@@ -584,7 +590,7 @@ async function resolveShopifyCustomer(
     const patch = buildCustomerMergePatch(existing, incoming);
     const { error } = await admin.from('customer').update(patch).eq('id', existing.id);
     if (error) {
-      return { ok: false, error: error.message };
+      return { ok: false, error: error.message, origin: describeErrorOrigin(error) };
     }
     return { ok: true, customerId: existing.id, tombstoned: false };
   }
@@ -594,13 +600,17 @@ async function resolveShopifyCustomer(
     return { ok: true, customerId: null, tombstoned: true };
   }
 
-  const { data: inserted, error } = await admin
-    .from('customer')
-    .insert(incoming)
-    .select('id')
-    .single();
+  const {
+    data: inserted,
+    error,
+    status,
+  } = await admin.from('customer').insert(incoming).select('id').single();
   if (error || !inserted) {
-    return { ok: false, error: error?.message ?? 'Insert returned no row' };
+    return {
+      ok: false,
+      error: error?.message ?? 'Insert returned no row',
+      origin: describeErrorOrigin(errorWithStatus(error, status)),
+    };
   }
   return { ok: true, customerId: inserted.id, tombstoned: false };
 }
@@ -614,11 +624,48 @@ async function resolveShopifyCustomer(
 export type PersistShopifyOrderResult = {
   ok: boolean;
   error?: string;
+  // Empreinte technique de l'erreur d'origine (code, contrainte) — jamais son texte.
+  origin?: ErrorOrigin;
   skipped?: 'stale';
   lines?: 'repaired' | 'missing';
 };
 
-export async function persistShopifyOrder({
+function failure(error: unknown, fallback = 'Unknown sync error'): PersistShopifyOrderResult {
+  const message =
+    typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : fallback;
+  return { ok: false, error: message, origin: describeErrorOrigin(error) };
+}
+
+// `orders/create` et `orders/updated` d'une commande neuve arrivent souvent ensemble. Les deux
+// passes lisent « absente », les deux insèrent, et la seconde bute sur un index unique : celui de
+// la commande (`orders_shop_shopify_order_unique_idx`), ou celui de son client, créé le premier.
+// Ce n'est pas un échec : l'autre livraison a écrit. On relit ; ce qu'elle a écrit existe alors,
+// et le chemin « déjà présente » décide — charge plus ancienne ou identique : écartée sans
+// écriture ; plus récente : appliquée. Mesuré en local : sans cette reprise, la livraison perdante
+// échouait à chaque paire, et une `orders/updated` perdante n'était jamais appliquée.
+//
+// DEUX relectures au plus, parce que la même course peut buter deux fois de suite : d'abord sur
+// le client, puis — le client retrouvé, la commande pas encore écrite par l'autre — sur la
+// commande. Il n'existe pas de troisième index à franchir ; au-delà, c'est un vrai échec.
+const MAX_COLLISION_REREADS = 2;
+
+export async function persistShopifyOrder(
+  input: PersistShopifyOrderInput,
+): Promise<PersistShopifyOrderResult> {
+  let result = await persistShopifyOrderOnce(input);
+  for (
+    let reread = 0;
+    reread < MAX_COLLISION_REREADS && !result.ok && result.origin?.code === UNIQUE_VIOLATION;
+    reread += 1
+  ) {
+    result = await persistShopifyOrderOnce(input);
+  }
+  return result;
+}
+
+async function persistShopifyOrderOnce({
   merchantAccountId,
   orderNode,
   shopId,
@@ -637,7 +684,7 @@ export async function persistShopifyOrder({
         customerData,
       );
       if (!resolved.ok) {
-        return { ok: false, error: resolved.error };
+        return { ok: false, error: resolved.error, origin: resolved.origin };
       }
       customerId = resolved.customerId;
       customerTombstoned = resolved.tombstoned;
@@ -673,7 +720,7 @@ export async function persistShopifyOrder({
       .maybeSingle();
 
     if (orderSelectError) {
-      return { ok: false, error: orderSelectError.message };
+      return failure(orderSelectError);
     }
 
     const expectedLines = parseItemsummary(orderData.items_summary as Json);
@@ -726,7 +773,7 @@ export async function persistShopifyOrder({
           return { ok: true, skipped: 'stale', lines: 'missing' };
         }
         return repairError
-          ? { ok: false, error: repairError.message }
+          ? failure(repairError)
           : { ok: true, skipped: 'stale', lines: 'repaired' };
       }
 
@@ -746,7 +793,7 @@ export async function persistShopifyOrder({
       // commande : si elle a été confirmée depuis la lecture ci-dessus et ne porte toujours aucune
       // ligne, la fonction n'écrit rien et le dit.
       let resyncRefused = false;
-      let orderUpdateError: { message: string } | null = null;
+      let orderUpdateError: { code?: string; message: string } | null = null;
       if (rebuildsLines) {
         const resync = await shopifyOrderLinesRpc(supabaseServiceClient)(
           'resync_shopify_order_cart',
@@ -772,7 +819,7 @@ export async function persistShopifyOrder({
       }
 
       if (orderUpdateError) {
-        return { ok: false, error: orderUpdateError.message };
+        return failure(orderUpdateError);
       }
 
       // Le chemin de resynchronisation a reconstruit les lignes ; l'autre n'y touche pas.
@@ -785,9 +832,11 @@ export async function persistShopifyOrder({
       // entier — aucune garde de date ne peut l'écarter, puisqu'elle n'existe pas.
       // Un produit non rapproché n'est PAS un échec : sa ligne est écrite `unresolved`, et le
       // stock, effet de bord, l'ignorera (règle 8).
-      const { data: createdOrderId, error: orderCreateError } = await shopifyOrderLinesRpc(
-        supabaseServiceClient,
-      )('create_shopify_order_with_lines', {
+      const {
+        data: createdOrderId,
+        error: orderCreateError,
+        status: orderCreateStatus,
+      } = await shopifyOrderLinesRpc(supabaseServiceClient)('create_shopify_order_with_lines', {
         p_order: orderData as unknown as Json,
         p_lines: toRpcLines(
           await resolveOrderLines(supabaseServiceClient, {
@@ -799,12 +848,15 @@ export async function persistShopifyOrder({
       });
 
       if (orderCreateError || !createdOrderId) {
-        return { ok: false, error: orderCreateError?.message ?? 'Order creation returned no id' };
+        return failure(
+          errorWithStatus(orderCreateError, orderCreateStatus),
+          'Order creation returned no id',
+        );
       }
     }
 
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Unknown sync error' };
+    return failure(error);
   }
 }

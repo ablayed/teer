@@ -112,8 +112,9 @@ export type PcdAccessAuditEntry = {
 };
 
 export class PcdAccessAuditError extends Error {
-  constructor() {
-    super('pcd_access_audit_write_failed');
+  // `cause` : l'erreur rendue par l'écriture, quand il y en a une. Le message reste fixe.
+  constructor(options?: { cause?: unknown }) {
+    super('pcd_access_audit_write_failed', options);
     this.name = 'PcdAccessAuditError';
   }
 }
@@ -219,7 +220,7 @@ export async function writePcdAccessAudit(
   entry: PcdAccessAuditEntry,
 ): Promise<string> {
   const metadata = sanitizePcdAccessMetadata(entry.metadata);
-  const { data, error } = await client.rpc('log_pcd_access_event', {
+  const { data, error, status } = await client.rpc('log_pcd_access_event', {
     p_action: entry.action,
     p_actor_kind: entry.actorKind,
     p_data_category: entry.dataCategory,
@@ -236,7 +237,7 @@ export async function writePcdAccessAudit(
   });
 
   if (error || typeof data !== 'string') {
-    throw new PcdAccessAuditError();
+    throw new PcdAccessAuditError({ cause: error ? { ...error, status } : undefined });
   }
 
   return data;

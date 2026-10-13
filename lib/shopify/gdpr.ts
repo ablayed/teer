@@ -52,7 +52,8 @@ function assertSupabase<T extends { error: { message: string } | null }>(
   operation: string,
 ): asserts result is T & { error: null } {
   if (result.error) {
-    throw new Error(`${operation}_failed`);
+    // `cause` : l'erreur rendue par la base, pour que son empreinte suive le code contrôlé.
+    throw new Error(`${operation}_failed`, { cause: result.error });
   }
 }
 
@@ -164,14 +165,14 @@ async function redactCopies(
     webhookEventId: string;
   },
 ): Promise<GdprProof> {
-  const { data, error } = await admin.rpc('redact_shopify_customer_copies', {
+  const { data, error, status } = await admin.rpc('redact_shopify_customer_copies', {
     p_merchant_account_id: merchantAccountId,
     p_shop_id: shopId,
     p_shopify_customer_id: shopifyCustomerId as string,
     p_topic: topic,
     p_webhook_event_id: webhookEventId,
   });
-  assertSupabase({ error }, 'gdpr_redaction');
+  assertSupabase({ error: error ? { ...error, status } : null }, 'gdpr_redaction');
   return parseProof(data);
 }
 
