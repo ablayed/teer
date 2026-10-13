@@ -488,7 +488,13 @@ describe('W1 — finalisation, rejeu, puis réconciliations concurrentes', () =>
     async () => {
       for (let round = 0; round < 3; round += 1) {
         const { shop, fake } = await setup(`w1-concurrent-${round}`);
-        await reconcile(shop, fake, 'installation');
+        // La préparation doit avoir abouti AVANT la phase concurrente. Arrêtée en route (écriture
+        // d'état refusée par la passerelle : `state_write_failed`), elle laisse des topics jamais
+        // créés ; les trois passes les créeraient alors à juste titre, et le compte de créations
+        // ci-dessous échouerait en accusant à tort une double création.
+        const prepared = await reconcile(shop, fake, 'installation');
+        expect(prepared, 'réconciliation de préparation').toMatchObject({ ok: true, created: 9 });
+        expectOneSubscriptionPerTopic(fake);
         fake.subscriptions = fake.subscriptions.filter((s) => s.topic !== 'ORDERS_CREATE');
         fake.calls = [];
         // Élargit la fenêtre : sans bail, les trois passes liraient le même inventaire.
