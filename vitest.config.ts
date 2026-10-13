@@ -22,6 +22,12 @@ export default defineConfig({
   // components/dashboard/RecentActivity.tsx, qui n'a aucune raison d'importer React.
   esbuild: { jsx: 'automatic' },
   resolve: {
-    alias: { '@': resolve(__dirname, '.') },
+    alias: {
+      '@': resolve(__dirname, '.'),
+      // `server-only` est un marqueur de build : Next le résout lui-même et fait échouer le
+      // build d'un composant client qui l'importe. Hors de Next, le nom ne désigne rien ; les
+      // tests chargent le module vide que Next substitue côté serveur.
+      'server-only': resolve(__dirname, 'node_modules/next/dist/compiled/server-only/empty.js'),
+    },
   },
 });

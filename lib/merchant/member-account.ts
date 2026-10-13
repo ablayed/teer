@@ -8,7 +8,12 @@
 // Règle pour tout appelant : l'identifiant vient de la session lue dans la même requête
 // (`supabase.auth.getUser()`), ou d'une valeur que la base vient de valider pour cette session.
 // Jamais d'un paramètre, d'une URL, d'un en-tête ou d'un corps de requête.
-// Garde : tests/unit/security/use-server-service-role-exports.test.ts.
+// Gardes : tests/unit/security/use-server-service-role-exports.test.ts (analyse du dépôt) et
+// tests/e2e/server-actions-anonymous-surface.spec.ts (build de production, vu de l'extérieur).
+//
+// `server-only` : le build échoue si un composant client importe ce module, au lieu d'en
+// emporter le code. Next résout ce nom lui-même ; aucune dépendance n'est ajoutée.
+import 'server-only';
 import { env } from '@/lib/env';
 import type { Tables } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
