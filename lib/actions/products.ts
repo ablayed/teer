@@ -3,7 +3,7 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { resolveActiveStoreProduct } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
-import { resolveMemberShopAccess } from '@/lib/merchant/member-shop-access';
+import { canSeeCostsInShop, resolveMemberShopAccess } from '@/lib/merchant/member-shop-access';
 import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-availability';
 import {
   type StockCatalogSummary,
@@ -183,7 +183,7 @@ export async function getProductsPageData(params: {
   const { merchantAccountId, role } = currentMember.member;
   const access = await requireMemberShopAccess(params.shopId, merchantAccountId);
   if (!access.ok) return access;
-  const canSeeCost = role === 'owner' || role === 'manager';
+  const canSeeCost = canSeeCostsInShop(role, access.shopRole);
   const offset = params.offset ?? 0;
   const limit = PRODUCTS_PER_PAGE + 1;
 
@@ -296,7 +296,7 @@ export async function getStockCatalogSummaryData(
   const { merchantAccountId, role } = currentMember.member;
   const access = await requireMemberShopAccess(shopId, merchantAccountId);
   if (!access.ok) return access;
-  const canSeeCost = role === 'owner' || role === 'manager';
+  const canSeeCost = canSeeCostsInShop(role, access.shopRole);
 
   const admin = createSupabaseAdminClient();
   const result = await fetchStockCatalogRows(admin, merchantAccountId, shopId);
@@ -330,7 +330,7 @@ export async function getProductCatalogPageData(shopId: string): Promise<Product
   const { merchantAccountId, role } = currentMember.member;
   const access = await requireMemberShopAccess(shopId, merchantAccountId);
   if (!access.ok) return access;
-  const canReadCosts = role === 'owner' || role === 'manager';
+  const canReadCosts = canSeeCostsInShop(role, access.shopRole);
 
   if (canReadCosts) {
     const admin = createSupabaseAdminClient();
@@ -388,7 +388,10 @@ export const createProductAction = requireRole('owner', 'manager', 'agent')
     const admin = createSupabaseAdminClient();
     const shopId = await getRequestStoreId();
     if (!shopId) return { ok: false as const, errorCode: 'store_required' as const };
-    const unitCost = ctx.member.role === 'agent' ? 0 : parsedInput.unitCost;
+    const access = await requireMemberShopAccess(shopId, ctx.member.merchantAccountId);
+    if (!access.ok) return { ok: false as const, errorCode: access.errorCode };
+    // Un coût qu'on ne peut pas lire ne s'écrit pas : sans le droit, le coût reste « inconnu » (0).
+    const unitCost = canSeeCostsInShop(ctx.member.role, access.shopRole) ? parsedInput.unitCost : 0;
     const { data, error } = await admin
       .from('product')
       .insert({
@@ -424,6 +427,12 @@ export const updateProductUnitCostAction = requireRole('owner', 'manager')
     const admin = createSupabaseAdminClient();
     const shopId = await getRequestStoreId();
     if (!shopId) return { ok: false as const, errorCode: 'store_required' as const };
+    const access = await requireMemberShopAccess(shopId, ctx.member.merchantAccountId);
+    if (!access.ok) return { ok: false as const, errorCode: access.errorCode };
+    // On ne modifie pas un coût qu'on ne peut pas lire : même règle que la lecture.
+    if (!canSeeCostsInShop(ctx.member.role, access.shopRole)) {
+      return { ok: false as const, errorCode: 'forbidden' as const };
+    }
     const { error } = await admin
       .from('product')
       .update({
@@ -456,7 +465,6 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
   )
   .action(async ({ ctx, parsedInput }) => {
     const { merchantAccountId, role } = ctx.member;
-    const canSeeCost = role === 'owner' || role === 'manager';
     const limit = PRODUCTS_PER_PAGE + 1;
 
     const admin = createSupabaseAdminClient();
@@ -465,6 +473,10 @@ export const loadMoreProductsAction = requireRole('owner', 'manager', 'agent')
       return { ok: false as const, errorCode: 'store_required' as const };
     }
     const shopId = parsedInput.shopId;
+    // Même règle que les lectures de page : la pagination ne rend jamais plus de coûts qu'elles.
+    const access = await requireMemberShopAccess(shopId, merchantAccountId);
+    if (!access.ok) return { ok: false as const, errorCode: access.errorCode };
+    const canSeeCost = canSeeCostsInShop(role, access.shopRole);
 
     let lowStockIds: string[] | null = null;
     if (parsedInput.lowStockOnly) {

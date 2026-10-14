@@ -26,7 +26,11 @@ const dbUrl =
 const password = `acces-${randomUUID()}`;
 type Client = SupabaseClient<Database>;
 
-const harness = vi.hoisted(() => ({ session: null as unknown }));
+const harness = vi.hoisted(() => ({
+  member: { merchantAccountId: '', role: 'owner' },
+  session: null as unknown,
+  storeId: '' as string,
+}));
 vi.mock('@/lib/env', () => ({
   env: {
     NEXT_PUBLIC_SUPABASE_URL: process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -41,11 +45,15 @@ vi.mock('@/lib/actions/safe-action', () => {
   const chain: Record<string, unknown> = {};
   chain.metadata = () => chain;
   chain.inputSchema = () => chain;
-  chain.action = () => async () => undefined;
+  // Le vrai gestionnaire s'exécute, avec le contexte d'un membre du compte (rôle donné par le test).
+  chain.action =
+    (handler: (args: { ctx: unknown; parsedInput: unknown }) => unknown) =>
+    async (input: unknown) =>
+      handler({ ctx: { member: harness.member }, parsedInput: input });
   return { authActionClient: chain, requireRole: () => chain };
 });
 vi.mock('@/lib/actions/stock', () => ({ resolveActiveStoreProduct: vi.fn() }));
-vi.mock('@/lib/workspace/store', () => ({ getRequestStoreId: vi.fn() }));
+vi.mock('@/lib/workspace/store', () => ({ getRequestStoreId: async () => harness.storeId }));
 
 const suite = serviceKey ? describe : describe.skip;
 const users: string[] = [];
@@ -242,32 +250,102 @@ suite('lectures du catalogue — la boutique demandée est confrontée aux droit
     expect(summary.ok).toBe(true);
   });
 
-  // ÉTAT ACTUEL, DÉCISION EN ATTENTE. Le rôle qui décide de l'accès aux coûts est celui du COMPTE
-  // (merchant_member), pas celui de la boutique (shop_member). Ces deux tests décrivent ce
-  // comportement ; ils ne l'approuvent pas. Si la décision est de suivre le rôle de boutique, ces
-  // deux attentes s'inversent. `unit_cost` n'est accordé à aucun rôle de session : la décision se
-  // prend uniquement dans le code de ces lectures.
+  // Accès aux coûts (décision du porteur, option B) : le rôle du COMPTE et le rôle dans la BOUTIQUE
+  // doivent tous deux être owner ou manager. Même règle en lecture, en pagination et en écriture :
+  // on ne modifie pas un coût qu'on ne peut pas lire. `unit_cost` n'est accordé à aucun rôle de
+  // session : la décision se prend uniquement dans le code de ces actions.
   it.each([
-    ['manager', 'agent', true],
+    ['owner', 'owner', true],
+    ['manager', 'manager', true],
+    ['owner', 'manager', true],
+    ['manager', 'agent', false],
+    ['owner', 'agent', false],
     ['agent', 'manager', false],
+    ['agent', 'agent', false],
   ] as const)(
-    'rôle du compte %s, rôle dans la boutique %s : coûts rendus = %s (le rôle du compte décide)',
-    async (accountRole, shopRole, costsVisible) => {
+    'rôle du compte %s, rôle dans la boutique %s : coûts lus, paginés et écrits = %s',
+    async (accountRole, shopRole, allowed) => {
       const member = await limitedMember(account, accountRole, shopRole);
       harness.session = await login(member.email);
+      harness.member = { merchantAccountId: account.owner.merchantId, role: accountRole };
+      harness.storeId = account.s1;
+      const visible = (cost: unknown) => (cost !== null) === allowed;
 
+      // Lecture de page.
       const page = await actions.getProductsPageData({ shopId: account.s1 });
       expect(
-        page.ok && page.items.every((item) => (item.unit_cost !== null) === costsVisible),
+        page.ok && page.items.length > 0 && page.items.every((i) => visible(i.unit_cost)),
       ).toBe(true);
       const catalog = await actions.getProductCatalogPageData(account.s1);
       expect(
-        catalog.ok && catalog.products.every((p) => (p.unit_cost !== null) === costsVisible),
+        catalog.ok &&
+          catalog.products.length > 0 &&
+          catalog.products.every((p) => visible(p.unit_cost)),
       ).toBe(true);
       const summary = await actions.getStockCatalogSummaryData(account.s1);
-      expect(summary.ok && (summary.summary.totalValueMinor !== null) === costsVisible).toBe(true);
+      expect(summary.ok && (summary.summary.totalValueMinor !== null) === allowed).toBe(true);
+
+      // Pagination : jamais plus de coûts que la lecture de page.
+      const more = (await actions.loadMoreProductsAction({
+        offset: 0,
+        shopId: account.s1,
+      })) as { ok: boolean; items?: { unit_cost: number | null; stockUnitCost: number | null }[] };
+      expect(more.ok).toBe(true);
+      expect(more.items?.length).toBeGreaterThan(0);
+      expect(more.items?.every((i) => visible(i.unit_cost) && visible(i.stockUnitCost))).toBe(true);
+
+      // Écriture d'un coût existant : refusée sans le droit de le lire, base inchangée.
+      const target = await admin
+        .from('product')
+        .select('id, unit_cost')
+        .eq('shop_id', account.s1)
+        .order('title')
+        .limit(1)
+        .single();
+      if (!target.data) throw target.error ?? new Error('produit absent');
+      const update = await (
+        actions.updateProductUnitCostAction as unknown as (i: unknown) => Promise<{
+          errorCode?: string;
+          ok: boolean;
+        }>
+      )({ productId: target.data.id, unitCost: 4321 });
+      const after = await admin
+        .from('product')
+        .select('unit_cost')
+        .eq('id', target.data.id)
+        .single();
+      if (allowed) {
+        expect(update).toEqual({ ok: true });
+        expect(after.data?.unit_cost).toBe(4321);
+        await admin
+          .from('product')
+          .update({ unit_cost: target.data.unit_cost })
+          .eq('id', target.data.id);
+      } else {
+        expect(update).toEqual({ errorCode: 'forbidden', ok: false });
+        expect(after.data?.unit_cost).toBe(target.data.unit_cost);
+      }
+
+      // Création : sans le droit, le coût reste « inconnu » (0), quoi qu'on envoie.
+      const created = await (
+        actions.createProductAction as unknown as (i: unknown) => Promise<{
+          ok: boolean;
+          product?: { id: string };
+        }>
+      )({ title: `Produit coût ${randomUUID()}`, unitCost: 999 });
+      expect(created.ok).toBe(true);
+      const row = await admin
+        .from('product')
+        .select('unit_cost')
+        .eq('id', created.product?.id ?? '')
+        .single();
+      expect(row.data?.unit_cost).toBe(allowed ? 999 : 0);
+      await admin
+        .from('product')
+        .delete()
+        .eq('id', created.product?.id ?? '');
     },
-    60_000,
+    90_000,
   );
 
   it('sans session : aucune donnée', async () => {
