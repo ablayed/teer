@@ -127,6 +127,7 @@ async function seedAccount(label: string) {
 async function limitedMember(
   account: Awaited<ReturnType<typeof seedAccount>>,
   role: 'agent' | 'manager' | 'owner',
+  shopRole: 'agent' | 'manager' | 'owner' = role,
 ) {
   const member = await createUser(`${role}-limite`);
   await pg.query('delete from public.merchant_account where owner_user_id = $1', [member.userId]);
@@ -137,7 +138,7 @@ async function limitedMember(
   await pg.query('delete from public.shop_member where user_id = $1', [member.userId]);
   await pg.query(
     'insert into public.shop_member (merchant_account_id, shop_id, user_id, role) values ($1, $2, $3, $4)',
-    [account.owner.merchantId, account.s1, member.userId, role],
+    [account.owner.merchantId, account.s1, member.userId, shopRole],
   );
   return member;
 }
@@ -240,6 +241,34 @@ suite('lectures du catalogue — la boutique demandée est confrontée aux droit
     const summary = await actions.getStockCatalogSummaryData(account.s2);
     expect(summary.ok).toBe(true);
   });
+
+  // ÉTAT ACTUEL, DÉCISION EN ATTENTE. Le rôle qui décide de l'accès aux coûts est celui du COMPTE
+  // (merchant_member), pas celui de la boutique (shop_member). Ces deux tests décrivent ce
+  // comportement ; ils ne l'approuvent pas. Si la décision est de suivre le rôle de boutique, ces
+  // deux attentes s'inversent. `unit_cost` n'est accordé à aucun rôle de session : la décision se
+  // prend uniquement dans le code de ces lectures.
+  it.each([
+    ['manager', 'agent', true],
+    ['agent', 'manager', false],
+  ] as const)(
+    'rôle du compte %s, rôle dans la boutique %s : coûts rendus = %s (le rôle du compte décide)',
+    async (accountRole, shopRole, costsVisible) => {
+      const member = await limitedMember(account, accountRole, shopRole);
+      harness.session = await login(member.email);
+
+      const page = await actions.getProductsPageData({ shopId: account.s1 });
+      expect(
+        page.ok && page.items.every((item) => (item.unit_cost !== null) === costsVisible),
+      ).toBe(true);
+      const catalog = await actions.getProductCatalogPageData(account.s1);
+      expect(
+        catalog.ok && catalog.products.every((p) => (p.unit_cost !== null) === costsVisible),
+      ).toBe(true);
+      const summary = await actions.getStockCatalogSummaryData(account.s1);
+      expect(summary.ok && (summary.summary.totalValueMinor !== null) === costsVisible).toBe(true);
+    },
+    60_000,
+  );
 
   it('sans session : aucune donnée', async () => {
     harness.session = createClient<Database>(url, anonKey, {
