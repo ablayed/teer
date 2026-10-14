@@ -55,7 +55,8 @@ function assertResult<T extends { error: { message: string } | null }>(
   operation: string,
 ): asserts result is T & { error: null } {
   if (result.error) {
-    throw new Error(`${operation}_failed`);
+    // `cause` : l'erreur rendue par la base, pour que son empreinte suive le code contrôlé.
+    throw new Error(`${operation}_failed`, { cause: result.error });
   }
 }
 

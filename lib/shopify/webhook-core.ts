@@ -55,6 +55,12 @@ import {
   isIsoTimestamp,
   parseShopifyTriggeredAt,
 } from '@/lib/shopify/uninstall-order';
+import {
+  WebhookProcessingError,
+  durableErrorCode,
+  errorWithStatus,
+  knownErrorOrigin,
+} from '@/lib/shopify/webhook-error-origin';
 import type { Database, Json, Tables } from '@/lib/supabase/database.types';
 import { nullableRpcArg } from '@/lib/supabase/rpc-args';
 import * as Sentry from '@sentry/nextjs';
@@ -643,13 +649,17 @@ async function processOrderCore({
       }),
     );
   } else {
+    // L'origine de l'échec (code SQL, contrainte) part avec l'erreur : sans elle, dix-neuf
+    // livraisons sont restées en `shopify_order_persist_failed` sans qu'on sache pourquoi.
+    const failure = new WebhookProcessingError('shopify_order_persist_failed', result.origin);
     logWebhookError('[webhook-core] order persist failed', {
       errorCode: sanitizeWebhookError(result.error),
+      origin: result.origin ?? null,
       orderId: orderNode.id,
       topic,
       shopDomain: shop.shop_domain,
     });
-    throw new Error('shopify_order_persist_failed');
+    throw failure;
   }
 }
 
@@ -1198,7 +1208,7 @@ async function processGdprCore({
       throw new Error('gdpr_topic_not_supported');
   }
 
-  const { error } = await supabase.from('audit_log').insert({
+  const { error, status } = await supabase.from('audit_log').insert({
     merchant_account_id: shop.merchant_account_id,
     actor_user_id: null,
     action: `gdpr.${topic}`,
@@ -1207,7 +1217,7 @@ async function processGdprCore({
     payload: toGdprAuditPayload({ topic, status: 'done', artifactId, artifactExpiresAt, proof }),
   });
 
-  if (error) throw new Error('gdpr_audit_failed');
+  if (error) throw new WebhookProcessingError('gdpr_audit_failed', errorWithStatus(error, status));
 
   return { proof, artifactId, artifactExpiresAt };
 }
@@ -1275,8 +1285,9 @@ export async function dispatchWebhookCore({
         metadata: { source: 'webhook' },
         idempotencyKey: `webhook:${eventId}:pcd-read`,
       });
-    } catch {
-      throw new Error('shopify_pcd_audit_failed');
+    } catch (error) {
+      // L'erreur d'origine n'est plus jetée : son empreinte suit le code contrôlé.
+      throw new WebhookProcessingError('shopify_pcd_audit_failed', error);
     }
   }
 
@@ -1406,7 +1417,21 @@ export async function runResolvedWebhookEvent({
   } catch (error) {
     const errorCode = sanitizeWebhookError(error);
     const outcome = isTerminalWebhookError(error) ? 'terminal' : 'retryable';
-    logWebhookError('[webhook-core] processing failed', { eventId, topic, outcome, errorCode });
-    await finishWebhookStatus({ supabase, eventId, outcome, errorCode });
+    const origin = knownErrorOrigin(error);
+    logWebhookError('[webhook-core] processing failed', {
+      eventId,
+      topic,
+      outcome,
+      errorCode,
+      ...(origin ? { origin } : {}),
+    });
+    // Le code durable porte l'origine quand elle est connue (`…__23505`) : elle se lit ensuite
+    // par une requête agrégée, sans dépendre de la rétention des journaux.
+    await finishWebhookStatus({
+      supabase,
+      eventId,
+      outcome,
+      errorCode: durableErrorCode(errorCode, origin),
+    });
   }
 }
