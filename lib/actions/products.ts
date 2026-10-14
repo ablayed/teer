@@ -3,6 +3,7 @@
 import { requireRole } from '@/lib/actions/safe-action';
 import { resolveActiveStoreProduct } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
+import { resolveMemberShopAccess } from '@/lib/merchant/member-shop-access';
 import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-availability';
 import {
   type StockCatalogSummary,
@@ -130,6 +131,13 @@ async function getCurrentMember() {
   };
 }
 
+// La boutique demandée est confrontée aux droits du membre PAR SA SESSION : l'argument seul ne
+// suffit jamais, puisque ces lectures se font ensuite hors RLS (client service-role).
+async function requireMemberShopAccess(shopId: string, memberMerchantAccountId: string) {
+  const sessionClient = asTypedSupabaseClient(await createSupabaseServerClient());
+  return resolveMemberShopAccess(sessionClient, shopId, memberMerchantAccountId);
+}
+
 export type ProductsPageItem = {
   id: string;
   title: string;
@@ -173,6 +181,8 @@ export async function getProductsPageData(params: {
   if (!currentMember.ok) return currentMember;
 
   const { merchantAccountId, role } = currentMember.member;
+  const access = await requireMemberShopAccess(params.shopId, merchantAccountId);
+  if (!access.ok) return access;
   const canSeeCost = role === 'owner' || role === 'manager';
   const offset = params.offset ?? 0;
   const limit = PRODUCTS_PER_PAGE + 1;
@@ -284,6 +294,8 @@ export async function getStockCatalogSummaryData(
   const currentMember = await getCurrentMember();
   if (!currentMember.ok) return currentMember;
   const { merchantAccountId, role } = currentMember.member;
+  const access = await requireMemberShopAccess(shopId, merchantAccountId);
+  if (!access.ok) return access;
   const canSeeCost = role === 'owner' || role === 'manager';
 
   const admin = createSupabaseAdminClient();
@@ -316,6 +328,8 @@ export async function getProductCatalogPageData(shopId: string): Promise<Product
   }
 
   const { merchantAccountId, role } = currentMember.member;
+  const access = await requireMemberShopAccess(shopId, merchantAccountId);
+  if (!access.ok) return access;
   const canReadCosts = role === 'owner' || role === 'manager';
 
   if (canReadCosts) {
