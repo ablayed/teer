@@ -38,6 +38,18 @@ const harness = vi.hoisted(() => ({
   insertFaults: new Map<string, number>(),
   rpcCalls: [] as string[],
   rpcFaults: new Map<string, number>(),
+  // Retient UN appel d'une RPC nommée, pour une commande donnée, jusqu'à `release` : l'entrelacement
+  // d'une reprise ancienne et d'une livraison plus récente n'est alors pas laissé au hasard.
+  gate: null as null | {
+    entered: () => void;
+    orderId: string;
+    release: Promise<void>;
+    // Nom d'une RPC, ou 'orders.update' pour l'écriture directe d'une commande.
+    rpc: string;
+    // 'orders.update' : l'écriture portant cette date de charge (ms).
+    updatedAtMs: number;
+    used: boolean;
+  },
 }));
 
 const fault = () => ({
@@ -54,6 +66,17 @@ function withFaults<T>(client: T): T {
   const rpc = target.rpc.bind(target);
   target.rpc = (name: string, ...rest: unknown[]) => {
     harness.rpcCalls.push(name);
+    const gate = harness.gate;
+    if (
+      gate &&
+      !gate.used &&
+      gate.rpc === name &&
+      (rest[0] as { p_order_id?: string } | undefined)?.p_order_id === gate.orderId
+    ) {
+      gate.used = true;
+      gate.entered();
+      return gate.release.then(() => rpc(name, ...rest));
+    }
     const left = harness.rpcFaults.get(name) ?? 0;
     if (left > 0) {
       harness.rpcFaults.set(name, left - 1);
@@ -64,6 +87,28 @@ function withFaults<T>(client: T): T {
   const from = target.from.bind(target);
   target.from = (table: string) => {
     const builder = from(table);
+    if (table === 'orders' && harness.gate?.rpc === 'orders.update') {
+      const update = builder.update.bind(builder);
+      builder.update = (...args: unknown[]) => {
+        const chain = update(...args);
+        const gate = harness.gate;
+        const patch = args[0] as { shopify_updated_at?: string } | undefined;
+        if (
+          gate &&
+          !gate.used &&
+          patch?.shopify_updated_at &&
+          Date.parse(patch.shopify_updated_at) === gate.updatedAtMs
+        ) {
+          gate.used = true;
+          gate.entered();
+          const then = chain.then.bind(chain);
+          // biome-ignore lint/suspicious/noThenProperty: le générateur de requête est un thenable ; on retient son exécution.
+          chain.then = (resolve: unknown, reject: unknown) =>
+            gate.release.then(() => then(resolve, reject));
+        }
+        return chain;
+      };
+    }
     if ((harness.insertFaults.get(table) ?? 0) > 0) {
       const insert = builder.insert.bind(builder);
       builder.insert = (...args: unknown[]) => {
@@ -383,6 +428,7 @@ suite('reprise interne des webhooks Shopify', () => {
     harness.faultCode = '08006';
     harness.rpcFaults.clear();
     harness.insertFaults.clear();
+    harness.gate = null;
     harness.rpcCalls.length = 0;
   });
 
@@ -842,4 +888,95 @@ suite('reprise interne des webhooks Shopify', () => {
     );
     expect(after.order?.shopify_financial_status).toBe('paid');
   });
+
+  it.each(['resync', 'update'] as const)(
+    'reprise ancienne concurrente d’une livraison plus récente (%s) : la charge la plus récente n’est jamais écrasée',
+    async (path) => {
+      const f = await createFixture();
+      const shopifyOrderId = `${Date.now()}${path === 'resync' ? 4 : 5}`;
+      await deliver(f, 'orders/create', orderPayload(shopifyOrderId, '2026-10-07T10:00:05Z'));
+      const created = await orderState(f, shopifyOrderId);
+      expect(created).toMatchObject({ count: 1, lines: 1 });
+      const orderId = created.order?.id ?? '';
+      if (path === 'update') {
+        // Panier modifié dans Tëër : l'import n'en reconstruit pas les lignes, et écrit l'en-tête
+        // par une écriture directe — l'autre chemin d'écriture.
+        const modified = await admin
+          .from('orders')
+          .update({ cart_locally_modified_at: new Date().toISOString() })
+          .eq('id', orderId);
+        if (modified.error) throw modified.error;
+      }
+
+      // Une reprise EN ATTENTE : une mise à jour plus récente que la base (10:00:09), restée
+      // retryable. Elle est valide à la lecture : elle l'est moins quand elle écrit.
+      const oldWebhookId = `replay-orders-updated-${randomUUID()}`;
+      const oldEvent = await admin
+        .from('webhook_event')
+        .insert({
+          attempt_count: 1,
+          last_error_code: 'shopify_order_persist_failed',
+          merchant_account_id: f.merchantAccountId,
+          next_attempt_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+          payload: orderPayload(shopifyOrderId, '2026-10-07T10:00:09Z', {
+            financial_status: 'pending',
+            total_price: '11000',
+          }),
+          shop_domain: f.shopDomain,
+          shop_id: f.shopId,
+          shopify_webhook_id: oldWebhookId,
+          status: 'retryable',
+          topic: 'orders/updated',
+        })
+        .select('id')
+        .single();
+      if (oldEvent.error) throw oldEvent.error;
+
+      // La reprise lit la commande (10:00:05), décide « plus récent », puis est retenue AVANT d'écrire.
+      let reached: () => void = () => undefined;
+      const entered = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      let release: () => void = () => undefined;
+      harness.gate = {
+        entered: reached,
+        orderId,
+        release: new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+        rpc: path === 'resync' ? 'resync_shopify_order_cart' : 'orders.update',
+        updatedAtMs: Date.parse('2026-10-07T10:00:09Z'),
+        used: false,
+      };
+      const replaying = sweep();
+      await entered;
+
+      // Pendant ce temps, une livraison PLUS RÉCENTE (10:00:20) de la même commande est traitée.
+      const fresh = await deliver(
+        f,
+        'orders/updated',
+        orderPayload(shopifyOrderId, '2026-10-07T10:00:20Z', {
+          financial_status: 'paid',
+          total_price: '12000',
+        }),
+      );
+      expect(fresh.status).toBe(200);
+      expect((await eventOf(fresh.webhookId)).status).toBe('done');
+
+      release();
+      await replaying;
+
+      expect((await eventOf(oldWebhookId)).status).toBe('done');
+      const after = await orderState(f, shopifyOrderId);
+      expect(after.count).toBe(1);
+      expect(Date.parse(after.order?.shopify_updated_at ?? '')).toBe(
+        Date.parse('2026-10-07T10:00:20Z'),
+      );
+      expect(after.order?.shopify_financial_status).toBe('paid');
+      const amount = await admin.from('orders').select('total_amount').eq('id', orderId).single();
+      // Panier modifié dans Tëër : le montant local est conservé, seule la charge importe.
+      expect(Number(amount.data?.total_amount)).toBe(path === 'resync' ? 12000 : 10000);
+    },
+    60_000,
+  );
 });
