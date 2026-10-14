@@ -32,6 +32,8 @@ import {
   classifyReplayCandidate,
   isGdprReplayTopic,
   replayClaimInstant,
+  replayEligibilityFilter,
+  replayReviewFilter,
 } from '@/lib/shopify/webhook-replay-policy';
 import type { Database } from '@/lib/supabase/database.types';
 import * as Sentry from '@sentry/nextjs';
@@ -51,7 +53,7 @@ const CANDIDATE_COLUMNS =
   'id, topic, status, attempt_count, received_at, next_attempt_at, lease_until, shop_id, shop_domain, shopify_webhook_id, triggered_at';
 
 export type WebhookReplaySummary = {
-  // Événements en attente lus (au plus WEBHOOK_REPLAY_SCAN_LIMIT, les plus récents).
+  // Candidats ÉLIGIBLES lus, filtrés en base (au plus WEBHOOK_REPLAY_SCAN_LIMIT, les plus anciens).
   examined: number;
   scanTruncated: boolean;
   // Issue des événements repris par cette exécution.
@@ -155,6 +157,33 @@ async function replayClaimedEvent(
   await runResolvedWebhookEvent({ ...common, resolvedShopDomain: event.shop_domain, shop });
 }
 
+async function countEventsNeedingReview(
+  admin: AdminClient,
+  now: Date,
+  scanLimit: number,
+  summary: WebhookReplaySummary,
+): Promise<void> {
+  const { data, error } = await admin
+    .from('webhook_event')
+    .select('topic, status, attempt_count, received_at, next_attempt_at, lease_until')
+    .in('status', ['retryable', 'processing'])
+    .or(replayReviewFilter(now))
+    .order('received_at', { ascending: false })
+    .limit(scanLimit);
+  if (error) {
+    // Le décompte est un relevé, pas une condition de la reprise : il ne l'empêche pas.
+    logReplay('[webhook-replay] review count failed', { code: error.code });
+    return;
+  }
+  for (const row of (data ?? []) as ReplayCandidate[]) {
+    const decision = classifyReplayCandidate(row, now);
+    if (decision === 'too_old' || decision === 'exhausted' || decision === 'unsupported_topic') {
+      summary.skipped[decision] += 1;
+      summary.needsReview[row.topic] = (summary.needsReview[row.topic] ?? 0) + 1;
+    }
+  }
+}
+
 export async function replayPendingShopifyWebhooks(
   admin: AdminClient,
   {
@@ -166,36 +195,43 @@ export async function replayPendingShopifyWebhooks(
   const startedAt = Date.now();
   const summary = emptySummary();
 
+  // Le filtre d'éligibilité s'applique EN BASE, avant la limite : des événements non éligibles,
+  // même plus récents et plus nombreux que la limite, ne masquent jamais un éligible plus ancien.
+  // Les plus anciens d'abord : l'ordre de réception (la création d'une commande avant sa mise à
+  // jour) tient aussi quand la lecture est tronquée, et un événement qui échoue sort de la
+  // sélection au plafond de tentatives.
+  const eligible = replayEligibilityFilter(now);
   const { data, error } = await admin
     .from('webhook_event')
     .select(CANDIDATE_COLUMNS)
-    .in('status', ['retryable', 'processing'])
-    // Les plus récents d'abord : un arriéré ancien, jamais repris, ne masque pas un échec du jour.
-    .order('received_at', { ascending: false })
+    .in('status', [...eligible.statuses])
+    .in('topic', [...eligible.topics])
+    .gte('received_at', eligible.receivedFrom)
+    .lt('attempt_count', eligible.attemptsBelow)
+    .or(eligible.dueOrExpired)
+    .order('received_at', { ascending: true })
     .order('id', { ascending: true })
     .limit(scanLimit);
   if (error) {
     throw new Error('shopify_webhook_replay_scan_failed');
   }
 
-  // Repris dans l'ordre de réception : la création d'une commande avant sa mise à jour.
-  const rows = ((data ?? []) as CandidateRow[]).sort(
-    (left, right) =>
-      Date.parse(left.received_at) - Date.parse(right.received_at) ||
-      left.id.localeCompare(right.id),
-  );
+  const rows = (data ?? []) as CandidateRow[];
   summary.examined = rows.length;
   summary.scanTruncated = rows.length >= scanLimit;
   const claimInstant = replayClaimInstant(now).toISOString();
+
+  // Les événements en attente que la reprise ne prend pas (sujet non repris, hors fenêtre,
+  // tentatives épuisées) sont comptés à part : ils demandent un regard humain, jamais un rejeu.
+  await countEventsNeedingReview(admin, now, scanLimit, summary);
 
   for (const row of rows) {
     const decision = classifyReplayCandidate(row, now);
     if (decision === 'not_pending') continue;
     if (decision !== 'eligible') {
+      // Seconde garde : le filtre de la base ne laisse passer que des éligibles, sauf si l'état a
+      // changé entre la lecture et ici.
       summary.skipped[decision] += 1;
-      if (decision === 'too_old' || decision === 'exhausted' || decision === 'unsupported_topic') {
-        summary.needsReview[row.topic] = (summary.needsReview[row.topic] ?? 0) + 1;
-      }
       continue;
     }
 

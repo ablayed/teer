@@ -10,7 +10,9 @@ import {
   WEBHOOK_REPLAY_WINDOW_MS,
   classifyReplayCandidate,
   replayClaimInstant,
+  replayEligibilityFilter,
   replayNonOverlapHolds,
+  replayReviewFilter,
 } from '@/lib/shopify/webhook-replay-policy';
 import { WEBHOOK_LEASE_MS } from '@/lib/shopify/webhook-retry';
 import { describe, expect, it } from 'vitest';
@@ -94,6 +96,23 @@ describe('politique de reprise des webhooks', () => {
       classifyReplayCandidate(candidate({ received_at: ago(ms) }), NOW);
     expect(received(WEBHOOK_REPLAY_WINDOW_MS - 60_000)).toBe('eligible');
     expect(received(WEBHOOK_REPLAY_WINDOW_MS + 60_000)).toBe('too_old');
+  });
+
+  it('le filtre de la base dit la même chose que le classement en mémoire', () => {
+    const filter = replayEligibilityFilter(NOW);
+    const claim = replayClaimInstant(NOW).toISOString();
+    expect(filter.topics).toEqual(REPLAY_TOPICS);
+    expect(filter.statuses).toEqual(['retryable', 'processing']);
+    expect(filter.attemptsBelow).toBe(WEBHOOK_REPLAY_MAX_ATTEMPTS);
+    expect(Date.parse(filter.receivedFrom)).toBe(NOW.getTime() - WEBHOOK_REPLAY_WINDOW_MS);
+    expect(filter.dueOrExpired).toBe(
+      `and(status.eq.retryable,next_attempt_at.lte.${claim}),and(status.eq.processing,or(lease_until.is.null,lease_until.lt.${claim}))`,
+    );
+    // Le complément exact : ce que la reprise ne prend pas, par sujet, âge ou tentatives.
+    const review = replayReviewFilter(NOW);
+    expect(review).toContain(`topic.not.in.(${REPLAY_TOPICS.join(',')})`);
+    expect(review).toContain(`received_at.lt.${filter.receivedFrom}`);
+    expect(review).toContain(`attempt_count.gte.${WEBHOOK_REPLAY_MAX_ATTEMPTS}`);
   });
 
   it("l'instant présenté à la base est en retard de la marge", () => {

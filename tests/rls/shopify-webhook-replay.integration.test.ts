@@ -580,6 +580,64 @@ suite('reprise interne des webhooks Shopify', () => {
     });
   });
 
+  it('1 001 événements non éligibles plus récents ne masquent pas un événement éligible plus ancien', async () => {
+    const f = await createFixture();
+    const { event, webhookId } = await failedDataRequest(f);
+    // Éligible, mais plus ancien que tout ce qui suit.
+    await patchEvent(event.id, {
+      next_attempt_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+      received_at: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(),
+    });
+
+    // Plus d'événements non éligibles, et plus récents, que la limite de lecture (1 000) : ce que
+    // l'ancienne lecture — les plus récents d'abord, filtrés en mémoire — ne dépassait jamais.
+    const prefix = `replay-masque-${randomUUID()}`;
+    const masks = Array.from({ length: 1_001 }, (_, index) => {
+      const kind = index % 3;
+      return {
+        attempt_count: kind === 1 ? 6 : 1,
+        last_error_code: 'shopify_order_persist_failed',
+        merchant_account_id: f.merchantAccountId,
+        next_attempt_at:
+          kind === 0
+            ? new Date(Date.now() + 60 * 60_000).toISOString()
+            : new Date(Date.now() - 10 * 60_000).toISOString(),
+        payload: { id: `${prefix}-${index}` },
+        shop_domain: f.shopDomain,
+        shop_id: f.shopId,
+        shopify_webhook_id: `${prefix}-${index}`,
+        status: 'retryable',
+        // kind 2 : un sujet que la reprise ne prend pas.
+        topic: kind === 2 ? 'products/update' : 'orders/updated',
+      };
+    });
+    try {
+      for (let from = 0; from < masks.length; from += 250) {
+        const { error } = await admin.from('webhook_event').insert(masks.slice(from, from + 250));
+        if (error) throw error;
+      }
+
+      const summary = await sweep();
+
+      expect(await eventOf(webhookId)).toMatchObject({ attempt_count: 2, status: 'done' });
+      expect(await gdprTraces(f, 'customers/data_request')).toMatchObject({
+        artifacts: 1,
+        audits: 1,
+      });
+      // Les non éligibles restent comptés pour un regard humain, jamais rejoués.
+      expect(summary.skipped.exhausted + summary.skipped.unsupported_topic).toBeGreaterThan(0);
+      const stillWaiting = await admin
+        .from('webhook_event')
+        .select('id', { count: 'exact', head: true })
+        .like('shopify_webhook_id', `${prefix}-%`)
+        .eq('status', 'retryable')
+        .eq('attempt_count', 1);
+      expect(stillWaiting.count).toBeGreaterThanOrEqual(667);
+    } finally {
+      await admin.from('webhook_event').delete().like('shopify_webhook_id', `${prefix}-%`);
+    }
+  }, 180_000);
+
   it('exécution morte en cours de traitement : reprise une fois le bail expiré au-delà de la marge', async () => {
     const f = await createFixture();
     const { event, webhookId } = await failedDataRequest(f);

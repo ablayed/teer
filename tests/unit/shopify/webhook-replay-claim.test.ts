@@ -50,22 +50,34 @@ function fakeAdmin(rows: unknown[], claimed: (id: string) => unknown[]) {
       error: null,
     }),
   );
-  const scan = {
-    in: () => scan,
-    limit: async () => ({ data: rows, error: null }),
-    order: () => scan,
+  // Trois lectures : les candidats (colonnes commençant par `id,`), le décompte des événements à
+  // regarder (rien ici), puis le statut d'un événement repris.
+  const orders: unknown[][] = [];
+  const chain = (data: unknown[]) => {
+    const scan = {
+      gte: () => scan,
+      in: () => scan,
+      limit: async () => ({ data, error: null }),
+      lt: () => scan,
+      or: () => scan,
+      order: (...args: unknown[]) => {
+        orders.push(args);
+        return scan;
+      },
+    };
+    return scan;
   };
   const status = {
     eq: () => ({ maybeSingle: async () => ({ data: { status: 'done' }, error: null }) }),
   };
-  let reads = 0;
   const from = vi.fn(() => ({
-    select: () => {
-      reads += 1;
-      return reads === 1 ? scan : status;
+    select: (columns: string) => {
+      if (columns.startsWith('id,')) return chain(rows);
+      if (columns.startsWith('topic,')) return chain([]);
+      return status;
     },
   }));
-  return { admin: { from, rpc } as unknown as SupabaseClient<Database>, rpc };
+  return { admin: { from, rpc } as unknown as SupabaseClient<Database>, orders, rpc };
 }
 
 describe('reprise des webhooks — ce qui est présenté à la base', () => {
@@ -76,8 +88,8 @@ describe('reprise des webhooks — ce qui est présenté à la base', () => {
 
   it('réclame un événement à la fois, par son identifiant, à l’instant décalé de la marge', async () => {
     const { replayPendingShopifyWebhooks } = await import('@/lib/shopify/webhook-replay');
-    const { admin, rpc } = fakeAdmin(
-      [row('b', { received_at: ago(30 * 60_000) }), row('a')],
+    const { admin, orders, rpc } = fakeAdmin(
+      [row('a'), row('b', { received_at: ago(30 * 60_000) })],
       () => [
         {
           payload: { id: 1 },
@@ -103,7 +115,8 @@ describe('reprise des webhooks — ce qui est présenté à la base', () => {
     expect(Date.parse(rpc.mock.calls[0]?.[1].p_now as string)).toBe(
       NOW.getTime() - WEBHOOK_REPLAY_CLOCK_MARGIN_MS,
     );
-    // Dans l'ordre de réception : le plus ancien d'abord.
+    // Dans l'ordre de réception : la base trie, le plus ancien d'abord (la création avant la mise à jour).
+    expect(orders[0]).toEqual(['received_at', { ascending: true }]);
     expect(core.runResolvedWebhookEvent.mock.calls.map(([args]) => args.eventId)).toEqual([
       'a',
       'b',

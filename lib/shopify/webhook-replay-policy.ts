@@ -45,8 +45,17 @@ export const WEBHOOK_REPLAY_CLOCK_MARGIN_MS = 60 * 1_000;
 // réclamé. Bail posé à la réclamation = 5 min − marge = 4 min ; exécution = 3 min au plus.
 export const WEBHOOK_REPLAY_MAX_DURATION_S = 180;
 export const WEBHOOK_REPLAY_BUDGET_MS = 150 * 1_000;
-// Plafond de lecture de PostgREST (`max_rows`) : au-delà, le relevé le dit (`scanTruncated`).
+// Plafond de lecture de PostgREST (`max_rows`). Il borne des candidats DÉJÀ ÉLIGIBLES : le filtre
+// d'éligibilité s'applique en base, avant la limite (`replayEligibilityFilter`). Quand le plafond
+// est atteint, le relevé le dit (`scanTruncated`) ; ce signal n'est PAS une garantie de
+// progression. La progression tient à ceci : les plus anciens sont lus d'abord, et chaque
+// tentative ratée en rapproche un du plafond de tentatives, qui le sort de la sélection.
 export const WEBHOOK_REPLAY_SCAN_LIMIT = 1000;
+
+// Cadence : le plan Vercel du projet est Hobby (relevé L00), donc au plus UNE exécution par jour.
+// Le cron quotidien est un premier secours, pas une reprise rapide : un échec attend jusqu'à
+// 24 h, plus la tolérance d'horaire de Vercel sur ce plan. Une reprise plus rapide demande un
+// plan qui l'autorise, ou une autre mécanique ; ce n'est pas décidé ici.
 
 export function replayNonOverlapHolds(): boolean {
   return WEBHOOK_REPLAY_MAX_DURATION_S * 1_000 < WEBHOOK_LEASE_MS - WEBHOOK_REPLAY_CLOCK_MARGIN_MS;
@@ -99,6 +108,46 @@ export function classifyReplayCandidate(candidate: ReplayCandidate, now: Date): 
   return candidate.lease_until === null || Date.parse(candidate.lease_until) < claimInstant
     ? 'eligible'
     : 'leased';
+}
+
+export type ReplayEligibilityFilter = {
+  /** `received_at` >= : la fenêtre d'âge. */
+  receivedFrom: string;
+  /** `attempt_count` < : le plafond de tentatives. */
+  attemptsBelow: number;
+  statuses: readonly string[];
+  topics: readonly string[];
+  /** Filtre `or` de PostgREST : échéance due, ou bail expiré, à l'instant décalé de la marge. */
+  dueOrExpired: string;
+};
+
+/**
+ * Le prédicat d'éligibilité de `classifyReplayCandidate`, écrit pour la BASE. Il s'applique avant
+ * la limite de lecture : mille événements non éligibles plus récents ne peuvent pas en masquer un
+ * éligible plus ancien. Le classement en mémoire reste, en seconde garde.
+ */
+export function replayEligibilityFilter(now: Date): ReplayEligibilityFilter {
+  const claimInstant = replayClaimInstant(now).toISOString();
+  return {
+    attemptsBelow: WEBHOOK_REPLAY_MAX_ATTEMPTS,
+    dueOrExpired: [
+      `and(status.eq.retryable,next_attempt_at.lte.${claimInstant})`,
+      `and(status.eq.processing,or(lease_until.is.null,lease_until.lt.${claimInstant}))`,
+    ].join(','),
+    receivedFrom: new Date(now.getTime() - WEBHOOK_REPLAY_WINDOW_MS).toISOString(),
+    statuses: ['retryable', 'processing'],
+    topics: REPLAY_TOPICS,
+  };
+}
+
+/** Filtre `or` des événements en attente que la reprise NE prend PAS : à compter, jamais à rejouer. */
+export function replayReviewFilter(now: Date): string {
+  const { attemptsBelow, receivedFrom, topics } = replayEligibilityFilter(now);
+  return [
+    `topic.not.in.(${topics.join(',')})`,
+    `received_at.lt.${receivedFrom}`,
+    `attempt_count.gte.${attemptsBelow}`,
+  ].join(',');
 }
 
 export function isGdprReplayTopic(topic: string): boolean {
