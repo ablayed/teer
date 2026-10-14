@@ -16,6 +16,7 @@ import {
 import { getProductCatalogPageData } from '@/lib/actions/products';
 import { getShopConnection } from '@/lib/actions/shopify';
 import { orderSavedViews } from '@/lib/domain/order-saved-views';
+import { withMessages } from '@/lib/i18n/messages-for';
 import { getMerchantMemberForUser } from '@/lib/merchant/member-account';
 import { settledValueOrNull } from '@/lib/orders/deferred-view-counts';
 import { normalizeOrderSearch } from '@/lib/orders/search';
@@ -62,7 +63,7 @@ async function canReassignDrivers(): Promise<boolean> {
   return member?.role === 'owner' || member?.role === 'manager';
 }
 
-export default async function CommandesPage({ searchParams }: CommandesPageProps) {
+async function CommandesPage({ searchParams }: CommandesPageProps) {
   const [t, clientsT, params, storeId] = await Promise.all([
     getTranslations('orders'),
     getTranslations('clients'),
@@ -284,3 +285,5 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
     </OrdersBoardProvider>
   );
 }
+
+export default withMessages(['orders', 'periodPicker', 'whatsapp'], CommandesPage);

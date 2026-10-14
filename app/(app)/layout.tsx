@@ -3,6 +3,7 @@ import { AppShell } from '@/components/app-shell/app-shell';
 import { IdleTimeout } from '@/components/auth/idle-timeout';
 import { MutationQueueProvider } from '@/components/offline/mutation-queue-provider';
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
+import { pickMessages } from '@/lib/i18n/pick-messages';
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
 import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/merchant/member-account';
 import type { Database } from '@/lib/supabase/database.types';
@@ -64,6 +65,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/reacceptation');
   }
 
+  // Messages de la COQUE seulement (V3) : chaque page déclare les siens (`withMessages`). Ce tableau
+  // est lu tel quel par tests/unit/i18n/namespace-coverage.test.ts : il doit rester un littéral.
+  const shellMessages = pickMessages(messages as never, [
+    'nav',
+    'settings.idle',
+    'finance.loadError',
+  ]);
+
   // Utilisateur authentifié SANS organisation : on route selon ses invitations
   // en attente plutôt que de l'envoyer systématiquement vers l'onboarding
   // (non-régression du fondateur sans invitation). Logique partagée avec
@@ -90,7 +99,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   if (isWorkspaceEntry) {
     return (
-      <NextIntlClientProvider messages={messages}>
+      <NextIntlClientProvider messages={shellMessages}>
         <NuqsAdapter>{children}</NuqsAdapter>
       </NextIntlClientProvider>
     );
@@ -124,7 +133,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const idleWarningMs = Number(process.env.IDLE_WARNING_MS) || 120_000;
 
   return (
-    <NextIntlClientProvider messages={messages}>
+    <NextIntlClientProvider messages={shellMessages}>
       <NuqsAdapter>
         <AnalyticsProvider />
         <ServiceWorkerRegister />
