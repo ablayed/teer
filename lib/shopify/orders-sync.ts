@@ -211,7 +211,10 @@ type ShopifyOrderLinesRpc = {
   (
     fn: 'resync_shopify_order_cart',
     args: { p_order_id: string; p_lines: Json; p_order_update: Json },
-  ): Promise<{ data: 'resynced' | 'lines_missing' | null; error: { message: string } | null }>;
+  ): Promise<{
+    data: 'resynced' | 'lines_missing' | 'stale' | null;
+    error: { message: string } | null;
+  }>;
 };
 
 // Refus de `repair_shopify_order_lines` quand, sous verrou, la commande n'est plus réparable.
@@ -810,12 +813,31 @@ async function persistShopifyOrderOnce({
           },
         );
         orderUpdateError = resync.error;
+        // Une charge plus récente a été appliquée entre la lecture et l'écriture (0167, sous le
+        // verrou de la commande) : rien n'est écrit, ce n'est pas un échec.
+        if (!resync.error && resync.data === 'stale') {
+          return { ok: true, skipped: 'stale' };
+        }
         resyncRefused = !resync.error && resync.data === 'lines_missing';
       }
       if (!rebuildsLines || resyncRefused) {
-        orderUpdateError = (
-          await supabaseServiceClient.from('orders').update(orderUpdate).eq('id', existingOrder.id)
-        ).error;
+        // Même garde que sous le verrou de la commande, exprimée dans l'écriture elle-même : elle
+        // n'a lieu que si la commande n'a pas reçu, depuis la lecture, une charge au moins aussi
+        // récente. Aucune ligne touchée : la charge est périmée, et le dit.
+        let write = supabaseServiceClient
+          .from('orders')
+          .update(orderUpdate)
+          .eq('id', existingOrder.id);
+        if (orderData.shopify_updated_at) {
+          write = write.or(
+            `shopify_updated_at.is.null,shopify_updated_at.lt.${orderData.shopify_updated_at}`,
+          );
+        }
+        const written = await write.select('id');
+        orderUpdateError = written.error;
+        if (!written.error && orderData.shopify_updated_at && (written.data ?? []).length === 0) {
+          return { ok: true, skipped: 'stale' };
+        }
       }
 
       if (orderUpdateError) {
