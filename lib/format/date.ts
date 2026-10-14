@@ -72,9 +72,11 @@ export function formatMonthYear(value: Date | string): string {
   return monthYearFormatter.format(toValidDate(value));
 }
 
-export function formatDateRelative(value: Date | string): string {
+// `now` : l'instant de référence. Par défaut l'heure courante ; un rendu qui doit être identique
+// côté serveur et côté navigateur passe l'instant fourni par le serveur (voir render-now.tsx).
+export function formatDateRelative(value: Date | string, now: Date | number = Date.now()): string {
   const date = toValidDate(value);
-  const diffMs = date.getTime() - Date.now();
+  const diffMs = date.getTime() - (typeof now === 'number' ? now : now.getTime());
   const absMs = Math.abs(diffMs);
 
   if (absMs < MINUTE_MS) {

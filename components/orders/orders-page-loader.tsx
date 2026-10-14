@@ -7,6 +7,7 @@ import {
   OrderDriverReassign,
   REASSIGNABLE_STATES,
 } from '@/components/orders/order-driver-reassign';
+import { useRenderNow } from '@/components/orders/render-now';
 import type { DriverOption } from '@/components/orders/transition-dialog';
 import { useMediaQuery } from '@/components/period-picker/use-media-query';
 import { Amount } from '@/components/ui/amount';
@@ -81,6 +82,7 @@ export function OrdersPageLoader({
   onTransitionApplied,
 }: Props) {
   const t = useTranslations('orders');
+  const now = useRenderNow();
   const pathname = usePathname();
   const isDesktop = useMediaQuery('(min-width: 768px)');
   const [orders, setOrders] = useState(initialOrders);
@@ -111,7 +113,7 @@ export function OrdersPageLoader({
     if (!currentGroup || currentGroup.dayKey !== dayKey) {
       groups.push({
         dayKey,
-        label: formatDateGroupLabel(groupValue),
+        label: formatDateGroupLabel(groupValue, now),
         orders: [order],
       });
       return groups;
@@ -239,7 +241,9 @@ export function OrdersPageLoader({
                   <span className="inline-flex flex-wrap items-center gap-x-1.5">
                     <span className="font-mono">{order.order_number ?? emptyValueLabel}</span>
                     <span aria-hidden="true">·</span>
-                    <span>{formatDateRelative(order.created_at_shopify ?? order.created_at)}</span>
+                    <span>
+                      {formatDateRelative(order.created_at_shopify ?? order.created_at, now)}
+                    </span>
                     {/* Sujet 1.1 : jour ET heure de livraison programmée, visibles
                         directement dans la vue « Programmer » (et les autres vues où
                         la commande est encore pilotable). */}
