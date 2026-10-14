@@ -2,7 +2,7 @@
 
 import { CodStatusListBadge } from '@/components/orders/cod-status-list-badge';
 import { CustomerReliabilityBadge } from '@/components/orders/customer-reliability-badge';
-import { OrderActionsMenu } from '@/components/orders/order-actions-menu';
+import { LazyOrderActions, useActiveOrderMenu } from '@/components/orders/lazy-order-actions';
 import {
   OrderDriverReassign,
   REASSIGNABLE_STATES,
@@ -81,6 +81,7 @@ export function OrdersPageLoader({
   onTransitionApplied,
 }: Props) {
   const t = useTranslations('orders');
+  const actionsMenu = useActiveOrderMenu();
   const pathname = usePathname();
   const isDesktop = useMediaQuery('(min-width: 768px)');
   const [orders, setOrders] = useState(initialOrders);
@@ -272,12 +273,15 @@ export function OrdersPageLoader({
                   </span>
                 }
                 overflow={
-                  <OrderActionsMenu
+                  <LazyOrderActions
                     allowedActions={order.allowedActions}
                     canEditAmounts={canReassign}
-                    compact
                     deliveryState={order.delivery_state}
                     drivers={drivers}
+                    label={t('actions.menuTitle')}
+                    mounted={actionsMenu.isMounted(order.id)}
+                    onActivate={() => actionsMenu.activate(order.id)}
+                    onBusyChange={(busy) => actionsMenu.setBusy(order.id, busy)}
                     onTransitionSuccess={handleTransitionSuccess}
                     orderId={order.id}
                     orderState={order.order_state}
