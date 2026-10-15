@@ -2,6 +2,7 @@ import { CsvOrderImport } from '@/components/orders/csv-order-import';
 import { NewOrderForm } from '@/components/orders/new-order-form';
 import { OrdersBoardProvider } from '@/components/orders/orders-board-context';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
+import { RenderNowProvider } from '@/components/orders/render-now';
 import { SyncOrdersButton } from '@/components/orders/sync-orders-button';
 import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { ShopFilterSelector } from '@/components/shops/shop-filter-selector';
@@ -225,29 +226,32 @@ export default async function CommandesPage({ searchParams }: CommandesPageProps
         </div>
 
         {showWorkspace ? (
-          <OrdersWorkspace
-            activePeriod={activePeriod}
-            activeView={activeView}
-            canReassign={canReassign}
-            dateFrom={from.toISOString()}
-            dateTo={to.toISOString()}
-            deferredViewCounts={streamedViewCounts}
-            drivers={drivers}
-            emptyValueLabel={t('table.emptyValue')}
-            initialHasMore={pageData.hasMore}
-            initialNextCursor={pageData.nextCursor}
-            initialOrders={pageData.orders}
-            initialReliabilityTiers={pageData.reliabilityTiers}
-            reliabilityLabels={reliabilityLabels}
-            searchLabels={{
-              ariaLabel: t('search.ariaLabel'),
-              clear: t('search.clear'),
-              placeholder: t('search.placeholder'),
-            }}
-            searchQuery={search}
-            selectedShopId={selectedShopId}
-            views={viewCounts}
-          />
+          // Un seul instant pour le rendu serveur ET le premier rendu du navigateur (V2).
+          <RenderNowProvider serverNow={new Date().toISOString()}>
+            <OrdersWorkspace
+              activePeriod={activePeriod}
+              activeView={activeView}
+              canReassign={canReassign}
+              dateFrom={from.toISOString()}
+              dateTo={to.toISOString()}
+              deferredViewCounts={streamedViewCounts}
+              drivers={drivers}
+              emptyValueLabel={t('table.emptyValue')}
+              initialHasMore={pageData.hasMore}
+              initialNextCursor={pageData.nextCursor}
+              initialOrders={pageData.orders}
+              initialReliabilityTiers={pageData.reliabilityTiers}
+              reliabilityLabels={reliabilityLabels}
+              searchLabels={{
+                ariaLabel: t('search.ariaLabel'),
+                clear: t('search.clear'),
+                placeholder: t('search.placeholder'),
+              }}
+              searchQuery={search}
+              selectedShopId={selectedShopId}
+              views={viewCounts}
+            />
+          </RenderNowProvider>
         ) : null}
 
         {showNoShop || showNoOrdersWithShop || showFilteredEmpty ? (
