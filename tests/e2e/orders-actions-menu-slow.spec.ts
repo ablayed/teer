@@ -146,7 +146,7 @@ function openMenu(page: Page, projectName: string) {
 }
 
 test.describe('menu Actions de la liste — réseau lent', () => {
-  test.beforeEach((_fixtures, testInfo) => {
+  test.beforeEach(({ browserName: _browserName }, testInfo) => {
     test.skip(!serviceRoleKey, 'SUPABASE_SERVICE_ROLE_KEY manquant');
     test.skip(
       !['chromium', 'pixel-7'].includes(testInfo.project.name),
