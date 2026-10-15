@@ -438,3 +438,17 @@ ne restent jamais à l'écran en attendant les nouveaux : la pastille repasse au
 changement de vue, la portée est la même et les nombres restent affichés.
 
 Décision d'affichage unique : `formatViewChipLabel` (`lib/orders/deferred-view-counts.ts`).
+
+## Menu « Actions » d'une carte de commande, téléchargé à l'appui (V4, 2026-10-15)
+
+Le menu complet d'une carte n'est téléchargé qu'au premier appui ; sur réseau lent, le bouton passe
+par trois états, jamais confondus (règle 15).
+
+| État | Nom accessible du bouton | Pourquoi |
+|---|---|---|
+| Au repos | « Actions » | Inchangé. |
+| Téléchargement en cours | « Ouverture du menu… » | Le bouton reste le même (focus conservé), marqué occupé, avec un indicateur. Un second appui ne fait rien : le menu s'ouvre de lui-même à l'arrivée du code. |
+| Téléchargement échoué | « Le menu n’a pas pu s’ouvrir. Appuyez pour réessayer. » | Dit quoi faire. Un appui relance le téléchargement ; le menu s'ouvre alors seul. |
+
+Vouvoiement (« Appuyez »), comme tout le reste de l'application. Clés : `orders.actions.menuLoading`
+et `orders.actions.menuLoadFailed`. Aucune donnée de commande n'est touchée par cet état.

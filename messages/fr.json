@@ -1461,6 +1461,8 @@
     },
     "actions": {
       "menuTitle": "Actions",
+      "menuLoading": "Ouverture du menu…",
+      "menuLoadFailed": "Le menu n’a pas pu s’ouvrir. Appuyez pour réessayer.",
       "nouvelle": "Remettre en nouvelle",
       "confirmee": "Confirmer",
       "assignee": "Assigner",

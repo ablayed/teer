@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { compactMenuHasItems, menuTransitionEntries } from '@/lib/domain/order-menu-actions';
 import { repoRoot, staticReachableFrom } from '@/tests/helpers/static-imports';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { type ComponentType, Suspense, lazy } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Menu « Actions » à la demande (V4) : un bouton par carte, le menu complet monté au premier appui
@@ -13,17 +12,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   loads: 0,
   busyReporters: new Map<string, (busy: boolean) => void>(),
-}));
-
-vi.mock('next/dynamic', () => ({
-  default: (loader: () => Promise<ComponentType<Record<string, unknown>>>) => {
-    const Lazy = lazy(async () => ({ default: await loader() }));
-    return (props: Record<string, unknown>) => (
-      <Suspense fallback={null}>
-        <Lazy {...props} />
-      </Suspense>
-    );
-  },
 }));
 
 vi.mock('@/components/orders/order-actions-menu', () => {
@@ -60,6 +48,8 @@ function Host({ withActions = ['assigner'] as const }: { withActions?: readonly 
           drivers={[]}
           key={id}
           label={`Actions ${id}`}
+          loadingLabel="Ouverture"
+          retryLabel="Réessayer"
           mounted={menu.isMounted(id)}
           onActivate={() => menu.activate(id)}
           onBusyChange={(busy) => menu.setBusy(id, busy)}
@@ -148,6 +138,8 @@ describe('menu Actions à la demande', () => {
         deliveryState={null}
         drivers={[]}
         label="Actions z"
+        loadingLabel="Ouverture"
+        retryLabel="Réessayer"
         mounted={false}
         onActivate={() => undefined}
         onBusyChange={() => undefined}
@@ -233,5 +225,146 @@ describe('chemin initial de /commandes', () => {
     ]) {
       expect(reachable, heavy).not.toContain(heavy);
     }
+  });
+});
+
+// Premier appui sous réseau lent : un appui suffit, l'attente se voit, le clavier et la fermeture
+// restent corrects, un téléchargement échoué se retente.
+describe('premier appui sous réseau lent', () => {
+  type Lazy = typeof import('@/components/orders/lazy-order-actions');
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({
+        matches: true,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }),
+    });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.doUnmock('@/components/orders/order-actions-menu');
+    vi.resetModules();
+  });
+
+  // Un vrai ActionSheet (clavier, focus, fermeture) derrière un import dont on maîtrise l'arrivée.
+  async function freshLazy(importer: () => Promise<Record<string, unknown>>): Promise<Lazy> {
+    vi.resetModules();
+    vi.doMock('@/components/orders/order-actions-menu', importer);
+    return import('@/components/orders/lazy-order-actions');
+  }
+
+  async function realisticMenu() {
+    const { ActionSheet } = await import('@/components/ui/action-sheet');
+    return {
+      OrderActionsMenu: (props: { defaultOpen?: boolean }) => (
+        <ActionSheet
+          defaultOpen={props.defaultOpen}
+          items={[{ key: 'a', label: 'Première entrée', onSelect: () => undefined }]}
+          title="Actions"
+          trigger={<button aria-label="Actions" type="button" />}
+        />
+      ),
+    };
+  }
+
+  function mountHost(mod: Lazy, onActivateSpy: () => void) {
+    function Host() {
+      const menu = mod.useActiveOrderMenu();
+      return (
+        <mod.LazyOrderActions
+          allowedActions={['assigner']}
+          deliveryState={null}
+          drivers={[]}
+          label="Actions z"
+          loadingLabel="Ouverture"
+          mounted={menu.isMounted('z')}
+          onActivate={() => {
+            onActivateSpy();
+            menu.activate('z');
+          }}
+          onBusyChange={(busy) => menu.setBusy('z', busy)}
+          orderId="z"
+          orderState="open"
+          phone={null}
+          retryLabel="Réessayer"
+          whatsappOrderData={{} as never}
+        />
+      );
+    }
+    return render(<Host />);
+  }
+
+  it('un seul appui ouvre le menu, même appuyé deux fois pendant le téléchargement', async () => {
+    let release: () => void = () => undefined;
+    const arrival = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const mod = await freshLazy(async () => {
+      await arrival;
+      return realisticMenu();
+    });
+    const activate = vi.fn();
+    mountHost(mod, activate);
+
+    fireEvent.click(screen.getByLabelText('Actions z'));
+    // L'attente se voit immédiatement : bouton occupé, libellé d'attente, aucun menu encore.
+    const waiting = await screen.findByLabelText('Ouverture');
+    expect(waiting.getAttribute('data-state')).toBe('loading');
+    expect(waiting.getAttribute('aria-busy')).toBe('true');
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    // Un second appui impatient ne relance rien et ne bascule rien.
+    fireEvent.click(waiting);
+    expect(activate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release();
+      await arrival;
+    });
+    expect(await screen.findByRole('menu')).toBeTruthy();
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+  });
+
+  it('focus sur la première entrée à l’ouverture ; Échap ferme et rend le focus au bouton', async () => {
+    const mod = await freshLazy(realisticMenu);
+    mountHost(mod, () => undefined);
+
+    fireEvent.click(screen.getByLabelText('Actions z'));
+    const item = await screen.findByRole('menuitem', { name: 'Première entrée' });
+    await vi.waitFor(() => expect(document.activeElement).toBe(item));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByLabelText('Actions'));
+  });
+
+  it('un clic hors du menu le ferme', async () => {
+    const mod = await freshLazy(realisticMenu);
+    mountHost(mod, () => undefined);
+
+    fireEvent.click(screen.getByLabelText('Actions z'));
+    await screen.findByRole('menu');
+    fireEvent.pointerDown(document.body);
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+
+  it('un téléchargement échoué propose de réessayer, puis ouvre le menu', async () => {
+    const mod = await freshLazy(async () => {
+      throw new Error('Loading chunk failed');
+    });
+    mountHost(mod, () => undefined);
+
+    fireEvent.click(screen.getByLabelText('Actions z'));
+    const failed = await screen.findByLabelText('Réessayer');
+    expect(failed.getAttribute('data-state')).toBe('error');
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    // Le réseau est revenu : le code est maintenant disponible, un appui suffit.
+    vi.doMock('@/components/orders/order-actions-menu', realisticMenu);
+    fireEvent.click(failed);
+    expect(await screen.findByRole('menu')).toBeTruthy();
   });
 });

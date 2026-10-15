@@ -279,6 +279,8 @@ export function OrdersPageLoader({
                     deliveryState={order.delivery_state}
                     drivers={drivers}
                     label={t('actions.menuTitle')}
+                    loadingLabel={t('actions.menuLoading')}
+                    retryLabel={t('actions.menuLoadFailed')}
                     mounted={actionsMenu.isMounted(order.id)}
                     onActivate={() => actionsMenu.activate(order.id)}
                     onBusyChange={(busy) => actionsMenu.setBusy(order.id, busy)}
