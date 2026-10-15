@@ -2,6 +2,7 @@
 
 import { CodStatusBadge } from '@/components/orders/cod-status-badge';
 import { normalizeOrderStatus } from '@/components/orders/kanban/kanban-utils';
+import { useRenderNow } from '@/components/orders/render-now';
 import { useMediaQuery } from '@/components/period-picker/use-media-query';
 import { Amount } from '@/components/ui/amount';
 import type { OrderListItem } from '@/lib/actions/orders';
@@ -20,6 +21,7 @@ type KanbanCardProps = {
 };
 
 export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: KanbanCardProps) {
+  const now = useRenderNow();
   const pathname = usePathname();
   const isDesktop = useMediaQuery('(min-width: 768px)');
   const orderHref = buildOrderDetailHref(pathname, order.id);
@@ -63,7 +65,7 @@ export function KanbanCard({ actions, emptyLabel, isOverlay = false, order }: Ka
         scroll={!isDesktop}
       >
         <Amount amountMinor={order.total_amount} className="text-sm font-medium text-text" />
-        <span className="text-xs text-muted">{formatDateRelative(orderDate)}</span>
+        <span className="text-xs text-muted">{formatDateRelative(orderDate, now)}</span>
       </Link>
     </div>
   );

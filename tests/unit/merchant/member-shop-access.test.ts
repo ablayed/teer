@@ -1,4 +1,4 @@
-import { resolveMemberShopAccess } from '@/lib/merchant/member-shop-access';
+import { canSeeCostsInShop, resolveMemberShopAccess } from '@/lib/merchant/member-shop-access';
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it, vi } from 'vitest';
@@ -65,5 +65,21 @@ describe('droit d’un membre sur une boutique', () => {
       });
     }
     expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('accès aux coûts : règle commune', () => {
+  const roles = ['owner', 'manager', 'agent'] as const;
+  it.each(roles.flatMap((account) => roles.map((shop) => [account, shop] as const)))(
+    'compte %s, boutique %s',
+    (account, shop) => {
+      const expected = account !== 'agent' && shop !== 'agent';
+      expect(canSeeCostsInShop(account, shop)).toBe(expected);
+    },
+  );
+
+  it('un rôle inconnu ne voit jamais les coûts', () => {
+    expect(canSeeCostsInShop('owner', 'quelconque')).toBe(false);
+    expect(canSeeCostsInShop('', 'owner')).toBe(false);
   });
 });

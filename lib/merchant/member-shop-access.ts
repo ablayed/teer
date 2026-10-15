@@ -39,3 +39,12 @@ export async function resolveMemberShopAccess(
 
   return { ok: true, merchantAccountId: store.merchant_account_id, shopRole: store.role };
 }
+
+// Règle commune de l'accès aux coûts : le rôle du COMPTE et le rôle dans la BOUTIQUE doivent tous
+// deux être owner ou manager. Elle ne peut qu'enlever un accès, jamais en ouvrir un. Lecture,
+// pagination et écriture de coût l'appliquent toutes : on ne modifie pas un coût qu'on ne peut pas lire.
+const COST_ROLES = new Set(['owner', 'manager']);
+
+export function canSeeCostsInShop(accountRole: string, shopRole: string): boolean {
+  return COST_ROLES.has(accountRole) && COST_ROLES.has(shopRole);
+}
