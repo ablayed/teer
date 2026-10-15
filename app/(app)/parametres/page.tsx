@@ -1,5 +1,6 @@
 import { SettingsProfile } from '@/components/settings/settings-profile';
 import { getMerchantAccount } from '@/lib/actions/merchant';
+import { withMessages } from '@/lib/i18n/messages-for';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -7,7 +8,7 @@ import { redirect } from 'next/navigation';
 
 type SupabaseServerClient = SupabaseClient<Database>;
 
-export default async function ParametresPage() {
+async function ParametresPage() {
   const supabase = (await createSupabaseServerClient()) as unknown as SupabaseServerClient;
   const {
     data: { user },
@@ -38,3 +39,5 @@ export default async function ParametresPage() {
     </main>
   );
 }
+
+export default withMessages(['nav', 'settings'], ParametresPage);

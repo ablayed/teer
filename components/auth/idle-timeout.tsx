@@ -23,7 +23,7 @@ type IdleTimeoutProps = {
 };
 
 export function IdleTimeout({ timeoutMs, warningMs }: IdleTimeoutProps) {
-  const t = useTranslations('settings');
+  const t = useTranslations('settings.idle');
   const signOut = useAction(signOutAction);
   const lastActivityRef = useRef(Date.now());
   const throttleRef = useRef(0);
@@ -104,15 +104,15 @@ export function IdleTimeout({ timeoutMs, warningMs }: IdleTimeoutProps) {
         onKeyDown={handleKeyDown}
         open
       >
-        <h2 className="text-lg font-semibold">{t('idle.warningTitle')}</h2>
-        <p className="text-sm text-muted">{t('idle.warningBody', { seconds: countdown })}</p>
+        <h2 className="text-lg font-semibold">{t('warningTitle')}</h2>
+        <p className="text-sm text-muted">{t('warningBody', { seconds: countdown })}</p>
         <button
           className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink transition hover:bg-accent-hover active:scale-[0.97]"
           onClick={handleStayConnected}
           ref={stayButtonRef}
           type="button"
         >
-          {t('idle.stayConnected')}
+          {t('stayConnected')}
         </button>
       </dialog>
     </div>

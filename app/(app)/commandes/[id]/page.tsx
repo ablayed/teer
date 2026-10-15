@@ -1,4 +1,5 @@
 import { OrderDetailScreen } from '@/components/orders/order-detail-screen';
+import { withMessages } from '@/lib/i18n/messages-for';
 
 type OrderDetailPageProps = {
   params: Promise<{
@@ -6,8 +7,10 @@ type OrderDetailPageProps = {
   }>;
 };
 
-export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
+async function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { id } = await params;
 
   return <OrderDetailScreen mode="page" orderId={id} />;
 }
+
+export default withMessages(['orders', 'whatsapp'], OrderDetailPage);

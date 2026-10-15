@@ -3,6 +3,7 @@ import { PeriodPicker } from '@/components/period-picker/period-picker';
 import { AnalyticsSkeleton } from '@/components/ui/analytics-skeleton';
 import { DefinitionToggle } from '@/components/ui/definition-card';
 import { getLossAnalyticsAction } from '@/lib/actions/loss-analytics';
+import { withMessages } from '@/lib/i18n/messages-for';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { LockKeyhole } from 'lucide-react';
@@ -93,7 +94,7 @@ async function getCurrentRole() {
   return currentMember?.role ?? null;
 }
 
-export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
+async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
   const t = await getTranslations('analytics');
   const params = await searchParams;
   const { activePeriod, from, to } = resolvePeriodRange({
@@ -531,3 +532,5 @@ async function AnalyticsContent({ fromISO, toISO }: { fromISO: string; toISO: st
     </>
   );
 }
+
+export default withMessages(['definitionCard', 'periodPicker'], AnalyticsPage);

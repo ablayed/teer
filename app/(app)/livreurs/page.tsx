@@ -15,6 +15,7 @@ import {
 } from '@/lib/actions/drivers';
 import { shouldShowTenantCashScopeNote } from '@/lib/drivers/settlement-scope';
 import { driverIdFilter, getStoreDriverIds } from '@/lib/drivers/store-scope';
+import { withMessages } from '@/lib/i18n/messages-for';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { writePcdAccessAudit } from '@/lib/security/pcd-access-audit';
 import type { Database } from '@/lib/supabase/database.types';
@@ -54,7 +55,7 @@ async function getCurrentMember() {
   };
 }
 
-export default async function LivreursPage({ searchParams }: LivreursPageProps) {
+async function LivreursPage({ searchParams }: LivreursPageProps) {
   const [nav, tSettlements] = await Promise.all([
     getTranslations('nav'),
     getTranslations('livreurs.settlements'),
@@ -225,3 +226,8 @@ export default async function LivreursPage({ searchParams }: LivreursPageProps) 
     </main>
   );
 }
+
+export default withMessages(
+  ['definitionCard', 'finance', 'livreurs', 'periodPicker'],
+  LivreursPage,
+);
