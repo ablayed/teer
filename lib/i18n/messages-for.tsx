@@ -32,7 +32,11 @@ export function withMessages<Props>(
   namespaces: readonly string[],
   Page: (props: Props) => ReactNode | Promise<ReactNode>,
 ) {
-  return async function PageWithMessages(props: Props) {
-    return <MessagesFor namespaces={namespaces}>{await Page(props)}</MessagesFor>;
+  // La page n'est PAS attendue ici : `{await Page(props)}` retenait tout l'arbre jusqu'à la fin de la
+  // page, et le clic d'une vue de /commandes juste après une création laissait alors l'URL inchangée
+  // (4 échecs sur 8 en build de production, 0 sur 24 sans l'attente). Le fournisseur reçoit la
+  // promesse de la page comme enfant, React serveur la résout.
+  return function PageWithMessages(props: Props) {
+    return <MessagesFor namespaces={namespaces}>{Page(props) as ReactNode}</MessagesFor>;
   };
 }
