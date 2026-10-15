@@ -26,11 +26,19 @@ type ActionSheetProps = {
   /** Titre du bottom-sheet mobile, déjà traduit par l'appelant. */
   title: string;
   align?: 'start' | 'end';
+  /** Ouvert dès le montage (menu monté à la demande, au premier appui sur son déclencheur). */
+  defaultOpen?: boolean;
 };
 
-export function ActionSheet({ trigger, items, title, align = 'end' }: ActionSheetProps) {
+export function ActionSheet({
+  trigger,
+  items,
+  title,
+  align = 'end',
+  defaultOpen = false,
+}: ActionSheetProps) {
   const isDesktop = useIsDesktop();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(defaultOpen);
 
   // ── Desktop ──────────────────────────────────────────────────────────────
 

@@ -605,20 +605,8 @@ export function getAllowedTransitionActionsForDimensions(
     .map((item) => item.action);
 }
 
-// Phase 11 : « programmer » remplace « confirmer » dans les surfaces d'action
-// (dropdown, kanban). confirmer reste légale au niveau moteur (chemins inline par
-// target via getTransitionActionForTarget, rétro-compat CONFIRMEE) mais n'est
-// jamais proposée à l'utilisateur quand programmer l'est — et programmer l'est
-// dans TOUS les états où confirmer l'est (to_call/callback + unassigned).
-export function visibleAllowedActions(actions: TransitionAction[]): TransitionAction[] {
-  // Phase 11.1 : « demarrer_livraison » n'est JAMAIS une entrée de dropdown — elle
-  // est déclenchée uniquement par le popup d'assignation (save + démarrage).
-  const withoutStart = actions.filter((action) => action !== 'demarrer_livraison');
-  if (!withoutStart.includes('programmer')) {
-    return withoutStart;
-  }
-  return withoutStart.filter((action) => action !== 'confirmer');
-}
+// `visibleAllowedActions` vit dans order-menu-actions.ts (module léger, V4) ; réexportée ici.
+export { visibleAllowedActions } from '@/lib/domain/order-menu-actions';
 
 export function buildTransitionDimensionPatch(
   action: TransitionAction,

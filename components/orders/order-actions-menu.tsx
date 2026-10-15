@@ -1,34 +1,36 @@
 'use client';
 
-import { AssignmentDetailsDialog } from '@/components/orders/assignment-details-dialog';
-import {
-  type DriverOption,
-  type PayloadDialogAction,
-  TransitionDialog,
-  type TransitionPayload,
+import type {
+  DriverOption,
+  PayloadDialogAction,
+  TransitionPayload,
 } from '@/components/orders/transition-dialog';
 import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
-import { WhatsappComposeSheet } from '@/components/whatsapp/whatsapp-compose-sheet';
 import { type TransitionResult, performTransition } from '@/lib/actions/transitions';
+import { destructiveMenuActions, menuTransitionEntries } from '@/lib/domain/order-menu-actions';
 import {
   type TransitionAction,
   isRetiredTransitionAction,
-  visibleAllowedActions,
 } from '@/lib/domain/order-transition-actions';
 import type { WhatsappOrderData } from '@/lib/whatsapp/format';
 import { ChevronDown, MoreHorizontal, Phone } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAction } from 'next-safe-action/hooks';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-type OrderActionsMenuProps = {
+export type OrderActionsMenuProps = {
   allowedActions: TransitionAction[];
   autoOpenAssignment?: boolean;
   canEditAmounts?: boolean;
   compact?: boolean;
+  /** Menu ouvert dès le montage : monté à la demande par la liste, au premier appui. */
+  defaultOpen?: boolean;
+  /** Signale une transition en cours : la liste garde alors ce menu monté jusqu'à sa fin. */
+  onBusyChange?: (busy: boolean) => void;
   deliveryState: string | null;
   drivers: DriverOption[];
   onTransitionSuccess?: (result: Extract<TransitionResult, { ok: true }>) => void;
@@ -55,34 +57,31 @@ function isPayloadDialogAction(action: TransitionAction): action is PayloadDialo
   );
 }
 
-// Ordre d'affichage du menu. FIX-UI-REFUS-01 : « refuser » n'y figure plus — l'action
-// est retirée de la surface (cf. `retiredTransitionActions`). La remettre ici ne la
-// ferait PAS réapparaître : `visibleActions` ne la contient plus.
-const transitionMenuOrder: TransitionAction[] = [
-  'programmer',
-  'reprogrammer',
-  'annuler',
-  'journaliser_appel',
-  'confirmer',
-  'deconfirmer',
-  'assigner',
-  'demarrer_livraison',
-  'livrer',
-  'mark_returned',
-  // « Invalider » (0116) se lit juste après « Marquer retournée » : ce sont les deux seules
-  // sorties d'une commande livrée, et les présenter côte à côte rend le choix explicite.
-  'invalider',
-  'desannuler',
-];
-
-const destructiveActions = new Set<TransitionAction>(['annuler', 'mark_returned', 'invalider']);
+// Dialogues, feuille WhatsApp et assignation : importés au PREMIER besoin (V4), pas au chargement
+// de la liste. Chacun n'est rendu que lorsqu'une action l'ouvre ; ssr désactivé, ils n'existent pas
+// côté serveur de toute façon.
+const TransitionDialog = dynamic(
+  () => import('@/components/orders/transition-dialog').then((m) => m.TransitionDialog),
+  { ssr: false },
+);
+const AssignmentDetailsDialog = dynamic(
+  () =>
+    import('@/components/orders/assignment-details-dialog').then((m) => m.AssignmentDetailsDialog),
+  { ssr: false },
+);
+const WhatsappComposeSheet = dynamic(
+  () => import('@/components/whatsapp/whatsapp-compose-sheet').then((m) => m.WhatsappComposeSheet),
+  { ssr: false },
+);
 
 export function OrderActionsMenu({
   allowedActions,
   autoOpenAssignment = false,
   canEditAmounts = false,
   compact = false,
+  defaultOpen = false,
   deliveryState,
+  onBusyChange,
   drivers,
   onTransitionSuccess,
   orderId,
@@ -101,12 +100,11 @@ export function OrderActionsMenu({
   const [whatsappOpen, setWhatsappOpen] = useState(false);
   const onTransitionSuccessRef = useRef(onTransitionSuccess);
 
-  const visibleActions = visibleAllowedActions(allowedActions);
   // FIX-UI-REFUS-01 — le filtre par surface qui masquait « Refuser » sur une commande
   // programmée est retiré : il n'avait plus rien à masquer, l'action ne remontant plus
   // du catalogue. « Déconfirmer » reste visible sous le libellé « Déprogrammer » pour
   // ce même état (cf. getTransitionLabel) : même action, seul l'affichage change.
-  const transitionEntries = transitionMenuOrder.filter((action) => visibleActions.includes(action));
+  const transitionEntries = menuTransitionEntries(allowedActions);
   const hasMenu = transitionEntries.length > 0;
   const canCall = phone !== null;
   // Sujet B (Lot 3) : le template client n'a de sens que pour une commande encore
@@ -117,6 +115,11 @@ export function OrderActionsMenu({
   useEffect(() => {
     onTransitionSuccessRef.current = onTransitionSuccess;
   }, [onTransitionSuccess]);
+
+  const isBusy = transition.isExecuting;
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   useEffect(() => {
     const result = transition.result.data;
@@ -231,7 +234,7 @@ export function OrderActionsMenu({
     key: action,
     label: getTransitionLabel(action),
     onSelect: () => handleTransition(action),
-    variant: destructiveActions.has(action) ? 'destructive' : 'default',
+    variant: destructiveMenuActions.has(action) ? 'destructive' : 'default',
     disabled: transition.isExecuting,
   }));
 
@@ -265,6 +268,7 @@ export function OrderActionsMenu({
       <>
         <ActionSheet
           align="end"
+          defaultOpen={defaultOpen}
           items={compactItems}
           title={t('actions.menuTitle')}
           trigger={
@@ -331,7 +335,7 @@ export function OrderActionsMenu({
     key: action,
     label: getTransitionLabel(action),
     onSelect: () => handleTransition(action),
-    variant: destructiveActions.has(action) ? 'destructive' : 'default',
+    variant: destructiveMenuActions.has(action) ? 'destructive' : 'default',
     disabled: transition.isExecuting,
   }));
 
@@ -345,7 +349,7 @@ export function OrderActionsMenu({
             disabled={transition.isExecuting}
             onClick={() => handleTransition(primaryTransition)}
             type="button"
-            variant={destructiveActions.has(primaryTransition) ? 'destructive' : 'primary'}
+            variant={destructiveMenuActions.has(primaryTransition) ? 'destructive' : 'primary'}
           >
             {getTransitionLabel(primaryTransition)}
           </Button>
