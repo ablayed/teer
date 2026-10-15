@@ -35,6 +35,7 @@ import {
   toMetricLoadState,
 } from '@/lib/dashboard/metric-load-state';
 import { buildOrderViewHref } from '@/lib/domain/order-saved-views';
+import { withMessages } from '@/lib/i18n/messages-for';
 import type { LossAnalyticsTrendPoint } from '@/lib/loss-analytics/metrics';
 import { PERIOD_PRESETS, resolvePeriodRange } from '@/lib/periods/date-range';
 import { cn } from '@/lib/utils';
@@ -655,7 +656,7 @@ function CodBreakdownSkeleton() {
   );
 }
 
-export default async function TableauPage({ searchParams }: TableauPageProps) {
+async function TableauPage({ searchParams }: TableauPageProps) {
   const [t, tInvitation, ctx] = await Promise.all([
     getTranslations('tableau'),
     getTranslations('invitation'),
@@ -806,3 +807,8 @@ export default async function TableauPage({ searchParams }: TableauPageProps) {
     </main>
   );
 }
+
+export default withMessages(
+  ['definitionCard', 'onboarding.checklist', 'periodPicker', 'tableau'],
+  TableauPage,
+);

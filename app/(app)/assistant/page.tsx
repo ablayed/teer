@@ -1,12 +1,13 @@
 import { AssistantView } from '@/components/assistant/assistant-view';
 import type { IaConversationSummary } from '@/lib/actions/assistant';
 import { publicEnv } from '@/lib/env';
+import { withMessages } from '@/lib/i18n/messages-for';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type TeamRole, isTeamRole } from '@/lib/team/permissions';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 
-export default async function AssistantPage() {
+async function AssistantPage() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -57,3 +58,5 @@ export default async function AssistantPage() {
     </main>
   );
 }
+
+export default withMessages(['assistant', 'support'], AssistantPage);

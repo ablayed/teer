@@ -39,6 +39,7 @@ import { isProfitCoverageIncomplete } from '@/lib/finance/profit';
 import { createFinanceAdminClient } from '@/lib/finance/report-data';
 import { formatMoney } from '@/lib/format/fcfa';
 import { formatPercentFr } from '@/lib/format/percent';
+import { withMessages } from '@/lib/i18n/messages-for';
 import type { ActivePeriod } from '@/lib/periods/date-range';
 import { PERIOD_PRESETS, resolvePeriodRange, toDateInput } from '@/lib/periods/date-range';
 import { listShopFilterOptions, normalizeShopParam } from '@/lib/shops/shop-filter';
@@ -732,7 +733,7 @@ async function ArrivagesTabContent({ storeId }: { storeId: string }) {
   );
 }
 
-export default async function FinancesPage({ searchParams }: FinancesPageProps) {
+async function FinancesPage({ searchParams }: FinancesPageProps) {
   const nav = await getTranslations('nav');
   const t = await getTranslations('finance');
   const params = await searchParams;
@@ -860,3 +861,5 @@ export default async function FinancesPage({ searchParams }: FinancesPageProps) 
     </main>
   );
 }
+
+export default withMessages(['definitionCard', 'finance', 'periodPicker'], FinancesPage);
