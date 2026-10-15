@@ -18,7 +18,34 @@ import type { ShopifyOrderNode } from '@/lib/shopify/orders-sync';
 import { persistBulkOrderNodes } from '@/lib/shopify/reconcile';
 import type { Database } from '@/lib/supabase/database.types';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Cause des échecs de persistance, conservée pour le diagnostic. `persistBulkOrderNodes` ne rend que
+// des compteurs ; la raison d'un échec n'est envoyée qu'à Sentry. Quand un compteur diffère de
+// l'attendu, ce relevé dit POURQUOI (message technique et origine, jamais de donnée client).
+const captured = vi.hoisted(() => ({
+  failures: [] as Array<{ gid: unknown; error: unknown; origin: unknown }>,
+}));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureMessage: (message: string, context?: { extra?: Record<string, unknown> }) => {
+    if (message.includes('persist failed')) {
+      captured.failures.push({
+        gid: context?.extra?.shopifyOrderGid,
+        error: context?.extra?.error,
+        origin: context?.extra?.origin,
+      });
+    }
+  },
+}));
+
+// Les échecs attendus sont ceux de la commande à identifiant vide ; tout autre est une cause à lire.
+function unexpectedFailures(): string {
+  const others = captured.failures.filter((failure) => failure.gid !== '');
+  return others.length === 0
+    ? 'aucun échec de persistance rapporté par la réconciliation'
+    : `échecs de persistance inattendus : ${JSON.stringify(others)}`;
+}
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -132,6 +159,10 @@ function buildOrderNode(overrides: {
 }
 
 describe('shopify reconcile — le curseur ne dépasse jamais une commande en échec', () => {
+  beforeEach(() => {
+    captured.failures.length = 0;
+  });
+
   afterEach(async () => {
     if (!serviceRoleKey || createdUserIds.length === 0) return;
     const admin = adminClient();
@@ -157,8 +188,8 @@ describe('shopify reconcile — le curseur ne dépasse jamais une commande en é
         runStartedAt,
       );
 
-      expect(outcome.failedCount).toBe(0);
-      expect(outcome.syncedCount).toBe(2);
+      expect(outcome.failedCount, unexpectedFailures()).toBe(0);
+      expect(outcome.syncedCount, unexpectedFailures()).toBe(2);
       // shop.last_reconciled_at revient déjà normalisé par Postgres (+00:00) après l'insert
       // initial — comparaison par instant, même raison que readLastReconciledAtMs plus bas.
       expect(Date.parse(outcome.cursorBefore ?? '')).toBe(Date.parse(initialCursor));
@@ -186,7 +217,7 @@ describe('shopify reconcile — le curseur ne dépasse jamais une commande en é
         runStartedAt,
       );
 
-      expect(outcome.syncedCount).toBe(2);
+      expect(outcome.syncedCount, unexpectedFailures()).toBe(2);
       expect(outcome.failedCount).toBe(1);
       expect(outcome.cursorAfter).toBe(failureUpdatedAt);
       expect(outcome.cursorAfter).not.toBe(runStartedAt);
