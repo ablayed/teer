@@ -13,6 +13,16 @@ const nextConfig = {
     '/api/rapport': ['./lib/pdf/fonts/*.ttf'],
   },
   reactStrictMode: true,
+  webpack(config, { isServer }) {
+    // Session Replay hors du bundle client : voir lib/monitoring/sentry-replay-excluded.js.
+    if (!isServer) {
+      config.resolve.alias['@sentry-internal/replay'] = path.resolve(
+        projectRoot,
+        'lib/monitoring/sentry-replay-excluded.js',
+      );
+    }
+    return config;
+  },
   serverExternalPackages: ['@react-pdf/renderer'],
   // NOTE (LOT PERF #4) : on a volontairement REJETÉ `experimental.staleTimes`.
   // Ce réglage est GLOBAL (toutes les routes dynamiques), donc `dynamic: 30` ferait
@@ -57,4 +67,12 @@ export default withSentryConfig(configWithIntl, {
   sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
   disableLogger: true,
   tunnelRoute: '/monitoring',
+  // Code de Replay et de débogage du SDK Sentry retiré du bundle client. Aucune intégration Replay n'est
+  // configurée (sentry.client.config.ts) : ces options n'ont aucun effet sur la capture d'erreurs.
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeReplayIframe: true,
+    excludeReplayShadowDom: true,
+    excludeReplayWorker: true,
+  },
 });
