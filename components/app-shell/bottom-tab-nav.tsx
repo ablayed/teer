@@ -1,6 +1,7 @@
 'use client';
 
 import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
+import { PrefetchOnIntentLink } from '@/components/app-shell/prefetch-on-intent-link';
 import { StoreSwitcher } from '@/components/workspace/store-switcher';
 import { cn } from '@/lib/utils';
 import type { WorkspaceStore } from '@/lib/workspace/store';
@@ -18,7 +19,6 @@ import {
   Users,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
@@ -141,7 +141,7 @@ export function BottomTabNav({
     const active = isActivePath(pathname, href);
 
     return (
-      <Link
+      <PrefetchOnIntentLink
         aria-current={active ? 'page' : undefined}
         className={cn(
           'flex min-h-12 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -150,11 +150,10 @@ export function BottomTabNav({
         href={href}
         key={item.href}
         onClick={() => setOpen(false)}
-        prefetch
       >
         <Icon aria-hidden="true" className="size-5 shrink-0" />
         <span className="min-w-0 truncate">{t(item.labelKey)}</span>
-      </Link>
+      </PrefetchOnIntentLink>
     );
   }
 
@@ -195,7 +194,7 @@ export function BottomTabNav({
           const active = isActivePath(pathname, href);
 
           return (
-            <Link
+            <PrefetchOnIntentLink
               aria-current={active ? 'page' : undefined}
               aria-label={t(item.labelKey)}
               className={cn(
@@ -205,12 +204,11 @@ export function BottomTabNav({
               href={href}
               key={item.href}
               onClick={() => setOpen(false)}
-              prefetch
             >
               <NavLinkPending className="absolute top-1 right-1.5" />
               <Icon aria-hidden="true" className="size-[22px] shrink-0" />
               <span className="max-w-full truncate">{t(item.labelKey)}</span>
-            </Link>
+            </PrefetchOnIntentLink>
           );
         })}
 
