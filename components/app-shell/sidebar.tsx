@@ -1,6 +1,7 @@
 'use client';
 
 import { NavLinkPending } from '@/components/app-shell/nav-link-pending';
+import { PrefetchOnIntentLink } from '@/components/app-shell/prefetch-on-intent-link';
 import { SignOutButton } from '@/components/sign-out-button';
 import { Wordmark } from '@/components/wordmark';
 import { StoreSwitcher } from '@/components/workspace/store-switcher';
@@ -19,7 +20,6 @@ import {
   Users,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 type NavKey =
@@ -100,7 +100,7 @@ export function Sidebar({
 
             return (
               <li key={item.href}>
-                <Link
+                <PrefetchOnIntentLink
                   aria-current={active ? 'page' : undefined}
                   aria-label={t(item.labelKey)}
                   className={cn(
@@ -108,7 +108,6 @@ export function Sidebar({
                     active ? 'bg-canvas text-text' : 'text-muted hover:bg-canvas hover:text-text',
                   )}
                   href={href}
-                  prefetch
                 >
                   {active ? (
                     <span className="absolute left-0 h-7 w-[3px] rounded-r bg-accent" />
@@ -116,7 +115,7 @@ export function Sidebar({
                   <Icon aria-hidden="true" className="size-5 shrink-0" />
                   <span>{t(item.labelKey)}</span>
                   <NavLinkPending className="ml-auto" />
-                </Link>
+                </PrefetchOnIntentLink>
               </li>
             );
           })}
