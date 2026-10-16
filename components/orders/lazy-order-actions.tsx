@@ -21,6 +21,7 @@ declare global {
       hydrated: boolean;
       id: string | null;
       path: string;
+      reload?: () => void;
       reset?: (element: Element | null) => void;
       timer: number;
     };
@@ -76,8 +77,14 @@ export function useActiveOrderMenu() {
   }, []);
 
   // Effet du PARENT : il s'exécute après ceux des cartes, qui ont déjà repris leur intention éventuelle.
+  // Les scripts ont fini par démarrer : l'état visuel posé avant l'hydratation est nettoyé et le message
+  // d'échec éventuel retiré.
   useEffect(() => {
-    if (window.__earlyMenu) window.__earlyMenu.hydrated = true;
+    const early = window.__earlyMenu;
+    if (!early) return;
+    early.hydrated = true;
+    for (const element of document.querySelectorAll('[data-early-state]')) early.reset?.(element);
+    document.getElementById('early-menu-failed')?.setAttribute('hidden', '');
   }, []);
 
   return {
@@ -94,6 +101,8 @@ type Props = Omit<OrderActionsMenuProps, 'compact' | 'defaultOpen' | 'onBusyChan
   loadingLabel: string;
   /** Libellé quand le téléchargement a échoué : dit quoi faire (réessayer). */
   retryLabel: string;
+  /** Libellé quand les scripts de l'application n'ont pas démarré (avant hydratation) : dit de recharger. */
+  reloadLabel: string;
   mounted: boolean;
   onActivate: () => void;
   onBusyChange: (busy: boolean) => void;
@@ -103,6 +112,7 @@ export function LazyOrderActions({
   label,
   loadingLabel,
   retryLabel,
+  reloadLabel,
   mounted,
   onActivate,
   onBusyChange,
@@ -165,7 +175,7 @@ export function LazyOrderActions({
       aria-busy={waiting || undefined}
       aria-label={failed ? retryLabel : waiting ? loadingLabel : label}
       className={`inline-flex size-12 items-center justify-center rounded-md hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[early-state=failed]:text-danger data-[early-state=pending]:animate-pulse data-[early-state=pending]:bg-canvas ${failed ? 'text-danger' : 'text-muted'}`}
-      data-early-failed-label={retryLabel}
+      data-early-failed-label={reloadLabel}
       data-early-idle-label={label}
       data-early-loading-label={loadingLabel}
       data-early-menu={menuProps.orderId}

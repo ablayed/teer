@@ -228,7 +228,12 @@ async function CommandesPage({ searchParams }: CommandesPageProps) {
         </div>
 
         {/* Avant la liste : une intention reçue avant l'hydratation ne doit pas être perdue (V4 bis). */}
-        {showWorkspace ? <EarlyMenuIntent /> : null}
+        {showWorkspace ? (
+          <EarlyMenuIntent
+            failedMessage={t('actions.menuLoadFailedReload')}
+            reloadLabel={t('actions.menuReload')}
+          />
+        ) : null}
 
         {showWorkspace ? (
           // Un seul instant pour le rendu serveur ET le premier rendu du navigateur (V2).

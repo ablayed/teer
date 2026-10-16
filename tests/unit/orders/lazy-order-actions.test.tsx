@@ -49,6 +49,7 @@ function Host({ withActions = ['assigner'] as const }: { withActions?: readonly 
           key={id}
           label={`Actions ${id}`}
           loadingLabel="Ouverture"
+          reloadLabel="Recharger"
           retryLabel="Réessayer"
           mounted={menu.isMounted(id)}
           onActivate={() => menu.activate(id)}
@@ -139,6 +140,7 @@ describe('menu Actions à la demande', () => {
         drivers={[]}
         label="Actions z"
         loadingLabel="Ouverture"
+        reloadLabel="Recharger"
         retryLabel="Réessayer"
         mounted={false}
         onActivate={() => undefined}
@@ -289,6 +291,7 @@ describe('premier appui sous réseau lent', () => {
           orderId="z"
           orderState="open"
           phone={null}
+          reloadLabel="Recharger"
           retryLabel="Réessayer"
           whatsappOrderData={{} as never}
         />
