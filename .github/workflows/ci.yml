@@ -126,8 +126,17 @@ jobs:
               --override-name auth.anon_key=SUPABASE_ANON_KEY \
               --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY
           )
+      # Diagnostic de l'instabilité « invalid response from the upstream server » (kong) : la sonde
+      # de tests/helpers/kong-probe.ts OBSERVE les appels vers la pile locale sans les modifier et
+      # consigne, pour chaque réponse 5xx ou erreur réseau, le statut brut, des en-têtes de
+      # diagnostic, la route normalisée et la concurrence dans le processus. Aucun corps de requête,
+      # aucune valeur de paramètre, aucun jeton. Le fichier est téléversé en cas d'échec seulement.
+      - name: Prépare le dossier de diagnostics
+        run: mkdir -p "$RUNNER_TEMP/ci-diagnostics"
       - run: pnpm test:rls
         env:
+          CI_KONG_PROBE: '1'
+          KONG_PROBE_FILE: ${{ runner.temp }}/ci-diagnostics/kong-probe.jsonl
           SUPABASE_URL: http://127.0.0.1:54321
           SUPABASE_ANON_KEY: ${{ env.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
@@ -157,6 +166,20 @@ jobs:
       - run: pnpm security:service-role-inventory:check
       - run: pnpm security:test-postgres-boundary:check
       - run: pnpm security:maintenance-import-boundary:check
+      # Échec seulement : journaux de la passerelle (kong) et de PostgREST, EXPURGÉS (jetons, courriels,
+      # en-têtes d'autorisation), avec l'état des conteneurs. Les tests ne manipulent que des données
+      # synthétiques d'une pile locale éphémère. Dépôt public : les artefacts restent lisibles par tout
+      # compte GitHub, d'où l'expurgation et la rétention de 7 jours.
+      - name: Collecte les diagnostics de la passerelle (échec seulement)
+        if: failure()
+        run: bash scripts/ci-collect-gateway-diagnostics.sh
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ci-diagnostics-test-rls-tentative-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-diagnostics/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Lot L1 — le backfill de 0142 s'exécute UNE SEULE FOIS en production ; un
   # `db reset --local` ordinaire ne l'exerce jamais (supabase/seed.sql ne

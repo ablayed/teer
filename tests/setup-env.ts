@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { assertSupabaseHttpTarget } from '@/lib/security/supabase-target-policy';
+import { installKongProbeFromEnv } from '@/tests/helpers/kong-probe';
+import { afterAll, expect } from 'vitest';
 
 function loadEnvFile(relativePath: string) {
   const filePath = resolve(process.cwd(), relativePath);
@@ -47,4 +49,11 @@ if (serverTarget || publicTarget) {
     serverTarget,
     publicTarget,
   });
+}
+
+// Diagnostic CI de la passerelle (CI_KONG_PROBE=1, posé par le job test-rls) : observe les appels vers
+// la cible Supabase sans les modifier. Inactif ailleurs.
+const kongProbe = installKongProbeFromEnv();
+if (kongProbe) {
+  afterAll(() => kongProbe.summarize(expect.getState().testPath));
 }
