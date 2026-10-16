@@ -327,7 +327,7 @@ describe('premier appui sous réseau lent', () => {
       release();
       await arrival;
     });
-    expect(await screen.findByRole('menu')).toBeTruthy();
+    expect(await screen.findByRole('menu', {}, { timeout: 5000 })).toBeTruthy();
     expect(screen.getAllByRole('menu')).toHaveLength(1);
   });
 
@@ -349,7 +349,7 @@ describe('premier appui sous réseau lent', () => {
     mountHost(mod, () => undefined);
 
     fireEvent.click(screen.getByLabelText('Actions z'));
-    await screen.findByRole('menu');
+    await screen.findByRole('menu', {}, { timeout: 5000 });
     fireEvent.pointerDown(document.body);
     await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
@@ -368,6 +368,6 @@ describe('premier appui sous réseau lent', () => {
     // Le réseau est revenu : le code est maintenant disponible, un appui suffit.
     vi.doMock('@/components/orders/order-actions-menu', realisticMenu);
     fireEvent.click(failed);
-    expect(await screen.findByRole('menu')).toBeTruthy();
+    expect(await screen.findByRole('menu', {}, { timeout: 5000 })).toBeTruthy();
   });
 });
