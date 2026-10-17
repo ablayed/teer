@@ -28,6 +28,13 @@
     "boundaryDetail": "if (!cronSecret || authorization !== `Bearer ${cronSecret}`) return 401 — before any admin-client construction. After the gate, the admin client runs replayPendingShopifyWebhooks (lib/shopify/webhook-replay.ts): it reads pending webhook_event rows, claims each one by id through claim_shopify_webhook_events (service_role-only, row lock + lease), and replays it through the same core as the entry points (runResolvedWebhookEvent). Nothing comes from the request: the event, its signed payload and the shop recorded at reception (after HMAC verification) come from webhook_event; GDPR topics re-derive the shop from the signed body domain (resolveGdprShopDomain, D20a), exactly as the legacy entry point does. Topics, attempt cap, age window and clock margin: lib/shopify/webhook-replay-policy.ts. The response carries counts only. Proven by tests/rls/shopify-webhook-replay.integration.test.ts and tests/unit/shopify/webhook-replay-policy.test.ts."
   },
   {
+    "file": "app/api/internal/shopify-webhook-sweep/route.ts",
+    "boundaryType": "qstash-signature",
+    "boundaryFile": "app/api/internal/shopify-webhook-sweep/route.ts",
+    "boundaryLine": 31,
+    "boundaryDetail": "if (!verification.ok) return 401/503 — before any admin-client construction. verifyQstashRequest (lib/shopify/qstash-signature.ts) checks the Upstash-Signature JWT against the RAW body (hash claim) and the EXPECTED destination URL (QSTASH_SWEEP_URL, never derived from the request), with the current then the next signing key; absent configuration refuses (503), absent or invalid signature refuses (401). After the gate, the admin client runs replayPendingShopifyWebhooks (lib/shopify/webhook-replay.ts), exactly as the daily cron shopify-webhook-retry: it claims each pending webhook_event by id through claim_shopify_webhook_events (service_role-only, row lock + lease) and replays it through the same core as the entry points. Nothing comes from the request: the body is read only to verify the signature and is otherwise ignored. The response carries counts only. Proven by tests/unit/shopify/qstash-sweep-route.test.ts (absent/invalid signature, altered body, wrong destination, key rotation) and tests/rls/shopify-sweep-concurrency.integration.test.ts (concurrency with the cron and the opportunistic sweep)."
+  },
+  {
     "file": "app/api/shopify/callback/route.ts",
     "boundaryType": "oauth-state-and-hmac",
     "boundaryFile": "app/api/shopify/callback/route.ts",
