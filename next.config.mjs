@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { withSentryConfig } from '@sentry/nextjs';
+import { withSentryConfig } from '@sentry/nextjs/config';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
@@ -20,6 +20,14 @@ const nextConfig = {
     // Session Replay hors du bundle client : voir lib/monitoring/sentry-replay-excluded.js.
     if (!isServer) {
       config.resolve.alias['@sentry-internal/replay'] = path.resolve(
+        projectRoot,
+        'lib/monitoring/sentry-replay-excluded.js',
+      );
+      config.resolve.alias['@sentry/replay'] = path.resolve(
+        projectRoot,
+        'lib/monitoring/sentry-replay-excluded.js',
+      );
+      config.resolve.alias['@sentry/replay-canvas'] = path.resolve(
         projectRoot,
         'lib/monitoring/sentry-replay-excluded.js',
       );
