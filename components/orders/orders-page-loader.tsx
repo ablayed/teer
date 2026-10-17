@@ -235,6 +235,7 @@ export function OrdersPageLoader({
               key={order.id}
             >
               <ResourceRow
+                fullSurfaceLink
                 href={buildOrderDetailHref(pathname, order.id)}
                 scroll={!isDesktop}
                 prefetch={false}
