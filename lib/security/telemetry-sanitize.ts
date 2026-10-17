@@ -37,7 +37,7 @@ export function sanitizePathname(value: string | null | undefined): string | und
   }
 }
 
-function sanitizeTelemetryPath(value: string | null | undefined): string | undefined {
+export function sanitizeTelemetryPath(value: string | null | undefined): string | undefined {
   const pathname = sanitizePathname(value);
   if (
     !pathname ||
@@ -328,7 +328,7 @@ export function maskOpaqueIngestPath(value: string): string {
   return value.replace(OPAQUE_INGEST_PATH, '$1:token');
 }
 
-function maskDeep(value: unknown, depth: number): unknown {
+export function maskDeep(value: unknown, depth: number): unknown {
   if (typeof value === 'string') {
     return maskOpaqueIngestPath(value);
   }
