@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { getReplay, replayIntegration } from '@/lib/monitoring/sentry-replay-excluded.js';
+import {
+  getReplay,
+  replayCanvasIntegration,
+  replayIntegration,
+} from '@/lib/monitoring/sentry-replay-excluded.js';
 import { describe, expect, it } from 'vitest';
 
 // Session Replay hors du bundle client (V1 bis-a). `@sentry/browser` ré-exporte `replayIntegration` depuis
@@ -20,6 +24,10 @@ describe('module de remplacement de Replay', () => {
   it('getReplay ne rend rien', () => {
     expect(getReplay()).toBeUndefined();
   });
+
+  it('replayCanvasIntegration échoue bruyamment', () => {
+    expect(() => replayCanvasIntegration()).toThrow(/Session Replay est exclu/);
+  });
 });
 
 describe('configuration du build', () => {
@@ -28,6 +36,8 @@ describe('configuration du build', () => {
   it('l’alias n’existe que pour le client', () => {
     expect(config).toMatch(/if \(!isServer\)/);
     expect(config).toContain("config.resolve.alias['@sentry-internal/replay']");
+    expect(config).toContain("config.resolve.alias['@sentry/replay']");
+    expect(config).toContain("config.resolve.alias['@sentry/replay-canvas']");
     expect(config).toContain('lib/monitoring/sentry-replay-excluded.js');
   });
 
@@ -52,20 +62,29 @@ describe('configuration du build', () => {
 });
 
 describe('garde de montée de version du SDK', () => {
-  it('@sentry/browser n’importe de @sentry-internal/replay que ce que le module de remplacement exporte', () => {
+  it('@sentry/browser n’importe des modules Replay que des exports remplacés', () => {
     const requireFrom = createRequire(join(root, 'package.json'));
     const sentryNextjs = requireFrom.resolve('@sentry/nextjs/package.json');
     const browserIndex = createRequire(sentryNextjs).resolve('@sentry/browser/package.json');
-    const barrel = readFileSync(join(browserIndex, '..', 'build/npm/esm/index.js'), 'utf8');
-    const imported = [
-      ...barrel.matchAll(/export\s*\{([^}]+)\}\s*from\s*'@sentry-internal\/replay'/g),
-    ]
-      .flatMap((match) => match[1].split(','))
-      .map((name) => name.trim())
-      .filter(Boolean)
-      .sort();
-    expect(imported.length).toBeGreaterThan(0);
-    const provided = ['getReplay', 'replayIntegration'];
-    expect(imported.filter((name) => !provided.includes(name))).toEqual([]);
+    const browserPackage = JSON.parse(readFileSync(browserIndex, 'utf8')) as { module: string };
+    const barrel = readFileSync(join(browserIndex, '..', browserPackage.module), 'utf8');
+    const replayModules = new Map([
+      ['@sentry-internal/replay', new Set(['getReplay', 'replayIntegration'])],
+      ['@sentry/replay', new Set(['getReplay', 'replayIntegration'])],
+      ['@sentry/replay-canvas', new Set(['replayCanvasIntegration'])],
+    ]);
+    const replayImports = [...barrel.matchAll(/export\s*\{([^}]+)\}\s*from\s*'([^']+)'/g)].filter(
+      (match) => replayModules.has(match[2]),
+    );
+    expect(replayImports.length).toBeGreaterThan(0);
+
+    for (const match of replayImports) {
+      const provided = replayModules.get(match[2]);
+      const imported = match[1]
+        .split(',')
+        .map((name) => name.trim().split(/\s+as\s+/)[0])
+        .filter(Boolean);
+      expect(imported.filter((name) => !provided?.has(name))).toEqual([]);
+    }
   });
 });
