@@ -10,6 +10,7 @@ type SpanSortie = { description: string; data: Record<string, unknown> };
 type Sortie = {
   transaction: string;
   transaction_info: unknown;
+  user: unknown;
   request: Record<string, unknown>;
   contexts: Record<string, unknown> & { trace: { data: Record<string, unknown> } };
   spans: SpanSortie[];
@@ -32,12 +33,12 @@ describe('transactions serveur — liste blanche', () => {
     expect(out.request).toEqual({ method: 'GET', url: '/s/[storeId]/commandes' });
     expect(out.transaction).toBe('GET /s/[storeId]/commandes');
     expect(out.transaction_info).toEqual({ source: 'route' });
+    expect(out.user).toEqual({ ip_address: null });
     for (const cle of [
       'headers',
       'cookies',
       'query_string',
       'data',
-      'user',
       'breadcrumbs',
       'server_name',
     ]) {

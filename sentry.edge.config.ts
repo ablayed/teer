@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/nextjs';
+import { resolveSentryEnvironment } from './lib/monitoring/sentry-environment';
 import { sanitizeSentryEvent } from './lib/security/telemetry-sanitize';
 import { sanitizeSentryServerTransaction } from './lib/security/telemetry-sanitize-server';
 
@@ -10,6 +11,11 @@ const sentryEnabled =
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   enabled: sentryEnabled,
+  // Même nom que le client (le SDK serveur déduirait sinon `vercel-production`).
+  environment: resolveSentryEnvironment(
+    process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
+    process.env.VERCEL_ENV,
+  ),
   // Traces serveur suspendues : un échantillonneur qui rend toujours 0 l'emporte aussi sur la décision
   // d'échantillonnage héritée d'un en-tête `sentry-trace` entrant (le client en émet à 10 %).
   tracesSampler: () => 0,

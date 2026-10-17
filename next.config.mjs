@@ -13,6 +13,9 @@ const nextConfig = {
     '/api/rapport': ['./lib/pdf/fonts/*.ttf'],
   },
   reactStrictMode: true,
+  // Environnement de déploiement figé à la compilation, pour que le client Sentry porte le même nom
+  // que le serveur (lib/monitoring/sentry-environment.ts).
+  env: { NEXT_PUBLIC_SENTRY_BUILD_VERCEL_ENV: process.env.VERCEL_ENV ?? '' },
   webpack(config, { isServer }) {
     // Session Replay hors du bundle client : voir lib/monitoring/sentry-replay-excluded.js.
     if (!isServer) {
@@ -66,7 +69,6 @@ export default withSentryConfig(configWithIntl, {
   silent: !process.env.CI,
   sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
   disableLogger: true,
-  tunnelRoute: '/monitoring',
   // Code de Replay et de débogage du SDK Sentry retiré du bundle client. Aucune intégration Replay n'est
   // configurée (sentry.client.config.ts) : ces options n'ont aucun effet sur la capture d'erreurs.
   bundleSizeOptimizations: {

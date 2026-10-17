@@ -162,6 +162,10 @@ export function sanitizeSentryEvent<T extends object>(event: T): T {
     }
   }
 
+  // Adresse IP explicitement nulle : Sentry n'en déduit ni adresse ni géolocalisation (le SDK laisse
+  // une valeur nulle telle quelle, voir `addAutoIpAddressToUser`).
+  (safeEvent as Record<string, unknown>).user = { ip_address: null };
+
   if (source.tags && typeof source.tags === 'object') {
     const safeTags: Record<string, string> = {};
     for (const [key, value] of Object.entries(source.tags as Record<string, unknown>)) {

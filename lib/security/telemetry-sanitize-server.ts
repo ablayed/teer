@@ -161,6 +161,7 @@ export function sanitizeSentryServerTransaction<T extends object>(event: T): T |
     transaction: `${method} ${route}`,
     transaction_info: { source: 'route' },
     request: { method, url: route },
+    user: { ip_address: null },
     contexts: {
       trace: {
         trace_id: safeId(trace.trace_id, TRACE_ID),
