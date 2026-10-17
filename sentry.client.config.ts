@@ -3,6 +3,7 @@ import {
   isNetworkRequestError,
 } from '@/lib/monitoring/client-error-classification';
 import { resolveSentryEnvironment } from '@/lib/monitoring/sentry-environment';
+import { sanitizeSentryClientTransaction } from '@/lib/security/sanitize-sentry-client-transaction';
 import { sanitizeSentryEvent } from '@/lib/security/telemetry-sanitize';
 
 // Sentry client chargé en import DYNAMIQUE : le SDK sort du bundle initial
@@ -48,6 +49,7 @@ if (
       // Tunnel propre (app/monitoring/route.ts) : il ne relaie pas l'adresse IP du visiteur.
       tunnel: '/monitoring',
       tracesSampleRate: 0.1,
+      beforeSendTransaction: sanitizeSentryClientTransaction,
       beforeSend(event, hint) {
         const message =
           getClientErrorMessage(hint.originalException) ||
