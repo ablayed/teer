@@ -88,11 +88,13 @@ describe('Sentry : groupement sans donnée client', () => {
       'context_line',
       'vars',
       '1.2.3.4',
-      'user',
+      'a@b.c',
     ]) {
       expect(out).not.toContain(leak);
     }
     expect(out).toContain('redacted_error');
+    // Seule l'adresse IP explicitement nulle subsiste : aucune identité, aucune déduction d'adresse.
+    expect(out).toContain('"user":{"ip_address":null}');
   });
 
   it('un code d’erreur métier de la liste blanche est conservé, un texte libre non', () => {

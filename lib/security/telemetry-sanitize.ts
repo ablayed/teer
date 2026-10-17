@@ -37,7 +37,7 @@ export function sanitizePathname(value: string | null | undefined): string | und
   }
 }
 
-function sanitizeTelemetryPath(value: string | null | undefined): string | undefined {
+export function sanitizeTelemetryPath(value: string | null | undefined): string | undefined {
   const pathname = sanitizePathname(value);
   if (
     !pathname ||
@@ -161,6 +161,10 @@ export function sanitizeSentryEvent<T extends object>(event: T): T {
       (safeEvent as Record<string, unknown>)[key] = source[key];
     }
   }
+
+  // Adresse IP explicitement nulle : Sentry n'en déduit ni adresse ni géolocalisation (le SDK laisse
+  // une valeur nulle telle quelle, voir `addAutoIpAddressToUser`).
+  (safeEvent as Record<string, unknown>).user = { ip_address: null };
 
   if (source.tags && typeof source.tags === 'object') {
     const safeTags: Record<string, string> = {};
@@ -328,7 +332,7 @@ export function maskOpaqueIngestPath(value: string): string {
   return value.replace(OPAQUE_INGEST_PATH, '$1:token');
 }
 
-function maskDeep(value: unknown, depth: number): unknown {
+export function maskDeep(value: unknown, depth: number): unknown {
   if (typeof value === 'string') {
     return maskOpaqueIngestPath(value);
   }

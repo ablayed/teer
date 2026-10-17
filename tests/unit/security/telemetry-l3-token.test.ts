@@ -123,11 +123,11 @@ describe('maskOpaqueIngestPath', () => {
 
 describe('câblage — les deux configurations serveur filtrent les transactions', () => {
   it.each(['sentry.server.config.ts', 'sentry.edge.config.ts'])(
-    '%s déclare beforeSendTransaction avec sanitizeSentryTransaction',
+    '%s déclare beforeSendTransaction avec sanitizeSentryServerTransaction',
     (file) => {
       const source = readFileSync(join(process.cwd(), file), 'utf8');
       expect(source).toContain(
-        'beforeSendTransaction: (event) => sanitizeSentryTransaction(event),',
+        'beforeSendTransaction: (event) => sanitizeSentryServerTransaction(event),',
       );
       expect(source).toContain('beforeSend: (event) => sanitizeSentryEvent(event),');
     },

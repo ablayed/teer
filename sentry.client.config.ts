@@ -2,6 +2,7 @@ import {
   getClientErrorMessage,
   isNetworkRequestError,
 } from '@/lib/monitoring/client-error-classification';
+import { resolveSentryEnvironment } from '@/lib/monitoring/sentry-environment';
 import { sanitizeSentryEvent } from '@/lib/security/telemetry-sanitize';
 
 // Sentry client chargé en import DYNAMIQUE : le SDK sort du bundle initial
@@ -40,6 +41,12 @@ if (
     Sentry.init({
       dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
       enabled: true,
+      environment: resolveSentryEnvironment(
+        process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
+        process.env.NEXT_PUBLIC_SENTRY_BUILD_VERCEL_ENV,
+      ),
+      // Tunnel propre (app/monitoring/route.ts) : il ne relaie pas l'adresse IP du visiteur.
+      tunnel: '/monitoring',
       tracesSampleRate: 0.1,
       beforeSend(event, hint) {
         const message =

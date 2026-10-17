@@ -1,5 +1,7 @@
 import * as Sentry from '@sentry/nextjs';
-import { sanitizeSentryEvent, sanitizeSentryTransaction } from './lib/security/telemetry-sanitize';
+import { resolveSentryEnvironment } from './lib/monitoring/sentry-environment';
+import { sanitizeSentryEvent } from './lib/security/telemetry-sanitize';
+import { sanitizeSentryServerTransaction } from './lib/security/telemetry-sanitize-server';
 
 // Sentry désactivé pendant les E2E prod-build (`E2E_PROD_BUILD=1`) : `next start` charge
 // `.env.local` au runtime (qui porte le DSN en local) → le SDK tente un flush réseau au
@@ -12,11 +14,16 @@ const sentryEnabled =
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   enabled: sentryEnabled,
+  // Même nom que le client (le SDK serveur déduirait sinon `vercel-production`).
+  environment: resolveSentryEnvironment(
+    process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
+    process.env.VERCEL_ENV,
+  ),
   // Traces serveur suspendues : un échantillonneur qui rend toujours 0 l'emporte aussi sur la décision
   // d'échantillonnage héritée d'un en-tête `sentry-trace` entrant (le client en émet à 10 %).
   tracesSampler: () => 0,
   beforeSend: (event) => sanitizeSentryEvent(event),
-  // Les transactions ne passent pas par `beforeSend` : sans ceci, l'URL brute d'une requête
-  // d'ingestion — donc le secret du jeton L3 — partait avec les traces échantillonnées.
-  beforeSendTransaction: (event) => sanitizeSentryTransaction(event),
+  // Les transactions ne passent pas par `beforeSend` : elles sont reconstruites par liste blanche
+  // (méthode, route paramétrée, spans techniques), jamais transmises telles quelles.
+  beforeSendTransaction: (event) => sanitizeSentryServerTransaction(event),
 });
