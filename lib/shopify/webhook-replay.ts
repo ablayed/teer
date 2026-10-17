@@ -190,7 +190,8 @@ export async function replayPendingShopifyWebhooks(
     now = new Date(),
     budgetMs = WEBHOOK_REPLAY_BUDGET_MS,
     scanLimit = WEBHOOK_REPLAY_SCAN_LIMIT,
-  }: { now?: Date; budgetMs?: number; scanLimit?: number } = {},
+    reportReview = true,
+  }: { now?: Date; budgetMs?: number; scanLimit?: number; reportReview?: boolean } = {},
 ): Promise<WebhookReplaySummary> {
   const startedAt = Date.now();
   const summary = emptySummary();
@@ -223,7 +224,10 @@ export async function replayPendingShopifyWebhooks(
 
   // Les événements en attente que la reprise ne prend pas (sujet non repris, hors fenêtre,
   // tentatives épuisées) sont comptés à part : ils demandent un regard humain, jamais un rejeu.
-  await countEventsNeedingReview(admin, now, scanLimit, summary);
+  // Le balayage opportuniste d'une livraison n'a pas à refaire ce relevé : il appartient au cron.
+  if (reportReview) {
+    await countEventsNeedingReview(admin, now, scanLimit, summary);
+  }
 
   for (const row of rows) {
     const decision = classifyReplayCandidate(row, now);
