@@ -102,7 +102,7 @@ test.describe('Carte de commande — lien étendu à toute la carte', () => {
       const boite = await menu.boundingBox();
       if (!boite) throw new Error('bouton « ⋯ » introuvable');
       await appuyer(page, boite.x + boite.width / 2, boite.y + boite.height / 2);
-      await expect(page.getByRole('menu').or(page.getByRole('dialog'))).toBeVisible({
+      await expect(page.getByRole('menu').or(page.getByRole('dialog')).first()).toBeVisible({
         timeout: 30_000,
       });
       expect(page.url()).not.toContain(`/commandes/${orderId}`);
