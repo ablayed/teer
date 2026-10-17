@@ -72,6 +72,78 @@ function sanitizeBreadcrumb(breadcrumb: NonNullable<SentryLikeEvent['breadcrumbs
   };
 }
 
+// Groupement des erreurs dans Sentry : Sentry regroupe par pile d'appels, à défaut par type et valeur.
+// Effacer la pile ET la valeur donnait un titre unique (`redacted_error`) et un seul ticket pour toutes
+// les erreurs. Sont conservés les éléments qui décrivent le CODE et jamais une donnée : type d'erreur,
+// mécanisme, fichier (chemin sans origine ni paramètres), nom de fonction, position, et un code d'erreur
+// métier de la liste blanche (`UNEXPECTED_ERROR`, `FORBIDDEN`). Le texte libre d'une erreur (il peut contenir un
+// nom, un numéro, une adresse) reste toujours effacé, ainsi que le contexte source et les variables.
+// Liste blanche explicite : un motif « capitales » laisserait passer n'importe quelle valeur écrite ainsi.
+const SAFE_ERROR_CODES = new Set(['UNEXPECTED_ERROR', 'UNAUTHENTICATED', 'FORBIDDEN']);
+const ERROR_TYPE_PATTERN = /^[A-Z][A-Za-z0-9]{0,60}(Error|Exception)$|^Error$/;
+const FUNCTION_NAME_PATTERN = /^[A-Za-z0-9_$.<>[\] ]{1,80}$/;
+const MAX_STACK_FRAMES = 50;
+
+function sanitizeFrameFilename(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const path = sanitizePathname(value);
+  if (!path || path.length > 200 || path.includes('@') || /\s/.test(path)) return undefined;
+  return path;
+}
+
+function sanitizeStackFrame(frame: Record<string, unknown>) {
+  const safe: Record<string, unknown> = {};
+  const filename = sanitizeFrameFilename(frame.filename);
+  if (filename) safe.filename = filename;
+  if (typeof frame.function === 'string' && FUNCTION_NAME_PATTERN.test(frame.function)) {
+    safe.function = frame.function;
+  }
+  for (const key of ['lineno', 'colno']) {
+    const number = frame[key];
+    if (typeof number === 'number' && Number.isFinite(number)) safe[key] = number;
+  }
+  if (typeof frame.in_app === 'boolean') safe.in_app = frame.in_app;
+  return safe;
+}
+
+function sanitizeExceptionValue(value: {
+  type?: string;
+  value?: string;
+  mechanism?: { type?: unknown; handled?: unknown };
+  stacktrace?: { frames?: unknown };
+  [key: string]: unknown;
+}) {
+  const safe: Record<string, unknown> = {
+    type:
+      typeof value.type === 'string' && ERROR_TYPE_PATTERN.test(value.type)
+        ? value.type
+        : undefined,
+    value:
+      typeof value.value === 'string' && SAFE_ERROR_CODES.has(value.value)
+        ? value.value
+        : 'redacted_error',
+  };
+  const mechanismType = sanitizeTechnicalLabel(value.mechanism?.type);
+  if (mechanismType) {
+    safe.mechanism = {
+      type: mechanismType,
+      ...(typeof value.mechanism?.handled === 'boolean'
+        ? { handled: value.mechanism.handled }
+        : {}),
+    };
+  }
+  const frames = value.stacktrace?.frames;
+  if (Array.isArray(frames)) {
+    safe.stacktrace = {
+      frames: frames
+        .slice(-MAX_STACK_FRAMES)
+        .filter((frame): frame is Record<string, unknown> => !!frame && typeof frame === 'object')
+        .map(sanitizeStackFrame),
+    };
+  }
+  return safe;
+}
+
 export function sanitizeSentryEvent<T extends object>(event: T): T {
   const source = event as T & SentryLikeEvent;
   const safeEvent = {} as T & SentryLikeEvent;
@@ -117,10 +189,7 @@ export function sanitizeSentryEvent<T extends object>(event: T): T {
 
   if (source.exception?.values) {
     safeEvent.exception = {
-      values: source.exception.values.map((value) => ({
-        type: sanitizeTechnicalLabel(value.type),
-        value: 'redacted_error',
-      })),
+      values: source.exception.values.map(sanitizeExceptionValue),
     };
   }
 
