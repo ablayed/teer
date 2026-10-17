@@ -23,7 +23,9 @@ test('signup flow shows email verification message', async ({ page }) => {
   await page.locator('#acceptedLegal').check();
   await page.getByRole('button', { name: messages.auth.signup.submit }).click();
 
-  await expect(page.getByText(messages.auth.signup.verify_title)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: messages.auth.signup.verify_title })).toBeVisible({
+    timeout: 20_000,
+  });
 });
 
 test('idle banner is visible on /connexion?reason=idle', async ({ page }) => {
@@ -197,7 +199,9 @@ test('signup success shows verify screen with submitted email and resend button'
   await page.getByRole('button', { name: messages.auth.signup.submit }).click();
 
   await expect(page.getByLabel(messages.auth.signup.verify_aria)).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(messages.auth.signup.verify_title)).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: messages.auth.signup.verify_title }),
+  ).toBeVisible();
   await expect(page.getByText(email, { exact: false })).toBeVisible();
   await expect(
     page.getByRole('button', { name: messages.auth.signup.verify_resend, exact: true }),
