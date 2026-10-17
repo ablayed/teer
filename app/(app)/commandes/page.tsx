@@ -1,4 +1,5 @@
 import { CsvOrderImport } from '@/components/orders/csv-order-import';
+import { EarlyMenuIntent } from '@/components/orders/early-menu-intent';
 import { NewOrderForm } from '@/components/orders/new-order-form';
 import { OrdersBoardProvider } from '@/components/orders/orders-board-context';
 import { OrdersWorkspace } from '@/components/orders/orders-workspace';
@@ -225,6 +226,14 @@ async function CommandesPage({ searchParams }: CommandesPageProps) {
             />
           </div>
         </div>
+
+        {/* Avant la liste : une intention reçue avant l'hydratation ne doit pas être perdue (V4 bis). */}
+        {showWorkspace ? (
+          <EarlyMenuIntent
+            failedMessage={t('actions.menuLoadFailedReload')}
+            reloadLabel={t('actions.menuReload')}
+          />
+        ) : null}
 
         {showWorkspace ? (
           // Un seul instant pour le rendu serveur ET le premier rendu du navigateur (V2).

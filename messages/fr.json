@@ -1463,6 +1463,8 @@
       "menuTitle": "Actions",
       "menuLoading": "Ouverture du menu…",
       "menuLoadFailed": "Le menu n’a pas pu s’ouvrir. Appuyez pour réessayer.",
+      "menuLoadFailedReload": "Le menu n’a pas pu se charger. Rechargez la page.",
+      "menuReload": "Recharger la page",
       "nouvelle": "Remettre en nouvelle",
       "confirmee": "Confirmer",
       "assignee": "Assigner",

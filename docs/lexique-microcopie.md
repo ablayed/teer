@@ -452,3 +452,18 @@ par trois états, jamais confondus (règle 15).
 
 Vouvoiement (« Appuyez »), comme tout le reste de l'application. Clés : `orders.actions.menuLoading`
 et `orders.actions.menuLoadFailed`. Aucune donnée de commande n'est touchée par cet état.
+
+### Avant l'hydratation : l'appui sur « ⋯ » est gardé, l'échec se lit (V4 bis, 2026-10-16)
+
+Un appui sur le bouton « ⋯ » reçu avant que l'application ait démarré est conservé (une seule intention) et
+repris à l'hydratation. Trois états, jamais confondus (règle 15) :
+
+| Situation | Ce que voit l'utilisateur | Texte |
+|---|---|---|
+| Attente (moins de 15 s) | le bouton pulse, nom accessible « Ouverture du menu… » | `orders.actions.menuLoading` |
+| **Scripts de l'application bloqués** (15 s sans démarrage) | bouton rouge **et message visible** en bas de l'écran avec un bouton « Recharger la page » ; un nouvel appui sur le bouton recharge | `orders.actions.menuLoadFailedReload` (« Le menu n’a pas pu se charger. Rechargez la page. »), `orders.actions.menuReload` |
+| **JavaScript entièrement désactivé** | les boutons « ⋯ » sont masqués : aucun script ne peut rien afficher, un bouton inerte serait un mensonge | aucun texte |
+
+« Appuyez pour réessayer » (`menuLoadFailed`) reste réservé au cas où le code du menu a échoué à se télécharger
+**après** l'hydratation : un nouvel appui relance alors réellement le téléchargement. Avant l'hydratation, réarmer
+l'attente ne répare rien : on recharge.

@@ -13,6 +13,23 @@ import { type ComponentType, useCallback, useEffect, useState } from 'react';
 // approche, pour que l'ouverture ne attende pas le réseau).
 type MenuComponent = ComponentType<OrderActionsMenuProps>;
 
+// Intention d'ouverture reçue AVANT l'hydratation (components/orders/early-menu-intent.tsx).
+declare global {
+  interface Window {
+    __earlyMenu?: {
+      at: number;
+      hydrated: boolean;
+      id: string | null;
+      path: string;
+      reload?: () => void;
+      reset?: (element: Element | null) => void;
+      timer: number;
+    };
+  }
+}
+
+const EARLY_INTENT_MAX_AGE_MS = 15_000;
+
 let loadedMenu: MenuComponent | null = null;
 let pendingLoad: Promise<MenuComponent> | null = null;
 
@@ -59,6 +76,17 @@ export function useActiveOrderMenu() {
     });
   }, []);
 
+  // Effet du PARENT : il s'exécute après ceux des cartes, qui ont déjà repris leur intention éventuelle.
+  // Les scripts ont fini par démarrer : l'état visuel posé avant l'hydratation est nettoyé et le message
+  // d'échec éventuel retiré.
+  useEffect(() => {
+    const early = window.__earlyMenu;
+    if (!early) return;
+    early.hydrated = true;
+    for (const element of document.querySelectorAll('[data-early-state]')) early.reset?.(element);
+    document.getElementById('early-menu-failed')?.setAttribute('hidden', '');
+  }, []);
+
   return {
     activate: setActiveId,
     isMounted: (orderId: string) => orderId === activeId || busyIds.has(orderId),
@@ -73,6 +101,8 @@ type Props = Omit<OrderActionsMenuProps, 'compact' | 'defaultOpen' | 'onBusyChan
   loadingLabel: string;
   /** Libellé quand le téléchargement a échoué : dit quoi faire (réessayer). */
   retryLabel: string;
+  /** Libellé quand les scripts de l'application n'ont pas démarré (avant hydratation) : dit de recharger. */
+  reloadLabel: string;
   mounted: boolean;
   onActivate: () => void;
   onBusyChange: (busy: boolean) => void;
@@ -82,6 +112,7 @@ export function LazyOrderActions({
   label,
   loadingLabel,
   retryLabel,
+  reloadLabel,
   mounted,
   onActivate,
   onBusyChange,
@@ -111,6 +142,23 @@ export function LazyOrderActions({
     };
   }, [mounted, Menu, attempt]);
 
+  // Reprend l'intention d'ouverture reçue avant l'hydratation, au plus une : rejetée si elle est périmée,
+  // si la page a changé, ou si ce n'est pas cette carte. `onActivate` est idempotent : aucun double
+  // traitement si React a aussi rejoué le même appui.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: au montage seulement, c'est l'hydratation qui reprend l'intention.
+  useEffect(() => {
+    const early = window.__earlyMenu;
+    if (!early || early.id !== menuProps.orderId) return;
+    window.clearTimeout(early.timer);
+    early.id = null;
+    early.reset?.(document.querySelector(`[data-early-menu="${menuProps.orderId}"]`));
+    const fresh = Date.now() - early.at <= EARLY_INTENT_MAX_AGE_MS;
+    const samePage = early.path === `${window.location.pathname}${window.location.search}`;
+    if (fresh && samePage && compactMenuHasItems(menuProps.allowedActions, menuProps.phone)) {
+      onActivate();
+    }
+  }, []);
+
   // Même règle que le menu complet : sans entrée à montrer, la carte n'a pas de bouton.
   if (!compactMenuHasItems(menuProps.allowedActions, menuProps.phone)) {
     return null;
@@ -126,7 +174,11 @@ export function LazyOrderActions({
     <button
       aria-busy={waiting || undefined}
       aria-label={failed ? retryLabel : waiting ? loadingLabel : label}
-      className={`inline-flex size-12 items-center justify-center rounded-md hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${failed ? 'text-danger' : 'text-muted'}`}
+      className={`inline-flex size-12 items-center justify-center rounded-md hover:bg-canvas hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[early-state=failed]:text-danger data-[early-state=pending]:animate-pulse data-[early-state=pending]:bg-canvas ${failed ? 'text-danger' : 'text-muted'}`}
+      data-early-failed-label={reloadLabel}
+      data-early-idle-label={label}
+      data-early-loading-label={loadingLabel}
+      data-early-menu={menuProps.orderId}
       data-state={failed ? 'error' : waiting ? 'loading' : 'idle'}
       data-testid="order-actions-trigger"
       onClick={() => {
@@ -140,6 +192,7 @@ export function LazyOrderActions({
       onFocus={preloadOrderActionsMenu}
       onPointerEnter={preloadOrderActionsMenu}
       onTouchStart={preloadOrderActionsMenu}
+      suppressHydrationWarning
       type="button"
     >
       {waiting ? (

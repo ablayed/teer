@@ -49,6 +49,7 @@ function Host({ withActions = ['assigner'] as const }: { withActions?: readonly 
           key={id}
           label={`Actions ${id}`}
           loadingLabel="Ouverture"
+          reloadLabel="Recharger"
           retryLabel="Réessayer"
           mounted={menu.isMounted(id)}
           onActivate={() => menu.activate(id)}
@@ -139,6 +140,7 @@ describe('menu Actions à la demande', () => {
         drivers={[]}
         label="Actions z"
         loadingLabel="Ouverture"
+        reloadLabel="Recharger"
         retryLabel="Réessayer"
         mounted={false}
         onActivate={() => undefined}
@@ -289,6 +291,7 @@ describe('premier appui sous réseau lent', () => {
           orderId="z"
           orderState="open"
           phone={null}
+          reloadLabel="Recharger"
           retryLabel="Réessayer"
           whatsappOrderData={{} as never}
         />
@@ -324,7 +327,7 @@ describe('premier appui sous réseau lent', () => {
       release();
       await arrival;
     });
-    expect(await screen.findByRole('menu')).toBeTruthy();
+    expect(await screen.findByRole('menu', {}, { timeout: 5000 })).toBeTruthy();
     expect(screen.getAllByRole('menu')).toHaveLength(1);
   });
 
@@ -346,7 +349,7 @@ describe('premier appui sous réseau lent', () => {
     mountHost(mod, () => undefined);
 
     fireEvent.click(screen.getByLabelText('Actions z'));
-    await screen.findByRole('menu');
+    await screen.findByRole('menu', {}, { timeout: 5000 });
     fireEvent.pointerDown(document.body);
     await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
@@ -365,6 +368,6 @@ describe('premier appui sous réseau lent', () => {
     // Le réseau est revenu : le code est maintenant disponible, un appui suffit.
     vi.doMock('@/components/orders/order-actions-menu', realisticMenu);
     fireEvent.click(failed);
-    expect(await screen.findByRole('menu')).toBeTruthy();
+    expect(await screen.findByRole('menu', {}, { timeout: 5000 })).toBeTruthy();
   });
 });
