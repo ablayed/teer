@@ -173,7 +173,7 @@ async function seedProductStock(
   merchantAccountId: string,
   qtyOnHand = 50,
 ) {
-  await admin.from('product_stock').upsert(
+  const { error } = await admin.from('product_stock').upsert(
     {
       product_id: productId,
       merchant_account_id: merchantAccountId,
@@ -182,6 +182,19 @@ async function seedProductStock(
     },
     { onConflict: 'product_id' },
   );
+  // Une graine perdue en silence donnerait une position de départ à zéro et un rouge trompeur
+  // (« −5 au lieu de 25 ») : l'erreur et la valeur relue sont vérifiées ici.
+  if (error) throw new Error(`seedProductStock: upsert refusé (${error.code ?? error.message})`);
+  const { data: seeded, error: readError } = await admin
+    .from('product_stock')
+    .select('qty_on_hand')
+    .eq('product_id', productId)
+    .single();
+  if (readError || seeded?.qty_on_hand !== qtyOnHand) {
+    throw new Error(
+      `seedProductStock: graine non relue (attendu ${qtyOnHand}, lu ${seeded?.qty_on_hand ?? 'rien'})`,
+    );
+  }
 }
 
 async function createOrderWithLine(
