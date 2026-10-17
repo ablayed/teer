@@ -33,12 +33,20 @@ type ResourceRowWithHref = ResourceRowBase & {
    */
   prefetch?: boolean;
   scroll?: boolean;
+  /**
+   * Étend la zone du lien à toute la carte (motif du « lien étendu » : pseudo-élément du lien
+   * positionné sur la rangée). Statut, montant et marges mènent alors à la même destination,
+   * par le même vrai lien natif ; seul `overflow` reste au-dessus du lien, hors de sa zone.
+   * Réservé aux rangées dont `status` et `primaryAction` ne sont pas interactifs.
+   */
+  fullSurfaceLink?: boolean;
 };
 type ResourceRowWithActivate = ResourceRowBase & {
   href?: never;
   onActivate?: () => void;
   prefetch?: never;
   scroll?: never;
+  fullSurfaceLink?: never;
 };
 
 export type ResourceRowProps = ResourceRowWithHref | ResourceRowWithActivate;
@@ -56,8 +64,10 @@ export function ResourceRow({
   className,
   prefetch,
   scroll,
+  fullSurfaceLink,
   testId,
 }: ResourceRowProps) {
+  const extended = Boolean(href) && Boolean(fullSurfaceLink);
   const mainContent = (
     <span className="flex min-w-0 flex-1 items-center gap-3">
       {leading}
@@ -74,14 +84,20 @@ export function ResourceRow({
     </span>
   );
 
-  const linkClasses =
-    'flex min-w-0 flex-1 items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-surface';
+  const linkClasses = cn(
+    'flex min-w-0 flex-1 items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-surface',
+    // Le pseudo-élément couvre la rangée (ancêtre `relative`) ; la bague de focus est portée par
+    // lui pour entourer toute la carte, et l'appui est rendu sur la rangée entière.
+    extended &&
+      "after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:ring-0 focus-visible:after:ring-2 focus-visible:after:ring-ring",
+  );
 
   return (
     <div
       className={cn(
         '@container/row flex min-h-[56px] items-center gap-2 px-3 py-2',
         'border-b border-border last:border-b-0',
+        extended && 'relative has-[a:active]:bg-surface',
         className,
       )}
       data-testid={testId}
@@ -99,7 +115,11 @@ export function ResourceRow({
       )}
       {status}
       {primaryAction}
-      {overflow}
+      {extended && overflow ? (
+        <div className="relative z-10 flex shrink-0 items-center">{overflow}</div>
+      ) : (
+        overflow
+      )}
     </div>
   );
 }
