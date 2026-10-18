@@ -10,7 +10,7 @@ function record(value: unknown): UnknownRecord | null {
     : null;
 }
 
-function routeFromPathname(pathname: string): string | null {
+export function routeFromPathname(pathname: string): string | null {
   const path = pathname.replace(/\/+$/, '') || '/';
   const direct = new Set(['/commandes', '/tableau', '/livreurs']);
   if (direct.has(path)) return path;
@@ -131,4 +131,34 @@ export function sanitizeSentryClientTransaction<T extends object>(event: T): T |
     measurements: safeMeasurements(input.measurements),
     spans: safeSpans(input.spans),
   } as T;
+}
+
+const STANDALONE_SPAN_DATA_KEYS = new Set([
+  'sentry.origin',
+  'sentry.op',
+  'sentry.source',
+  'sentry.exclusive_time',
+  'sentry.sample_rate',
+  'release',
+  'environment',
+]);
+
+/**
+ * Les spans autonomes (interaction → INP) ne passent PAS par `beforeSendTransaction` : leur
+ * `data.transaction` porte le chemin brut (identifiant de boutique compris), leur description
+ * peut nommer un élément. Liste blanche des clés, route normalisée, description réduite à l'opération.
+ */
+export function sanitizeSentryClientSpan<
+  T extends { data?: Record<string, unknown>; description?: string; op?: string },
+>(span: T): T {
+  const data: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(span.data ?? {})) {
+    if (STANDALONE_SPAN_DATA_KEYS.has(key)) data[key] = value;
+  }
+  const rawTransaction = span.data?.transaction;
+  if (typeof rawTransaction === 'string') {
+    const route = routeFromPathname(rawTransaction.split(/[?#]/)[0] ?? '');
+    if (route) data.transaction = route;
+  }
+  return { ...span, data, description: span.op ?? span.description };
 }

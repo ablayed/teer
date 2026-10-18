@@ -1,4 +1,7 @@
-import { sanitizeSentryClientTransaction } from '@/lib/security/sanitize-sentry-client-transaction';
+import {
+  sanitizeSentryClientSpan,
+  sanitizeSentryClientTransaction,
+} from '@/lib/security/sanitize-sentry-client-transaction';
 import { describe, expect, it } from 'vitest';
 
 describe('sanitizeSentryClientTransaction', () => {
@@ -81,5 +84,47 @@ describe('sanitizeSentryClientTransaction', () => {
         request: { url: 'https://teerafrik.com/api/shopify/ingest/token-secret?x=private' },
       }),
     ).toBeNull();
+  });
+});
+
+describe('sanitizeSentryClientSpan (spans autonomes : interaction / INP)', () => {
+  const SHOP = '54b1f80f-23a9-437b-b88b-3227bbd51c3e';
+
+  it('normalise la route, retire les clés hors liste blanche et la description libre', () => {
+    const result = sanitizeSentryClientSpan({
+      op: 'ui.interaction.click',
+      description: 'button.cta[data-order="CANARI-ELEMENT"]',
+      data: {
+        'sentry.origin': 'auto.http.browser.inp',
+        'sentry.op': 'ui.interaction.click',
+        'sentry.exclusive_time': 24,
+        release: '9c5646d',
+        environment: 'perf-test',
+        transaction: `/s/${SHOP}/commandes?q=CANARI-RECHERCHE`,
+        'user_agent.original': 'Mozilla/5.0 CANARI-UA',
+        'url.full': `https://teerafrik.com/s/${SHOP}/commandes?q=CANARI-RECHERCHE`,
+        'http.query': 'q=CANARI-RECHERCHE',
+      },
+    });
+
+    expect(result.data).toEqual({
+      'sentry.origin': 'auto.http.browser.inp',
+      'sentry.op': 'ui.interaction.click',
+      'sentry.exclusive_time': 24,
+      release: '9c5646d',
+      environment: 'perf-test',
+      transaction: '/s/[shop]/commandes',
+    });
+    expect(result.description).toBe('ui.interaction.click');
+    expect(JSON.stringify(result)).not.toContain('CANARI');
+    expect(JSON.stringify(result)).not.toContain(SHOP);
+  });
+
+  it('retire la route quand elle n’est pas reconnue, au lieu de la laisser passer brute', () => {
+    const result = sanitizeSentryClientSpan({
+      op: 'ui.interaction.click',
+      data: { transaction: `/s/${SHOP}/clients/secret-id`, 'sentry.op': 'ui.interaction.click' },
+    });
+    expect(result.data).toEqual({ 'sentry.op': 'ui.interaction.click' });
   });
 });
