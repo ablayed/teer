@@ -40,9 +40,11 @@ import {
   runResolvedWebhookEvent,
   toJson,
 } from '@/lib/shopify/webhook-core';
+import { sweepPendingShopifyWebhooks } from '@/lib/shopify/webhook-opportunistic-sweep';
 import type { Database } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
+import { after } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -90,6 +92,63 @@ function parseJsonSafely(rawBody: string): unknown {
   } catch {
     return null;
   }
+}
+
+function scheduleWebhookProcessing(args: {
+  eventId: string;
+  payload: unknown;
+  shopId: string;
+  topic: string;
+  webhookId: string;
+  triggeredAt: string | null;
+  validatedClientId: string;
+  resolvedShopDomain: string;
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  claimRetryable?: boolean;
+}): void {
+  const { supabase, claimRetryable = false, ...event } = args;
+  if (!supabase) return;
+
+  after(async () => {
+    try {
+      let processingEvent = event;
+      if (claimRetryable) {
+        const { data, error } = await supabase.rpc('claim_shopify_webhook_events', {
+          p_event_id: event.eventId,
+          p_limit: 1,
+          p_now: new Date().toISOString(),
+        });
+        if (error) throw new Error('shopify_webhook_retry_claim_failed');
+        const claimed = data?.[0];
+        if (!claimed) return;
+        processingEvent = {
+          ...event,
+          payload: claimed.payload,
+          shopId: claimed.shop_id ?? event.shopId,
+          topic: claimed.topic,
+          resolvedShopDomain: claimed.shop_domain ?? event.resolvedShopDomain,
+        };
+      }
+
+      const shop = await resolveShopForTopic(supabase, processingEvent.topic, {
+        by: 'id',
+        shopId: processingEvent.shopId,
+      });
+      await runResolvedWebhookEvent({
+        ...processingEvent,
+        supabase,
+        shop,
+      });
+    } catch (error) {
+      // La livraison est déjà durable. Si le traitement ou sa finalisation échoue,
+      // le bail expiré permet au cron de reprendre l'événement.
+      Sentry.captureException(error, { tags: { route: 'api.shopify.ingest' } });
+    }
+
+    // Reprise des événements restés en attente (exécution tuée, bail expiré) : le cron
+    // quotidien reste le secours, ce balayage évite d'attendre jusqu'à lui.
+    await sweepPendingShopifyWebhooks(supabase);
+  });
 }
 
 export async function POST(
@@ -190,47 +249,38 @@ export async function POST(
   }
 
   if (receipt.duplicate) {
-    // Contrairement à legacy (after() + réclamation asynchrone), cet endpoint reste synchrone :
-    // un doublon retryable dû est retraité immédiatement, avant la réponse — pas de fenêtre
-    // d'attente d'un cron/retry externe. Le résultat final (webhook_event.status) est identique.
+    // Un doublon retryable dû est réclamé atomiquement dans after() : plusieurs livraisons
+    // simultanées et le cron ne peuvent pas lancer le même traitement en parallèle.
     const due =
       receipt.status === 'retryable' &&
       (receipt.nextAttemptAt === null || Date.parse(receipt.nextAttemptAt) <= Date.now());
     if (!due || !receipt.eventId) {
       return new Response(null, { status: 200 });
     }
-    const shop = await resolveShopForTopic(supabase, topic, {
-      by: 'id',
-      shopId: connection.shopId,
-    });
-    await runResolvedWebhookEvent({
+    scheduleWebhookProcessing({
       supabase,
       eventId: receipt.eventId,
-      shop,
-      topic,
       payload: receipt.payload,
+      shopId: connection.shopId,
+      topic,
       webhookId,
       triggeredAt,
       validatedClientId: validatingApps[0].clientId,
+      claimRetryable: true,
       // Domaine résolu par le jeton d'URL (connexion), jamais par un en-tête.
       resolvedShopDomain: connection.externalIdentifier,
     });
     return new Response(null, { status: 200 });
   }
 
-  const shop = await resolveShopForTopic(supabase, topic, { by: 'id', shopId: connection.shopId });
-
-  // Les topics GDPR (customers/data_request, customers/redact, shop/redact) ne sont jamais
-  // souscriptibles via l'Admin API (enum WebhookSubscriptionTopic, vérifié dans le lot précédent)
-  // — ils n'atteignent donc structurellement jamais cet endpoint. dispatchWebhookCore les
-  // traiterait quand même correctement s'ils arrivaient ici (même dispatcher que legacy), mais
-  // aucun trafic Shopify réel ne peut emprunter ce chemin pour ces trois topics.
-  await runResolvedWebhookEvent({
+  // Persistance/HMAC/identité terminés : le traitement métier part après le 200.
+  // La ligne webhook_event est la source de reprise si l'exécution après-réponse est tuée.
+  scheduleWebhookProcessing({
     supabase,
     eventId: receipt.eventId as string,
-    shop,
-    topic,
     payload,
+    shopId: connection.shopId,
+    topic,
     webhookId,
     triggeredAt,
     validatedClientId: validatingApps[0].clientId,

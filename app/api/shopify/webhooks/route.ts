@@ -25,6 +25,7 @@ import {
   runResolvedWebhookEvent,
   toJson,
 } from '@/lib/shopify/webhook-core';
+import { sweepPendingShopifyWebhooks } from '@/lib/shopify/webhook-opportunistic-sweep';
 import { verifyWebhookHmac, verifyWebhookHmacAnySecret } from '@/lib/shopify/webhook-verify';
 import type { Database } from '@/lib/supabase/database.types';
 import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
@@ -472,19 +473,24 @@ export async function POST(request: Request) {
   }
 
   // 200 rapide (< 5 s) : le traitement métier s'exécute APRÈS la réponse (after()).
-  after(() =>
-    runWebhookEvent({
-      eventId: receipt.eventId as string,
-      payload,
-      shopDomain,
-      supabase,
-      topic,
-      replay: false,
-      webhookId,
-      triggeredAt,
-      validatedClientId,
-    }),
-  );
+  after(async () => {
+    try {
+      await runWebhookEvent({
+        eventId: receipt.eventId as string,
+        payload,
+        shopDomain,
+        supabase,
+        topic,
+        replay: false,
+        webhookId,
+        triggeredAt,
+        validatedClientId,
+      });
+    } finally {
+      // Reprise des événements restés en attente : le cron quotidien reste le secours.
+      await sweepPendingShopifyWebhooks(supabase);
+    }
+  });
 
   return ok();
 }
