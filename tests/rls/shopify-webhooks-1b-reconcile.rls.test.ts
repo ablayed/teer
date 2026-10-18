@@ -61,6 +61,16 @@ function reconcile(shop: SeededShop, fake: FakeShopifyAdmin, mode: Mode, admin: 
   );
 }
 
+// Précondition « installation complète » : son résultat est VÉRIFIÉ. Une installation partielle (erreur
+// transitoire d'un appel) laisserait des sujets manquants que la passe suivante créerait, et le
+// test échouerait plus loin avec un message trompeur (`created: 2` au lieu de 0).
+async function install(shop: SeededShop, fake: FakeShopifyAdmin) {
+  const result = await reconcile(shop, fake, 'installation');
+  expect(result).toMatchObject({ ok: true, created: TOPIC_COUNT });
+  expect(fake.subscriptions).toHaveLength(TOPIC_COUNT);
+  return result;
+}
+
 async function setup(label: string) {
   const domain = freshDomain(label);
   const shop = await seedConnectedShop(tenant, domain, { clientId: APP });
@@ -188,7 +198,7 @@ describe('installation — première réconciliation', () => {
 
   it.skipIf(!hasStack)('aucune colonne d’état ne porte l’uri ni le secret', async () => {
     const { shop, fake } = await setup('install-no-secret');
-    await reconcile(shop, fake, 'installation');
+    await install(shop, fake);
     const secret = parseWebhookToken(
       new URL(fake.subscriptions[0].uri).pathname.slice(INGEST_PATH_PREFIX.length),
     )?.secret;
@@ -212,7 +222,7 @@ describe('choix du mode de rotation (C1), exercé par la réconciliation', () =>
     'finalisation avec inventaire vide et jeton existant → rotation SANS grâce',
     async () => {
       const { shop, fake } = await setup('mode-install-empty');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       const before = await tokenRow(shop.connectionId);
       // Réinstallation : Shopify a supprimé tous les abonnements de la boutique.
       fake.subscriptions = [];
@@ -233,7 +243,7 @@ describe('choix du mode de rotation (C1), exercé par la réconciliation', () =>
     'finalisation avec un abonnement sur l’empreinte précédente → bascule en réparation, AVEC grâce',
     async () => {
       const { shop, fake } = await setup('mode-install-previous');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       const original = await tokenRow(shop.connectionId);
       // Les abonnements en place deviennent « précédents » : le jeton a tourné sans eux.
       const read = await readWebhookToken(service(), shop.connectionId);
@@ -265,7 +275,7 @@ describe('choix du mode de rotation (C1), exercé par la réconciliation', () =>
     'finalisation avec un abonnement non reconnu vers notre origine → réparation, AVEC grâce',
     async () => {
       const { shop, fake } = await setup('mode-install-foreign');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       const original = await tokenRow(shop.connectionId);
       fake.subscriptions = [];
       const unknown = fake.seed(
@@ -285,7 +295,7 @@ describe('choix du mode de rotation (C1), exercé par la réconciliation', () =>
 
   it.skipIf(!hasStack)('réparation → toujours avec grâce, même inventaire vide', async () => {
     const { shop, fake } = await setup('mode-repair');
-    await reconcile(shop, fake, 'installation');
+    await install(shop, fake);
     const original = await tokenRow(shop.connectionId);
     fake.subscriptions = [];
 
@@ -301,7 +311,7 @@ describe('choix du mode de rotation (C1), exercé par la réconciliation', () =>
     'jeton révoqué (libération d’identité) : rotation, revoked_at à NULL, aucune grâce',
     async () => {
       const { shop, fake } = await setup('mode-revoked');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       await (await pg()).query(
         'update public.store_connection_webhook_token set revoked_at = now() where store_connection_id = $1',
         [shop.connectionId],
@@ -322,7 +332,7 @@ describe('W2 — topic manquant', () => {
     'recréé avec l’uri courante, SANS rotation ; aucun abonnement valide supprimé (E10)',
     async () => {
       const { shop, fake } = await setup('w2');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       const before = await tokenRow(shop.connectionId);
       const uri = fake.subscriptions[0].uri;
       const survivors = fake.subscriptions.filter((s) => s.topic !== 'ORDERS_UPDATED');
@@ -358,7 +368,7 @@ describe('W2 — topic manquant', () => {
     'contrôle positif : inventaire complet → aucun appel de mutation',
     async () => {
       const { shop, fake } = await setup('w2-noop');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       fake.calls = [];
 
       const result = await reconcile(shop, fake, 'repair');
@@ -372,7 +382,7 @@ describe('W2 — topic manquant', () => {
     'inventaire paginé : un abonnement courant au-delà de la première page est reconnu',
     async () => {
       const { shop, fake } = await setup('w2-paged');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       const before = await tokenRow(shop.connectionId);
       fake.pageSizeCap = 2;
       fake.calls = [];
@@ -471,7 +481,7 @@ describe('W1 — finalisation, rejeu, puis réconciliations concurrentes', () =>
     'rejeu de la finalisation : un seul ensemble d’abonnements, aucune mutation de plus',
     async () => {
       const { shop, fake } = await setup('w1-replay');
-      await reconcile(shop, fake, 'installation');
+      await install(shop, fake);
       const ids = fake.subscriptions.map((s) => s.id).sort();
       fake.calls = [];
 
@@ -571,7 +581,7 @@ describe('W13 — fencing des ÉCRITURES de la réconciliation', () => {
   // Ancien propriétaire arrêté dans son appel de création ; son bail expire.
   async function staleOwner(label: string) {
     const { shop, fake } = await setup(label);
-    await reconcile(shop, fake, 'installation');
+    await install(shop, fake);
     fake.subscriptions = fake.subscriptions.filter((s) => s.topic !== 'ORDERS_CREATE');
     fake.calls = [];
 
@@ -640,7 +650,7 @@ describe('W13 — fencing des ÉCRITURES de la réconciliation', () => {
   // supprimer les neuf abonnements sur l'empreinte précédente.
   async function ownerBeforeCleanup(label: string) {
     const { shop, fake } = await setup(label);
-    await reconcile(shop, fake, 'installation');
+    await install(shop, fake);
     const read = await readWebhookToken(service(), shop.connectionId);
     if (!read.ok || !read.row) throw new Error('jeton');
     const previousHash = read.row.secretHash;
