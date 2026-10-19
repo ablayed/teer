@@ -5,7 +5,7 @@
 // données client, aucune DSAR, aucune suppression). Les refus d'en-tête forgé sont en outre
 // prouvés de bout en bout par tests/e2e/shopify-webhooks.spec.ts.
 import { createHmac, randomBytes } from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type App = { clientId: string; clientSecret: string };
 
@@ -145,6 +145,15 @@ async function post(request: Request): Promise<Response> {
 }
 
 describe('T31 — route legacy : rejet D20a avant tout traitement', () => {
+  // Premier import de la route, à froid : sa chaîne de modules peut dépasser les 15 s d'un test
+  // (dette (m) de CLAUDE.md). Le chargement se fait ici, sous un délai de hook borné, jamais dans
+  // le premier test : son dépassement ferait expirer ce test ET fausserait le suivant.
+  beforeAll(async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-placeholder';
+    await import('@/app/api/shopify/webhooks/route');
+  }, 60_000);
+
   beforeEach(() => {
     harness.apps = [APP];
     harness.dispatched = [];
