@@ -95,6 +95,8 @@ Single e2e spec: `pnpm exec playwright test tests/e2e/<spec>.ts --project=chromi
 
     Chaque relevé « avant » est une étape **bloquante**, cochée avant le point d'arrêt correspondant. S'il est omis, une réserve est **consignée explicitement** avant de franchir ce point — jamais découverte après coup dans l'attestation.
 
+20. **Droits explicites pour tout objet neuf (lot D).** Toute migration qui crée une table, une vue, une séquence nommée ou une fonction pose, **dans le même fichier**, ses droits : `revoke all … from public, anon, authenticated, service_role`, puis `grant` explicite au strict nécessaire (verbes listés ; `service_role` et `authenticated` seulement). **Rien pour `anon` sauf besoin prouvé.** Une vue déclare `security_invoker = true`. Modèles SQL : `docs/security/convention-droits-explicites.md`. `[Rapporté, porteur, 2026-10-19]` Supabase n'exposera plus automatiquement les nouveaux objets à l'API Data à partir du **30/10** ; `[Fait]` l'image de la CLI 2.110.0 applique déjà ce régime (droits par défaut `Dxtm`, 543 échecs sur 803 quand les migrations s'appuient sur le défaut). Une migration qui s'appuie sur le défaut passe en local et casse en production. **Toute migration qui crée un objet attend que cette garde soit en place** (`tests/unit/security/lot-d-explicit-grants.test.ts`, migrations ≥ `0168`, et `tests/rls/anon-privilege-frozen-allowlist.rls.test.ts`). **Devant un rouge, on corrige la migration ; on n'ajoute jamais un nom à `supabase/security/anon-privilege-allowlist.json`**, gelée et réservée à rétrécir.
+
 ## Architecture
 
 ### next-safe-action layering (`lib/actions/safe-action.ts`)
