@@ -18,6 +18,10 @@ test-results
 pnpm-debug.log*
 supabase/.temp/*
 !supabase/.temp/project-ref
+# Épinglage de PostgREST SEUL (la CLI lit ce fichier et ne remplace que cette image). v14.15 répond
+# `Connection: close` à un HEAD sans Content-Length : sans cela, Kong réutilise une connexion que
+# PostgREST vient de fermer et le POST/PATCH suivant reçoit un 502 (supabase/cli#6674).
+!supabase/.temp/rest-version
 supabase/.branches/_current_branch
 
 .vercel

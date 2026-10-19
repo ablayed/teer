@@ -116,4 +116,19 @@ fi
 
 capture_state after
 rm -f "$supabase_log"
+
+# Garde de l'épinglage de PostgREST (supabase/.temp/rest-version) : si la CLI cessait de lire ce
+# fichier, la pile retomberait sans bruit sur la version par défaut de la CLI, qui réintroduit les
+# 502 Kong → PostgREST (HEAD sans Content-Length puis fermeture, corrigé dans v14.15).
+if [[ "$status" -eq 0 ]]; then
+  pinned_rest="$(cat supabase/.temp/rest-version 2>/dev/null || true)"
+  running_rest="$(docker ps --filter 'name=supabase_rest_' --format '{{.Image}}' | head -n 1)"
+  printf 'SUPABASE_DIAGNOSTICS rest_pinned=%s rest_running=%s\n' "${pinned_rest:-none}" "${running_rest:-none}"
+  if [[ -n "$pinned_rest" && "${running_rest##*:}" != "$pinned_rest" ]]; then
+    printf '::error::PostgREST lancé (%s) différent de l'"'"'épinglage supabase/.temp/rest-version (%s)\n' \
+      "${running_rest:-aucun}" "$pinned_rest"
+    status=1
+  fi
+fi
+
 exit "$status"
