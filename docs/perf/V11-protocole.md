@@ -40,6 +40,7 @@ Une ligne JSON par événement, étiquetée `"tag":"v11"` :
   `wait_ms` (création → envoi des en-têtes : file d'attente + DNS + TCP + TLS), `ttfb_ms`
   (envoi → en-têtes de réponse), `body_ms` (lecture du corps), `total_ms`, `loop_p99_ms`,
   `loop_max_ms`, `err` (code seulement) ;
+- par échec de connexion vers Supabase (`ev:"connect_error"`) : `proc_age_s`, `connect_ms` (délai avant l'échec), `err` (code seul, par exemple `ECONNREFUSED`). L'appel qui en résulte porte le même code dans `err`, sans `sock` ;
 - une ligne `ev:"budget"` si le processus atteint 20 000 lignes, puis plus rien.
 
 **Jamais enregistré** : URL complète, chaîne de requête, hôte, en-tête (requête ou réponse),
@@ -71,6 +72,7 @@ avec `vercel logs` sur le déploiement, ou exporter immédiatement après.
 ## 5. Ce que cette mesure ne sépare PAS
 
 - **Aucune sonde dédiée dans ce lot.** `net_probe()` a été retirée du périmètre : pas de migration, pas de dépendance à `0168`. Le trajet PostgREST — passerelle, validation du JWT, connexion à la base, SQL — reste **un seul bloc** : un `ttfb_ms` élevé sur socket réutilisée ne dit pas lequel de ces maillons attend. On compare des opérations rapides (`auth:user`, lectures simples) et lentes (listes) entre elles, à corréler avec les journaux et métriques Supabase.
+- **Appariement de `connect_ms`.** undici ne transmet pas le même objet `connectParams` à `beforeConnect` et à `connected` (mesuré sur Node 24 / undici 7.18.2) : l'appariement par objet est impossible. Les départs de connexion sont donc rangés dans une file **par hôte**, et seuls ceux de l'hôte Supabase sont suivis : une ouverture parallèle vers un autre hôte (Upstash, Sentry) ne fausse rien, et un échec Supabase sort de la file. **Limite restante** : deux connexions vers Supabase ouvertes en même temps ne se distinguent pas ; elles sont appariées dans l'ordre d'arrivée, ce qui peut échanger leurs deux durées (jamais en créer une).
 - `wait_ms` mélange file d'attente locale, DNS, TCP et TLS. `connect_ms` (socket neuve seulement)
   isole le coût de connexion de la socket, mais pas la file d'attente derrière d'autres requêtes.
 - La mesure est faite côté fonction : elle ne voit ni la navigation, ni le réseau mobile, ni le rendu.

@@ -41,6 +41,7 @@ const CHANNELS = {
   create: 'undici:request:create',
   beforeConnect: 'undici:client:beforeConnect',
   connected: 'undici:client:connected',
+  connectError: 'undici:client:connectError',
   sendHeaders: 'undici:client:sendHeaders',
   headers: 'undici:request:headers',
   trailers: 'undici:request:trailers',
@@ -108,6 +109,18 @@ function originHost(origin: unknown): string | null {
   }
 }
 
+/** `Hôte:443` et `hôte` désignent la même origine HTTPS : on compare sans port par défaut. */
+function normalizeHost(host: string): string {
+  return host.toLowerCase().replace(/:443$/, '');
+}
+
+/** Hôte visé par un événement de connexion, tiré de `connectParams.host` seulement. */
+function connectHost(message: unknown): string | null {
+  if (!isObject(message) || !isObject(message.connectParams)) return null;
+  const host = message.connectParams.host;
+  return typeof host === 'string' && host !== '' ? normalizeHost(host) : null;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -116,6 +129,10 @@ export function installSupabaseCallTrace(deps: CallTraceDeps): void {
   const maxLines = deps.maxLines ?? DEFAULT_MAX_LINES;
   const calls = new WeakMap<object, CallState>();
   const sockets = new WeakMap<object, SocketInfo>();
+  // Départs de connexion vers l'hôte Supabase, en attente de leur `connected`/`connectError`.
+  // undici ne passe PAS le même objet `connectParams` aux deux événements : l'appariement se
+  // fait par hôte (file), exact tant qu'une seule connexion vers cet hôte est en vol à la fois.
+  const supabaseHost = normalizeHost(deps.supabaseHost);
   const connectQueue: number[] = [];
   let socketCounter = 0;
   let sequence = 0;
@@ -200,9 +217,12 @@ export function installSupabaseCallTrace(deps: CallTraceDeps): void {
     }),
   );
 
+  // Seule la connexion vers l'hôte Supabase est suivie : une ouverture parallèle vers un autre
+  // hôte (Upstash, Sentry) ne consomme jamais la file et ne fausse donc aucune mesure.
   deps.subscribe(
     CHANNELS.beforeConnect,
-    safe(() => {
+    safe((message) => {
+      if (connectHost(message) !== supabaseHost) return;
       connectQueue.push(deps.now());
       // Garde-fou : une file qui ne se vide jamais ne doit pas croître sans borne.
       if (connectQueue.length > 64) connectQueue.shift();
@@ -210,9 +230,28 @@ export function installSupabaseCallTrace(deps: CallTraceDeps): void {
   );
 
   deps.subscribe(
+    CHANNELS.connectError,
+    safe((message) => {
+      if (connectHost(message) !== supabaseHost) return;
+      // Une tentative qui échoue sort de la file : sans cela, la connexion réussie suivante
+      // hériterait de son horodatage de départ.
+      const started = connectQueue.shift();
+      const error = isObject(message) && isObject(message.error) ? message.error : null;
+      const code = error && typeof error.code === 'string' ? error.code.slice(0, 40) : 'unknown';
+      emit({
+        ev: 'connect_error',
+        proc_age_s: Math.round(deps.now() / 1000),
+        connect_ms: started === undefined ? null : round(deps.now() - started),
+        err: code,
+      });
+    }),
+  );
+
+  deps.subscribe(
     CHANNELS.connected,
     safe((message) => {
       if (!isObject(message) || !isObject(message.socket)) return;
+      if (connectHost(message) !== supabaseHost) return;
       const started = connectQueue.shift();
       socketCounter += 1;
       sockets.set(message.socket, {

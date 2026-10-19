@@ -94,3 +94,39 @@ describe('V11 — contre le vrai fetch de Node (undici)', () => {
     expect(output).not.toContain('127.0.0.1');
   });
 });
+
+describe('V11 — connexion refusée, contre le vrai fetch de Node (undici)', () => {
+  it('journalise connect_error avec le seul code, puis l’appel en erreur', async () => {
+    // Port obtenu puis libéré : plus rien n'y écoute, la connexion est refusée.
+    const probe = http.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const { port } = probe.address() as AddressInfo;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+
+    const refusedLines: Array<Record<string, unknown>> = [];
+    const refusedRaw: string[] = [];
+    installSupabaseCallTrace({
+      subscribe: (channel, handler) => subscribe(channel, handler),
+      now: () => performance.now(),
+      emit: (line) => {
+        refusedRaw.push(line);
+        refusedLines.push(JSON.parse(line) as Record<string, unknown>);
+      },
+      supabaseHost: `127.0.0.1:${port}`,
+      bootId: 'boot-refuse',
+      boot: { node: process.version },
+      loopLag: () => null,
+    });
+
+    await expect(fetch(`http://127.0.0.1:${port}/auth/v1/user`)).rejects.toThrow();
+
+    const failure = refusedLines.find((line) => line.ev === 'connect_error');
+    expect(failure).toMatchObject({ err: 'ECONNREFUSED' });
+    expect(typeof failure?.connect_ms).toBe('number');
+    expect(refusedLines.find((line) => line.ev === 'call')).toMatchObject({
+      op: 'auth:user',
+      err: 'ECONNREFUSED',
+    });
+    expect(refusedRaw.join('\n')).not.toContain('127.0.0.1');
+  });
+});

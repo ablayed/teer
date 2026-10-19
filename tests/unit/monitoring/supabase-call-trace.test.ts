@@ -60,10 +60,10 @@ function runCall(
   if (opts.connect) {
     t += 1;
     h.at(t);
-    h.publish('client:beforeConnect', { connectParams: {} });
+    h.publish('client:beforeConnect', { connectParams: { host: HOST } });
     t += 30;
     h.at(t);
-    h.publish('client:connected', { socket });
+    h.publish('client:connected', { connectParams: { host: HOST }, socket });
   }
   t += 2;
   h.at(t);
@@ -299,5 +299,117 @@ describe('V11 — robustesse', () => {
     expect(h.lines.filter((l) => l.ev === 'call')).toHaveLength(2);
     expect(h.lines.filter((l) => l.ev === 'budget')).toHaveLength(1);
     expect(h.lines.length).toBe(4);
+  });
+});
+
+describe('V11 — attribution du temps de connexion avec des connexions concurrentes', () => {
+  const OTHER = 'cache-synthetique.upstash.io';
+  const publishConnect = (h: ReturnType<typeof setup>, name: string, host: string, extra = {}) =>
+    h.publish(`client:${name}`, { connectParams: { host }, ...extra });
+
+  it('deux hôtes en parallèle dont un échoue : connect_ms reste celui de Supabase', () => {
+    const h = setup();
+    const socket = tlsSocket();
+    const req = request('/rest/v1/rpc/list_my_stores', 'POST');
+    h.at(0);
+    h.publish('request:create', { request: req });
+    // L'autre hôte démarre en premier, Supabase 5 ms plus tard ; l'autre échoue puis Supabase aboutit.
+    h.at(1);
+    publishConnect(h, 'beforeConnect', OTHER);
+    h.at(6);
+    publishConnect(h, 'beforeConnect', HOST);
+    h.at(20);
+    publishConnect(h, 'connectError', OTHER, { error: { code: 'ECONNREFUSED' } });
+    h.at(46);
+    publishConnect(h, 'connected', HOST, { socket });
+    h.at(48);
+    h.publish('client:sendHeaders', { request: req, socket });
+    h.publish('request:headers', { request: req, response: { statusCode: 200 } });
+    h.publish('request:trailers', { request: req });
+
+    // Avec la file globale d'origine, la connexion Supabase héritait du départ de l'autre hôte (45 ms).
+    expect(h.lines.filter((l) => l.ev === 'connect_error')).toEqual([]);
+    expect(h.lines.find((l) => l.ev === 'call')).toMatchObject({ sock_new: true, connect_ms: 40 });
+  });
+
+  it('une connexion Supabase réussie, ouverte en parallèle d’un autre hôte, est mesurée seule', () => {
+    const h = setup();
+    const socket = tlsSocket();
+    const req = request('/auth/v1/user');
+    h.at(0);
+    h.publish('request:create', { request: req });
+    h.at(2);
+    publishConnect(h, 'beforeConnect', OTHER);
+    h.at(10);
+    publishConnect(h, 'beforeConnect', HOST);
+    h.at(50);
+    publishConnect(h, 'connected', HOST, { socket });
+    h.at(55);
+    publishConnect(h, 'connected', OTHER, { socket: tlsSocket() });
+    h.at(51);
+    h.publish('client:sendHeaders', { request: req, socket });
+    h.at(60);
+    h.publish('request:headers', { request: req, response: { statusCode: 200 } });
+    h.publish('request:trailers', { request: req });
+
+    expect(h.lines.find((l) => l.ev === 'call')).toMatchObject({ connect_ms: 40 });
+  });
+
+  it('un échec de connexion Supabase est journalisé et ne fausse pas la connexion suivante', () => {
+    const h = setup();
+    h.at(100);
+    publishConnect(h, 'beforeConnect', HOST);
+    h.at(130);
+    publishConnect(h, 'connectError', HOST, {
+      error: { code: 'ECONNREFUSED', message: 'connect ECONNREFUSED 10.0.0.1:443' },
+    });
+
+    const socket = tlsSocket();
+    const req = request('/rest/v1/orders', 'HEAD');
+    h.at(500);
+    h.publish('request:create', { request: req });
+    h.at(501);
+    publishConnect(h, 'beforeConnect', HOST);
+    h.at(521);
+    publishConnect(h, 'connected', HOST, { socket });
+    h.at(522);
+    h.publish('client:sendHeaders', { request: req, socket });
+    h.at(540);
+    h.publish('request:headers', { request: req, response: { statusCode: 200 } });
+    h.publish('request:trailers', { request: req });
+
+    const failure = h.lines.find((l) => l.ev === 'connect_error');
+    expect(failure).toMatchObject({ err: 'ECONNREFUSED', connect_ms: 30 });
+    // Aucune chaîne du message d'erreur (qui peut porter une adresse) ne sort.
+    expect(h.raw.join('\n')).not.toContain('10.0.0.1');
+    expect(h.lines.find((l) => l.ev === 'call')).toMatchObject({ connect_ms: 20 });
+  });
+
+  it('l’hôte Supabase est reconnu avec ou sans le port HTTPS par défaut', () => {
+    const h = setup();
+    const socket = tlsSocket();
+    const req = request('/auth/v1/user');
+    h.at(0);
+    h.publish('request:create', { request: req });
+    h.at(1);
+    publishConnect(h, 'beforeConnect', `${HOST.toUpperCase()}:443`);
+    h.at(31);
+    publishConnect(h, 'connected', HOST, { socket });
+    h.at(32);
+    h.publish('client:sendHeaders', { request: req, socket });
+    h.at(40);
+    h.publish('request:trailers', { request: req });
+    expect(h.lines.find((l) => l.ev === 'call')).toMatchObject({ connect_ms: 30 });
+  });
+
+  it('un événement de connexion sans hôte lisible est ignoré, sans lever', () => {
+    const h = setup();
+    expect(() => {
+      h.publish('client:beforeConnect', {});
+      h.publish('client:beforeConnect', { connectParams: { host: 42 } });
+      h.publish('client:connectError', { connectParams: {}, error: null });
+      h.publish('client:connected', { socket: tlsSocket() });
+    }).not.toThrow();
+    expect(h.lines.filter((l) => l.ev === 'connect_error')).toEqual([]);
   });
 });
