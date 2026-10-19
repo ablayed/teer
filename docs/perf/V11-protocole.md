@@ -10,11 +10,11 @@ action de production** : l'activation est une décision du porteur.
 | Hypothèse | Énoncé | Ce que les lignes doivent montrer pour la soutenir |
 |---|---|---|
 | **H1** | Le `fetch` de Node n'a pas de connexion à réutiliser : undici ferme une socket inactive après ~4 s, et 20 appels en HTTP/1.1 ouvrent plusieurs sockets. | Après une inactivité **> 5 s**, les premiers appels de la page ont `sock_new:true` avec un `connect_ms` mesuré, et les appels lents sont majoritairement `sock_new:true`. Après **≤ 3 s**, ils ont `sock_new:false`. |
-| **H2** | L'attente est en amont chez Supabase (passerelle, Auth, compute). | Des appels lents sur socket **réutilisée** (`sock_new:false`), avec `wait_ms` faible et `ttfb_ms` élevé, une boucle libre, et — une fois `net_probe()` disponible — `rpc:net_probe` lent lui aussi. |
+| **H2** | L'attente est en amont chez Supabase (passerelle, Auth, compute). | Des appels lents sur socket **réutilisée** (`sock_new:false`), avec `wait_ms` faible et `ttfb_ms` élevé, une boucle libre, et la même lenteur sur plusieurs opérations (`auth:user` comme `table:*`). **Aucune sonde dédiée dans ce lot** : le trajet passerelle / Auth / connexion base / SQL n'est pas séparé. |
 | **H3** | L'instance Vercel est fraîche ou sa boucle d'événements est occupée. | Appels lents concentrés sur le premier(s) `seq` d'un nouvel identifiant `boot`, ou `loop_p99_ms`/`loop_max_ms` nettement au-dessus du plancher de 10 ms pendant la fenêtre de l'appel lent. |
 
 Portes de décision (plan v2) : appels lents sur sockets neuves → V12 puis V15 (keep-alive) ; sur
-sockets réutilisées avec `net_probe` lent aussi → amont Supabase, V12 reste utile, puis test Micro ;
+sockets réutilisées, boucle libre, sur plusieurs opérations à la fois → amont Supabase, V12 reste utile, puis test Micro ;
 requêtes lentes marquées Cold avec boucle occupée → V13 et Vercel Pro.
 
 ## 2. Activation et retrait
@@ -70,10 +70,7 @@ avec `vercel logs` sur le déploiement, ou exporter immédiatement après.
 
 ## 5. Ce que cette mesure ne sépare PAS
 
-- `rpc:net_probe` (quand il existera) traverse **tout** le trajet PostgREST : passerelle, validation
-  du JWT, connexion à la base, SQL trivial (`select 1`). Un `net_probe` lent ne dit pas lequel de ces
-  maillons est en cause ; un `net_probe` rapide innocente le trajet **pour cette sonde**, pas pour les
-  requêtes dont le SQL est coûteux. À corréler avec les journaux et métriques Supabase.
+- **Aucune sonde dédiée dans ce lot.** `net_probe()` a été retirée du périmètre : pas de migration, pas de dépendance à `0168`. Le trajet PostgREST — passerelle, validation du JWT, connexion à la base, SQL — reste **un seul bloc** : un `ttfb_ms` élevé sur socket réutilisée ne dit pas lequel de ces maillons attend. On compare des opérations rapides (`auth:user`, lectures simples) et lentes (listes) entre elles, à corréler avec les journaux et métriques Supabase.
 - `wait_ms` mélange file d'attente locale, DNS, TCP et TLS. `connect_ms` (socket neuve seulement)
   isole le coût de connexion de la socket, mais pas la file d'attente derrière d'autres requêtes.
 - La mesure est faite côté fonction : elle ne voit ni la navigation, ni le réseau mobile, ni le rendu.
@@ -88,3 +85,14 @@ Constat de contexte (mesuré le 19/10, sans clé) : le serveur Supabase **accept
 négociation ALPN, alors que le `fetch` de Node propose et obtient `http/1.1` par défaut ; la réponse
 HTTP/1.1 porte `Connection: keep-alive` sans en-tête `Keep-Alive` explicite. C'est une information
 pour V15, pas une action.
+
+## 7. Rapport attendu après la session
+
+Seuil de « lent » : `total_ms ≥ 300` (ajustable, à annoncer avant lecture). Pour **chaque appel lent** :
+
+- **socket neuve ou réutilisée** (`sock_new`), avec `sock_age_ms` et `sock_uses` ;
+- **part connexion contre attente de réponse** : `wait_ms` (dont `connect_ms` pour une socket neuve) contre `ttfb_ms`, puis `body_ms` ;
+- **Cold ou Hot** : Cold = premiers appels d'un nouvel identifiant `boot` ; Hot = les suivants ;
+- retard de boucle (`loop_p99_ms`, `loop_max_ms`) et durée d'inactivité T de la série.
+
+Résultats groupés par condition (T et Cold/Hot), avec les effectifs : pas de conclusion sous 50 appels par condition.
