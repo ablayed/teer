@@ -126,6 +126,12 @@ jobs:
               --override-name auth.anon_key=SUPABASE_ANON_KEY \
               --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY
           )
+      # Mitigation de la pile de TEST (jamais de production) : les « 502 — invalid response from the
+      # upstream server » de `pnpm test:rls` sont des erreurs de kong sur une connexion vers PostgREST
+      # déjà fermée. `upstream_keepalive_pool_size = 0` supprime la réutilisation des connexions ;
+      # le script échoue explicitement si le rechargement n'est pas effectif. Voir CLAUDE.md, dette (m).
+      - name: Désactive la réutilisation des connexions kong → PostgREST (pile de test)
+        run: bash scripts/ci-disable-kong-upstream-keepalive.sh
       # Diagnostic de l'instabilité « invalid response from the upstream server » (kong) : la sonde
       # de tests/helpers/kong-probe.ts OBSERVE les appels vers la pile locale sans les modifier et
       # consigne, pour chaque réponse 5xx ou erreur réseau, le statut brut, des en-têtes de
