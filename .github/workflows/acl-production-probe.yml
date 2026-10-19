@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      # CLI Supabase = devDependency `supabase` (2.102.0), installée par pnpm depuis
+      # CLI Supabase = devDependency `supabase` (2.110.0), installée par pnpm depuis
       # un store déjà mis en cache. Épinglée (jamais `latest`) : une CLI récente casse
       # le format JWT des clés locales attendu par le harness RLS. INFRA-SUPABASE-CLI-01
       # a retiré `supabase/setup-cli@v1`, qui retéléchargeait la même CLI sans cache.
@@ -47,8 +47,8 @@ jobs:
           echo "$GITHUB_WORKSPACE/node_modules/.bin" >>"$GITHUB_PATH"
           ls node_modules/.pnpm | grep '^@supabase+cli-'
           version="$(node_modules/.bin/supabase --version)"
-          if [ "$version" != "2.102.0" ]; then
-            echo "::error::CLI Supabase inattendue : $version (attendu 2.102.0)"
+          if [ "$version" != "2.110.0" ]; then
+            echo "::error::CLI Supabase inattendue : $version (attendu 2.110.0)"
             exit 1
           fi
 
