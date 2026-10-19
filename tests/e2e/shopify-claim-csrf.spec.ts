@@ -49,7 +49,9 @@ test.describe('T38 (a) — Origin intersite rejeté avant toute action', () => {
     // requête intersite ne doit jamais atteindre la résolution de l'action.
     expect(crossSite.status()).toBe(500);
     expect(crossSite.headers()['x-nextjs-action-not-found']).toBeUndefined();
-    expect(sameOrigin.status()).toBe(404);
+    // Next 15 répondait 404 à une action inconnue ; Next 16 répond 409 (décalage de déploiement).
+    // Le marqueur `x-nextjs-action-not-found` est inchangé : la résolution de l'action a bien été atteinte.
+    expect(sameOrigin.status()).toBe(409);
     expect(sameOrigin.headers()['x-nextjs-action-not-found']).toBe('1');
   });
 });
