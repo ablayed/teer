@@ -292,11 +292,11 @@ test.describe('routage workspace legacy et canonique', () => {
     // Identifiant valide en forme mais qui n'appartient à aucune boutique
     // accessible à cet utilisateur.
     const forgedStoreId = '00000000-0000-4000-8000-000000000000';
-    const response = await page.goto(`/s/${forgedStoreId}/produits`);
+    await page.goto(`/s/${forgedStoreId}/produits`);
 
-    // Statut explicite, pas seulement une absence de contenu : une page vide
-    // servie en 200 serait indistinguable d'un rendu raté.
-    expect(response?.status()).toBe(404);
+    // V13 commence le flux avant la garde du layout : le statut initial peut
+    // être 200, mais le rendu final doit toujours être le 404 exact.
+    await expect(page.getByRole('heading', { level: 1, name: '404' })).toBeVisible();
 
     // La page ne doit jamais rendre le catalogue d'une autre boutique.
     await expect(page.getByText('Produit Non Divulgable')).toHaveCount(0);
