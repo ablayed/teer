@@ -2,6 +2,10 @@ import {
   getClientErrorMessage,
   isNetworkRequestError,
 } from '@/lib/monitoring/client-error-classification';
+import {
+  clientTracesSampler,
+  resolvePageloadSampleRate,
+} from '@/lib/monitoring/sentry-client-sampling';
 import { resolveSentryEnvironment } from '@/lib/monitoring/sentry-environment';
 import {
   sanitizeSentryClientSpan,
@@ -54,7 +58,10 @@ if (
       // Décision d'échantillonnage PROPRE au client. Avec `tracesSampleRate`, le chargement de page
       // hérite de la décision du serveur (balises sentry-trace du HTML) ; les traces serveur étant
       // suspendues (tracesSampler → 0), aucun pageload — donc aucun LCP/TTFB/FCP/CLS — n'était émis.
-      tracesSampler: () => 0.1,
+      // Chargements de page : taux réglable (NEXT_PUBLIC_SENTRY_PAGELOAD_SAMPLE_RATE, 0,1 par défaut).
+      tracesSampler: clientTracesSampler(
+        resolvePageloadSampleRate(process.env.NEXT_PUBLIC_SENTRY_PAGELOAD_SAMPLE_RATE),
+      ),
       beforeSendTransaction: sanitizeSentryClientTransaction,
       beforeSendSpan: sanitizeSentryClientSpan,
       beforeSend(event, hint) {
