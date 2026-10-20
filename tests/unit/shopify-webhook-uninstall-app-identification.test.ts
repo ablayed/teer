@@ -10,7 +10,7 @@
 // Les HMAC sont calculés réellement (node:crypto) : ni `webhook-verify` ni `adapter` ne sont
 // simulés. Seuls le cœur partagé (écritures) et le registre d'apps (env) le sont.
 import { createHmac } from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type App = { clientId: string; clientSecret: string };
 
@@ -100,6 +100,15 @@ async function post(request: Request): Promise<Response> {
 const EMPTY_BODY = JSON.stringify({ id: 42 });
 
 describe('POST /api/shopify/webhooks — app/uninstalled, identification de l’app validante', () => {
+  // Premier import de la route, à froid : sa chaîne de modules peut dépasser les 15 s d'un test
+  // (dette (m) de CLAUDE.md). Le chargement se fait ici, sous un délai de hook borné, jamais dans
+  // le premier test : son dépassement ferait expirer ce test ET fausserait le suivant.
+  beforeAll(async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-sentinel';
+    await import('@/app/api/shopify/webhooks/route');
+  }, 60_000);
+
   beforeEach(() => {
     harness.apps = [APP_A, APP_B];
     harness.shopsByDomain = new Map([
