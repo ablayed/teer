@@ -1,8 +1,8 @@
 import { buildCspHeader, cspRegimeForPath } from '@/lib/security/csp';
 import { type NextRequest, NextResponse } from 'next/server';
 
-// Middleware UNIQUEMENT EN-TÊTES (Content-Security-Policy + nonce). Volontairement
-// sans aucune logique d'auth ni import Supabase : l'auth et le mur de consentement
+// Middleware d'en-têtes et de présence du cookie, sans appel réseau ni import Supabase.
+// La validation de l'auth et le mur de consentement
 // vivent dans les layouts Server Component (`app/(app)/layout.tsx`). Un précédent
 // middleware d'auth avait été retiré (commit 76ca482) à cause de la résolution de
 // modules edge Vercel avec l'import Supabase ; ce middleware-ci n'a aucune de ces
@@ -16,6 +16,18 @@ import { type NextRequest, NextResponse } from 'next/server';
 //     nonce + 'strict-dynamic', SANS 'unsafe-inline' — posture maximale là où vivent
 //     l'auth et les données tenant.
 export function middleware(request: NextRequest) {
+  // Optimisation de redirection seulement : la présence ne prouve jamais une session.
+  // Les cookies présents (y compris invalides) sont vérifiés dans EspaceAuthentifie.
+  const isAppPath =
+    /^\/(?:s(?:\/|$)|analyses(?:\/|$)|assistant(?:\/|$)|boutiques(?:\/|$)|clients(?:\/|$)|commandes(?:\/|$)|dev(?:\/|$)|finances(?:\/|$)|livreurs(?:\/|$)|parametres(?:\/|$)|produits(?:\/|$)|tableau(?:\/|$))/.test(
+      request.nextUrl.pathname,
+    );
+  const hasSessionCookie = request.cookies
+    .getAll()
+    .some((cookie) => /^sb-.+-auth-token(?:\.\d+)?$/.test(cookie.name));
+  if (isAppPath && !hasSessionCookie) {
+    return NextResponse.redirect(new URL('/connexion', request.url));
+  }
   const isDev = process.env.NODE_ENV === 'development';
   const regime = cspRegimeForPath(
     request.nextUrl.pathname,

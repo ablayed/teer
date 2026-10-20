@@ -3,6 +3,8 @@ import { AppShell } from '@/components/app-shell/app-shell';
 import { IdleTimeout } from '@/components/auth/idle-timeout';
 import { MutationQueueProvider } from '@/components/offline/mutation-queue-provider';
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
+import { RouteSkeleton } from '@/components/skeletons/route-skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { pickMessages } from '@/lib/i18n/pick-messages';
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
 import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/merchant/member-account';
@@ -16,7 +18,7 @@ import { getMessages } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
-import type { ReactNode } from 'react';
+import { type ReactNode, Suspense } from 'react';
 
 // L05 — une lecture lancée d'avance n'est attendue qu'à la place de sa garde. Si une garde
 // antérieure redirige entre-temps, son échec éventuel ne doit pas devenir un rejet non géré ;
@@ -26,7 +28,42 @@ function startEarly<T>(promise: Promise<T>): Promise<T> {
   return promise;
 }
 
-export default async function AppLayout({ children }: { children: ReactNode }) {
+function SquelettePage() {
+  return (
+    <div aria-busy="true" className="app-shell min-h-dvh bg-canvas text-text">
+      <aside
+        aria-hidden="true"
+        className="fixed inset-y-0 left-0 hidden w-[280px] space-y-6 border-r border-border bg-surface p-6 md:block"
+      >
+        <Skeleton className="h-10 w-32" />
+        {['n1', 'n2', 'n3', 'n4', 'n5', 'n6'].map((key) => (
+          <Skeleton className="h-10 w-full" key={key} />
+        ))}
+      </aside>
+      <div className="h-[calc(100dvh_-_var(--mobile-nav-reserved-height))] overflow-y-auto px-4 pt-6 pb-6 md:ml-[280px] md:h-auto md:min-h-dvh md:px-8 md:pt-10 md:pb-8">
+        <RouteSkeleton variant="list" />
+      </div>
+      <div
+        aria-hidden="true"
+        className="fixed inset-x-0 bottom-0 flex h-[var(--mobile-nav-reserved-height)] items-start justify-around border-t border-border bg-surface p-3 md:hidden"
+      >
+        {['b1', 'b2', 'b3', 'b4'].map((key) => (
+          <Skeleton className="size-9" key={key} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<SquelettePage />}>
+      <EspaceAuthentifie>{children}</EspaceAuthentifie>
+    </Suspense>
+  );
+}
+
+async function EspaceAuthentifie({ children }: { children: ReactNode }) {
   // L05 — ces trois lectures ne dépendent pas de l'utilisateur : elles partent tout de suite, au
   // lieu d'attendre leur tour derrière les gardes. Aucune n'est LUE avant sa garde, plus bas.
   // `getWorkspaceStores` passe par le client soumis à la RLS et est mémoïsée par requête : la
