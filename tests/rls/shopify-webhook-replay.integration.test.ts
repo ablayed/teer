@@ -321,6 +321,19 @@ async function eventOf(webhookId: string): Promise<EventRow> {
   return data;
 }
 
+async function waitForEventStatus(
+  webhookId: string,
+  status: EventRow['status'],
+): Promise<EventRow> {
+  const deadline = Date.now() + 10_000;
+  let event = await eventOf(webhookId);
+  while (event.status !== status && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    event = await eventOf(webhookId);
+  }
+  return event;
+}
+
 /** Le temps passe : l'échéance de reprise est reculée au-delà de la marge d'horloge. */
 async function makeDue(eventId: string): Promise<void> {
   const { error } = await admin
@@ -461,7 +474,7 @@ suite('reprise interne des webhooks Shopify', () => {
     const summary = await sweep();
 
     expect(summary.replayed.done).toBeGreaterThanOrEqual(1);
-    const after = await eventOf(webhookId);
+    const after = await waitForEventStatus(webhookId, 'done');
     expect(after).toMatchObject({ attempt_count: 2, last_error_code: null, status: 'done' });
     expect(after.payload).toBeNull();
     expect(await gdprTraces(f, 'customers/data_request')).toMatchObject({
@@ -476,12 +489,16 @@ suite('reprise interne des webhooks Shopify', () => {
     const { event, webhookId } = await failedDataRequest(f);
     await makeDue(event.id);
     await sweep();
+    await waitForEventStatus(webhookId, 'done');
     const first = await gdprTraces(f, 'customers/data_request');
 
     await sweep();
     await sweep();
 
-    expect(await eventOf(webhookId)).toMatchObject({ attempt_count: 2, status: 'done' });
+    expect(await waitForEventStatus(webhookId, 'done')).toMatchObject({
+      attempt_count: 2,
+      status: 'done',
+    });
     expect(await gdprTraces(f, 'customers/data_request')).toEqual(first);
   });
 
@@ -493,7 +510,10 @@ suite('reprise interne des webhooks Shopify', () => {
     await Promise.all([sweep(), sweep(), sweep()]);
 
     // Une seule réclamation a abouti : la tentative de la livraison, puis une reprise.
-    expect(await eventOf(webhookId)).toMatchObject({ attempt_count: 2, status: 'done' });
+    expect(await waitForEventStatus(webhookId, 'done')).toMatchObject({
+      attempt_count: 2,
+      status: 'done',
+    });
     expect(await gdprTraces(f, 'customers/data_request')).toMatchObject({
       artifacts: 1,
       audits: 1,
@@ -521,7 +541,7 @@ suite('reprise interne des webhooks Shopify', () => {
     await makeDue(event.id);
     await sweep();
 
-    expect((await eventOf(delivery.webhookId)).status).toBe('done');
+    expect((await waitForEventStatus(delivery.webhookId, 'done')).status).toBe('done');
     expect(await gdprTraces(f, 'customers/data_request')).toMatchObject({
       artifactStatuses: ['ready'],
       artifacts: 1,
@@ -546,7 +566,7 @@ suite('reprise interne des webhooks Shopify', () => {
     await sweep();
     await sweep();
 
-    expect((await eventOf(delivery.webhookId)).status).toBe('done');
+    expect((await waitForEventStatus(delivery.webhookId, 'done')).status).toBe('done');
     expect(await gdprTraces(f, 'customers/redact')).toMatchObject({
       audits: 1,
       customer: { full_name: '[client supprimé]', phone: null },
@@ -572,7 +592,7 @@ suite('reprise interne des webhooks Shopify', () => {
 
     const summary = await sweep();
 
-    expect((await eventOf(events.uninstalled.webhookId)).status).toBe('done');
+    expect((await waitForEventStatus(events.uninstalled.webhookId, 'done')).status).toBe('done');
     expect((await gdprTraces(uninstalled, 'shop/redact')).customer).toMatchObject({
       full_name: '[client supprimé]',
     });
@@ -626,6 +646,73 @@ suite('reprise interne des webhooks Shopify', () => {
     });
   });
 
+  it('reproduit de façon déterministe une lecture pendant qu’un autre balayage traite l’événement', async () => {
+    const f = await createFixture();
+    const shopifyOrderId = `${Date.now()}991`;
+    const created = await deliver(
+      f,
+      'orders/create',
+      orderPayload(shopifyOrderId, '2026-10-07T10:00:00Z'),
+    );
+    expect((await eventOf(created.webhookId)).status).toBe('done');
+
+    const before = await orderState(f, shopifyOrderId);
+    if (!before.order) throw new Error('commande de fixture absente');
+    harness.rpcFaults.set('resync_shopify_order_cart', 1);
+    const delivery = await deliver(
+      f,
+      'orders/updated',
+      orderPayload(shopifyOrderId, '2026-10-07T10:00:20Z'),
+    );
+    const event = await eventOf(delivery.webhookId);
+    expect(event.status).toBe('retryable');
+    await patchEvent(event.id, {
+      next_attempt_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+    });
+
+    let entered: () => void = () => undefined;
+    const processing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release: () => void = () => undefined;
+    harness.gate = {
+      entered,
+      orderId: before.order.id,
+      release: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+      rpc: 'resync_shopify_order_cart',
+      updatedAtMs: Date.parse('2026-10-07T10:00:20Z'),
+      used: false,
+    };
+
+    const owner = sweep();
+    let gateTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        processing,
+        new Promise<void>((_, reject) => {
+          gateTimeout = setTimeout(
+            () => reject(new Error('le sweep propriétaire n’a pas atteint la RPC retenue')),
+            5_000,
+          );
+        }),
+      ]);
+      await sweep();
+
+      // La seconde lecture ne réclame rien : une autre exécution détient le bail.
+      expect(await eventOf(delivery.webhookId)).toMatchObject({
+        status: 'processing',
+        attempt_count: 2,
+      });
+    } finally {
+      if (gateTimeout) clearTimeout(gateTimeout);
+      release();
+      await owner;
+    }
+    expect(await eventOf(delivery.webhookId)).toMatchObject({ status: 'done', attempt_count: 2 });
+  });
+
   it('1 001 événements non éligibles plus récents ne masquent pas un événement éligible plus ancien', async () => {
     const f = await createFixture();
     const { event, webhookId } = await failedDataRequest(f);
@@ -665,7 +752,10 @@ suite('reprise interne des webhooks Shopify', () => {
 
       const summary = await sweep();
 
-      expect(await eventOf(webhookId)).toMatchObject({ attempt_count: 2, status: 'done' });
+      expect(await waitForEventStatus(webhookId, 'done')).toMatchObject({
+        attempt_count: 2,
+        status: 'done',
+      });
       expect(await gdprTraces(f, 'customers/data_request')).toMatchObject({
         artifacts: 1,
         audits: 1,
@@ -695,7 +785,10 @@ suite('reprise interne des webhooks Shopify', () => {
 
     await sweep();
 
-    expect(await eventOf(webhookId)).toMatchObject({ attempt_count: 2, status: 'done' });
+    expect(await waitForEventStatus(webhookId, 'done')).toMatchObject({
+      attempt_count: 2,
+      status: 'done',
+    });
     expect(await gdprTraces(f, 'customers/data_request')).toMatchObject({
       artifacts: 1,
       audits: 1,
@@ -753,7 +846,7 @@ suite('reprise interne des webhooks Shopify', () => {
     await makeDue(event.id);
     await sweep();
 
-    expect((await eventOf(delivery.webhookId)).status).toBe('done');
+    expect((await waitForEventStatus(delivery.webhookId, 'done')).status).toBe('done');
     expect(await orderState(f, shopifyOrderId)).toMatchObject({ count: 1, lines: 1 });
   });
 
@@ -872,15 +965,15 @@ suite('reprise interne des webhooks Shopify', () => {
     const older = await pending('2026-10-07T10:00:01Z', { financial_status: 'refunded' });
     await sweep();
 
-    expect((await eventOf(same)).status).toBe('done');
-    expect((await eventOf(older)).status).toBe('done');
+    expect((await waitForEventStatus(same, 'done')).status).toBe('done');
+    expect((await waitForEventStatus(older, 'done')).status).toBe('done');
     // Aucune écriture sur la commande : ni son contenu, ni sa date de modification.
     expect((await orderState(f, shopifyOrderId)).order).toEqual(applied.order);
 
     const newer = await pending('2026-10-07T10:00:09Z', { financial_status: 'paid' });
     await sweep();
 
-    expect((await eventOf(newer)).status).toBe('done');
+    expect((await waitForEventStatus(newer, 'done')).status).toBe('done');
     const after = await orderState(f, shopifyOrderId);
     expect(after).toMatchObject({ count: 1, lines: 1 });
     expect(Date.parse(after.order?.shopify_updated_at ?? '')).toBe(
@@ -961,12 +1054,12 @@ suite('reprise interne des webhooks Shopify', () => {
         }),
       );
       expect(fresh.status).toBe(200);
-      expect((await eventOf(fresh.webhookId)).status).toBe('done');
+      expect((await waitForEventStatus(fresh.webhookId, 'done')).status).toBe('done');
 
       release();
       await replaying;
 
-      expect((await eventOf(oldWebhookId)).status).toBe('done');
+      expect((await waitForEventStatus(oldWebhookId, 'done')).status).toBe('done');
       const after = await orderState(f, shopifyOrderId);
       expect(after.count).toBe(1);
       expect(Date.parse(after.order?.shopify_updated_at ?? '')).toBe(
