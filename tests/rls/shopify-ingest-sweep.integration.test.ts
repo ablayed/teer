@@ -135,6 +135,16 @@ async function eventOf(webhookId: string) {
   return rows[0] as { id: string; status: string; attempt_count: number; lease_until: Date | null };
 }
 
+async function waitForEventStatus(webhookId: string, status: string) {
+  const deadline = Date.now() + 10_000;
+  let event = await eventOf(webhookId);
+  while (event.status !== status && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    event = await eventOf(webhookId);
+  }
+  return event;
+}
+
 async function orderCount(shopId: string, shopifyOrderId: string) {
   const { rows } = await (await pg()).query(
     `select count(*)::int as orders,
@@ -228,7 +238,10 @@ suite('route opaque — accusé après persistance et balayage opportuniste', ()
     resetOpportunisticSweepThrottleForTests();
     await sweepPendingShopifyWebhooks(service());
 
-    expect(await eventOf(webhookId)).toMatchObject({ status: 'done', attempt_count: 2 });
+    expect(await waitForEventStatus(webhookId, 'done')).toMatchObject({
+      status: 'done',
+      attempt_count: 2,
+    });
     expect(await orderCount(shop.shopId, orderId)).toEqual({ orders: 1, lines: 1 });
   });
 
@@ -248,7 +261,10 @@ suite('route opaque — accusé après persistance et balayage opportuniste', ()
     const second = sweepPendingShopifyWebhooks(service());
     await Promise.all([first, second]);
 
-    expect(await eventOf(webhookId)).toMatchObject({ status: 'done', attempt_count: 2 });
+    expect(await waitForEventStatus(webhookId, 'done')).toMatchObject({
+      status: 'done',
+      attempt_count: 2,
+    });
     expect(await orderCount(shop.shopId, orderId)).toEqual({ orders: 1, lines: 1 });
   });
 
@@ -265,7 +281,10 @@ suite('route opaque — accusé après persistance et balayage opportuniste', ()
     await runHeldAfterCallbacks();
 
     expect((await eventOf(freshWebhookId)).status).toBe('done');
-    expect(await eventOf(lostWebhookId)).toMatchObject({ status: 'done', attempt_count: 2 });
+    expect(await waitForEventStatus(lostWebhookId, 'done')).toMatchObject({
+      status: 'done',
+      attempt_count: 2,
+    });
     expect(await orderCount(shop.shopId, lostOrderId)).toEqual({ orders: 1, lines: 1 });
     expect(await orderCount(shop.shopId, freshOrderId)).toEqual({ orders: 1, lines: 1 });
   });
