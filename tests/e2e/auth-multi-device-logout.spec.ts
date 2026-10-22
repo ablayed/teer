@@ -50,8 +50,12 @@ test('logout on one device does not sign out other devices', async ({ browser })
     await pageA.waitForURL((url) => url.pathname === '/', { timeout: 20_000 });
 
     await pageB.reload();
-    await expect(pageB.locator('main#main')).toBeVisible({ timeout: 20_000 });
     await expect(pageB).toHaveURL(/\/tableau/);
+    // The layout streams a neutral skeleton before the authenticated dashboard.
+    // The greeting proves that the second device still has a usable session.
+    await expect(pageB.getByRole('heading', { name: /^Bonjour\b/ })).toBeVisible({
+      timeout: 20_000,
+    });
   } finally {
     await contextA.close();
     await contextB.close();

@@ -441,6 +441,11 @@ test('analytics visibles pour un manager', async ({ page }) => {
   try {
     await seedAnalyticsFixture(fixture.admin, fixture.merchantAccountId);
     await signIn(page, manager.email, '/commandes');
+    // The authenticated workspace is streamed below a Suspense boundary. Wait for the
+    // route content before inspecting the full navigation instead of racing its shell.
+    await expect(page.getByRole('heading', { name: 'Commandes', exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
 
     // Densité #1 : sur mobile les écrans secondaires (dont Analyses) sont regroupés dans le
     // menu « Plus » de la bottom-nav ; sur desktop le lien est dans la barre latérale. On
@@ -453,7 +458,7 @@ test('analytics visibles pour un manager', async ({ page }) => {
     const analysesLink = page
       .getByRole('link', { name: messages.nav.analyses, exact: true })
       .first();
-    await expect(analysesLink).toBeVisible();
+    await expect(analysesLink).toBeVisible({ timeout: 20_000 });
     await analysesLink.click();
     await expect(page.getByRole('heading', { name: messages.analytics.title })).toBeVisible({
       timeout: 15_000,
