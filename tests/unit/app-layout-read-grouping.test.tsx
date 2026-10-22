@@ -94,9 +94,7 @@ const tick = async () => {
 };
 const r = (name: string) => h.reads[name] as Deferred<unknown>;
 const run = () => {
-  const layout = AppLayout({ children: null });
-  const child = layout.props.children;
-  const result = child.type(child.props) as Promise<ReactNode>;
+  const result = AppLayout({ children: null });
   // Le test attend le résultat plus bas ; d'ici là, un rejet ne doit pas compter comme non géré.
   result.catch(() => undefined);
   return result;
@@ -120,14 +118,6 @@ beforeEach(() => {
 });
 
 describe('L05 — départ des lectures du layout', () => {
-  it('la coquille synchrone ne commence aucune lecture et garde children sous la frontière authentifiée', () => {
-    const marker = 'contenu-protege';
-    const layout = AppLayout({ children: marker });
-    expect(h.calls).toEqual([]);
-    expect(layout.props.fallback).toBeDefined();
-    expect(layout.props.children.props.children).toBe(marker);
-    expect(layout.props.children.type.name).toBe('EspaceAuthentifie');
-  });
   it('boutiques, messages et en-têtes partent avant la fin de getUser ; rien qui dépend de l utilisateur', async () => {
     run();
     await tick();
