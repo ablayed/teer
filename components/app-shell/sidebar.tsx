@@ -7,6 +7,7 @@ import { Wordmark } from '@/components/wordmark';
 import { StoreSwitcher } from '@/components/workspace/store-switcher';
 import { cn } from '@/lib/utils';
 import type { WorkspaceStore } from '@/lib/workspace/store';
+import { resolveCurrentWorkspaceStore } from '@/lib/workspace/store-switch';
 import {
   ChartColumnIncreasing,
   LayoutDashboard,
@@ -73,12 +74,14 @@ export function Sidebar({
 }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
+  const activeStore = resolveCurrentWorkspaceStore(pathname, stores, currentStore);
+  const activeRole = activeStore?.role ?? currentRole;
   const items = sidebarItems.filter(
     (item) =>
-      (!item.ownerManagerOnly || currentRole === 'owner' || currentRole === 'manager') &&
-      (!item.ownerOnly || currentRole === 'owner'),
+      (!item.ownerManagerOnly || activeRole === 'owner' || activeRole === 'manager') &&
+      (!item.ownerOnly || activeRole === 'owner'),
   );
-  const storePath = (href: string) => (currentStore ? `/s/${currentStore.id}${href}` : href);
+  const storePath = (href: string) => (activeStore ? `/s/${activeStore.id}${href}` : href);
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] flex-col border-border border-r bg-surface md:flex">
@@ -89,7 +92,7 @@ export function Sidebar({
       {/* Contexte de boutique : sous le logo, au-dessus de la navigation. Il vit
           désormais DANS la navigation et reste donc visible en permanence, au lieu
           d'occuper une bande pleine largeur en tête de chaque page. */}
-      {currentStore ? <StoreSwitcher currentStore={currentStore} stores={stores} /> : null}
+      {activeStore ? <StoreSwitcher currentStore={activeStore} stores={stores} /> : null}
 
       <nav aria-label={t('ariaLabel')} className="px-3">
         <ul className="space-y-1">

@@ -278,7 +278,11 @@ test('Orders, Customers and Products stay scoped to the active store', async ({
     await seedScopedData(fixture.admin, fixture.merchantAccountId, storeA.id, 'A');
     await seedScopedData(fixture.admin, fixture.merchantAccountId, storeB.id, 'B');
     await signIn(page, fixture.email, '/s');
-    await page.goto(`/s/${storeA.id}/commandes`);
+    await expect(page).toHaveURL(/\/s$/);
+    await page.locator(`a[href="/s/${storeA.id}/tableau"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/tableau$`));
+    await expect(await revealStoreContext(page)).toHaveText(storeA.display_name);
+    await page.locator(`a[href="/s/${storeA.id}/commandes"]:visible`).first().click();
 
     await expect(page).toHaveURL(new RegExp(`/s/${storeA.id}/commandes$`));
     await expect(page.getByText('Client A', { exact: true })).toBeVisible();

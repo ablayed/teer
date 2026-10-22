@@ -5,6 +5,7 @@ import { PrefetchOnIntentLink } from '@/components/app-shell/prefetch-on-intent-
 import { StoreSwitcher } from '@/components/workspace/store-switcher';
 import { cn } from '@/lib/utils';
 import type { WorkspaceStore } from '@/lib/workspace/store';
+import { resolveCurrentWorkspaceStore } from '@/lib/workspace/store-switch';
 import {
   ChartColumnIncreasing,
   HelpCircle,
@@ -87,18 +88,20 @@ export function BottomTabNav({
 }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
+  const activeStore = resolveCurrentWorkspaceStore(pathname, stores, currentStore);
+  const activeRole = activeStore?.role ?? currentRole;
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const visibleItems = primaryItems.filter((item) => isAllowed(item, currentRole)).slice(0, 4);
+  const visibleItems = primaryItems.filter((item) => isAllowed(item, activeRole)).slice(0, 4);
   const overflow = overflowItems
-    .filter((item) => isAllowed(item, currentRole))
+    .filter((item) => isAllowed(item, activeRole))
     .filter((item) => !visibleItems.some((visible) => visible.href === item.href));
   const overflowActive = overflow.some((item) => isActivePath(pathname, item.href));
   const overflowMain = overflow.filter((item) => !settingsHrefs.has(item.href));
   const overflowSettings = overflow.filter((item) => settingsHrefs.has(item.href));
-  const storePath = (href: string) => (currentStore ? `/s/${currentStore.id}${href}` : href);
+  const storePath = (href: string) => (activeStore ? `/s/${activeStore.id}${href}` : href);
 
   // Fermeture du menu « Plus » : Échap (focus rendu au bouton) + clic extérieur.
   // On exclut explicitement le bouton déclencheur : sinon `pointerdown` ferme,
@@ -169,9 +172,9 @@ export function BottomTabNav({
             {/* Contexte de boutique mobile : dans le menu de navigation, donc
                 atteignable partout sans consommer de hauteur de contenu permanente
                 (l'ancienne barre pleine largeur en occupait sur chaque page). */}
-            {currentStore ? (
+            {activeStore ? (
               <>
-                <StoreSwitcher currentStore={currentStore} stores={stores} variant="menu" />
+                <StoreSwitcher currentStore={activeStore} stores={stores} variant="menu" />
                 <div aria-hidden="true" className="my-1 h-px bg-border" />
               </>
             ) : null}

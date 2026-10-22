@@ -19,9 +19,20 @@
  */
 
 import { safeRedirectPath } from '@/lib/security/safe-redirect';
+import type { WorkspaceStore } from '@/lib/workspace/store';
 
 const STORE_PREFIX = /^\/s\/([0-9a-fA-F-]{36})(?=\/|$)/;
 const UUID_VALUE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/** Resolve the selected store from the canonical URL before using a streamed fallback. */
+export function resolveCurrentWorkspaceStore(
+  pathname: string | null,
+  stores: WorkspaceStore[],
+  fallback?: WorkspaceStore,
+): WorkspaceStore | undefined {
+  const storeId = pathname?.match(STORE_PREFIX)?.[1];
+  return stores.find((store) => store.id === storeId) ?? fallback;
+}
 
 /** Paramètres portant une identité de boutique, toujours retirés au changement. */
 const STORE_SCOPED_PARAMS = new Set(['shop']);
