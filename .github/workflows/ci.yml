@@ -278,50 +278,14 @@ jobs:
       # Chaque job n'installe que le moteur qu'il exécute : pixel-7 tourne sous Chromium,
       # iphone-14 sous WebKit. Cela réduit les paquets apt et les téléchargements Playwright.
       - name: Install Playwright browsers and deps
-        timeout-minutes: 26
+        timeout-minutes: 12
         run: |
           set -euo pipefail
           browsers=(chromium)
           if [ "${{ matrix.project }}" = "iphone-14" ]; then
             browsers=(webkit)
           fi
-          for attempt in 1 2 3; do
-            echo "::group::playwright install (tentative $attempt/3)"
-            # `sudo apt-get` peut survivre au PID de tête après un stall miroir.
-            # Une session dédiée donne au watchdog un PGID unique à tuer en entier.
-            setsid pnpm exec playwright install --with-deps "${browsers[@]}" &
-            pgid=$!
-            (
-              sleep 8m
-              if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                echo "::warning::Tentative $attempt dépasse 8 min ; arrêt TERM du groupe $pgid."
-                if ! sudo kill -TERM -- "-$pgid"; then
-                  echo "::error::Impossible d'envoyer TERM au groupe $pgid."
-                fi
-                sleep 5
-                if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                  echo "::warning::Le groupe $pgid survit à TERM ; arrêt KILL."
-                  if ! sudo kill -KILL -- "-$pgid"; then
-                    echo "::error::Impossible d'envoyer KILL au groupe $pgid."
-                  fi
-                fi
-              fi
-            ) &
-            watchdog=$!
-            if wait "$pgid"; then
-              kill "$watchdog" 2>/dev/null || true
-              wait "$watchdog" 2>/dev/null || true
-              echo "::endgroup::"
-              exit 0
-            fi
-            kill "$watchdog" 2>/dev/null || true
-            wait "$watchdog" 2>/dev/null || true
-            echo "::endgroup::"
-            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
-            sleep 15
-          done
-          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
-          exit 1
+          bash scripts/ci-install-playwright.sh "${browsers[@]}"
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
@@ -485,50 +449,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-${{ steps.playwright-version-regression.outputs.version }}
       - name: Install Playwright browsers and deps
-        timeout-minutes: 26
+        timeout-minutes: 12
         run: |
           set -euo pipefail
           browsers=(chromium)
           if [ "${{ matrix.project }}" = "iphone-14" ]; then
             browsers=(webkit)
           fi
-          for attempt in 1 2 3; do
-            echo "::group::playwright install (tentative $attempt/3)"
-            # `sudo apt-get` peut survivre au PID de tête après un stall miroir.
-            # Une session dédiée donne au watchdog un PGID unique à tuer en entier.
-            setsid pnpm exec playwright install --with-deps "${browsers[@]}" &
-            pgid=$!
-            (
-              sleep 8m
-              if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                echo "::warning::Tentative $attempt dépasse 8 min ; arrêt TERM du groupe $pgid."
-                if ! sudo kill -TERM -- "-$pgid"; then
-                  echo "::error::Impossible d'envoyer TERM au groupe $pgid."
-                fi
-                sleep 5
-                if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                  echo "::warning::Le groupe $pgid survit à TERM ; arrêt KILL."
-                  if ! sudo kill -KILL -- "-$pgid"; then
-                    echo "::error::Impossible d'envoyer KILL au groupe $pgid."
-                  fi
-                fi
-              fi
-            ) &
-            watchdog=$!
-            if wait "$pgid"; then
-              kill "$watchdog" 2>/dev/null || true
-              wait "$watchdog" 2>/dev/null || true
-              echo "::endgroup::"
-              exit 0
-            fi
-            kill "$watchdog" 2>/dev/null || true
-            wait "$watchdog" 2>/dev/null || true
-            echo "::endgroup::"
-            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
-            sleep 15
-          done
-          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
-          exit 1
+          bash scripts/ci-install-playwright.sh "${browsers[@]}"
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
@@ -668,46 +596,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-desktop.outputs.version }}
       - name: Install Playwright browsers and deps
-        timeout-minutes: 26
+        timeout-minutes: 12
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            echo "::group::playwright install (tentative $attempt/3)"
-            # `sudo apt-get` peut survivre au PID de tête après un stall miroir.
-            # Une session dédiée donne au watchdog un PGID unique à tuer en entier.
-            setsid pnpm exec playwright install --with-deps chromium &
-            pgid=$!
-            (
-              sleep 8m
-              if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                echo "::warning::Tentative $attempt dépasse 8 min ; arrêt TERM du groupe $pgid."
-                if ! sudo kill -TERM -- "-$pgid"; then
-                  echo "::error::Impossible d'envoyer TERM au groupe $pgid."
-                fi
-                sleep 5
-                if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                  echo "::warning::Le groupe $pgid survit à TERM ; arrêt KILL."
-                  if ! sudo kill -KILL -- "-$pgid"; then
-                    echo "::error::Impossible d'envoyer KILL au groupe $pgid."
-                  fi
-                fi
-              fi
-            ) &
-            watchdog=$!
-            if wait "$pgid"; then
-              kill "$watchdog" 2>/dev/null || true
-              wait "$watchdog" 2>/dev/null || true
-              echo "::endgroup::"
-              exit 0
-            fi
-            kill "$watchdog" 2>/dev/null || true
-            wait "$watchdog" 2>/dev/null || true
-            echo "::endgroup::"
-            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
-            sleep 15
-          done
-          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
-          exit 1
+          bash scripts/ci-install-playwright.sh chromium
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
@@ -823,46 +715,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-mobile.outputs.version }}
       - name: Install Playwright browsers and deps
-        timeout-minutes: 26
+        timeout-minutes: 12
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            echo "::group::playwright install (tentative $attempt/3)"
-            # `sudo apt-get` peut survivre au PID de tête après un stall miroir.
-            # Une session dédiée donne au watchdog un PGID unique à tuer en entier.
-            setsid pnpm exec playwright install --with-deps chromium webkit &
-            pgid=$!
-            (
-              sleep 8m
-              if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                echo "::warning::Tentative $attempt dépasse 8 min ; arrêt TERM du groupe $pgid."
-                if ! sudo kill -TERM -- "-$pgid"; then
-                  echo "::error::Impossible d'envoyer TERM au groupe $pgid."
-                fi
-                sleep 5
-                if sudo kill -0 -- "-$pgid" 2>/dev/null; then
-                  echo "::warning::Le groupe $pgid survit à TERM ; arrêt KILL."
-                  if ! sudo kill -KILL -- "-$pgid"; then
-                    echo "::error::Impossible d'envoyer KILL au groupe $pgid."
-                  fi
-                fi
-              fi
-            ) &
-            watchdog=$!
-            if wait "$pgid"; then
-              kill "$watchdog" 2>/dev/null || true
-              wait "$watchdog" 2>/dev/null || true
-              echo "::endgroup::"
-              exit 0
-            fi
-            kill "$watchdog" 2>/dev/null || true
-            wait "$watchdog" 2>/dev/null || true
-            echo "::endgroup::"
-            echo "::warning::Tentative $attempt echouee ou expiree apres 8 min (stall miroir apt probable)."
-            sleep 15
-          done
-          echo "::error::playwright install a echoue 3 fois de suite - stall persistant, pas un alea."
-          exit 1
+          bash scripts/ci-install-playwright.sh chromium webkit
       - name: Cache Next build cache
         uses: actions/cache@v4
         with:
