@@ -7,7 +7,7 @@ import { pickMessages } from '@/lib/i18n/pick-messages';
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
 import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/merchant/member-account';
 import type { Database } from '@/lib/supabase/database.types';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient, getRequestClaims } from '@/lib/supabase/server';
 import { resolveMemberlessDestination } from '@/lib/workspace/memberless-destination';
 import { defaultWorkspaceStore, getWorkspaceStores } from '@/lib/workspace/store';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -36,11 +36,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const headersPromise = startEarly(headers());
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getRequestClaims();
 
-  if (!user) {
+  if (!claims) {
     redirect('/connexion');
   }
 
@@ -49,14 +47,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // in the original priority order (consent before onboarding).
   // L05 — the merchant account read depends on the member's merchant_account_id : it now starts
   // as soon as the member is known, without waiting for the consent read to finish.
-  const memberPromise = getMerchantMemberForUser(user.id);
+  const memberPromise = getMerchantMemberForUser(claims.userId);
   const merchantAccountPromise = startEarly(
     memberPromise.then((knownMember) =>
       knownMember ? getMerchantAccountById(knownMember.merchant_account_id) : null,
     ),
   );
   const [missingConsents, member, messages] = await Promise.all([
-    getMissingCurrentConsents(user.id),
+    getMissingCurrentConsents(claims.userId),
     memberPromise,
     messagesPromise,
   ]);
