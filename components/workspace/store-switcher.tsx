@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import type { WorkspaceStore } from '@/lib/workspace/store';
-import { buildStoreSwitchHref } from '@/lib/workspace/store-switch';
+import { buildStoreSwitchHref, resolveCurrentWorkspaceStore } from '@/lib/workspace/store-switch';
 import { Check, ChevronDown, Store } from 'lucide-react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -34,6 +34,7 @@ export function StoreSwitcher({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   const canSwitch = stores.length > 1;
+  const activeStore = resolveCurrentWorkspaceStore(pathname, stores, currentStore) ?? currentStore;
 
   // Fermeture au clic extérieur et à Échap, focus rendu au déclencheur. Le bouton
   // est exclu du clic extérieur : sinon `pointerdown` ferme puis `onClick` rouvre.
@@ -84,9 +85,9 @@ export function StoreSwitcher({
           <span
             className="block truncate text-sm font-semibold text-text"
             data-testid="store-switcher-name"
-            title={currentStore.displayName}
+            title={activeStore.displayName}
           >
-            {currentStore.displayName}
+            {activeStore.displayName}
           </span>
         </div>
         {canSwitch ? (
@@ -122,7 +123,7 @@ export function StoreSwitcher({
           role="menu"
         >
           {stores.map((store) => {
-            const active = store.id === currentStore.id;
+            const active = store.id === activeStore.id;
             return (
               // Ancre BRUTE, jamais `<Link>` : le middleware réécrit
               // `/s/{id}/produits` vers `/produits`, donc les deux boutiques
