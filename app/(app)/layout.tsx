@@ -5,11 +5,10 @@ import { MutationQueueProvider } from '@/components/offline/mutation-queue-provi
 import { ServiceWorkerRegister } from '@/components/service-worker-register';
 import { pickMessages } from '@/lib/i18n/pick-messages';
 import { getMissingCurrentConsents } from '@/lib/legal/consent';
-import { getMerchantAccountById, getMerchantMemberForUser } from '@/lib/merchant/member-account';
 import type { Database } from '@/lib/supabase/database.types';
 import { createSupabaseServerClient, getRequestClaims } from '@/lib/supabase/server';
 import { resolveMemberlessDestination } from '@/lib/workspace/memberless-destination';
-import { defaultWorkspaceStore, getWorkspaceStores } from '@/lib/workspace/store';
+import { defaultWorkspaceStore, getAppBootstrap } from '@/lib/workspace/store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
@@ -27,12 +26,23 @@ function startEarly<T>(promise: Promise<T>): Promise<T> {
 }
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  // L05 — ces trois lectures ne dépendent pas de l'utilisateur : elles partent tout de suite, au
-  // lieu d'attendre leur tour derrière les gardes. Aucune n'est LUE avant sa garde, plus bas.
-  // `getWorkspaceStores` passe par le client soumis à la RLS et est mémoïsée par requête : la
-  // page la demande déjà en parallèle du layout.
+  // L05 — ces lectures ne dépendent pas de l'utilisateur : elles partent tout de suite, au lieu
+  // d'attendre leur tour derrière les gardes. Aucune n'est LUE avant sa garde, plus bas.
+  // `getAppBootstrap` (un seul RPC, sous la RLS : boutiques, membre, compte) est mémoïsée par requête :
+  // la page la demande déjà en parallèle du layout. Son erreur est CAPTURÉE ici et relevée plus bas,
+  // pour que la garde de consentement garde sa priorité sur une erreur de lecture du membre.
   const messagesPromise = startEarly(getMessages());
-  const storesPromise = startEarly(getWorkspaceStores());
+  const bootstrapPromise = getAppBootstrap().then(
+    (bootstrap) => ({ bootstrap, error: null }),
+    (error: unknown) => ({ bootstrap: null, error }),
+  );
+  const storesPromise = startEarly(
+    bootstrapPromise.then((result) => {
+      if (result.error) throw result.error;
+      if (!result.bootstrap) throw new Error('App bootstrap unavailable');
+      return result.bootstrap.stores;
+    }),
+  );
   const headersPromise = startEarly(headers());
 
   const supabase = await createSupabaseServerClient();
@@ -42,26 +52,22 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/connexion');
   }
 
-  // Everything below depends only on user.id and is mutually independent → one
-  // parallel batch instead of a sequential cascade. Guards are still evaluated
-  // in the original priority order (consent before onboarding).
-  // L05 — the merchant account read depends on the member's merchant_account_id : it now starts
-  // as soon as the member is known, without waiting for the consent read to finish.
-  const memberPromise = getMerchantMemberForUser(claims.userId);
-  const merchantAccountPromise = startEarly(
-    memberPromise.then((knownMember) =>
-      knownMember ? getMerchantAccountById(knownMember.merchant_account_id) : null,
-    ),
-  );
-  const [missingConsents, member, messages] = await Promise.all([
+  // Les consentements et le bootstrap restent concurrents ; les gardes ci-dessous gardent leur ordre
+  // de priorité d'origine (consentement avant onboarding).
+  const [missingConsents, bootstrapResult, messages] = await Promise.all([
     getMissingCurrentConsents(claims.userId),
-    memberPromise,
+    bootstrapPromise,
     messagesPromise,
   ]);
 
   if (!missingConsents.ok || missingConsents.documents.length > 0) {
     redirect('/reacceptation');
   }
+
+  if (bootstrapResult.error) throw bootstrapResult.error;
+  const bootstrap = bootstrapResult.bootstrap;
+  if (!bootstrap) throw new Error('App bootstrap unavailable');
+  const { member } = bootstrap;
 
   // Messages de la COQUE seulement (V3) : chaque page déclare les siens (`withMessages`). Ce tableau
   // est lu tel quel par tests/unit/i18n/namespace-coverage.test.ts : il doit rester un littéral.
@@ -82,7 +88,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   // Membre existant : fondateur en cours d'onboarding (compte non onboardé) reste
   // dirigé vers /onboarding, comme avant.
-  const merchantAccount = await merchantAccountPromise;
+  const merchantAccount = bootstrap.account;
 
   if (!merchantAccount?.onboarded_at) {
     redirect('/onboarding');

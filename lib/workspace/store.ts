@@ -24,24 +24,9 @@ type StoreRpcRow = {
   role: 'owner' | 'manager' | 'agent';
 };
 
-type LegacyMemberRow = {
+type BootstrapMemberRow = {
   merchant_account_id: string;
   role: 'owner' | 'manager' | 'agent';
-};
-
-type LegacyShopRow = {
-  id: string;
-  merchant_account_id: string;
-  shop_domain: string;
-  status: string;
-  installed_at: string;
-};
-
-type WorkspaceShopEnrichment = {
-  id: string;
-  display_name: string;
-  store_kind: 'manual' | 'shopify';
-  is_default: boolean;
 };
 
 function mapStore(row: StoreRpcRow): WorkspaceStore {
@@ -57,73 +42,42 @@ function mapStore(row: StoreRpcRow): WorkspaceStore {
   };
 }
 
-// 0126 is additive, but the RPC is introduced by 0127. This read-only fallback
-// keeps the Phase 1 application usable during the migration-first rollout
-// window without assuming any Phase 1-only column exists.
-async function getLegacyWorkspaceStores(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-): Promise<WorkspaceStore[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
+export type AppBootstrap = {
+  stores: WorkspaceStore[];
+  member: BootstrapMemberRow | null;
+  account: { id: string; onboarded_at: string | null } | null;
+};
 
-  const { data: members, error: memberError } = await supabase
-    .from('merchant_member')
-    .select('merchant_account_id, role')
-    .eq('user_id', user.id);
-  if (memberError || !members || members.length === 0) return [];
+type AppBootstrapRpcPayload = {
+  stores: StoreRpcRow[];
+  member: AppBootstrap['member'];
+  account: AppBootstrap['account'];
+};
 
-  const memberByMerchant = new Map(
-    (members as LegacyMemberRow[]).map((member) => [member.merchant_account_id, member.role]),
-  );
-  const { data: shops, error: shopError } = await supabase
-    .from('shop')
-    .select('id, merchant_account_id, shop_domain, status, installed_at')
-    .in('merchant_account_id', [...memberByMerchant.keys()])
-    .order('installed_at', { ascending: true });
-  if (shopError || !shops) return [];
-
-  const { data: enrichedShops } = await supabase
-    .from('shop')
-    .select('id, display_name, store_kind, is_default')
-    .in('merchant_account_id', [...memberByMerchant.keys()]);
-  const enrichmentById = new Map(
-    (enrichedShops as WorkspaceShopEnrichment[] | null | undefined)?.map((shop) => [shop.id, shop]),
-  );
-  const firstByMerchant = new Set<string>();
-  return (shops as LegacyShopRow[]).map((shop) => {
-    const enrichment = enrichmentById.get(shop.id);
-    const isDefault = enrichment?.is_default ?? !firstByMerchant.has(shop.merchant_account_id);
-    firstByMerchant.add(shop.merchant_account_id);
-    const isManual = enrichment?.store_kind === 'manual' || shop.shop_domain.endsWith('.internal');
-    return {
-      displayName: enrichment?.display_name ?? shop.shop_domain,
-      id: shop.id,
-      isDefault,
-      merchantAccountId: shop.merchant_account_id,
-      role: memberByMerchant.get(shop.merchant_account_id) ?? 'agent',
-      shopDomain: shop.shop_domain,
-      status: shop.status,
-      storeKind: isManual ? 'manual' : 'shopify',
-    };
-  });
-}
-
-// Request-scoped memoization (même motif que getCachedDashboardContext) : le
-// layout ET getRequestStoreId ont besoin de la liste des boutiques sur le même
-// rendu. Sans cache, valider l'identifiant de boutique de l'URL coûterait un
-// second aller-retour RPC par page.
-export const getWorkspaceStores = cache(async (): Promise<WorkspaceStore[]> => {
+// Une seule lecture RPC (get_app_bootstrap, 0168) pour la mise en page : boutiques, membre et compte,
+// sous la RLS de l'utilisateur. Mémoïsée par requête (même motif que getCachedDashboardContext) : le
+// layout ET getRequestStoreId ont besoin des boutiques sur le même rendu, et valider l'identifiant de
+// boutique de l'URL ne doit pas coûter un second aller-retour.
+// Une erreur de lecture est levée, jamais réduite à une liste vide (règle 15 de CLAUDE.md).
+export const getAppBootstrap = cache(async (): Promise<AppBootstrap> => {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('list_my_stores');
+  const { data, error } = await supabase.rpc('get_app_bootstrap');
 
-  if (error || !data) {
-    return getLegacyWorkspaceStores(supabase);
-  }
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('App bootstrap unavailable');
 
-  return (data as StoreRpcRow[]).map(mapStore);
+  const payload = data as unknown as AppBootstrapRpcPayload;
+  return {
+    stores: payload.stores.map(mapStore),
+    member: payload.member,
+    account: payload.account,
+  };
 });
+
+// La mémoïsation par requête partage le bootstrap entre le layout et la validation des pages.
+export const getWorkspaceStores = cache(
+  async (): Promise<WorkspaceStore[]> => (await getAppBootstrap()).stores,
+);
 
 export async function getRequestStoreId(): Promise<string | null> {
   const requestHeaders = await headers();

@@ -1,19 +1,15 @@
-// L05 — le layout de l'application lance ses lectures indépendantes d'avance.
-//
-// Deux propriétés, exercées sur le vrai `AppLayout` avec des lectures pilotées à la main :
-//   1. départs : ce qui ne dépend pas de l'utilisateur part avant la fin de `getUser` ; le compte
-//      marchand part dès que le membre est connu, sans attendre les consentements ;
-//   2. priorité des gardes INCHANGÉE : session → consentements → membre → compte onboardé →
-//      boutiques. Une lecture lancée d'avance qui échoue ne passe jamais devant une garde
-//      antérieure, et son erreur n'est jamais avalée quand son tour arrive.
-// Vitest fait échouer la suite sur tout rejet non géré : c'est la garde de `startEarly`.
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-type Deferred<T> = { promise: Promise<T>; reject: (e: unknown) => void; resolve: (v: T) => void };
+type Deferred<T> = {
+  promise: Promise<T>;
+  reject: (error: unknown) => void;
+  resolve: (value: T) => void;
+};
+
 function deferred<T>(): Deferred<T> {
-  let resolve: (v: T) => void = () => undefined;
-  let reject: (e: unknown) => void = () => undefined;
+  let resolve: (value: T) => void = () => undefined;
+  let reject: (error: unknown) => void = () => undefined;
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
@@ -40,14 +36,10 @@ vi.mock('@/lib/supabase/server', () => ({
   },
 }));
 vi.mock('@/lib/legal/consent', () => ({ getMissingCurrentConsents: () => read('consents') }));
-vi.mock('@/lib/merchant/member-account', () => ({
-  getMerchantAccountById: () => read('account'),
-  getMerchantMemberForUser: () => read('member'),
-}));
 vi.mock('@/lib/workspace/store', () => ({
   defaultWorkspaceStore: (stores: Array<{ isDefault: boolean }>) =>
     stores.find((store) => store.isDefault) ?? null,
-  getWorkspaceStores: () => read('stores'),
+  getAppBootstrap: () => read('bootstrap'),
 }));
 vi.mock('@/lib/workspace/memberless-destination', () => ({
   resolveMemberlessDestination: () => read('memberless'),
@@ -59,9 +51,7 @@ vi.mock('next-intl', () => ({
 vi.mock('next/headers', () => ({
   headers: async () => {
     h.calls.push('headers');
-    return {
-      get: (name: string) => (name === 'x-teer-store-id' ? h.storeHeader : null),
-    };
+    return { get: (name: string) => (name === 'x-teer-store-id' ? h.storeHeader : null) };
   },
 }));
 vi.mock('next/navigation', () => ({
@@ -92,6 +82,7 @@ const CONSENTS_MISSING = { documents: [{ type: 'cgu' }], ok: true };
 const MEMBER = { merchant_account_id: 'account-1', role: 'owner' };
 const ACCOUNT = { id: 'account-1', onboarded_at: '2026-01-01T00:00:00.000Z' };
 const STORES = [{ id: 'shop-1', isDefault: true, role: 'owner' }];
+const BOOTSTRAP = { member: MEMBER, account: ACCOUNT, stores: STORES };
 
 const tick = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -99,153 +90,113 @@ const tick = async () => {
 const r = (name: string) => h.reads[name] as Deferred<unknown>;
 const run = () => {
   const result = AppLayout({ children: null });
-  // Le test attend le résultat plus bas ; d'ici là, un rejet ne doit pas compter comme non géré.
   result.catch(() => undefined);
   return result;
+};
+const resetReads = () => {
+  for (const name of ['user', 'consents', 'bootstrap', 'memberless', 'messages']) {
+    h.reads[name] = deferred<unknown>();
+  }
+  r('messages').resolve({});
+};
+const resolveAuthenticatedLayout = () => {
+  r('user').resolve(USER);
+  r('consents').resolve(CONSENTS_OK);
+  r('bootstrap').resolve(BOOTSTRAP);
 };
 
 beforeEach(() => {
   h.calls.length = 0;
   h.storeHeader = null;
-  for (const name of [
-    'user',
-    'consents',
-    'member',
-    'account',
-    'stores',
-    'memberless',
-    'messages',
-  ]) {
-    h.reads[name] = deferred<unknown>();
-  }
-  r('messages').resolve({});
+  resetReads();
 });
 
-describe('L05 — départ des lectures du layout', () => {
-  it('boutiques, messages et en-têtes partent avant la fin de getUser ; rien qui dépend de l utilisateur', async () => {
+describe('V12b — layout bootstrap', () => {
+  it('starts the bootstrap, messages and headers while session lookup is pending', async () => {
     run();
     await tick();
-    expect(h.calls).toEqual(expect.arrayContaining(['messages', 'stores', 'headers', 'user']));
+    expect(h.calls).toEqual(expect.arrayContaining(['bootstrap', 'messages', 'headers', 'user']));
     expect(h.calls).not.toContain('consents');
     expect(h.calls).not.toContain('member');
     expect(h.calls).not.toContain('account');
+    expect(h.calls).not.toContain('stores');
   });
 
-  it('le compte marchand part dès que le membre est connu, consentements encore en cours', async () => {
-    run();
-    r('user').resolve(USER);
-    await tick();
-    expect(h.calls).toEqual(expect.arrayContaining(['consents', 'member']));
-    expect(h.calls).not.toContain('account');
-
-    r('member').resolve(MEMBER);
-    await tick();
-    expect(h.calls).toContain('account');
-  });
-
-  it('chaque lecture ne part qu une fois sur un rendu complet', async () => {
+  it('uses one bootstrap result for member, account and stores', async () => {
     const result = run();
-    r('user').resolve(USER);
-    r('consents').resolve(CONSENTS_OK);
-    r('member').resolve(MEMBER);
-    r('account').resolve(ACCOUNT);
-    r('stores').resolve(STORES);
+    resolveAuthenticatedLayout();
     await expect(result).resolves.toBeTruthy();
-    for (const name of ['user', 'consents', 'member', 'account', 'stores', 'messages', 'headers']) {
-      expect(h.calls.filter((call) => call === name)).toHaveLength(1);
-    }
-    expect(h.calls).not.toContain('memberless');
+    expect(h.calls.filter((call) => call === 'bootstrap')).toHaveLength(1);
+    expect(h.calls).not.toContain('member');
+    expect(h.calls).not.toContain('account');
+    expect(h.calls).not.toContain('stores');
   });
-});
 
-describe('L05 — priorité des gardes inchangée', () => {
-  it('sans session : /connexion, même si la lecture des boutiques a échoué entre-temps', async () => {
+  it('keeps the session guard ahead of a failed bootstrap', async () => {
     const result = run();
-    r('stores').reject(new Error('stores_down'));
+    r('bootstrap').reject(new Error('bootstrap_down'));
     r('user').resolve(NO_USER);
     await expect(result).rejects.toThrow('REDIRECT:/connexion');
-    expect(h.calls).not.toContain('member');
+    expect(h.calls).not.toContain('consents');
   });
 
-  it('consentements manquants : /reacceptation passe devant un compte et des boutiques en échec', async () => {
+  it('keeps consent reacceptance ahead of a failed bootstrap', async () => {
     const result = run();
     r('user').resolve(USER);
-    r('stores').reject(new Error('stores_down'));
-    r('member').resolve(MEMBER);
-    await tick();
-    r('account').reject(new Error('account_down'));
+    r('bootstrap').reject(new Error('bootstrap_down'));
     r('consents').resolve(CONSENTS_MISSING);
     await expect(result).rejects.toThrow('REDIRECT:/reacceptation');
   });
 
-  it('lecture des consentements en échec : /reacceptation, comme avant', async () => {
+  it('keeps reacceptance when the consent read itself fails', async () => {
     const result = run();
     r('user').resolve(USER);
-    r('member').resolve(MEMBER);
+    r('bootstrap').resolve(BOOTSTRAP);
     r('consents').resolve({ ok: false });
     await expect(result).rejects.toThrow('REDIRECT:/reacceptation');
   });
 
-  it('sans appartenance : destination des invitations, aucun compte marchand lu', async () => {
+  it('sends a memberless user to the invitation destination', async () => {
     const result = run();
     r('user').resolve(USER);
     r('consents').resolve(CONSENTS_OK);
-    r('member').resolve(null);
+    r('bootstrap').resolve({ member: null, account: null, stores: [] });
     r('memberless').resolve('/invitation');
     await expect(result).rejects.toThrow('REDIRECT:/invitation');
-    expect(h.calls).not.toContain('account');
   });
 
-  it('compte non onboardé : /onboarding passe devant des boutiques en échec', async () => {
+  it('keeps onboarding ahead of an empty store list', async () => {
     const result = run();
     r('user').resolve(USER);
-    r('stores').reject(new Error('stores_down'));
     r('consents').resolve(CONSENTS_OK);
-    r('member').resolve(MEMBER);
-    r('account').resolve({ id: 'account-1', onboarded_at: null });
+    r('bootstrap').resolve({
+      member: MEMBER,
+      account: { ...ACCOUNT, onboarded_at: null },
+      stores: [],
+    });
     await expect(result).rejects.toThrow('REDIRECT:/onboarding');
   });
 
-  it('compte marchand en échec : l erreur remonte à son tour, elle n est pas avalée', async () => {
+  it('does not flatten a failed bootstrap to an empty successful result', async () => {
     const result = run();
     r('user').resolve(USER);
     r('consents').resolve(CONSENTS_OK);
-    r('member').resolve(MEMBER);
-    await tick();
-    r('account').reject(new Error('account_down'));
-    r('stores').resolve(STORES);
-    await expect(result).rejects.toThrow('account_down');
+    r('bootstrap').reject(new Error('bootstrap_down'));
+    await expect(result).rejects.toThrow('bootstrap_down');
   });
 
-  it('boutiques en échec : l erreur remonte une fois les gardes antérieures passées', async () => {
-    const result = run();
-    r('user').resolve(USER);
-    r('consents').resolve(CONSENTS_OK);
-    r('member').resolve(MEMBER);
-    r('account').resolve(ACCOUNT);
-    r('stores').reject(new Error('stores_down'));
-    await expect(result).rejects.toThrow('stores_down');
-  });
-
-  it('aucune boutique : /onboarding ; boutique explicite inaccessible : 404', async () => {
+  it('sends a genuinely empty workspace to onboarding and rejects a foreign URL store', async () => {
     const empty = run();
     r('user').resolve(USER);
     r('consents').resolve(CONSENTS_OK);
-    r('member').resolve(MEMBER);
-    r('account').resolve(ACCOUNT);
-    r('stores').resolve([]);
+    r('bootstrap').resolve({ member: MEMBER, account: ACCOUNT, stores: [] });
     await expect(empty).rejects.toThrow('REDIRECT:/onboarding');
 
-    for (const name of ['user', 'consents', 'member', 'account', 'stores']) {
-      h.reads[name] = deferred<unknown>();
-    }
-    h.storeHeader = 'shop-etranger';
+    h.calls.length = 0;
+    h.storeHeader = 'shop-foreign';
+    resetReads();
     const foreign = run();
-    r('user').resolve(USER);
-    r('consents').resolve(CONSENTS_OK);
-    r('member').resolve(MEMBER);
-    r('account').resolve(ACCOUNT);
-    r('stores').resolve(STORES);
+    resolveAuthenticatedLayout();
     await expect(foreign).rejects.toThrow('NOT_FOUND');
   });
 });
