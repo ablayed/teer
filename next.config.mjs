@@ -13,6 +13,7 @@ const nextConfig = {
     '/api/rapport': ['./lib/pdf/fonts/*.ttf'],
   },
   reactStrictMode: true,
+  experimental: { inlineCss: true },
   // Environnement de déploiement figé à la compilation, pour que le client Sentry porte le même nom
   // que le serveur (lib/monitoring/sentry-environment.ts).
   env: { NEXT_PUBLIC_SENTRY_BUILD_VERCEL_ENV: process.env.VERCEL_ENV ?? '' },
