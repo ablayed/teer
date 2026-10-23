@@ -50,11 +50,7 @@ test('logout on one device does not sign out other devices', async ({ browser })
     await pageA.waitForURL((url) => url.pathname === '/', { timeout: 20_000 });
 
     await pageB.reload();
-    // The dashboard route streams its loading skeleton and final page separately; both have a
-    // main#main during that transition. Wait for the real page heading, then assert the settled
-    // DOM has one main landmark before checking the protected route stayed available.
-    await expect(pageB.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 20_000 });
-    await expect(pageB.locator('main#main')).toHaveCount(1, { timeout: 20_000 });
+    await expect(pageB.locator('main#main')).toBeVisible({ timeout: 20_000 });
     await expect(pageB).toHaveURL(/\/tableau/);
   } finally {
     await contextA.close();

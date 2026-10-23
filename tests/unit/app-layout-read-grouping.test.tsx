@@ -34,10 +34,6 @@ const read = (name: string) => {
 
 vi.mock('@/lib/supabase/server', () => ({
   createSupabaseServerClient: async () => ({ auth: { getUser: () => read('user') } }),
-  getRequestClaims: async () => {
-    const result = (await read('user')) as { data: { user: { id: string } | null } };
-    return result.data.user ? { userId: result.data.user.id, email: null } : null;
-  },
 }));
 vi.mock('@/lib/legal/consent', () => ({ getMissingCurrentConsents: () => read('consents') }));
 vi.mock('@/lib/merchant/member-account', () => ({
