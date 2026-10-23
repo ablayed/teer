@@ -3886,6 +3886,10 @@ export type Database = {
         };
         Returns: string;
       };
+      create_shopify_order_with_lines: {
+        Args: { p_lines: Json; p_order: Json };
+        Returns: string;
+      };
       current_member_role: { Args: { p_account: string }; Returns: string };
       current_shop_role: { Args: { p_shop_id: string }; Returns: string };
       customer_reliability_decay_anchor: {
@@ -3992,6 +3996,7 @@ export type Database = {
         };
         Returns: boolean;
       };
+      get_app_bootstrap: { Args: never; Returns: Json };
       get_customer_reliability: {
         Args: { p_customer_id: string; p_merchant_id: string };
         Returns: {
@@ -4809,6 +4814,10 @@ export type Database = {
           expires_at: string;
         }[];
       };
+      repair_shopify_order_lines: {
+        Args: { p_lines: Json; p_order_id: string };
+        Returns: number;
+      };
       replace_order_cart: {
         Args: { p_lines: Json; p_order_id: string };
         Returns: undefined;
@@ -4827,6 +4836,10 @@ export type Database = {
           product_id: string;
           required_qty: number;
         }[];
+      };
+      resync_shopify_order_cart: {
+        Args: { p_lines: Json; p_order_id: string; p_order_update: Json };
+        Returns: string;
       };
       set_order_note: {
         Args: { p_note: string; p_order_id: string };

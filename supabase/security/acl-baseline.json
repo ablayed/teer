@@ -707,6 +707,23 @@
     {
       "aclIsDefault": false,
       "anonExec": false,
+      "args": "",
+      "authenticatedExec": true,
+      "key": "public.get_app_bootstrap()",
+      "name": "get_app_bootstrap",
+      "owner": "postgres",
+      "parallelSafety": "unsafe",
+      "proaclSorted": "authenticated=X/postgres,postgres=X/postgres",
+      "returnType": "jsonb",
+      "schema": "public",
+      "searchPathConfig": "search_path=\"\"",
+      "securityDefiner": false,
+      "serviceRoleExec": false,
+      "volatility": "stable"
+    },
+    {
+      "aclIsDefault": false,
+      "anonExec": false,
       "args": "p_merchant_id uuid, p_customer_id uuid",
       "authenticatedExec": true,
       "key": "public.get_customer_reliability(p_merchant_id uuid, p_customer_id uuid)",
