@@ -297,12 +297,8 @@ test.describe('Phase 1 — contexte de boutique et isolation des livreurs', () =
     await loginViaForm(page, fixture.email, e2ePassword, `/s/${fixture.defaultStoreId}/tableau`);
     await expect(page.locator('main#main')).toBeVisible({ timeout: 40_000 });
 
-    const forgedStorePath = '/s/00000000-0000-0000-0000-000000000000/livreurs';
-    await page.goto(forgedStorePath);
-    // Avec le streaming V13, le 404 est vérifié dans l'écran final plutôt
-    // que dans le statut envoyé avant la résolution de la garde.
-    await expect(page.getByRole('heading', { level: 1, name: '404' })).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe(forgedStorePath);
+    const response = await page.goto('/s/00000000-0000-0000-0000-000000000000/livreurs');
+    expect(response?.status()).toBe(404);
     await expect(page.getByText(fixture.defaultDriverName)).toHaveCount(0);
     await expect(page.getByText(fixture.secondDriverName)).toHaveCount(0);
   });
