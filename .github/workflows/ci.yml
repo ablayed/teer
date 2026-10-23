@@ -272,18 +272,24 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
-      # La cible iphone-14 du playwright.config tourne sous webkit ; chromium seul faisait
-      # échouer tous les scénarios iphone-14 (Executable doesn't exist). On installe les deux.
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ matrix.project == 'iphone-14' && 'webkit' || 'chromium' }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+      # Chaque job n'installe que le moteur qu'il exécute : pixel-7 tourne sous Chromium,
+      # iphone-14 sous WebKit. Cela réduit les paquets apt et les téléchargements Playwright.
       - name: Install Playwright browsers and deps
         timeout-minutes: 26
         run: |
           set -euo pipefail
+          browsers=(chromium)
+          if [ "${{ matrix.project }}" = "iphone-14" ]; then
+            browsers=(webkit)
+          fi
           for attempt in 1 2 3; do
             echo "::group::playwright install (tentative $attempt/3)"
             # `sudo apt-get` peut survivre au PID de tête après un stall miroir.
             # Une session dédiée donne au watchdog un PGID unique à tuer en entier.
-            setsid pnpm exec playwright install --with-deps chromium webkit &
+            setsid pnpm exec playwright install --with-deps "${browsers[@]}" &
             pgid=$!
             (
               sleep 8m
@@ -475,16 +481,22 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.playwright-version-regression.outputs.version }}
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version-regression.outputs.version }}-${{ matrix.project == 'iphone-14' && 'webkit' || 'chromium' }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ steps.playwright-version-regression.outputs.version }}
       - name: Install Playwright browsers and deps
         timeout-minutes: 26
         run: |
           set -euo pipefail
+          browsers=(chromium)
+          if [ "${{ matrix.project }}" = "iphone-14" ]; then
+            browsers=(webkit)
+          fi
           for attempt in 1 2 3; do
             echo "::group::playwright install (tentative $attempt/3)"
             # `sudo apt-get` peut survivre au PID de tête après un stall miroir.
             # Une session dédiée donne au watchdog un PGID unique à tuer en entier.
-            setsid pnpm exec playwright install --with-deps chromium webkit &
+            setsid pnpm exec playwright install --with-deps "${browsers[@]}" &
             pgid=$!
             (
               sleep 8m
@@ -652,7 +664,9 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-desktop.outputs.version }}
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-desktop.outputs.version }}-chromium
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-desktop.outputs.version }}
       - name: Install Playwright browsers and deps
         timeout-minutes: 26
         run: |
@@ -661,7 +675,7 @@ jobs:
             echo "::group::playwright install (tentative $attempt/3)"
             # `sudo apt-get` peut survivre au PID de tête après un stall miroir.
             # Une session dédiée donne au watchdog un PGID unique à tuer en entier.
-            setsid pnpm exec playwright install --with-deps chromium webkit &
+            setsid pnpm exec playwright install --with-deps chromium &
             pgid=$!
             (
               sleep 8m
@@ -805,7 +819,9 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-mobile.outputs.version }}
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-mobile.outputs.version }}-chromium-webkit
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ steps.playwright-version-visual-mobile.outputs.version }}
       - name: Install Playwright browsers and deps
         timeout-minutes: 26
         run: |
