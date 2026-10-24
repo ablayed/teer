@@ -176,6 +176,7 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         `/tableau?from=${visualPeriodFrom}&to=${visualPeriodTo}`,
       );
       await expect(page.getByText('Priorités à traiter')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('store-switcher-name')).toBeVisible({ timeout: 15_000 });
       await waitForFonts(page);
 
       await expect(page).toHaveScreenshot('tableau.png', {
@@ -378,6 +379,7 @@ test.describe('Baselines visuelles — sections Phase 1', () => {
         timeout: 15_000,
       });
       await expect(page.locator('.recharts-surface').first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('store-switcher-name')).toBeVisible({ timeout: 15_000 });
       await waitForFonts(page);
 
       await expect(page).toHaveScreenshot('analyses.png', {
