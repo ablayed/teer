@@ -3,12 +3,10 @@
 **Version : 2.0**
 **Dernière mise à jour : 2 novembre 2026**
 
-> **BROUILLON — publication suspendue.** Éditeur, localisation, contact support et validation de la perte maximale de données restent à fournir par le fondateur.
-
 ## 1. Mentions légales et identification de l’éditeur
 
-Le service Tëër est édité par **[[À_FOURNIR : ÉDITEUR_NOM]]**, situé à **[[À_FOURNIR : ÉDITEUR_LOCALISATION]]**.
-Contact support : **[[À_FOURNIR : CONTACT_SUPPORT]]**.
+Le service Tëër est édité par **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**.
+Contact support : **diaablaye09@gmail.com**.
 
 ## 2. Objet et définition du service
 
@@ -52,7 +50,7 @@ Tëër ne réalise pas les paiements COD et n’est pas responsable des espèces
 
 Dans les limites permises par la loi, chaque partie répond des dommages directs résultant de ses manquements. Aucune stipulation ne limite une responsabilité que la loi interdit de limiter, notamment en cas de faute intentionnelle ou lourde. Aucune limite n’est calculée en fonction d’un montant d’abonnement, le service étant gratuit à ce jour.
 
-**Perte de données en cas d’incident : [[À_FOURNIR : PERTE_MAX_VALIDÉE = oui/non]].** Si la réponse est « oui », la limite validée de 24 heures sera indiquée ici avant publication. Si elle est « non », cette mention sera supprimée avant publication.
+En cas d’incident, l’ancienneté maximale des données susceptibles d’être perdues est de **24 heures**.
 
 ## 11. Suspension et fin d’utilisation
 
@@ -68,8 +66,8 @@ Les modifications substantielles seront communiquées aux utilisateurs. Lorsqu�
 
 ## 14. Droit applicable et règlement des litiges
 
-Droit applicable et juridiction compétente : à confirmer avant publication.
+Le droit applicable et la juridiction compétente sont ceux désignés par les règles impératives applicables.
 
 ## 15. Contact
 
-Pour toute question sur les présentes conditions : **[[À_FOURNIR : CONTACT_SUPPORT]]**.
+Pour toute question sur les présentes conditions : **diaablaye09@gmail.com**.

@@ -1,11 +1,11 @@
 -- ============================================================
--- 0047 : Documents legaux v1.1 - identite publique teer.inc
+-- 0047 : Documents legaux v1.1 - identite publique precedente
 -- ============================================================
 -- Contexte :
 --   * Les documents publics ne doivent plus exposer d'informations
 --     personnelles nominatives ou d'adresse detaillee.
 --   * Le contenu public canonique dans docs/legal/ a ete modifie :
---       - identite publique -> teer.inc
+--       - identite publique remplacee par un ancien alias public
 --       - adresse -> Dakar, Senegal
 --       - retrait des emails / telephones / WhatsApp personnels
 --   * Le consentement probant doit porter sur le contenu exact affiche :

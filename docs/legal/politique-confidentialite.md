@@ -3,12 +3,10 @@
 **Version : 2.0**
 **Dernière mise à jour : 2 novembre 2026**
 
-> **BROUILLON — publication suspendue.** Les coordonnées réelles de l’éditeur et du support restent à fournir par le fondateur.
-
 ## 1. Éditeur et contact
 
-Tëër est édité par **[[À_FOURNIR : ÉDITEUR_NOM]]**, situé à **[[À_FOURNIR : ÉDITEUR_LOCALISATION]]**.
-Contact relatif aux données et au support : **[[À_FOURNIR : CONTACT_SUPPORT]]**.
+Tëër est édité par **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**.
+Contact relatif aux données et au support : **diaablaye09@gmail.com**.
 
 ## 2. Service et rôles
 
@@ -50,7 +48,7 @@ Les services suivants sont appelés par le code de Tëër. Les régions propres 
 | Shopify | Boutique connectée, source des commandes et de certaines données client | Traitement possible dans les pays où Shopify, ses sociétés affiliées ou prestataires sont établis |
 | WooCommerce | Connecteur vers la boutique du commerçant | Hébergement propre à la boutique du commerçant, à confirmer selon son fournisseur |
 
-La région exacte des comptes Vercel, Sentry, PostHog, Upstash et Supabase doit être vérifiée dans les consoles correspondantes avant publication. Les transferts effectués par ces prestataires restent soumis à leurs engagements contractuels et à leurs propres politiques.
+Les transferts effectués par ces prestataires restent soumis à leurs engagements contractuels et à leurs propres politiques.
 
 ## 6. Conservation
 
@@ -60,7 +58,7 @@ Les règles de rétention appliquées aux données Shopify comprennent :
 - l’identité d’un client Shopify est supprimée après 12 mois d’inactivité, si les conditions de purge sont réunies ;
 - un artefact DSAR temporaire est supprimé après 24 heures.
 
-Les autres durées dépendent de la finalité, des règles de compte et des obligations applicables. Une durée précise pour chaque catégorie de données de compte reste à confirmer avant publication.
+Les autres données sont conservées selon la finalité du traitement et les obligations applicables.
 
 ## 7. Sécurité
 
@@ -78,5 +76,5 @@ Le service est gratuit à ce jour. Toute offre payante future sera annoncée ave
 
 La présente politique peut être mise à jour. Les modifications substantielles seront communiquées et, lorsque nécessaire, soumises à une nouvelle acceptation.
 
-Pour toute question relative aux données personnelles : **[[À_FOURNIR : CONTACT_SUPPORT]]**.
-Éditeur : **[[À_FOURNIR : ÉDITEUR_NOM]]**, **[[À_FOURNIR : ÉDITEUR_LOCALISATION]]**.
+Pour toute question relative aux données personnelles : **diaablaye09@gmail.com**.
+Éditeur : **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**.

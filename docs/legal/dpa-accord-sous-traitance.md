@@ -3,17 +3,17 @@
 **Version : 2.0**
 **Dernière mise à jour : 2 novembre 2026**
 
-> **BROUILLON — publication suspendue.** Les coordonnées de l’éditeur et du support restent à fournir par le fondateur.
-
 ## Parties
 
 - **Responsable de traitement** : le commerçant qui utilise Tëër pour gérer ses ventes et commandes.
-- **Sous-traitant** : **[[À_FOURNIR : ÉDITEUR_NOM]]**, situé à **[[À_FOURNIR : ÉDITEUR_LOCALISATION]]**, opérant le service Tëër (« Tëër »).
-- **Contact support et demandes relatives aux données** : **[[À_FOURNIR : CONTACT_SUPPORT]]**.
+- **Sous-traitant** : **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**, opérant le service Tëër (« Tëër »).
+- **Contact support et demandes relatives aux données** : **diaablaye09@gmail.com**.
 
 ## 1. Objet et durée
 
-Le présent accord encadre le traitement par Tëër, pour le compte du commerçant, des données de ses clients finaux traitées pour fournir le cockpit COD. Il s’applique pendant l’utilisation du service par le commerçant et prend fin avec celle-ci, sous réserve des opérations de suppression et des obligations applicables.
+Le présent accord encadre le traitement par Tëër, pour le compte du commerçant, des données de ses clients finaux traitées pour fournir le cockpit COD. Les commandes peuvent provenir de Shopify ou d’une saisie manuelle de ventes réalisées notamment par WhatsApp, TikTok, Facebook ou téléphone. Il s’applique pendant l’utilisation du service par le commerçant et prend fin avec celle-ci, sous réserve des opérations de suppression et des obligations applicables.
+
+Le service est gratuit à ce jour. Toute offre payante future sera annoncée avec un préavis et ne s’appliquera qu’après acceptation explicite du commerçant, conformément aux CGU.
 
 ## 2. Nature, finalités et données
 
@@ -46,7 +46,7 @@ Le commerçant autorise l’utilisation des services ci-dessous pour fournir les
 | Shopify | Plateforme de commerce connectée et source de données | Traitement possible dans les pays où Shopify, ses sociétés affiliées ou prestataires sont établis |
 | WooCommerce | Connecteur de boutique | Hébergement propre à la boutique du commerçant, à confirmer selon son fournisseur |
 
-Le commerçant peut demander des informations complémentaires sur ces services à **[[À_FOURNIR : CONTACT_SUPPORT]]**. Les localisations des comptes Supabase, Vercel, Sentry, PostHog et Upstash doivent être vérifiées avant publication.
+Le commerçant peut demander des informations complémentaires sur ces services à **diaablaye09@gmail.com**.
 
 ## 6. Assistance aux demandes des personnes
 
@@ -64,9 +64,9 @@ Les règles de rétention appliquées aux données Shopify comprennent :
 - identité d’un client Shopify : suppression après 12 mois d’inactivité, si les conditions de purge sont réunies ;
 - artefact DSAR temporaire : suppression après 24 heures.
 
-À la fin de l’utilisation du service, les données sont supprimées selon les mécanismes et délais applicables au service. Toute durée précise non indiquée ci-dessus reste à confirmer.
+À la fin de l’utilisation du service, les données sont supprimées selon les mécanismes et délais applicables au service. Les autres données sont conservées le temps nécessaire aux finalités du service et aux obligations applicables.
 
 ## 9. Audit et contact
 
-Le commerçant peut adresser ses demandes raisonnables d’information sur le traitement au contact support : **[[À_FOURNIR : CONTACT_SUPPORT]]**.
-Éditeur : **[[À_FOURNIR : ÉDITEUR_NOM]]**, **[[À_FOURNIR : ÉDITEUR_LOCALISATION]]**.
+Le commerçant peut adresser ses demandes raisonnables d’information sur le traitement au contact support : **diaablaye09@gmail.com**.
+Éditeur : **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**.
