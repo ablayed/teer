@@ -27,9 +27,11 @@ on:
 
 jobs:
   repeat:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
+      - name: Display runner OS
+        run: cat /etc/os-release | head -n 2
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4

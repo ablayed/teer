@@ -22,7 +22,7 @@ jobs:
   # se rejoue pas quand on modifie sa propre fixture peut être désarmé sans
   # que personne s'en aperçoive.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       l1: ${{ steps.filter.outputs.l1 }}
     steps:
@@ -38,7 +38,7 @@ jobs:
               - '.github/workflows/ci.yml'
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -54,7 +54,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,7 +64,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   typecheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: lint
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +75,7 @@ jobs:
       - run: pnpm typecheck
 
   test-unit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: lint
     steps:
       - uses: actions/checkout@v4
@@ -86,7 +86,7 @@ jobs:
       - run: pnpm test:unit
 
   test-rls:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: lint
     steps:
       - uses: actions/checkout@v4
@@ -191,7 +191,7 @@ jobs:
   # (~2,5 min, 2 `db reset --local`) : gated par path-filter (job `changes`),
   # pas exécuté à chaque push.
   l1-backfill-harness:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.l1 == 'true'
     steps:
@@ -219,7 +219,7 @@ jobs:
       - run: bash scripts/l1-backfill-harness.sh
 
   test-e2e-phase1:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: [typecheck, test-unit]
     strategy:
@@ -227,6 +227,8 @@ jobs:
       matrix:
         project: [chromium, pixel-7, iphone-14]
     steps:
+      - name: Display runner OS
+        run: cat /etc/os-release | head -n 2
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -392,7 +394,7 @@ jobs:
           if-no-files-found: error
 
   test-e2e-regression:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: [typecheck, test-unit]
     strategy:
@@ -401,6 +403,8 @@ jobs:
         project: [chromium, pixel-7, iphone-14]
         shard: [1, 2, 3, 4]
     steps:
+      - name: Display runner OS
+        run: cat /etc/os-release | head -n 2
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -541,12 +545,14 @@ jobs:
           if-no-files-found: error
 
   test-visual-desktop:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: [typecheck, test-unit]
     env:
       TZ: Africa/Dakar
     steps:
+      - name: Display runner OS
+        run: cat /etc/os-release | head -n 2
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -660,12 +666,14 @@ jobs:
           if-no-files-found: ignore
 
   test-visual-mobile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: [typecheck, test-unit]
     env:
       TZ: Africa/Dakar
     steps:
+      - name: Display runner OS
+        run: cat /etc/os-release | head -n 2
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -790,7 +798,7 @@ jobs:
   # Ce n'est PAS un check vert de complaisance : il ne peut pas passer sans les
   # 5 jetons, et il echoue aussi si un job a ete annule ou saute (aucun jeton).
   test-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [test-e2e-phase1, test-e2e-regression]
     if: always()
     strategy:
@@ -823,7 +831,7 @@ jobs:
           echo "Tous les shards ${{ matrix.project }} ont reussi."
 
   merge-e2e-reports:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [test-e2e-phase1, test-e2e-regression]
     if: always()
     steps:
