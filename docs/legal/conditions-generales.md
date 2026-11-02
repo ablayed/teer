@@ -1,80 +1,73 @@
-# Conditions Générales d'Utilisation (CGU)
+# Conditions générales d’utilisation
 
-**Dernière mise à jour : 10 juin 2026**
-**Version : 1.0**
+**Version : 2.0**
+**Dernière mise à jour : 2 novembre 2026**
 
-## 1. Mentions légales et identification de l'éditeur
+## 1. Mentions légales et identification de l’éditeur
 
-Le service Tëër est édité par :
-- **Éditeur** : teer.inc
-- **Adresse** : Dakar, Sénégal
-- **Directeur de la publication** : teer.inc
-- **Hébergeurs** : Vercel Inc. (hébergement applicatif, région UE) et Supabase (base de données, UE)
+Le service Tëër est édité par **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**.
+Contact support : **diaablaye09@gmail.com**.
 
 ## 2. Objet et définition du service
 
-Tëër est un **outil de gestion (cockpit) des opérations de paiement à la livraison (cash-on-delivery, COD)** destiné aux commerçants utilisant Shopify. Le service permet de suivre les commandes, les livraisons, les stocks, les encaissements et les livreurs en un seul endroit.
+Tëër est un cockpit de gestion des opérations de paiement à la livraison (COD). Il permet aux commerçants de suivre leurs commandes, clients, livraisons, stocks, encaissements et livreurs. Les commandes peuvent provenir d’une boutique Shopify ou être saisies manuellement à partir de ventes conclues par WhatsApp, TikTok, Facebook, téléphone ou un autre canal.
 
-**Important** : Tëër est un **outil de suivi et de gestion opérationnelle uniquement**. Tëër **n'est pas un établissement de paiement, n'est pas un processeur de paiement, et n'est pas partie aux sommes encaissées en espèces** dans le cadre des livraisons. Tëër enregistre et suit les opérations ; il ne détient, ne transfère et ne garantit aucun fonds.
+Tëër est un outil de suivi opérationnel. Il n’encaisse, ne détient, ne transfère et ne garantit pas les fonds remis aux commerçants ou aux livreurs. Le commerçant reste responsable de ses ventes, de ses clients, de ses livraisons et des fonds.
 
 ## 3. Acceptation des CGU
 
-L'utilisation du service suppose l'acceptation pleine et entière des présentes CGU et de la Politique de Confidentialité. Cette acceptation est recueillie lors de la création du compte au moyen d'une case à cocher non pré-cochée. En cas de modification substantielle, une nouvelle acceptation peut être requise.
+L’utilisation du service suppose l’acceptation des présentes CGU et des documents légaux présentés lors de la création du compte. Cette acceptation est recueillie au moyen d’une case non pré-cochée. Une nouvelle acceptation peut être requise lorsque les documents en vigueur changent.
 
 ## 4. Création de compte et éligibilité
 
-Le service est réservé à un usage **professionnel (B2B)**, destiné aux commerçants. L'utilisateur s'engage à fournir des informations exactes et à les maintenir à jour. Il est responsable de la confidentialité de ses identifiants.
+Le service est destiné à un usage professionnel. L’utilisateur fournit des informations exactes, protège ses identifiants et n’autorise l’accès qu’aux membres de son équipe auxquels il souhaite donner un rôle.
 
-## 5. Abonnements, tarifs et facturation
+## 5. Gratuité et évolution tarifaire
 
-Les conditions tarifaires, les éventuelles offres gratuites et les modalités de facturation sont présentées dans le service. Toute modification tarifaire est communiquée avec un préavis raisonnable. Les abonnements sont payables selon les modalités indiquées lors de la souscription.
+Le service est gratuit à ce jour. Aucune offre payante n’est actuellement appliquée. Toute offre payante future sera annoncée avec un préavis raisonnable et ne s’appliquera qu’après acceptation explicite du commerçant.
 
-## 6. Obligations de l'utilisateur (Marchand)
+## 6. Obligations de l’utilisateur
 
-L'utilisateur s'engage à :
-- utiliser le service conformément à la loi et aux présentes CGU ;
-- en tant que **responsable de traitement** des données de ses propres clients, **disposer d'une base légale** pour le traitement et **informer ses clients** conformément à la réglementation applicable ;
-- traiter les demandes d'exercice de droits émanant de ses propres clients, Tëër agissant en simple sous-traitant (voir l'Accord de Sous-Traitance) ;
-- ne pas détourner le service de sa finalité, ni porter atteinte à sa sécurité ou à son intégrité.
+L’utilisateur s’engage à respecter les présentes CGU, à utiliser le service conformément à la loi, à protéger ses identifiants et à traiter les données de ses propres clients conformément aux règles qui lui sont applicables. Il s’assure qu’il peut transmettre à Tëër les données nécessaires à son activité.
 
 ## 7. Usage acceptable
 
-Sont notamment interdits : l'accès non autorisé, la rétro-ingénierie, l'utilisation de robots non autorisés, l'atteinte aux données d'autres Marchands, et tout usage illicite ou frauduleux.
+Sont interdits l’accès non autorisé, l’utilisation frauduleuse du service, l’atteinte aux données d’autres commerçants et toute tentative de perturber la sécurité ou l’intégrité du service.
 
 ## 8. Propriété intellectuelle
 
-Tëër et l'ensemble de ses composants (code, interface, marques, contenus) demeurent la propriété exclusive de l'Éditeur. L'utilisateur bénéficie d'un droit d'accès et d'utilisation personnel, non exclusif et non transférable, pour la durée de son abonnement.
+Les éléments du service Tëër sont protégés par les droits applicables. L’utilisateur dispose, pendant son utilisation du service, d’un droit d’accès non exclusif et non transférable aux fonctionnalités proposées.
 
 ## 9. Données personnelles
 
-Le traitement des données est décrit dans la **Politique de Confidentialité** et, pour les données des clients du Marchand, dans l'**Accord de Sous-Traitance (DPA)**, qui sont incorporés aux présentes par référence.
+Les traitements de données personnelles sont décrits dans la Politique de confidentialité. Pour les données des clients finaux traitées pour le compte du commerçant, l’Accord de sous-traitance (DPA) complète les présentes conditions.
 
 ## 10. Limitation de responsabilité et garanties
 
-Le service est fourni « en l'état » et « selon disponibilité ». Dans les limites permises par la loi :
+Le service est fourni selon les fonctionnalités disponibles. Aucune disponibilité ininterrompue ni aucun délai de rétablissement ne sont garantis. Tëër ne garantit pas l’exactitude des données importées depuis une plateforme tierce ni les résultats commerciaux ou de livraison.
 
-- **Disclaimer COD** : Tëër n'est **pas responsable** des espèces collectées ou non remises, du comportement des livreurs, des pertes ou vols de fonds, ni des résultats des livraisons. Tëër se borne à **enregistrer et suivre** ces opérations.
-- Tëër ne garantit pas que le service sera ininterrompu ou exempt d'erreurs.
-- La responsabilité de Tëër, si elle est engagée, est limitée au montant des sommes versées par le Marchand au titre de l'abonnement au cours des [douze (12)] mois précédant le fait générateur.
-- Tëër n'est pas responsable des dommages indirects ou immatériels (perte de chiffre d'affaires, de données, de clientèle).
-- Ces limitations ne s'appliquent pas en cas de faute lourde ou intentionnelle, ni dans les cas où la loi en interdit l'exclusion.
+Tëër ne réalise pas les paiements COD et n’est pas responsable des espèces collectées ou non remises, des pertes ou vols de fonds, du comportement des livreurs ni du résultat d’une livraison. Tëër enregistre les opérations saisies ou importées et fournit des outils de suivi.
 
-## 11. Suspension et résiliation
+Dans les limites permises par la loi, chaque partie répond des dommages directs résultant de ses manquements. Aucune stipulation ne limite une responsabilité que la loi interdit de limiter, notamment en cas de faute intentionnelle ou lourde. Aucune limite n’est calculée en fonction d’un montant d’abonnement, le service étant gratuit à ce jour.
 
-Tëër peut suspendre ou résilier l'accès en cas de manquement aux présentes CGU. L'utilisateur peut résilier son abonnement selon les modalités indiquées dans le service. À la fin du contrat, les données sont restituées ou supprimées conformément à l'Accord de Sous-Traitance.
+En cas d’incident, l’ancienneté maximale des données susceptibles d’être perdues est de **24 heures**.
+
+## 11. Suspension et fin d’utilisation
+
+Tëër peut suspendre l’accès en cas d’usage illicite ou de risque sérieux pour le service ou les données. Le commerçant peut cesser d’utiliser le service. La déconnexion d’une boutique Shopify n’efface pas les commandes déjà importées dans Tëër ; leur conservation suit la Politique de confidentialité et le DPA.
 
 ## 12. Force majeure
 
-Aucune des parties ne saurait être tenue responsable d'un manquement résultant d'un cas de force majeure tel que défini par le droit sénégalais.
+Une partie n’est pas responsable d’un manquement résultant d’un événement répondant à la définition légale de la force majeure applicable.
 
 ## 13. Modification des CGU
 
-Tëër peut modifier les présentes CGU. Toute modification substantielle est notifiée et peut entraîner une nouvelle acceptation.
+Les modifications substantielles seront communiquées aux utilisateurs. Lorsqu’une nouvelle acceptation est requise, l’accès aux fonctionnalités concernées pourra être suspendu jusqu’à cette acceptation.
 
 ## 14. Droit applicable et règlement des litiges
 
-Les présentes CGU sont régies par le **droit sénégalais**. En cas de litige, les parties s'efforcent de trouver une solution amiable. À défaut, compétence est attribuée aux **tribunaux compétents de Dakar**, sauf disposition légale impérative contraire.
+Le droit applicable et la juridiction compétente sont ceux désignés par les règles impératives applicables.
 
 ## 15. Contact
 
-**teer.inc** — Dakar, Sénégal.
+Pour toute question sur les présentes conditions : **diaablaye09@gmail.com**.

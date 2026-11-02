@@ -1,108 +1,72 @@
-# Accord de Sous-Traitance (Data Processing Agreement – DPA)
+# Accord de sous-traitance (DPA)
 
-**Dernière mise à jour : 10 juin 2026**
-**Version : 1.2**
+**Version : 2.0**
+**Dernière mise à jour : 2 novembre 2026**
 
-## Entre les parties
+## Parties
 
-- **Le Responsable de traitement** : le Marchand utilisateur du service Tëër (ci-après le « Responsable »).
-- **Le Sous-traitant** : teer.inc, Dakar, Sénégal (ci-après « Tëër » ou le « Sous-traitant »).
+- **Responsable de traitement** : le commerçant qui utilise Tëër pour gérer ses ventes et commandes.
+- **Sous-traitant** : **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**, opérant le service Tëër (« Tëër »).
+- **Contact support et demandes relatives aux données** : **diaablaye09@gmail.com**.
 
-Le présent Accord complète les Conditions Générales d'Utilisation et encadre le traitement, par Tëër, des données à caractère personnel des clients du Responsable.
+## 1. Objet et durée
 
-## 1. Objet, durée, nature et finalité du traitement
+Le présent accord encadre le traitement par Tëër, pour le compte du commerçant, des données de ses clients finaux traitées pour fournir le cockpit COD. Les commandes peuvent provenir de Shopify ou d’une saisie manuelle de ventes réalisées notamment par WhatsApp, TikTok, Facebook ou téléphone. Il s’applique pendant l’utilisation du service par le commerçant et prend fin avec celle-ci, sous réserve des opérations de suppression et des obligations applicables.
 
-Tëër traite, pour le compte du Responsable, les données des clients finaux du Responsable, aux seules fins de fournir le service de gestion des opérations de paiement à la livraison (suivi des commandes, livraisons, encaissements). La durée du traitement correspond à celle de l'abonnement du Responsable.
+Le service est gratuit à ce jour. Toute offre payante future sera annoncée avec un préavis et ne s’appliquera qu’après acceptation explicite du commerçant, conformément aux CGU.
 
-## 2. Type de données et catégories de personnes concernées
+## 2. Nature, finalités et données
 
-- **Catégories de données** : noms des destinataires, numéros de téléphone, adresses de livraison, données de commande.
-- **Catégories de personnes concernées** : les clients finaux du Responsable.
+Tëër reçoit, enregistre, organise, consulte, met à jour et supprime des données afin de saisir ou importer des commandes, suivre leur livraison, les encaissements COD, les stocks et les opérations des livreurs.
 
-## 3. Obligations du Responsable de traitement
+Les données peuvent comprendre le nom, le téléphone, l’adresse de livraison et les informations de commande des clients finaux, lorsqu’elles sont fournies par le commerçant ou sa boutique connectée. Les catégories de personnes concernées sont les clients finaux du commerçant.
 
-Le Responsable garantit qu'il dispose d'une base légale pour le traitement, qu'il a informé ses clients conformément à la réglementation applicable, et qu'il transmet à Tëër des instructions licites et documentées.
+## 3. Instructions et obligations du commerçant
 
-## 4. Traitement sur instructions documentées uniquement
+Le commerçant détermine les finalités et moyens du traitement de ses données client. Il confirme qu’il dispose des droits et instructions nécessaires pour transmettre ces données à Tëër et informer les personnes concernées. Tëër traite les données pour fournir le service et selon les instructions du commerçant, sauf obligation légale applicable.
 
-Tëër traite les données uniquement sur la base des instructions documentées du Responsable, y compris en matière de transfert international, sauf obligation légale contraire (article 28.3.a RGPD ; article 70 Loi 2008-12).
+## 4. Confidentialité et sécurité
 
-## 5. Confidentialité du personnel
+Le code du service met en œuvre des connexions HTTPS/TLS aux services distants, le chiffrement des jetons Shopify stockés, l’isolation des données entre commerçants par RLS et un contrôle des actions selon le rôle de l’utilisateur. Ces mesures décrivent les contrôles présents dans le code et ne constituent ni une certification ni une garantie d’absence d’incident.
 
-Toute personne autorisée à traiter les données est soumise à une obligation de confidentialité (engagement écrit conformément à l'article 70 de la Loi 2008-12).
+## 5. Sous-traitants ultérieurs et plateformes connectées
 
-## 6. Sécurité du traitement
+Le commerçant autorise l’utilisation des services ci-dessous pour fournir les fonctionnalités de Tëër. Les lieux propres au compte ou au déploiement, lorsqu’ils ne peuvent être établis depuis le dépôt, sont indiqués « à confirmer ».
 
-Tëër met en œuvre les mesures techniques et organisationnelles appropriées (article 32 RGPD ; article 71 Loi 2008-12), détaillées à l'**Annexe B** : chiffrement en transit et au repos, isolation stricte des données entre Marchands (Row-Level Security), contrôle d'accès basé sur les rôles, journalisation des accès, sauvegardes chiffrées, séparation des environnements de test et de production.
-
-## 7. Sous-traitance ultérieure
-
-Le Responsable autorise Tëër à recourir aux sous-traitants ultérieurs listés en **Annexe C**. Tëër impose à ces sous-traitants des obligations de protection équivalentes et demeure pleinement responsable de leur exécution. Toute modification de la liste est notifiée au Responsable, qui peut s'y opposer pour motif légitime.
-
-## 8. Assistance aux demandes des personnes concernées
-
-Tëër met à disposition du Responsable les moyens techniques permettant de répondre aux demandes d'exercice de droits (accès, rectification, effacement, portabilité), notamment via les webhooks de conformité Shopify (`customers/data_request`, `customers/redact`).
-
-## 9. Assistance en cas de violation de données
-
-Tëër notifie au Responsable toute violation de données à caractère personnel **dans les meilleurs délais** après en avoir pris connaissance, afin de permettre au Responsable de respecter ses propres obligations de notification (notamment le délai de 72 heures sous le RGPD). La notification précise la nature de la violation, les données concernées et les mesures prises.
-
-## 10. Suppression ou restitution des données
-
-À la fin du contrat, Tëër supprime ou restitue les données au choix du Responsable, sauf obligation légale de conservation. La suppression est mise en œuvre notamment via le webhook `shop/redact` (déclenché 48 heures après la désinstallation de l'application) et `customers/redact`.
-
-## 11. Audits et inspections
-
-Tëër met à la disposition du Responsable les informations nécessaires pour démontrer le respect du présent Accord et permet la réalisation d'audits, dans des conditions raisonnables et confidentielles.
-
-## 12. Transferts internationaux
-
-Les données sont hébergées dans l'Union européenne. Tout transfert est encadré par des garanties appropriées (clauses contractuelles types ou équivalentes), conformément aux articles 49 à 51 de la Loi 2008-12 et au chapitre V du RGPD.
-
----
-
-## Annexe A — Description du traitement
-
-- **Finalité** : gestion des opérations COD pour le compte du Responsable.
-- **Durée** : durée de l'abonnement.
-- **Nature** : collecte, enregistrement, consultation, mise à jour, suppression.
-- **Données** : voir article 2.
-- **Personnes concernées** : clients finaux du Responsable.
-
-## Annexe B — Mesures techniques et organisationnelles de sécurité
-
-- Chiffrement des données en transit (TLS) et au repos.
-- Isolation des données par Marchand via Row-Level Security (RLS) au niveau base de données.
-- Contrôle d'accès basé sur les rôles (propriétaire, gestionnaire, livreur).
-- Journalisation des accès et des opérations sensibles (audit logging).
-- Sauvegardes régulières et chiffrées.
-- Séparation des environnements de test et de production.
-- Politique de gestion des incidents de sécurité.
-- Accès limité au personnel autorisé, soumis à confidentialité.
-
-## Annexe C — Liste des sous-traitants ultérieurs
-
-| Sous-traitant | Rôle | Localisation |
+| Prestataire ou plateforme | Fonction | Localisation documentée |
 |---|---|---|
-| Supabase | Base de données et authentification | Union européenne |
-| Vercel | Hébergement applicatif | Union européenne (fra1) |
-| Groq | Assistant IA (lecture seule, aucun entraînement sur les données) | États-Unis |
-| Resend | Courriels transactionnels | Union européenne / États-Unis |
-| Shopify | Source des données de commande et de client | International |
+| Supabase | Base de données et authentification | Région AWS choisie pour le projet ; région active à confirmer |
+| Vercel | Hébergement et exécution de l’application et des tâches planifiées | Région du déploiement à confirmer |
+| Sentry | Diagnostic des erreurs et de la performance | Région de l’organisation à confirmer |
+| PostHog | Mesure des pages consultées | Hôte États-Unis par défaut dans le code ; configuration active à confirmer |
+| Upstash Redis | Limitation du débit des demandes | Région de la base à confirmer |
+| Upstash QStash | Planification et livraison du balayage des webhooks | Région de l’instance à confirmer |
+| Resend | Envoi de certains courriels transactionnels | Données stockées aux États-Unis |
+| Groq | Traitement des requêtes de l’assistant IA | Données retenues stockées sur des buckets GCP situés aux États-Unis |
+| Shopify | Plateforme de commerce connectée et source de données | Traitement possible dans les pays où Shopify, ses sociétés affiliées ou prestataires sont établis |
+| WooCommerce | Connecteur de boutique | Hébergement propre à la boutique du commerçant, à confirmer selon son fournisseur |
 
-## Annexe D — Dispositions par juridiction (cadre extensible)
+Le commerçant peut demander des informations complémentaires sur ces services à **diaablaye09@gmail.com**.
 
-Le présent Accord est conçu sur un standard de protection de niveau RGPD, qui satisfait ou dépasse les exigences des régimes de protection des données d'Afrique de l'Ouest (Acte additionnel CEDEAO A/SA.1/01/10 ; Convention de Malabo de l'Union africaine). Lors de l'extension du service à un nouveau pays, la présente annexe est complétée pour indiquer :
+## 6. Assistance aux demandes des personnes
 
-| Pays | Loi applicable | Autorité de contrôle | Formalité préalable | Mécanisme de transfert |
-|---|---|---|---|---|
-| **Sénégal** | Loi n° 2008-12 | CDP | Déclaration préalable (Art. 18) | Art. 49-51 + garanties |
-| Côte d'Ivoire | Loi n° 2013-450 | ARTCI | Déclaration + autorisation du transfert | À compléter |
-| Bénin | Loi n° 2017-20 (Code du numérique) | APDP | Déclaration | À compléter |
-| Togo | Loi n° 2019-014 | IPDCP | Déclaration | À compléter |
-| Burkina Faso | Loi n° 001-2021 | CIL | Déclaration | À compléter |
-| Mali | Loi n° 2013-015 | APDP | Déclaration/autorisation | À compléter |
-| Nigeria | NDPA 2023 | NDPC | Enregistrement (controller of major importance) + DPO | Instrument de transfert documenté (SCC) |
-| Ghana | Act 843 (2012) | DPC | Enregistrement obligatoire | À compléter |
+Le commerçant reçoit les demandes de ses clients finaux. Tëër met à sa disposition les fonctions prévues dans le service et les mécanismes de conformité Shopify utilisés pour aider à répondre aux demandes d’accès et d’effacement.
 
-> ⚠️ Chaque ligne (hors Sénégal) doit être validée par un conseil local avant lancement dans le pays concerné.
+## 7. Incidents
+
+Tëër informera le commerçant d’un incident de données personnelles dont il a connaissance, selon les informations disponibles et dans les délais applicables. Les coordonnées de notification sont celles du compte commerçant et du contact support indiqué dans le présent accord.
+
+## 8. Conservation, restitution et suppression
+
+Les règles de rétention appliquées aux données Shopify comprennent :
+
+- adresse de commande : suppression 90 jours après la finalisation de la commande ;
+- identité d’un client Shopify : suppression après 12 mois d’inactivité, si les conditions de purge sont réunies ;
+- artefact DSAR temporaire : suppression après 24 heures.
+
+À la fin de l’utilisation du service, les données sont supprimées selon les mécanismes et délais applicables au service. Les autres données sont conservées le temps nécessaire aux finalités du service et aux obligations applicables.
+
+## 9. Audit et contact
+
+Le commerçant peut adresser ses demandes raisonnables d’information sur le traitement au contact support : **diaablaye09@gmail.com**.
+Éditeur : **Ablaye Dia (personne physique)**, établi au **Royaume-Uni**.

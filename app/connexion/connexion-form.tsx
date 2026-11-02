@@ -33,6 +33,13 @@ const authErrorCodes = [
   'unknown',
 ] as const satisfies readonly AuthErrorCode[];
 
+const LEGAL_DOCUMENT_LINKS = [
+  ['legal_consent_terms', '/conditions'],
+  ['legal_consent_privacy', '/confidentialite'],
+  ['legal_consent_mentions', '/mentions-legales'],
+  ['legal_consent_dpa', '/dpa'],
+] as const;
+
 function isAuthErrorCode(errorCode: string): errorCode is AuthErrorCode {
   return (authErrorCodes as readonly string[]).includes(errorCode);
 }
@@ -389,25 +396,21 @@ export function ConnexionForm() {
                     type="checkbox"
                   />
                   <span>
-                    {t('legal_consent_prefix')}{' '}
-                    <Link
-                      className="text-accent-deep underline underline-offset-2"
-                      href="/conditions"
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {t('legal_consent_terms')}
-                    </Link>{' '}
-                    {t('legal_consent_joiner')}{' '}
-                    <Link
-                      className="text-accent-deep underline underline-offset-2"
-                      href="/confidentialite"
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {t('legal_consent_privacy')}
-                    </Link>
-                    .
+                    {t('legal_consent_prefix')}
+                    <ul className="mt-2 list-inside list-disc space-y-1">
+                      {LEGAL_DOCUMENT_LINKS.map(([key, href]) => (
+                        <li key={key}>
+                          <Link
+                            className="text-accent-deep underline underline-offset-2"
+                            href={href}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {t(key)}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
                   </span>
                 </label>
               </div>
