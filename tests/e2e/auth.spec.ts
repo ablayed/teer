@@ -12,6 +12,7 @@ import {
   loginViaForm,
   waitForMerchant,
 } from './helpers/auth';
+import { grantCurrentConsents } from './helpers/consent';
 import { createUnboardedTestUser } from './helpers/onboarding';
 
 test.setTimeout(90_000);
@@ -142,6 +143,31 @@ test('signin happy path redirects to /tableau with checklist visible', async ({ 
     });
   } finally {
     await cleanupUsers(admin, [userId]);
+  }
+});
+
+test('signin redirects to /reacceptation when only cgu and privacy were accepted', async ({
+  page,
+}) => {
+  const admin = adminClient();
+  const email = e2eEmail('signin-legacy-legal-consents');
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password: e2ePassword,
+    email_confirm: true,
+  });
+
+  if (error || !data.user) {
+    throw error ?? new Error('Utilisateur E2E non cree');
+  }
+
+  try {
+    await grantCurrentConsents(admin, data.user.id, ['cgu', 'privacy']);
+    await loginViaForm(page, email, e2ePassword);
+    await page.waitForURL('**/reacceptation', { timeout: 45_000 });
+    await expect(page.getByRole('heading', { name: messages.legalReaccept.title })).toBeVisible();
+  } finally {
+    await cleanupUsers(admin, [data.user.id]);
   }
 });
 
