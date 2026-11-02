@@ -740,7 +740,7 @@
       },
       "disconnect": {
         "submit": "Déconnecter",
-        "confirm": "Déconnecter cette boutique de Tëër ?"
+        "confirm": "Les commandes déjà importées resteront dans Tëër. Pour reconnecter cette boutique, vous devrez accorder une nouvelle autorisation Shopify depuis l’administration Shopify."
       },
       "release": {
         "action": "Libérer la boutique pour une nouvelle application Shopify",

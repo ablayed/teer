@@ -71,6 +71,10 @@ compare une vraie action en cours (attendu vs. saisi) — jamais comme état per
 
 ## Gestion Shopify unifiée sous Paramètres > Boutiques (Lot SHOP-01)
 
+**Déconnexion d'une boutique Shopify** : la confirmation précise que les commandes déjà
+importées restent dans Tëër et qu'une reconnexion demande une nouvelle autorisation Shopify depuis
+l'administration Shopify. Vouvoiement, deux phrases au maximum.
+
 `/boutiques` ne fait plus que rediriger vers `/parametres?tab=shops` (report de `connected`/
 `error` uniquement). Les messages de retour OAuth (`settings.shops.messages.connected`,
 `settings.shops.errors.*`) vivent désormais dans `SettingsShops`
