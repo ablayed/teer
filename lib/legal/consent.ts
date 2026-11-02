@@ -5,7 +5,7 @@ import { createProtectedSupabaseClient } from '@/lib/supabase/protected-client';
 import * as Sentry from '@sentry/nextjs';
 import { headers } from 'next/headers';
 
-type ConsentDocumentType = 'cgu' | 'privacy';
+type ConsentDocumentType = 'cgu' | 'privacy' | 'mentions' | 'dpa';
 
 type ConsentDocument = {
   content_hash: string;
@@ -42,7 +42,7 @@ export async function getSignupConsentDocuments() {
     .from('legal_documents')
     .select('type, version, content_hash')
     .eq('is_current', true)
-    .in('type', ['cgu', 'privacy']);
+    .in('type', ['cgu', 'privacy', 'mentions', 'dpa']);
 
   if (error) {
     return { ok: false as const };
@@ -51,7 +51,12 @@ export async function getSignupConsentDocuments() {
   const documents = new Map<ConsentDocumentType, ConsentDocument>();
 
   for (const document of data ?? []) {
-    if (document.type !== 'cgu' && document.type !== 'privacy') {
+    if (
+      document.type !== 'cgu' &&
+      document.type !== 'privacy' &&
+      document.type !== 'mentions' &&
+      document.type !== 'dpa'
+    ) {
       continue;
     }
 
@@ -66,14 +71,13 @@ export async function getSignupConsentDocuments() {
     });
   }
 
-  const cgu = documents.get('cgu');
-  const privacy = documents.get('privacy');
-
-  if (!cgu || !privacy) {
+  const requiredTypes: ConsentDocumentType[] = ['cgu', 'privacy', 'mentions', 'dpa'];
+  const requiredDocuments = requiredTypes.map((type) => documents.get(type));
+  if (requiredDocuments.some((document) => !document)) {
     return { ok: false as const };
   }
 
-  return { ok: true as const, documents: [cgu, privacy] };
+  return { ok: true as const, documents: requiredDocuments as ConsentDocument[] };
 }
 
 export async function getMissingCurrentConsents(userId: string) {
@@ -85,12 +89,12 @@ export async function getMissingCurrentConsents(userId: string) {
       .from('legal_documents')
       .select('type, version, content_hash, body_url')
       .eq('is_current', true)
-      .in('type', ['cgu', 'privacy']),
+      .in('type', ['cgu', 'privacy', 'mentions', 'dpa']),
     admin
       .from('user_consents')
       .select('document_type, document_version, content_hash')
       .eq('user_id', userId)
-      .in('document_type', ['cgu', 'privacy']),
+      .in('document_type', ['cgu', 'privacy', 'mentions', 'dpa']),
   ]);
 
   const { data: currentDocuments, error: currentError } = currentResult;
@@ -111,7 +115,12 @@ export async function getMissingCurrentConsents(userId: string) {
 
   const missingDocuments = (currentDocuments ?? []).filter(
     (document): document is MissingConsentDocument => {
-      if (document.type !== 'cgu' && document.type !== 'privacy') {
+      if (
+        document.type !== 'cgu' &&
+        document.type !== 'privacy' &&
+        document.type !== 'mentions' &&
+        document.type !== 'dpa'
+      ) {
         return false;
       }
 

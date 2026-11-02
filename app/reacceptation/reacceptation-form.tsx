@@ -8,6 +8,13 @@ import { useAction } from 'next-safe-action/hooks';
 import Link from 'next/link';
 import { useState } from 'react';
 
+const LEGAL_DOCUMENT_LINKS = [
+  ['terms', '/conditions'],
+  ['privacy', '/confidentialite'],
+  ['mentions', '/mentions-legales'],
+  ['dpa', '/dpa'],
+] as const;
+
 export function ReacceptationForm({
   redirectTo,
 }: {
@@ -58,25 +65,21 @@ export function ReacceptationForm({
               type="checkbox"
             />
             <span>
-              {t('consentPrefix')}{' '}
-              <Link
-                className="text-accent-deep underline underline-offset-2"
-                href="/conditions"
-                rel="noreferrer"
-                target="_blank"
-              >
-                {t('terms')}
-              </Link>{' '}
-              {t('joiner')}{' '}
-              <Link
-                className="text-accent-deep underline underline-offset-2"
-                href="/confidentialite"
-                rel="noreferrer"
-                target="_blank"
-              >
-                {t('privacy')}
-              </Link>
-              .
+              {t('consentPrefix')}
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                {LEGAL_DOCUMENT_LINKS.map(([key, href]) => (
+                  <li key={key}>
+                    <Link
+                      className="text-accent-deep underline underline-offset-2"
+                      href={href}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {t(key)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </span>
           </label>
         </div>
