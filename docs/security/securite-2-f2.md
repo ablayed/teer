@@ -38,7 +38,13 @@ pnpm exec vitest run tests/unit/ia/generation-quota-route.test.ts
 node --test --test-concurrency=1 tests/security/f2-quota-local.mjs
 # Avec le build et les variables Supabase locales injectées en mémoire :
 node --test --test-concurrency=1 tests/security/s0-success-http.mjs
+# Une fois M1 présent dans le checkout :
+node tests/security/f2-run-authorization-matrix.mjs
+# Validation entre les deux worktrees, avant toute fusion :
+node tests/security/f2-run-authorization-matrix.mjs ../security-authorization-matrix/tests/security/m1-authorization-matrix.mjs
 ```
+
+Intégration M1/F2 : les **1 046 attentes du catalogue initial M1 passent également contre le vrai build F2**, avec Redis réel local injecté explicitement. Aucun merge de branche n'a été nécessaire pour ce test. Le harnais M1 supprime toujours les variables Upstash réelles héritées, puis accepte seulement la fixture loopback fournie par ce wrapper. Aucune assertion, limite ou timeout n'a été affaibli. Cette exécution complète les tests de quotas ; elle ne corrige pas SEC-A-002 ni SEC-C-003 et ne transforme pas les 20 refus HTTP 503 en autorisations vérifiées. La fixture nécessite la version M1 qui la prend en charge ; les deux PR restent indépendantes sur main et le wrapper échoue explicitement si la matrice manque.
 
 Le script autonome importe TypeScript nativement : Node >=22.18 ou Node 24. Redis de test est l'image officielle `redis:8.2.3-alpine`, épinglée au digest `sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba`, sans réseau ni port publié. Il s'agit d'une dépendance de laboratoire, pas d'une recommandation de version de production. Un pont REST exclusivement loopback reproduit le protocole client existant ; il n'est jamais chargé par l'application déployée. Le harnais S0 reçoit ce nouveau backend synthétique ; ses assertions de succès, signature, effet SQL, rejeu et streaming sont inchangées. Une tentative préliminaire utilisant un chargeur `tsx` absent a échoué avant les tests ; l'exécution native Node a ensuite passé les huit cas.
 
