@@ -45,6 +45,8 @@ node --test --test-concurrency=1 tests/security/m1-authorization-matrix.mjs
 pnpm exec vitest run tests/rls/ia-assistant.rls.test.ts tests/unit/ia/red-team.test.ts
 ```
 
+Après introduction de F2 (Redis fail-closed), exécuter la matrice avec son wrapper `node tests/security/f2-run-authorization-matrix.mjs`. Le harnais accepte uniquement un backend de fixture explicitement injecté par `M1_LOCAL_REDIS_URL` (127.0.0.1) et `M1_LOCAL_REDIS_TOKEN` ; il continue de supprimer toute configuration Upstash réelle héritée. Aucune assertion d'autorisation ne change. Sans F2 et sans fixture, la commande autonome historique reste applicable. L'exécution combinée utilise le vrai build F2 et le catalogue M1, sans merge de branche.
+
 Les clés de test local sont injectées en mémoire, jamais copiées dans un fichier. Ne pas sourcer `.env*`. Le script refuse une origine Supabase autre que `127.0.0.1:54321`. Les nouveaux tests autonomes ne sont pas encore câblés dans la CI générale : une CI verte ne signifie pas leur exécution. Les validations standard locales de cette base (typecheck, lint, unité, build, 812 tests RLS, ACL et inventaire service-role) sont conservées dans les preuves de l'audit.
 
 ## Suite proposée et approbation

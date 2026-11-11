@@ -29,6 +29,14 @@ export async function startHttpHarness(databaseOrigin) {
   };
   for (const name of Object.keys(env))
     if (/^(UPSTASH_|SENTRY_|NEXT_PUBLIC_SENTRY_|POSTHOG_)/.test(name)) delete env[name];
+  // F2 makes Redis mandatory. Accept only a deliberately injected loopback fixture,
+  // never inherit a real Upstash backend from the caller's environment.
+  if (env.M1_LOCAL_REDIS_URL || env.M1_LOCAL_REDIS_TOKEN) {
+    assert.equal(new URL(env.M1_LOCAL_REDIS_URL).hostname, '127.0.0.1');
+    assert.ok(env.M1_LOCAL_REDIS_TOKEN, 'local Redis fixture token must be supplied');
+    env.UPSTASH_REDIS_REST_URL = env.M1_LOCAL_REDIS_URL;
+    env.UPSTASH_REDIS_REST_TOKEN = env.M1_LOCAL_REDIS_TOKEN;
+  }
   const server = spawn(
     process.execPath,
     [require.resolve('next/dist/bin/next'), 'start', '-p', '3010'],
