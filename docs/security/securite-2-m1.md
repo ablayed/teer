@@ -1,6 +1,8 @@
 # M1 — matrice locale d'autorisation
 
-Date : 11 novembre 2026. Base applicative : `428af3b` (S0 et T1 fusionnés). Aucune correction applicative, migration ni opération distante. Verdict du lot : **NEEDS INVESTIGATION**, pas une attestation de sécurité globale.
+**Nouveau constat intertenant confirmé : SEC-A-002, haute — catégorie de dépenses étrangère acceptée, libellé privé exposé au rapport et suppression légitime de la catégorie B bloquée.** Voir [diagnostic et preuves](./securite-2-sec-a-002.md). Cette extension compte cinq cas : un conforme et quatre violations. Total identifié/exécuté M1 étendu : **1 051 / 1 051**, dont **1 047 conformes et quatre violations**. La CI verte de la matrice initiale ne détectait pas ce mélange de tenant parent/enfant. Aucun correctif effectué.
+
+Date : 11 novembre 2026. Base applicative : `428af3b` (S0 et T1 fusionnés). Aucune correction applicative, migration ni opération distante. Verdict du lot étendu : **VULNERABLE**, pas une attestation de sécurité globale.
 
 ## Problème et méthode
 
