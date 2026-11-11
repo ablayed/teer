@@ -503,7 +503,7 @@ after(async () => {
   if (output)
     fs.writeFileSync(
       output,
-      JSON.stringify(
+      `${JSON.stringify(
         {
           applicableIdentified: 1046,
           executed: results.length,
@@ -514,7 +514,7 @@ after(async () => {
         },
         null,
         2,
-      ),
+      )}\n`,
     );
   for (const tenant of tenants) {
     if (tenant.storagePath) await admin.storage.from('shopify-dsar').remove([tenant.storagePath]);
