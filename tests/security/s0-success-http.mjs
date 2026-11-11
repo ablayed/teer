@@ -6,6 +6,7 @@ import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
+import { startLocalRedis } from './local-redis.mjs';
 
 const require = createRequire(import.meta.url);
 const databaseOrigin = new URL(process.env.SUPABASE_URL ?? 'http://127.0.0.1:54321');
@@ -23,6 +24,7 @@ let shopId;
 let connectionId;
 let conversationId;
 let server;
+let localRedis;
 const jar = new Map();
 
 async function until(check) {
@@ -34,6 +36,7 @@ async function until(check) {
 }
 
 before(async () => {
+  localRedis = await startLocalRedis();
   const email = `s0-${randomUUID()}@example.test`;
   const password = randomBytes(32).toString('hex');
   const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
@@ -120,6 +123,8 @@ before(async () => {
     )
       delete env[name];
   }
+  env.UPSTASH_REDIS_REST_URL = localRedis.url;
+  env.UPSTASH_REDIS_REST_TOKEN = localRedis.token;
   server = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'start', '-p', '3008'], {
     env,
     stdio: 'ignore',
@@ -139,6 +144,7 @@ before(async () => {
 
 after(async () => {
   server?.kill();
+  await localRedis?.stop();
   jar.clear();
   await admin.from('webhook_event').delete().eq('shop_domain', domain);
   if (connectionId) await admin.from('store_connection').delete().eq('id', connectionId);
