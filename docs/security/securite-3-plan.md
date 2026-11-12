@@ -1,0 +1,15 @@
+# Sécurité-3 : plan défensif avant corrections
+
+12 novembre 2026. Base initiale origin/main 428af3b. Autonomie autorisée par le porteur ; aucune attaque distante ni nouvelle exploitation offensive. Les anciennes preuves servent de régressions locales synthétiques uniquement lorsque le correctif correspondant est préparé.
+
+1. SEC-A-002 prioritaire : inventorier tous les FK métier depuis le catalogue local et leurs contrôles RLS/triggers/RPC. Produire d'abord une requête de comptage en lecture seule, sans identifiants de données, à soumettre au porteur pour la production. Ne pas l'y exécuter. Choisir une protection transactionnelle par référence, compléter les actions et lectures financières, conserver les positifs. Une migration maximum, commit distinct, aucune application distante ni fusion. Toute incohérence existante exige arrêt et revue humaine, jamais nettoyage automatique.
+2. PR #315 : distinguer autorisations, refus contractuels, erreurs indéterminées et violations ; diagnostiquer chaque famille de 503. Ne pas modifier le métier pour faire passer les tests. Deux nouvelles CI initiales puis revue humaine, aucune fusion autorisée par le dernier addendum.
+3. #317 puis #316 : revoir les diffs et SHA, compatibilité main, deux CI initiales successives sur le SHA final, CLEAN et squash match-head. Rebase si nécessaire et renouveler les deux CI. Conserver les 11 rouges historiques. Vérifier Lua quota, identités et erreurs. Les fusions sont explicitement autorisées.
+4. Ajouter seul le fichier HTTP positif de 218b11f sur une branche depuis main, sans Zod 4 ; sanity complète, deux CI initiales, fusion autorisée.
+5. F1 : conserver le diagnostic A/B/C/D et rejeter la révocation de jeton comme preuve d'identité. Pas d'appel réseau destructif ou d'option E. Arrêt au plan E11 si la compatibilité exige migration ou abonnement.
+6. Zod : vérifier auprès des autorités la divergence CVE rejetée/GHSA actif ; tracer les validateurs et collections sur entrées non fiables, tailles avant JSON.parse et bornes. Aucune migration majeure. Un contrôle compatible Zod 3 exige preuve de son efficacité et PR distincte.
+7. SEC-C-003 : corriger le garde partagé de redirection, tests positifs/négatifs ciblés sans cible distante, sanity et deux CI initiales avant fusion autorisée. Diagnostic 503 séparé du métier.
+
+Risques : blocage d'anciennes références financières, contention des contrôles relationnels, UUID Zod 4 hors lot, idempotence Shopify, coût et indisponibilité Redis, chemins internes de redirection légitimes. Preview autorisée mais isolation non déduite de l'absence déclarée de secrets : métadonnées et configuration à vérifier sans afficher de valeurs. MFA et membres privilégiés indiqués sont déclarés vérifiés par le fondateur, pas audités techniquement ici.
+
+Validation avant chaque commit selon CLAUDE.md : typecheck, lint, unités, build, RLS non ignorée sur base synthétique locale saine, ACL et inventaire service-role. Aucun test/seuil/timeout/baseline affaibli. Rapports détaillés et journaux assainis conservés hors checkout principal.

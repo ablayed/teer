@@ -581,11 +581,11 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: 'expense_category_id_fkey';
-            columns: ['category_id'];
+            foreignKeyName: 'expense_category_tenant_fk';
+            columns: ['category_id', 'merchant_account_id'];
             isOneToOne: false;
             referencedRelation: 'expense_category';
-            referencedColumns: ['id'];
+            referencedColumns: ['id', 'merchant_account_id'];
           },
           {
             foreignKeyName: 'expense_merchant_account_id_fkey';

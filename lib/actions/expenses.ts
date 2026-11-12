@@ -32,18 +32,17 @@ const expensePayloadSchema = z.object({
 // `ProductAdSpendForm`, cf. son commentaire). Un appel serveur direct
 // (devtools, requête rejouée) avec `categoryId` = ADS doit être refusé ici,
 // pas seulement caché côté client.
-async function isAdsCategory(
+async function findExpenseCategory(
   admin: ReturnType<typeof createAdmin>,
   merchantAccountId: string,
   categoryId: string,
-): Promise<boolean> {
-  const { data } = await admin
+) {
+  return admin
     .from('expense_category')
     .select('code')
     .eq('id', categoryId)
     .eq('merchant_account_id', merchantAccountId)
     .maybeSingle();
-  return data?.code === 'ADS';
 }
 
 export const listExpenseCategoriesAction = requireRole('owner')
@@ -86,7 +85,15 @@ export const createExpenseAction = requireRole('owner')
 
     // Jamais de NOUVELLE dépense sous ADS — la saisie publicitaire passe
     // désormais exclusivement par l'arrivage (`product_ad_spend`).
-    if (await isAdsCategory(admin, ctx.member.merchantAccountId, parsedInput.categoryId)) {
+    const category = await findExpenseCategory(
+      admin,
+      ctx.member.merchantAccountId,
+      parsedInput.categoryId,
+    );
+    if (category.error || !category.data) {
+      return { ok: false as const, errorCode: 'create_error' as const };
+    }
+    if (category.data.code === 'ADS') {
       return { ok: false as const, errorCode: 'ads_category_disabled' as const };
     }
 
@@ -117,7 +124,15 @@ export const updateExpenseAction = requireRole('owner')
     // Reste possible de conserver une dépense DÉJÀ classée ADS (donnée
     // historique, jamais réécrite silencieusement) — jamais d'en convertir
     // une nouvelle (ou une autre catégorie) vers ADS après coup.
-    if (await isAdsCategory(admin, ctx.member.merchantAccountId, parsedInput.categoryId)) {
+    const category = await findExpenseCategory(
+      admin,
+      ctx.member.merchantAccountId,
+      parsedInput.categoryId,
+    );
+    if (category.error || !category.data) {
+      return { ok: false as const, errorCode: 'update_error' as const };
+    }
+    if (category.data.code === 'ADS') {
       const { data: existing } = await admin
         .from('expense')
         .select('category_id')
