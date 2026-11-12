@@ -3,6 +3,7 @@ import {
   paymentChannelsAtDelivery,
   transitionActions,
 } from '@/lib/domain/order-transition-actions';
+import { boundedArray } from '@/lib/security/bounded-array';
 import { z } from 'zod';
 
 export const transitionInputSchema = z
@@ -21,7 +22,7 @@ export const transitionInputSchema = z
         cancelReason: z.string().trim().max(500).optional(),
         deliveredAt: z.string().datetime().optional(),
         // Lot B : raisons d'annulation multiples, allow-list stricte.
-        cancelReasons: z.array(z.enum(cancelReasonValues)).min(1).max(5).optional(),
+        cancelReasons: boundedArray(z.enum(cancelReasonValues), { min: 1, max: 5 }).optional(),
         nextContactAt: z.string().datetime().optional(),
         paymentChannelAtDelivery: z.enum(paymentChannelsAtDelivery).optional(),
         scheduledFor: z.string().datetime().optional(),
