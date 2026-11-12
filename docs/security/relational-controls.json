@@ -1,0 +1,1909 @@
+{
+  "columns": [
+    {
+      "table": "merchant_member",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "invitation",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "shop",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "driver",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "order_state_transition",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "order_state_transition",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "call_log",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "call_log",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "delivery_address",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "delivery_address",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "orders",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "orders",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "settlement_shortfall",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "audit_log",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "cash_settlement",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "settlement_allocation",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "stock_movement",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "stock_movement",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "merchant_settings",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "order_line",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "order_line",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "stock_reconciliation_alert",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product_stock",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product_stock",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot_line",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot_line",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "expense_category",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "expense",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "ia_conversation",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "customer",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "customer",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "ia_message",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "feedback",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "ia_tool_audit",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "manual_order_number_counter",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product_bundle_component",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product_bundle_component",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "shopify_customer_redaction_tombstone",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "shopify_customer_redaction_tombstone",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "webhook_event",
+      "column": "shop_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "webhook_event",
+      "column": "merchant_account_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "shopify_dsar_artifact",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "shopify_dsar_artifact",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "pcd_access_audit",
+      "column": "tenant_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "pcd_access_audit",
+      "column": "shop_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "pcd_access_quota_bucket",
+      "column": "tenant_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "pcd_access_quota_bucket",
+      "column": "shop_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "shop_member",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "shop_member",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "shopify_dsar_download_authorization",
+      "column": "tenant_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "shopify_dsar_download_authorization",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "organization_driver_cash",
+      "column": "merchant_account_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "organization_consolidated_operations",
+      "column": "merchant_account_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "organization_consolidated_operations",
+      "column": "shop_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "customer_reliability_projection",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "customer_reliability_projection",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "customer_reliability_scored",
+      "column": "merchant_account_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "customer_reliability_scored",
+      "column": "shop_id",
+      "nullable": "YES"
+    },
+    {
+      "table": "store_connection",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "driver_shop",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "driver_shop",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "ingestion_event",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "ingestion_event",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "external_ref",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "external_ref",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product_ad_spend",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "product_ad_spend",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_credential",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_credential",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot_line_allocation",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot_line_allocation",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot_cost_correction",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "purchase_lot_cost_correction",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_webhook_subscription",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_webhook_subscription",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_sync_state",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_sync_state",
+      "column": "shop_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_intent",
+      "column": "merchant_account_id",
+      "nullable": "NO"
+    },
+    {
+      "table": "store_connection_intent",
+      "column": "shop_id",
+      "nullable": "YES"
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "merchant_account",
+      "permissive": "PERMISSIVE",
+      "policyname": "mac_insert",
+      "schemaname": "public",
+      "with_check": "(owner_user_id = auth.uid())"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "is_member_of(id)",
+      "roles": ["authenticated"],
+      "tablename": "merchant_account",
+      "permissive": "PERMISSIVE",
+      "policyname": "mac_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "is_member_of(id)",
+      "roles": ["authenticated"],
+      "tablename": "merchant_account",
+      "permissive": "PERMISSIVE",
+      "policyname": "mac_update",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "merchant_member",
+      "permissive": "PERMISSIVE",
+      "policyname": "mm_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = 'owner'::text)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((user_id = auth.uid()) OR is_member_of(merchant_account_id))",
+      "roles": ["authenticated"],
+      "tablename": "merchant_member",
+      "permissive": "PERMISSIVE",
+      "policyname": "mm_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "invitation",
+      "permissive": "PERMISSIVE",
+      "policyname": "invitation_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "invitation",
+      "permissive": "PERMISSIVE",
+      "policyname": "invitation_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text])) AND (role = ANY (ARRAY['manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "invitation",
+      "permissive": "PERMISSIVE",
+      "policyname": "invitation_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "invitation",
+      "permissive": "PERMISSIVE",
+      "policyname": "invitation_update",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(id) = 'owner'::text))",
+      "roles": ["authenticated"],
+      "tablename": "shop",
+      "permissive": "PERMISSIVE",
+      "policyname": "shop_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "shop",
+      "permissive": "PERMISSIVE",
+      "policyname": "shop_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(id))",
+      "roles": ["authenticated"],
+      "tablename": "shop",
+      "permissive": "PERMISSIVE",
+      "policyname": "shop_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "shop",
+      "permissive": "PERMISSIVE",
+      "policyname": "shop_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(id) = ANY (ARRAY['owner'::text, 'manager'::text])))"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "driver",
+      "permissive": "PERMISSIVE",
+      "policyname": "driver_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "driver",
+      "permissive": "PERMISSIVE",
+      "policyname": "driver_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "driver",
+      "permissive": "PERMISSIVE",
+      "policyname": "driver_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "driver",
+      "permissive": "PERMISSIVE",
+      "policyname": "driver_update",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "false",
+      "roles": ["authenticated"],
+      "tablename": "order_state_transition",
+      "permissive": "PERMISSIVE",
+      "policyname": "order_state_transition_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "order_state_transition",
+      "permissive": "PERMISSIVE",
+      "policyname": "order_state_transition_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "order_state_transition",
+      "permissive": "PERMISSIVE",
+      "policyname": "order_state_transition_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "false",
+      "roles": ["authenticated"],
+      "tablename": "order_state_transition",
+      "permissive": "PERMISSIVE",
+      "policyname": "order_state_transition_update",
+      "schemaname": "public",
+      "with_check": "false"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "false",
+      "roles": ["authenticated"],
+      "tablename": "call_log",
+      "permissive": "PERMISSIVE",
+      "policyname": "call_log_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "call_log",
+      "permissive": "PERMISSIVE",
+      "policyname": "call_log_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "call_log",
+      "permissive": "PERMISSIVE",
+      "policyname": "call_log_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "false",
+      "roles": ["authenticated"],
+      "tablename": "call_log",
+      "permissive": "PERMISSIVE",
+      "policyname": "call_log_update",
+      "schemaname": "public",
+      "with_check": "false"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "delivery_address",
+      "permissive": "PERMISSIVE",
+      "policyname": "delivery_address_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "delivery_address",
+      "permissive": "PERMISSIVE",
+      "policyname": "delivery_address_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "delivery_address",
+      "permissive": "PERMISSIVE",
+      "policyname": "delivery_address_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "delivery_address",
+      "permissive": "PERMISSIVE",
+      "policyname": "delivery_address_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "orders",
+      "permissive": "PERMISSIVE",
+      "policyname": "orders_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "orders",
+      "permissive": "PERMISSIVE",
+      "policyname": "orders_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND ((current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])) OR ((current_shop_role(shop_id) = 'agent'::text) AND (cod_status = 'A_APPELER'::text) AND (order_state = 'open'::text) AND (call_state = 'to_call'::text) AND (delivery_state = 'unassigned'::text) AND (cash_state = 'not_due'::text))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((merchant_account_id = ANY (ARRAY( SELECT private.current_user_merchant_ids() AS current_user_merchant_ids))) AND (shop_id = ANY (ARRAY( SELECT private.current_user_shop_ids() AS current_user_shop_ids))))",
+      "roles": ["authenticated"],
+      "tablename": "orders",
+      "permissive": "PERMISSIVE",
+      "policyname": "orders_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "orders",
+      "permissive": "PERMISSIVE",
+      "policyname": "orders_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND ((current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])) OR ((current_shop_role(shop_id) = 'agent'::text) AND (cod_status = ANY (ARRAY['TENTEE'::text, 'CONFIRMEE'::text, 'PROGRAMMEE'::text, 'EN_LIVRAISON'::text])))))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "settlement_shortfall",
+      "permissive": "PERMISSIVE",
+      "policyname": "settlement_shortfall_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "settlement_shortfall",
+      "permissive": "PERMISSIVE",
+      "policyname": "settlement_shortfall_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "is_member_of(merchant_account_id)",
+      "roles": ["authenticated"],
+      "tablename": "audit_log",
+      "permissive": "PERMISSIVE",
+      "policyname": "al_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "product",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "product",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "product",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "cash_settlement",
+      "permissive": "PERMISSIVE",
+      "policyname": "cash_settlement_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "cash_settlement",
+      "permissive": "PERMISSIVE",
+      "policyname": "cash_settlement_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "settlement_allocation",
+      "permissive": "PERMISSIVE",
+      "policyname": "settlement_allocation_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "settlement_allocation",
+      "permissive": "PERMISSIVE",
+      "policyname": "settlement_allocation_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "stock_movement",
+      "permissive": "PERMISSIVE",
+      "policyname": "stock_movement_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "stock_movement",
+      "permissive": "PERMISSIVE",
+      "policyname": "stock_movement_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "merchant_settings",
+      "permissive": "PERMISSIVE",
+      "policyname": "merchant_settings_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = 'owner'::text)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "merchant_settings",
+      "permissive": "PERMISSIVE",
+      "policyname": "merchant_settings_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "merchant_settings",
+      "permissive": "PERMISSIVE",
+      "policyname": "merchant_settings_update",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = 'owner'::text)"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "order_line",
+      "permissive": "PERMISSIVE",
+      "policyname": "order_line_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "order_line",
+      "permissive": "PERMISSIVE",
+      "policyname": "order_line_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "order_line",
+      "permissive": "PERMISSIVE",
+      "policyname": "order_line_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text]))",
+      "roles": ["authenticated"],
+      "tablename": "stock_reconciliation_alert",
+      "permissive": "PERMISSIVE",
+      "policyname": "stock_reconciliation_alert_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "product_stock",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_stock_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "purchase_lot",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))",
+      "roles": ["authenticated"],
+      "tablename": "purchase_lot",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))",
+      "roles": ["authenticated"],
+      "tablename": "purchase_lot",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "purchase_lot_line",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_line_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))",
+      "roles": ["authenticated"],
+      "tablename": "purchase_lot_line",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_line_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))",
+      "roles": ["authenticated"],
+      "tablename": "purchase_lot_line",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_line_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((current_member_role(merchant_account_id) = 'owner'::text) AND (is_system = false))",
+      "roles": ["authenticated"],
+      "tablename": "expense_category",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_category_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "expense_category",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_category_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) = 'owner'::text) AND (is_system = false))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "expense_category",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_category_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "expense_category",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_category_update",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = 'owner'::text)"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "expense",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "expense",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = 'owner'::text)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "expense",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "expense",
+      "permissive": "PERMISSIVE",
+      "policyname": "expense_update",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = 'owner'::text)"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((user_id = ( SELECT auth.uid() AS uid)) AND (current_member_role(merchant_account_id) IS NOT NULL))",
+      "roles": ["authenticated"],
+      "tablename": "ia_conversation",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_conversation_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "ia_conversation",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_conversation_insert",
+      "schemaname": "public",
+      "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (current_member_role(merchant_account_id) IS NOT NULL))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((user_id = ( SELECT auth.uid() AS uid)) AND (current_member_role(merchant_account_id) IS NOT NULL))",
+      "roles": ["authenticated"],
+      "tablename": "ia_conversation",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_conversation_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((user_id = ( SELECT auth.uid() AS uid)) AND (current_member_role(merchant_account_id) IS NOT NULL))",
+      "roles": ["authenticated"],
+      "tablename": "ia_conversation",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_conversation_update",
+      "schemaname": "public",
+      "with_check": "((user_id = ( SELECT auth.uid() AS uid)) AND (current_member_role(merchant_account_id) IS NOT NULL))"
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "customer",
+      "permissive": "PERMISSIVE",
+      "policyname": "customer_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "customer",
+      "permissive": "PERMISSIVE",
+      "policyname": "customer_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((merchant_account_id = ANY (ARRAY( SELECT private.current_user_merchant_ids() AS current_user_merchant_ids))) AND (shop_id = ANY (ARRAY( SELECT private.current_user_shop_ids() AS current_user_shop_ids))))",
+      "roles": ["authenticated"],
+      "tablename": "customer",
+      "permissive": "PERMISSIVE",
+      "policyname": "customer_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "customer",
+      "permissive": "PERMISSIVE",
+      "policyname": "customer_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "ia_message",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_message_insert",
+      "schemaname": "public",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM ia_conversation c\n  WHERE ((c.id = ia_message.conversation_id) AND (c.user_id = ( SELECT auth.uid() AS uid)) AND (c.merchant_account_id = ia_message.merchant_account_id))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM ia_conversation c\n  WHERE ((c.id = ia_message.conversation_id) AND (c.user_id = ( SELECT auth.uid() AS uid)) AND (c.merchant_account_id = ia_message.merchant_account_id))))",
+      "roles": ["authenticated"],
+      "tablename": "ia_message",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_message_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "true",
+      "roles": ["authenticated"],
+      "tablename": "ia_faq",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_faq_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "true",
+      "roles": ["authenticated"],
+      "tablename": "legal_documents",
+      "permissive": "PERMISSIVE",
+      "policyname": "legal_documents_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "user_consents",
+      "permissive": "PERMISSIVE",
+      "policyname": "user_consents_insert",
+      "schemaname": "public",
+      "with_check": "(auth.uid() = user_id)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(auth.uid() = user_id)",
+      "roles": ["authenticated"],
+      "tablename": "user_consents",
+      "permissive": "PERMISSIVE",
+      "policyname": "user_consents_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "feedback",
+      "permissive": "PERMISSIVE",
+      "policyname": "feedback_insert",
+      "schemaname": "public",
+      "with_check": "is_member_of(merchant_account_id)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "feedback",
+      "permissive": "PERMISSIVE",
+      "policyname": "feedback_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "ia_tool_audit",
+      "permissive": "PERMISSIVE",
+      "policyname": "ia_tool_audit_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "product_bundle_component",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_bundle_component_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "product_bundle_component",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_bundle_component_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "product_bundle_component",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_bundle_component_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "product_bundle_component",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_bundle_component_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = ANY (ARRAY['owner'::text, 'manager'::text])))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM merchant_member member\n  WHERE ((member.merchant_account_id = pcd_access_audit.tenant_id) AND (member.user_id = auth.uid()) AND (member.role = 'owner'::text))))",
+      "roles": ["authenticated"],
+      "tablename": "pcd_access_audit",
+      "permissive": "PERMISSIVE",
+      "policyname": "pcd_access_audit_owner_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "(current_member_role(merchant_account_id) = 'owner'::text)",
+      "roles": ["authenticated"],
+      "tablename": "shop_member",
+      "permissive": "PERMISSIVE",
+      "policyname": "shop_member_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((user_id = auth.uid()) OR (current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text])))",
+      "roles": ["authenticated"],
+      "tablename": "shop_member",
+      "permissive": "PERMISSIVE",
+      "policyname": "shop_member_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "customer_reliability_projection",
+      "permissive": "PERMISSIVE",
+      "policyname": "customer_reliability_projection_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "store_connection",
+      "permissive": "PERMISSIVE",
+      "policyname": "store_connection_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "DELETE",
+      "qual": "((current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text])) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "driver_shop",
+      "permissive": "PERMISSIVE",
+      "policyname": "driver_shop_delete",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["authenticated"],
+      "tablename": "driver_shop",
+      "permissive": "PERMISSIVE",
+      "policyname": "driver_shop_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text])) AND is_shop_member_of(shop_id))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "driver_shop",
+      "permissive": "PERMISSIVE",
+      "policyname": "driver_shop_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "ingestion_event",
+      "permissive": "PERMISSIVE",
+      "policyname": "ingestion_event_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND is_shop_member_of(shop_id))",
+      "roles": ["authenticated"],
+      "tablename": "external_ref",
+      "permissive": "PERMISSIVE",
+      "policyname": "external_ref_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["public"],
+      "tablename": "product_ad_spend",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_ad_spend_insert",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text) AND (created_by = auth.uid()))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))",
+      "roles": ["public"],
+      "tablename": "product_ad_spend",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_ad_spend_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))",
+      "roles": ["public"],
+      "tablename": "product_ad_spend",
+      "permissive": "PERMISSIVE",
+      "policyname": "product_ad_spend_update",
+      "schemaname": "public",
+      "with_check": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))"
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": ["public"],
+      "tablename": "purchase_lot_line_allocation",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_line_allocation_insert",
+      "schemaname": "public",
+      "with_check": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(current_member_role(merchant_account_id) = ANY (ARRAY['owner'::text, 'manager'::text, 'agent'::text]))",
+      "roles": ["public"],
+      "tablename": "purchase_lot_line_allocation",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_line_allocation_select",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((current_member_role(merchant_account_id) IS NOT NULL) AND (current_shop_role(shop_id) = 'owner'::text))",
+      "roles": ["public"],
+      "tablename": "purchase_lot_cost_correction",
+      "permissive": "PERMISSIVE",
+      "policyname": "purchase_lot_cost_correction_select",
+      "schemaname": "public",
+      "with_check": null
+    }
+  ],
+  "triggers": [
+    {
+      "name": "shop_set_updated_at",
+      "table": "shop",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER shop_set_updated_at BEFORE UPDATE ON public.shop FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "customer_set_updated_at",
+      "table": "customer",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER customer_set_updated_at BEFORE UPDATE ON public.customer FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "orders_set_updated_at",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER orders_set_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "invitation_set_updated_at",
+      "table": "invitation",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER invitation_set_updated_at BEFORE UPDATE ON public.invitation FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "delivery_address_set_updated_at",
+      "table": "delivery_address",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER delivery_address_set_updated_at BEFORE UPDATE ON public.delivery_address FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "merchant_settings_set_updated_at",
+      "table": "merchant_settings",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER merchant_settings_set_updated_at BEFORE UPDATE ON public.merchant_settings FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "orders_sync_legacy_cod_status",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.orders_sync_legacy_cod_status()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nbegin\n  new.order_state := coalesce(new.order_state, old.order_state, 'open');\n  new.call_state := coalesce(new.call_state, old.call_state, 'to_call');\n  new.delivery_state := coalesce(new.delivery_state, old.delivery_state, 'unassigned');\n  new.cash_state := coalesce(new.cash_state, old.cash_state, 'not_due');\n  new.attempt_count := coalesce(new.attempt_count, old.attempt_count, 0);\n  new.next_contact_at := coalesce(new.next_contact_at, old.next_contact_at);\n\n  -- Lot B : scheduled_for pleinement contrôlé par l'écrivain (clear possible).\n  -- Plus de coalesce(new, old) : un UPDATE qui ne touche pas la colonne a déjà\n  -- NEW = OLD (BEFORE UPDATE) ; un clear explicite à NULL est respecté.\n\n  -- Lot B : cancel_reason = miroir de cancel_reasons (source). Quand\n  -- cancel_reasons est renseigné → 1ᵉʳ élément ; sinon on garde la valeur posée\n  -- par l'écrivain (autorise le clear à NULL ET le marqueur legacy 'refused').\n  new.cancel_reason := case\n    when new.cancel_reasons is not null and array_length(new.cancel_reasons, 1) >= 1\n      then new.cancel_reasons[1]\n    else new.cancel_reason\n  end;\n\n  new.cod_status := public.derive_legacy_cod_status(\n    new.order_state,\n    new.call_state,\n    new.delivery_state,\n    new.cash_state\n  );\n\n  return new;\nend;\n$function$\n",
+      "function": "orders_sync_legacy_cod_status",
+      "definition": "CREATE TRIGGER orders_sync_legacy_cod_status BEFORE INSERT OR UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION orders_sync_legacy_cod_status()"
+    },
+    {
+      "name": "product_set_updated_at",
+      "table": "product",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER product_set_updated_at BEFORE UPDATE ON public.product FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "product_stock_set_updated_at",
+      "table": "product_stock",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER product_stock_set_updated_at BEFORE UPDATE ON public.product_stock FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "merchant_account_seed_expense_categories",
+      "table": "merchant_account",
+      "source": "CREATE OR REPLACE FUNCTION public.seed_default_expense_categories()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  insert into public.expense_category\n    (merchant_account_id, code, label_fr, syscohada_account, is_system, sort_order)\n  values\n    (new.id, 'ADS',           'Publicité',    '627', true, 1),\n    (new.id, 'DRIVERS',       'Livreurs',     '612', true, 2),\n    (new.id, 'RENT',          'Loyer',        '622', true, 3),\n    (new.id, 'SUBSCRIPTIONS', 'Abonnements',  '62',  true, 4),\n    (new.id, 'OTHER',         'Autres',        null,  true, 5)\n  on conflict (merchant_account_id, code) do nothing;\n  return new;\nend;\n$function$\n",
+      "function": "seed_default_expense_categories",
+      "definition": "CREATE TRIGGER merchant_account_seed_expense_categories AFTER INSERT ON public.merchant_account FOR EACH ROW EXECUTE FUNCTION seed_default_expense_categories()"
+    },
+    {
+      "name": "expense_set_updated_at",
+      "table": "expense",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER expense_set_updated_at BEFORE UPDATE ON public.expense FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "ia_conversation_set_updated_at",
+      "table": "ia_conversation",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER ia_conversation_set_updated_at BEFORE UPDATE ON public.ia_conversation FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "merchant_member_single_org_guard",
+      "table": "merchant_member",
+      "source": "CREATE OR REPLACE FUNCTION public.enforce_single_organization_membership()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if exists (\n    select 1\n    from public.merchant_member\n    where user_id = new.user_id\n      and merchant_account_id <> new.merchant_account_id\n  ) then\n    raise exception 'already_has_organization' using errcode = 'P0001';\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "function": "enforce_single_organization_membership",
+      "definition": "CREATE TRIGGER merchant_member_single_org_guard BEFORE INSERT ON public.merchant_member FOR EACH ROW EXECUTE FUNCTION enforce_single_organization_membership()"
+    },
+    {
+      "name": "product_bundle_component_set_updated_at",
+      "table": "product_bundle_component",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER product_bundle_component_set_updated_at BEFORE UPDATE ON public.product_bundle_component FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "product_bundle_component_assert_integrity",
+      "table": "product_bundle_component",
+      "source": "CREATE OR REPLACE FUNCTION public.assert_bundle_component_integrity()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_bundle_is_bundle boolean;\n  v_bundle_merchant_account_id uuid;\n  v_bundle_shop_id uuid;\n  v_component_is_bundle boolean;\n  v_component_merchant_account_id uuid;\n  v_component_shop_id uuid;\nbegin\n  select is_bundle, merchant_account_id, shop_id\n    into v_bundle_is_bundle, v_bundle_merchant_account_id, v_bundle_shop_id\n    from public.product\n   where id = new.bundle_product_id;\n\n  if not found then\n    raise exception 'bundle_product_id % not found'\n      , new.bundle_product_id\n      using errcode = 'P0002';\n  end if;\n\n  select is_bundle, merchant_account_id, shop_id\n    into v_component_is_bundle, v_component_merchant_account_id, v_component_shop_id\n    from public.product\n   where id = new.component_product_id;\n\n  if not found then\n    raise exception 'component_product_id % not found'\n      , new.component_product_id\n      using errcode = 'P0002';\n  end if;\n\n  if not v_bundle_is_bundle then\n    raise exception 'bundle_product_id % is not marked is_bundle=true'\n      , new.bundle_product_id\n      using errcode = 'P0001';\n  end if;\n\n  if v_component_is_bundle then\n    raise exception 'component_product_id % is itself a bundle (nested bundles are not supported)'\n      , new.component_product_id\n      using errcode = 'P0001';\n  end if;\n\n  if v_bundle_merchant_account_id <> new.merchant_account_id\n     or v_component_merchant_account_id <> new.merchant_account_id\n  then\n    raise exception 'bundle_product_id and component_product_id must belong to the same merchant_account_id as the composition row'\n      using errcode = 'P0001';\n  end if;\n\n  -- Both BEFORE INSERT triggers on this table fire in alphabetical order of trigger\n  -- name: assert_integrity ('assert…') runs before default_store_context\n  -- ('default…', public.assign_default_store_context(), migration 0126). A caller\n  -- that omits shop_id (relying on that later trigger to backfill it) would still\n  -- reach this comparison with new.shop_id = NULL, and `is distinct from` would\n  -- reject every row regardless of the real shop — including legitimate same-shop\n  -- compositions. Mirror the exact default-shop resolution here so the comparison\n  -- below is always meaningful, independent of trigger firing order.\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n\n  if v_bundle_shop_id is distinct from new.shop_id\n     or v_component_shop_id is distinct from new.shop_id\n  then\n    raise exception 'bundle_product_id and component_product_id must belong to the same shop_id as the composition row'\n      using errcode = 'P0001';\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "function": "assert_bundle_component_integrity",
+      "definition": "CREATE TRIGGER product_bundle_component_assert_integrity BEFORE INSERT OR UPDATE ON public.product_bundle_component FOR EACH ROW EXECUTE FUNCTION assert_bundle_component_integrity()"
+    },
+    {
+      "name": "product_assert_not_promoted_when_used_as_component",
+      "table": "product",
+      "source": "CREATE OR REPLACE FUNCTION public.assert_product_not_promoted_when_used_as_component()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if new.is_bundle and not old.is_bundle then\n    if exists (\n      select 1\n        from public.product_bundle_component\n       where component_product_id = new.id\n    ) then\n      raise exception 'product % is already used as a bundle component and cannot itself become a bundle'\n        , new.id\n        using errcode = 'P0001';\n    end if;\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "function": "assert_product_not_promoted_when_used_as_component",
+      "definition": "CREATE TRIGGER product_assert_not_promoted_when_used_as_component BEFORE UPDATE OF is_bundle ON public.product FOR EACH ROW EXECUTE FUNCTION assert_product_not_promoted_when_used_as_component()"
+    },
+    {
+      "name": "orders_set_pcd_finalized_at",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.set_orders_pcd_finalized_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\ndeclare\n  v_old_final boolean := false;\n  v_new_final boolean := false;\nbegin\n  if tg_op = 'UPDATE' then\n    v_old_final := old.order_state in ('completed', 'cancelled', 'returned')\n      or old.delivery_state in ('delivered', 'failed', 'returned');\n  end if;\n\n  v_new_final := new.order_state in ('completed', 'cancelled', 'returned')\n    or new.delivery_state in ('delivered', 'failed', 'returned');\n\n  if v_new_final and not v_old_final then\n    -- Une nouvelle entrée finale établit toujours une nouvelle date fiable.\n    -- Le backfill historique a déjà été exécuté avant la création du trigger.\n    new.pcd_finalized_at := clock_timestamp();\n  elsif not v_new_final then\n    -- Quitter un état final révoque l'ancienne échéance. Une nouvelle entrée\n    -- finale reçoit une nouvelle date via la branche précédente.\n    new.pcd_finalized_at := null;\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "function": "set_orders_pcd_finalized_at",
+      "definition": "CREATE TRIGGER orders_set_pcd_finalized_at BEFORE INSERT OR UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION set_orders_pcd_finalized_at()"
+    },
+    {
+      "name": "pcd_access_audit_prevent_update",
+      "table": "pcd_access_audit",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_pcd_access_audit_mutation()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  -- Maintenance n'est pas exposée à l'application. Elle nécessite un rôle\n  -- service_role et un GUC explicitement positionné par un opérateur DB.\n  if auth.role() = 'service_role'\n     and current_setting('app.pcd_access_audit_maintenance', true) = 'on' then\n    if tg_op = 'DELETE' then\n      return old;\n    end if;\n    return new;\n  end if;\n\n  raise exception using\n    errcode = '42501',\n    message = 'pcd_access_audit_is_append_only';\nend;\n$function$\n",
+      "function": "prevent_pcd_access_audit_mutation",
+      "definition": "CREATE TRIGGER pcd_access_audit_prevent_update BEFORE UPDATE ON public.pcd_access_audit FOR EACH ROW EXECUTE FUNCTION prevent_pcd_access_audit_mutation()"
+    },
+    {
+      "name": "pcd_access_audit_prevent_delete",
+      "table": "pcd_access_audit",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_pcd_access_audit_mutation()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  -- Maintenance n'est pas exposée à l'application. Elle nécessite un rôle\n  -- service_role et un GUC explicitement positionné par un opérateur DB.\n  if auth.role() = 'service_role'\n     and current_setting('app.pcd_access_audit_maintenance', true) = 'on' then\n    if tg_op = 'DELETE' then\n      return old;\n    end if;\n    return new;\n  end if;\n\n  raise exception using\n    errcode = '42501',\n    message = 'pcd_access_audit_is_append_only';\nend;\n$function$\n",
+      "function": "prevent_pcd_access_audit_mutation",
+      "definition": "CREATE TRIGGER pcd_access_audit_prevent_delete BEFORE DELETE ON public.pcd_access_audit FOR EACH ROW EXECUTE FUNCTION prevent_pcd_access_audit_mutation()"
+    },
+    {
+      "name": "merchant_member_sync_shop_memberships",
+      "table": "merchant_member",
+      "source": "CREATE OR REPLACE FUNCTION public.sync_shop_memberships_for_member()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if tg_op = 'INSERT' or new.role is distinct from old.role then\n    insert into public.shop_member (merchant_account_id, shop_id, user_id, role)\n    select new.merchant_account_id, s.id, new.user_id, new.role\n    from public.shop s\n    where s.merchant_account_id = new.merchant_account_id\n    on conflict (shop_id, user_id) do update set role = excluded.role;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "sync_shop_memberships_for_member",
+      "definition": "CREATE TRIGGER merchant_member_sync_shop_memberships AFTER INSERT OR UPDATE OF role ON public.merchant_member FOR EACH ROW EXECUTE FUNCTION sync_shop_memberships_for_member()"
+    },
+    {
+      "name": "shop_seed_memberships",
+      "table": "shop",
+      "source": "CREATE OR REPLACE FUNCTION public.seed_shop_memberships()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  insert into public.shop_member (merchant_account_id, shop_id, user_id, role)\n  select new.merchant_account_id, new.id, mm.user_id, mm.role\n  from public.merchant_member mm\n  where mm.merchant_account_id = new.merchant_account_id\n  on conflict (shop_id, user_id) do update set role = excluded.role;\n  return new;\nend;\n$function$\n",
+      "function": "seed_shop_memberships",
+      "definition": "CREATE TRIGGER shop_seed_memberships AFTER INSERT ON public.shop FOR EACH ROW EXECUTE FUNCTION seed_shop_memberships()"
+    },
+    {
+      "name": "orders_default_store_context",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER orders_default_store_context BEFORE INSERT ON public.orders FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "customer_default_store_context",
+      "table": "customer",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER customer_default_store_context BEFORE INSERT ON public.customer FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "product_default_store_context",
+      "table": "product",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER product_default_store_context BEFORE INSERT ON public.product FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "order_line_default_store_context",
+      "table": "order_line",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER order_line_default_store_context BEFORE INSERT ON public.order_line FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "product_stock_default_store_context",
+      "table": "product_stock",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER product_stock_default_store_context BEFORE INSERT ON public.product_stock FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "stock_movement_default_store_context",
+      "table": "stock_movement",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER stock_movement_default_store_context BEFORE INSERT ON public.stock_movement FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "product_bundle_component_default_store_context",
+      "table": "product_bundle_component",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER product_bundle_component_default_store_context BEFORE INSERT ON public.product_bundle_component FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "purchase_lot_default_store_context",
+      "table": "purchase_lot",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER purchase_lot_default_store_context BEFORE INSERT ON public.purchase_lot FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "purchase_lot_line_default_store_context",
+      "table": "purchase_lot_line",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER purchase_lot_line_default_store_context BEFORE INSERT ON public.purchase_lot_line FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "delivery_address_default_store_context",
+      "table": "delivery_address",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER delivery_address_default_store_context BEFORE INSERT ON public.delivery_address FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "orders_store_context_guard",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER orders_store_context_guard BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "customer_store_context_guard",
+      "table": "customer",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER customer_store_context_guard BEFORE UPDATE ON public.customer FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "product_store_context_guard",
+      "table": "product",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER product_store_context_guard BEFORE UPDATE ON public.product FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "order_line_store_context_guard",
+      "table": "order_line",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER order_line_store_context_guard BEFORE UPDATE ON public.order_line FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "product_stock_store_context_guard",
+      "table": "product_stock",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER product_stock_store_context_guard BEFORE UPDATE ON public.product_stock FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "stock_movement_store_context_guard",
+      "table": "stock_movement",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER stock_movement_store_context_guard BEFORE UPDATE ON public.stock_movement FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "product_bundle_component_store_context_guard",
+      "table": "product_bundle_component",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER product_bundle_component_store_context_guard BEFORE UPDATE ON public.product_bundle_component FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "purchase_lot_store_context_guard",
+      "table": "purchase_lot",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER purchase_lot_store_context_guard BEFORE UPDATE ON public.purchase_lot FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "purchase_lot_line_store_context_guard",
+      "table": "purchase_lot_line",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER purchase_lot_line_store_context_guard BEFORE UPDATE ON public.purchase_lot_line FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "delivery_address_store_context_guard",
+      "table": "delivery_address",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER delivery_address_store_context_guard BEFORE UPDATE ON public.delivery_address FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "order_state_transition_default_store_context",
+      "table": "order_state_transition",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER order_state_transition_default_store_context BEFORE INSERT ON public.order_state_transition FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "call_log_default_store_context",
+      "table": "call_log",
+      "source": "CREATE OR REPLACE FUNCTION public.assign_default_store_context()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if new.shop_id is null then\n    select s.id\n      into new.shop_id\n      from public.shop s\n     where s.merchant_account_id = new.merchant_account_id\n       and s.is_default\n     order by s.id\n     limit 1;\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "assign_default_store_context",
+      "definition": "CREATE TRIGGER call_log_default_store_context BEFORE INSERT ON public.call_log FOR EACH ROW EXECUTE FUNCTION assign_default_store_context()"
+    },
+    {
+      "name": "order_state_transition_store_context_guard",
+      "table": "order_state_transition",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER order_state_transition_store_context_guard BEFORE UPDATE ON public.order_state_transition FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "call_log_store_context_guard",
+      "table": "call_log",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_store_context_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  if new.merchant_account_id is distinct from old.merchant_account_id\n     or new.shop_id is distinct from old.shop_id then\n    raise exception 'store_context_immutable' using errcode = '42501';\n  end if;\n  return new;\nend;\n$function$\n",
+      "function": "prevent_store_context_change",
+      "definition": "CREATE TRIGGER call_log_store_context_guard BEFORE UPDATE ON public.call_log FOR EACH ROW EXECUTE FUNCTION prevent_store_context_change()"
+    },
+    {
+      "name": "orders_reliability_insert",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_orders()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct n.customer_id) into v_ids\n      from new_rows n where n.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows o where o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select n.customer_id from new_rows n where n.customer_id is not null\n        union\n        select o.customer_id from old_rows o where o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_orders",
+      "definition": "CREATE TRIGGER orders_reliability_insert AFTER INSERT ON public.orders REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_orders()"
+    },
+    {
+      "name": "orders_reliability_update",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_orders()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct n.customer_id) into v_ids\n      from new_rows n where n.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows o where o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select n.customer_id from new_rows n where n.customer_id is not null\n        union\n        select o.customer_id from old_rows o where o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_orders",
+      "definition": "CREATE TRIGGER orders_reliability_update AFTER UPDATE ON public.orders REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_orders()"
+    },
+    {
+      "name": "orders_reliability_delete",
+      "table": "orders",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_orders()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct n.customer_id) into v_ids\n      from new_rows n where n.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows o where o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select n.customer_id from new_rows n where n.customer_id is not null\n        union\n        select o.customer_id from old_rows o where o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_orders",
+      "definition": "CREATE TRIGGER orders_reliability_delete AFTER DELETE ON public.orders REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_orders()"
+    },
+    {
+      "name": "call_log_reliability_insert",
+      "table": "call_log",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_call_log()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from new_rows n join public.orders o on o.id = n.order_id\n     where o.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows d join public.orders o on o.id = d.order_id\n     where o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select o.customer_id from new_rows n join public.orders o on o.id = n.order_id\n         where o.customer_id is not null\n        union\n        select o.customer_id from old_rows d join public.orders o on o.id = d.order_id\n         where o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_call_log",
+      "definition": "CREATE TRIGGER call_log_reliability_insert AFTER INSERT ON public.call_log REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_call_log()"
+    },
+    {
+      "name": "call_log_reliability_update",
+      "table": "call_log",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_call_log()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from new_rows n join public.orders o on o.id = n.order_id\n     where o.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows d join public.orders o on o.id = d.order_id\n     where o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select o.customer_id from new_rows n join public.orders o on o.id = n.order_id\n         where o.customer_id is not null\n        union\n        select o.customer_id from old_rows d join public.orders o on o.id = d.order_id\n         where o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_call_log",
+      "definition": "CREATE TRIGGER call_log_reliability_update AFTER UPDATE ON public.call_log REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_call_log()"
+    },
+    {
+      "name": "call_log_reliability_delete",
+      "table": "call_log",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_call_log()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from new_rows n join public.orders o on o.id = n.order_id\n     where o.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows d join public.orders o on o.id = d.order_id\n     where o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select o.customer_id from new_rows n join public.orders o on o.id = n.order_id\n         where o.customer_id is not null\n        union\n        select o.customer_id from old_rows d join public.orders o on o.id = d.order_id\n         where o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_call_log",
+      "definition": "CREATE TRIGGER call_log_reliability_delete AFTER DELETE ON public.call_log REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_call_log()"
+    },
+    {
+      "name": "order_state_transition_reliability_insert",
+      "table": "order_state_transition",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_transition()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from new_rows n join public.orders o on o.id = n.order_id\n     where n.to_status = 'ANNULEE' and o.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows d join public.orders o on o.id = d.order_id\n     where d.to_status = 'ANNULEE' and o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select o.customer_id from new_rows n join public.orders o on o.id = n.order_id\n         where n.to_status = 'ANNULEE' and o.customer_id is not null\n        union\n        select o.customer_id from old_rows d join public.orders o on o.id = d.order_id\n         where d.to_status = 'ANNULEE' and o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_transition",
+      "definition": "CREATE TRIGGER order_state_transition_reliability_insert AFTER INSERT ON public.order_state_transition REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_transition()"
+    },
+    {
+      "name": "order_state_transition_reliability_update",
+      "table": "order_state_transition",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_transition()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from new_rows n join public.orders o on o.id = n.order_id\n     where n.to_status = 'ANNULEE' and o.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows d join public.orders o on o.id = d.order_id\n     where d.to_status = 'ANNULEE' and o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select o.customer_id from new_rows n join public.orders o on o.id = n.order_id\n         where n.to_status = 'ANNULEE' and o.customer_id is not null\n        union\n        select o.customer_id from old_rows d join public.orders o on o.id = d.order_id\n         where d.to_status = 'ANNULEE' and o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_transition",
+      "definition": "CREATE TRIGGER order_state_transition_reliability_update AFTER UPDATE ON public.order_state_transition REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_transition()"
+    },
+    {
+      "name": "order_state_transition_reliability_delete",
+      "table": "order_state_transition",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_transition()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  if tg_op = 'INSERT' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from new_rows n join public.orders o on o.id = n.order_id\n     where n.to_status = 'ANNULEE' and o.customer_id is not null;\n  elsif tg_op = 'DELETE' then\n    select array_agg(distinct o.customer_id) into v_ids\n      from old_rows d join public.orders o on o.id = d.order_id\n     where d.to_status = 'ANNULEE' and o.customer_id is not null;\n  else\n    select array_agg(distinct u.customer_id) into v_ids\n      from (\n        select o.customer_id from new_rows n join public.orders o on o.id = n.order_id\n         where n.to_status = 'ANNULEE' and o.customer_id is not null\n        union\n        select o.customer_id from old_rows d join public.orders o on o.id = d.order_id\n         where d.to_status = 'ANNULEE' and o.customer_id is not null\n      ) u;\n  end if;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_transition",
+      "definition": "CREATE TRIGGER order_state_transition_reliability_delete AFTER DELETE ON public.order_state_transition REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_transition()"
+    },
+    {
+      "name": "customer_reliability_insert",
+      "table": "customer",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_customer()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  select array_agg(n.id) into v_ids from new_rows n;\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_customer",
+      "definition": "CREATE TRIGGER customer_reliability_insert AFTER INSERT ON public.customer REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_customer()"
+    },
+    {
+      "name": "merchant_member_reliability_insert",
+      "table": "merchant_member",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_member_insert()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  select array_agg(distinct o.customer_id) into v_ids\n    from public.order_state_transition ost\n    join public.orders o on o.id = ost.order_id\n    join new_rows n\n      on n.merchant_account_id = o.merchant_account_id\n     and n.user_id = ost.actor_user_id\n   where ost.to_status = 'ANNULEE'\n     and o.customer_id is not null;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_member_insert",
+      "definition": "CREATE TRIGGER merchant_member_reliability_insert AFTER INSERT ON public.merchant_member REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_member_insert()"
+    },
+    {
+      "name": "merchant_member_reliability_update",
+      "table": "merchant_member",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_from_member()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  with touched as (\n    select r.merchant_account_id, r.user_id\n    from (\n      select n.merchant_account_id, n.user_id from new_rows n\n      union\n      select o.merchant_account_id, o.user_id from old_rows o\n    ) r\n  )\n  select array_agg(distinct o.customer_id) into v_ids\n    from public.order_state_transition ost\n    join public.orders o on o.id = ost.order_id\n    join touched t\n      on t.merchant_account_id = o.merchant_account_id\n     and t.user_id = ost.actor_user_id\n   where ost.to_status = 'ANNULEE'\n     and o.customer_id is not null;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_from_member",
+      "definition": "CREATE TRIGGER merchant_member_reliability_update AFTER UPDATE ON public.merchant_member REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_from_member()"
+    },
+    {
+      "name": "merchant_member_reliability_delete",
+      "table": "merchant_member",
+      "source": "CREATE OR REPLACE FUNCTION public.tg_customer_reliability_member_delete()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_ids uuid[];\nbegin\n  select array_agg(distinct o.customer_id) into v_ids\n    from public.order_state_transition ost\n    join public.orders o on o.id = ost.order_id\n    join old_rows d\n      on d.merchant_account_id = o.merchant_account_id\n     and d.user_id = ost.actor_user_id\n   where ost.to_status = 'ANNULEE'\n     and o.customer_id is not null;\n\n  perform public.refresh_customer_reliability_projection(v_ids);\n  return null;\nend;\n$function$\n",
+      "function": "tg_customer_reliability_member_delete",
+      "definition": "CREATE TRIGGER merchant_member_reliability_delete AFTER DELETE ON public.merchant_member REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION tg_customer_reliability_member_delete()"
+    },
+    {
+      "name": "purchase_lot_line_assert_integrity",
+      "table": "purchase_lot_line",
+      "source": "CREATE OR REPLACE FUNCTION public.assert_purchase_lot_line_integrity()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_lot_merchant_account_id     uuid;\n  v_lot_shop_id                 uuid;\n  v_product_merchant_account_id uuid;\n  v_product_shop_id             uuid;\nbegin\n  select merchant_account_id, shop_id\n    into v_lot_merchant_account_id, v_lot_shop_id\n    from public.purchase_lot\n   where id = new.purchase_lot_id;\n\n  if not found then\n    raise exception 'purchase_lot_id % not found'\n      , new.purchase_lot_id\n      using errcode = 'P0002';\n  end if;\n\n  select merchant_account_id, shop_id\n    into v_product_merchant_account_id, v_product_shop_id\n    from public.product\n   where id = new.product_id;\n\n  if not found then\n    raise exception 'product_id % not found'\n      , new.product_id\n      using errcode = 'P0002';\n  end if;\n\n  -- Invariant autoritaire : le lot et le produit référencé doivent partager le même\n  -- tenant ET la même boutique. C'est la seule comparaison qui protège réellement contre\n  -- la fuite — new.shop_id n'y participe pas.\n  if v_lot_merchant_account_id <> v_product_merchant_account_id then\n    raise exception 'purchase_lot_id and product_id must belong to the same merchant_account_id'\n      using errcode = 'P0001';\n  end if;\n\n  if v_lot_shop_id is distinct from v_product_shop_id then\n    raise exception 'purchase_lot_id and product_id must belong to the same shop_id'\n      using errcode = 'P0001';\n  end if;\n\n  -- Contrôle de cohérence additionnel : la ligne elle-même doit porter le tenant/boutique\n  -- de SON lot (convention déjà respectée par addPurchaseLotLineAction). Ne remplace pas\n  -- la comparaison ci-dessus — les deux colonnes ci-dessous sont forgeables par un appel\n  -- PostgREST direct et ne prouvent jamais l'appartenance du produit.\n  if new.merchant_account_id <> v_lot_merchant_account_id then\n    raise exception 'purchase_lot_line.merchant_account_id must match its purchase_lot_id'\n      using errcode = 'P0001';\n  end if;\n\n  if new.shop_id is distinct from v_lot_shop_id then\n    raise exception 'purchase_lot_line.shop_id must match its purchase_lot_id'\n      using errcode = 'P0001';\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "function": "assert_purchase_lot_line_integrity",
+      "definition": "CREATE TRIGGER purchase_lot_line_assert_integrity BEFORE INSERT OR UPDATE ON public.purchase_lot_line FOR EACH ROW EXECUTE FUNCTION assert_purchase_lot_line_integrity()"
+    },
+    {
+      "name": "product_ad_spend_assert_integrity",
+      "table": "product_ad_spend",
+      "source": "CREATE OR REPLACE FUNCTION public.assert_product_ad_spend_integrity()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_product_merchant_account_id uuid;\n  v_product_shop_id             uuid;\n  v_lot_merchant_account_id     uuid;\n  v_lot_shop_id                 uuid;\nbegin\n  select merchant_account_id, shop_id\n    into v_product_merchant_account_id, v_product_shop_id\n    from public.product\n   where id = new.product_id;\n\n  if not found then\n    raise exception 'product_id % not found', new.product_id\n      using errcode = 'P0002';\n  end if;\n\n  if v_product_merchant_account_id <> new.merchant_account_id then\n    raise exception 'product_ad_spend.merchant_account_id must match product_id'\n      using errcode = 'P0001';\n  end if;\n\n  if v_product_shop_id is distinct from new.shop_id then\n    raise exception 'product_ad_spend.shop_id must match product_id'\n      using errcode = 'P0001';\n  end if;\n\n  if new.purchase_lot_id is not null then\n    select merchant_account_id, shop_id\n      into v_lot_merchant_account_id, v_lot_shop_id\n      from public.purchase_lot\n     where id = new.purchase_lot_id;\n\n    if not found then\n      raise exception 'purchase_lot_id % not found', new.purchase_lot_id\n        using errcode = 'P0002';\n    end if;\n\n    if v_lot_merchant_account_id <> new.merchant_account_id then\n      raise exception 'product_ad_spend.purchase_lot_id must belong to the same merchant_account_id'\n        using errcode = 'P0001';\n    end if;\n\n    if v_lot_shop_id is distinct from new.shop_id then\n      raise exception 'product_ad_spend.purchase_lot_id must belong to the same shop_id'\n        using errcode = 'P0001';\n    end if;\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "function": "assert_product_ad_spend_integrity",
+      "definition": "CREATE TRIGGER product_ad_spend_assert_integrity BEFORE INSERT OR UPDATE ON public.product_ad_spend FOR EACH ROW EXECUTE FUNCTION assert_product_ad_spend_integrity()"
+    },
+    {
+      "name": "purchase_lot_line_allocation_assert_integrity",
+      "table": "purchase_lot_line_allocation",
+      "source": "CREATE OR REPLACE FUNCTION public.assert_purchase_lot_line_allocation_integrity()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_order_line_merchant_account_id uuid;\n  v_order_line_shop_id             uuid;\n  v_order_line_order_id            uuid;\n  v_lot_line_merchant_account_id   uuid;\n  v_lot_line_shop_id               uuid;\nbegin\n  select merchant_account_id, shop_id, order_id\n    into v_order_line_merchant_account_id, v_order_line_shop_id, v_order_line_order_id\n    from public.order_line\n   where id = new.order_line_id;\n\n  if not found then\n    raise exception 'order_line_id % not found', new.order_line_id\n      using errcode = 'P0002';\n  end if;\n\n  if v_order_line_order_id <> new.order_id then\n    raise exception 'purchase_lot_line_allocation.order_id must match order_line_id'\n      using errcode = 'P0001';\n  end if;\n\n  if v_order_line_merchant_account_id <> new.merchant_account_id then\n    raise exception 'purchase_lot_line_allocation.merchant_account_id must match order_line_id'\n      using errcode = 'P0001';\n  end if;\n\n  if v_order_line_shop_id is distinct from new.shop_id then\n    raise exception 'purchase_lot_line_allocation.shop_id must match order_line_id'\n      using errcode = 'P0001';\n  end if;\n\n  select merchant_account_id, shop_id\n    into v_lot_line_merchant_account_id, v_lot_line_shop_id\n    from public.purchase_lot_line\n   where id = new.purchase_lot_line_id;\n\n  if not found then\n    raise exception 'purchase_lot_line_id % not found', new.purchase_lot_line_id\n      using errcode = 'P0002';\n  end if;\n\n  if v_lot_line_merchant_account_id <> new.merchant_account_id then\n    raise exception 'purchase_lot_line_allocation.merchant_account_id must match purchase_lot_line_id'\n      using errcode = 'P0001';\n  end if;\n\n  if v_lot_line_shop_id is distinct from new.shop_id then\n    raise exception 'purchase_lot_line_allocation.shop_id must match purchase_lot_line_id'\n      using errcode = 'P0001';\n  end if;\n\n  return new;\nend;\n$function$\n",
+      "function": "assert_purchase_lot_line_allocation_integrity",
+      "definition": "CREATE TRIGGER purchase_lot_line_allocation_assert_integrity BEFORE INSERT OR UPDATE ON public.purchase_lot_line_allocation FOR EACH ROW EXECUTE FUNCTION assert_purchase_lot_line_allocation_integrity()"
+    },
+    {
+      "name": "shopify_webhook_subscription_state_set_updated_at",
+      "table": "shopify_webhook_subscription_state",
+      "source": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\nbegin\n  new.updated_at = now();\n  return new;\nend;\n$function$\n",
+      "function": "set_updated_at",
+      "definition": "CREATE TRIGGER shopify_webhook_subscription_state_set_updated_at BEFORE UPDATE ON public.shopify_webhook_subscription_state FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    },
+    {
+      "name": "merchant_member_last_owner_guard",
+      "table": "merchant_member",
+      "source": "CREATE OR REPLACE FUNCTION public.prevent_last_owner_removal()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n  if old.role <> 'owner' then\n    return coalesce(new, old);\n  end if;\n\n  -- La ligne reste owner du même compte : rien à garder.\n  if tg_op = 'UPDATE'\n     and new.role = 'owner'\n     and new.merchant_account_id = old.merchant_account_id\n  then\n    return new;\n  end if;\n\n  perform 1\n     from public.merchant_account ma\n    where ma.id = old.merchant_account_id\n      for no key update;\n\n  -- Cascade « suppression du compte ».\n  if not found then\n    return coalesce(new, old);\n  end if;\n\n  -- Cascade « suppression de l'utilisateur ».\n  if tg_op = 'DELETE'\n     and not exists (select 1 from auth.users u where u.id = old.user_id)\n  then\n    return old;\n  end if;\n\n  if not exists (\n    select 1\n      from public.merchant_member mm\n     where mm.merchant_account_id = old.merchant_account_id\n       and mm.role = 'owner'\n       and mm.id <> old.id\n  ) then\n    raise exception 'last_owner'\n      using errcode = '23514';\n  end if;\n\n  return coalesce(new, old);\nend;\n$function$\n",
+      "function": "prevent_last_owner_removal",
+      "definition": "CREATE TRIGGER merchant_member_last_owner_guard BEFORE DELETE OR UPDATE OF role, merchant_account_id ON public.merchant_member FOR EACH ROW EXECUTE FUNCTION prevent_last_owner_removal()"
+    }
+  ]
+}

@@ -119,10 +119,15 @@ export async function fetchFinanceReport(
   const categoryIds = [...new Set(typedExpenseRaw.map((e) => e.category_id))];
   const categoryMap = new Map<string, { code: string; label_fr: string }>();
   if (categoryIds.length > 0) {
-    const { data: catsRaw } = await admin
+    const { data: catsRaw, error: categoriesError } = await admin
       .from('expense_category')
       .select('id, code, label_fr')
+      .eq('merchant_account_id', merchantId)
       .in('id', categoryIds);
+    // A missing/foreign category must not leak its label or silently alter finance totals.
+    if (categoriesError || !catsRaw || catsRaw.length !== categoryIds.length) {
+      throw new Error('finance_data_error');
+    }
     const cats = (catsRaw ?? []) as { id: string; code: string; label_fr: string }[];
     for (const c of cats) categoryMap.set(c.id, c);
   }
