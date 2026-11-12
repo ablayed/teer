@@ -35,6 +35,7 @@ import { positiveOrderTotalSchema } from '@/lib/orders/order-amount-validation';
 import { ORDER_NOTE_MAX_LENGTH, normalizeOrderNote } from '@/lib/orders/order-note';
 import { filterOrdersBySearch, legacySearchLookbackIso } from '@/lib/orders/search';
 import { type CodStatus, codStatuses } from '@/lib/orders/status';
+import { boundedArray } from '@/lib/security/bounded-array';
 import {
   writePcdAccessAudit,
   writePcdAccessAuditCategories,
@@ -1421,16 +1422,14 @@ export const createManualOrderAction = requireRole('owner', 'manager', 'agent')
       phone: z.string().trim().min(1).max(40),
       source: z.enum(manualOrderSources).default('manual'),
       shopId: z.string().uuid().optional(),
-      lines: z
-        .array(
-          z.object({
-            productId: z.string().uuid(),
-            quantity: z.number().int().min(1).max(999),
-            unitPrice: z.number().min(0),
-          }),
-        )
-        .min(1)
-        .max(20),
+      lines: boundedArray(
+        z.object({
+          productId: z.string().uuid(),
+          quantity: z.number().int().min(1).max(999),
+          unitPrice: z.number().min(0),
+        }),
+        { min: 1, max: 20 },
+      ),
       address: z.string().trim().max(500).optional(),
     }),
   )
@@ -2118,16 +2117,14 @@ export const replaceOrderCartAction = requireRole('owner', 'manager')
   .inputSchema(
     z.object({
       orderId: z.string().uuid(),
-      lines: z
-        .array(
-          z.object({
-            productId: z.string().uuid(),
-            quantity: z.number().int().min(1).max(999),
-            unitPrice: z.number().min(0).max(Number.MAX_SAFE_INTEGER),
-          }),
-        )
-        .min(1)
-        .max(20),
+      lines: boundedArray(
+        z.object({
+          productId: z.string().uuid(),
+          quantity: z.number().int().min(1).max(999),
+          unitPrice: z.number().min(0).max(Number.MAX_SAFE_INTEGER),
+        }),
+        { min: 1, max: 20 },
+      ),
     }),
   )
   .action(async ({ parsedInput, ctx }) => {
@@ -2159,15 +2156,13 @@ export const reduceOrderCartPostAssignmentAction = requireRole('owner', 'manager
   .inputSchema(
     z.object({
       orderId: z.string().uuid(),
-      lines: z
-        .array(
-          z.object({
-            productId: z.string().uuid(),
-            quantity: z.number().int().min(1).max(999),
-          }),
-        )
-        .min(1)
-        .max(20),
+      lines: boundedArray(
+        z.object({
+          productId: z.string().uuid(),
+          quantity: z.number().int().min(1).max(999),
+        }),
+        { min: 1, max: 20 },
+      ),
     }),
   )
   .action(async ({ parsedInput, ctx }) => {

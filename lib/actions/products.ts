@@ -5,6 +5,7 @@ import { resolveActiveStoreProduct } from '@/lib/actions/stock';
 import { env } from '@/lib/env';
 import { canSeeCostsInShop, resolveMemberShopAccess } from '@/lib/merchant/member-shop-access';
 import { resolveBundleAvailabilities } from '@/lib/products/resolve-bundle-availability';
+import { boundedArray } from '@/lib/security/bounded-array';
 import {
   type StockCatalogSummary,
   computeStockCatalogSummary,
@@ -67,14 +68,13 @@ const bundleCompositionInputSchema = z.object({
 const saveBundleConfigurationSchema = z.object({
   productId: z.string().uuid(),
   isBundle: z.boolean(),
-  components: z
-    .array(
-      z.object({
-        componentProductId: z.string().uuid(),
-        quantity: z.number().int().min(1).max(999),
-      }),
-    )
-    .max(50),
+  components: boundedArray(
+    z.object({
+      componentProductId: z.string().uuid(),
+      quantity: z.number().int().min(1).max(999),
+    }),
+    { max: 50 },
+  ),
 });
 
 type BundleConfigErrorCode =
