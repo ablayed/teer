@@ -17,12 +17,25 @@
  *  - le chemin protocole-relatif (`//hote`) ;
  *  - toute occurrence de `\`, qu'un navigateur peut normaliser en `/`
  *    (`/\evil.example` devient `//evil.example` une fois interprété) —
- *    contournement classique d'un filtre qui ne teste que `//`.
+ *    contournement classique d'un filtre qui ne teste que `//` ;
+ *  - les contrôles ASCII et DEL, notamment ceux supprimés au parsing URL.
  */
 export function safeRedirectPath(path: string | undefined): string {
   if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('\\')) {
     return '/tableau';
   }
+  for (const char of path) {
+    const code = char.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f) return '/tableau';
+  }
 
+  // URL parsing must preserve the origin as well as the textual path checks.
+  // No request is made to this deliberately invalid, fixed origin.
+  const base = 'https://redirect.invalid';
+  try {
+    if (new URL(path, base).origin !== base) return '/tableau';
+  } catch {
+    return '/tableau';
+  }
   return path;
 }

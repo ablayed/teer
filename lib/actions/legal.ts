@@ -2,6 +2,7 @@
 
 import { authActionClient } from '@/lib/actions/safe-action';
 import { getMissingCurrentConsents, persistSignupConsents } from '@/lib/legal/consent';
+import { safeRedirectPath } from '@/lib/security/safe-redirect';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
@@ -9,14 +10,6 @@ const acceptCurrentLegalDocumentsSchema = z.object({
   acceptedLegal: z.literal(true),
   redirectTo: z.string().trim().max(500).optional(),
 });
-
-function safeRedirectPath(path: string | undefined) {
-  if (!path || !path.startsWith('/') || path.startsWith('//') || path === '/reacceptation') {
-    return '/tableau';
-  }
-
-  return path;
-}
 
 export const acceptCurrentLegalDocumentsAction = authActionClient
   .metadata({ actionName: 'legal.accept_current_documents', section: 'legal' })
@@ -35,5 +28,6 @@ export const acceptCurrentLegalDocumentsAction = authActionClient
       }
     }
 
-    redirect(safeRedirectPath(parsedInput.redirectTo));
+    const target = safeRedirectPath(parsedInput.redirectTo);
+    redirect(target === '/reacceptation' ? '/tableau' : target);
   });
