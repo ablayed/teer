@@ -1,0 +1,35 @@
+# F1 — diagnostic et arrêt avant changement
+
+État : SEC-D-001 confirmé en intégration locale lors de Sécurité-1. Aucune correction F1 appliquée. Les contrôles ci-dessous sont une lecture du code à 4db58e2, pas une mesure des installations distantes.
+
+## Compatibilité légitime
+
+La [référence officielle Shopify app/uninstalled](https://shopify.dev/docs/api/webhooks/latest#list-of-topics-app/uninstalled), version affichée 2026-10, consultée le 11 novembre 2026, montre un identifiant numérique `id` et les deux champs `domain` et `myshopify_domain` à null. Rejeter uniformément les corps sans domaine casserait donc une forme officiellement documentée. Le domaine du header n'est pas couvert par le HMAC du corps. La preuve locale démontre un effet SQL, mais ne prouve pas qu'un marchand peut capturer un couple corps/HMAC dans l'infrastructure réelle.
+
+| Option | État du code et garantie possible | Compatibilité et dépendances | Décision |
+|---|---|---|---|
+| A — domaine signé | resolveSignedShopDomain utilise shop_domain/myshopify_domain si présent et confronte le header | Identité utilisable seulement quand présente ; domain personnalisé n'est pas automatiquement myshopify_domain. Le rejet des null casse l'exemple officiel | Complément utile, insuffisant seul |
+| B — id signé | shop.shop_gid existe mais n'est pas alimenté (CLAUDE.md:372) ; la sélection actuelle ne résout pas cette identité | Lire `shop { id myshopifyDomain }` avec le jeton issu d'un OAuth vérifié, confronter le domaine canonique et l'app, puis persister sous le bail/fencing existant. Convertir le numérique vers le GID sans perte de précision. Pour les boutiques existantes, backfill avec leur propre jeton vérifié, sans utiliser un webhook comme source de vérité | Nécessite une migration de données/identités existantes et des preuves de complétude : STOP au plan |
+| C — URL opaque par installation | ingest/[token]/route.ts résout le jeton puis connexion/boutique, vérifie l'app et le HMAC ; neuf topics par boutique incluent APP_UNINSTALLED | Le chemin est déjà disponible ; il ne transforme pas une livraison historique globale en livraison opaque. La possession d'un jeton d'URL reste sensible. Ne pas le reconstruire depuis un header | Chemin cible possible avec D, pas une réparation transparente du global |
+| D — retrait global E11 | TOML conserve app/uninstalled global ; CLAUDE.md:716 et clôture du lot 1b expliquent la couverture des installations sync=pending | Exige inventaire réel des abonnements par boutique, réparation des pending, mesure opaque désinstallation/réinstallation, changement/version Shopify puis vérification après publication | Changement d'abonnement distant indispensable : STOP au diagnostic, pas de déploiement |
+
+## Utilisation d'identité avant authentification complète
+
+`app/api/shopify/webhooks/route.ts:348` résout headerShop via client privilégié avant vérification HMAC ; il s'agit déjà d'une lecture dirigée par un header non signé. Le HMAC est vérifié ensuite, mais cela authentifie le corps et l'app, pas le header de boutique.
+
+Après le HMAC, `resolvedShopDomain` provient de resolveShopDomain(header,payload), qui préfère le header. Ce domaine sert au rate-limit puis au lookup de shop. `recordWebhookReceipt` reçoit ce domaine, shop.id et merchant_account_id (`route.ts:442`), et réserve/déduplique webhook_event **avant** runWebhookEvent → resolveLegacyShopForTopic. Donc la réservation et l'attribution tenant précèdent la validation finale du domaine signé, même sur un topic qui sera ensuite rejeté. `after()` et sa reprise utilisent cette ligne. Un rejet métier ultérieur ne rend pas cette attribution initiale fiable.
+
+Pour uninstall sans domaine, le fallback autorise ensuite le header et le cœur appelle uninstall_shopify_pending_or_shop_ordered avec cette identité. La garde d'app et le bail empêchent certaines courses et les mélanges d'apps ; ils n'établissent pas l'identité boutique. Les journaux d'erreurs ne doivent pas non plus recevoir un domaine/tenant choisi avant résolution fiable.
+
+Preuve locale complémentaire du 11 novembre : `tests/rls/security-audit-webhook-isolation.rls.test.ts` dans le worktree `security-audit-proofs`, sortie `docs/security/evidence/s2-f1-positive-null-and-isolation.txt`. Deux contrôles positifs passent (domaine signé présent et domain/myshopify_domain explicitement null). Le test de rejet intertenant reste rouge, avec état observé uninstalled au lieu de active. Vraie route, HMAC synthétique et PostgreSQL local ; tout fetch non local bloqué. Les preuves rouges restent locales et ne sont pas ajoutées à la suite automatique du présent lot documentaire. Le diagnostic ne prétend pas que le contrôle négatif est corrigé.
+
+## Plan soumis à décision humaine
+
+1. Choisir B pour préserver les livraisons globales officiellement sans domaine, ou achever E11 par C+D. A reste un contrôle complémentaire ; ne pas utiliser le header comme autorité de secours.
+2. Si B : relever avant changement les identités/contraintes actuelles et les chemins OAuth ; ajouter une acquisition vérifiée du GID sous fencing. Concevoir le backfill idempotent, borné et reprenable pour les boutiques existantes. Les cas sans token utilisable nécessitent réautorisation ou une autre stratégie validée, jamais une identité déduite d'une entrée webhook. Une éventuelle contrainte de cohérence/unicité demande sa propre revue de migration.
+3. Résoudre l'app et la boutique depuis une autorité authentifiée **avant** toute réservation, déduplication tenant, audit ou effet métier. Conserver les événements non résolus dans une stratégie explicitement conçue et bornée, sans les attribuer arbitrairement à un tenant. Ne pas ajouter silencieusement une nouvelle table.
+4. Si E11 : remplir les quatre critères de `docs/lots/SHOPIFY-WEBHOOKS-PER-SHOP-1B-CLOTURE.md` dans l'ordre : couverture de toutes les boutiques actives ; résolution sync=pending ; mesure opaque réelle sur fixture dédiée ; retrait global et vérification après publication. Aucun de ces contrôles distants n'a été exécuté ici.
+5. Tests locaux requis : désinstallation légitime avec domaine et avec domaines null/id vérifié ; identité manquante/inconnue/étrangère ; app différente ; même corps/HMAC avec header victime ; topic/date substitués ; rejoués et doublons ; idempotence des effets et des audits ; réinstallation concurrente ; absence de réservation tenant avant identité valide ; maintien des anciens abonnements jusqu'à la bascule.
+6. Rollback : ne pas réactiver un fallback non signé comme mécanisme de retour arrière. Garder un chemin d'identité authentifiée opérationnel et un mécanisme de reprise validé ; ne pas retirer global avant la couverture opaque prouvée.
+
+Le critère « implémenter sans casser aucune désinstallation légitime et sans migration de données ni changement de souscription » n'est pas établi pour une des options seules. Conformément à l'addendum, F1 s'arrête donc au diagnostic et au plan. Le statut reste VULNERABLE ; aucune fermeture de SEC-D-001 revendiquée.
