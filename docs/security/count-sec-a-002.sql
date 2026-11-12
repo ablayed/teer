@@ -2,6 +2,7 @@
 -- Lecture seule, compte uniquement. Aucun identifiant, libellé ou montant retourné.
 BEGIN TRANSACTION READ ONLY;
 SET LOCAL statement_timeout = '30s';
+SET LOCAL row_security = off;
 SELECT count(*) AS inconsistent_expense_category_count
 FROM public.expense e
 LEFT JOIN public.expense_category c ON c.id = e.category_id

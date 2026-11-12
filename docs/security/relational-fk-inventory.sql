@@ -5,6 +5,12 @@ FROM (
     child.relname AS child_table, parent.relname AS parent_table,
     pg_get_constraintdef(c.oid) AS definition,
     c.convalidated AS validated,
+    NOT EXISTS (SELECT 1 FROM unnest(c.conkey) k(attnum)
+      WHERE NOT has_column_privilege('authenticated', child.oid, k.attnum, 'INSERT'))
+      AS authenticated_insert_fk_columns,
+    NOT EXISTS (SELECT 1 FROM unnest(c.conkey) k(attnum)
+      WHERE NOT has_column_privilege('authenticated', child.oid, k.attnum, 'UPDATE'))
+      AS authenticated_update_fk_columns,
     ARRAY(SELECT a.attname FROM pg_attribute a
       WHERE a.attrelid = child.oid AND a.attnum > 0 AND NOT a.attisdropped
         AND a.attname IN ('merchant_account_id', 'tenant_id', 'shop_id')) AS child_scope,

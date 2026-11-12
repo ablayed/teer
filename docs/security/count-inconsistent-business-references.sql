@@ -3,6 +3,7 @@
 -- Une référence nullable absente est légitime. Un résultat positif impose revue, pas nettoyage automatique.
 BEGIN TRANSACTION READ ONLY;
 SET LOCAL statement_timeout = '30s';
+SET LOCAL row_security = off;
 SELECT 'call_log.call_log_order_id_fkey' AS reference, count(*) AS inconsistent_count
 FROM public."call_log" c LEFT JOIN public."orders" p ON c."order_id" = p."id"
 WHERE c."order_id" IS NOT NULL

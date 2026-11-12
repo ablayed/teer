@@ -7,7 +7,9 @@
     "child_table": "audit_log",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "audit_log_merchant_account_id_fkey"
+    "constraint_name": "audit_log_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -17,7 +19,9 @@
     "child_table": "call_log",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "call_log_merchant_account_id_fkey"
+    "constraint_name": "call_log_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -27,7 +31,9 @@
     "child_table": "call_log",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "orders",
-    "constraint_name": "call_log_order_id_fkey"
+    "constraint_name": "call_log_order_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -37,7 +43,9 @@
     "child_table": "call_log",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "call_log_shop_tenant_fk"
+    "constraint_name": "call_log_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -47,7 +55,9 @@
     "child_table": "cash_settlement",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "driver",
-    "constraint_name": "cash_settlement_driver_id_fkey"
+    "constraint_name": "cash_settlement_driver_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -57,7 +67,9 @@
     "child_table": "cash_settlement",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "cash_settlement_merchant_account_id_fkey"
+    "constraint_name": "cash_settlement_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -67,7 +79,9 @@
     "child_table": "customer",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "customer_merchant_account_id_fkey"
+    "constraint_name": "customer_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -77,7 +91,9 @@
     "child_table": "customer",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "customer_shop_tenant_fk"
+    "constraint_name": "customer_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -87,7 +103,9 @@
     "child_table": "customer_reliability_projection",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "customer",
-    "constraint_name": "customer_reliability_projection_customer_fk"
+    "constraint_name": "customer_reliability_projection_customer_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -97,7 +115,9 @@
     "child_table": "customer_reliability_projection",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "customer_reliability_projection_shop_tenant_fk"
+    "constraint_name": "customer_reliability_projection_shop_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -107,7 +127,9 @@
     "child_table": "delivery_address",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "customer",
-    "constraint_name": "delivery_address_customer_id_fkey"
+    "constraint_name": "delivery_address_customer_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -117,7 +139,9 @@
     "child_table": "delivery_address",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "delivery_address_merchant_account_id_fkey"
+    "constraint_name": "delivery_address_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -127,7 +151,9 @@
     "child_table": "delivery_address",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "orders",
-    "constraint_name": "delivery_address_order_id_fkey"
+    "constraint_name": "delivery_address_order_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -137,7 +163,9 @@
     "child_table": "delivery_address",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "delivery_address_shop_tenant_fk"
+    "constraint_name": "delivery_address_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -147,7 +175,9 @@
     "child_table": "driver",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "driver_merchant_account_id_fkey"
+    "constraint_name": "driver_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -157,7 +187,9 @@
     "child_table": "driver_shop",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "driver",
-    "constraint_name": "driver_shop_driver_tenant_fk"
+    "constraint_name": "driver_shop_driver_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -167,7 +199,9 @@
     "child_table": "driver_shop",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "driver_shop_shop_tenant_fk"
+    "constraint_name": "driver_shop_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -177,7 +211,9 @@
     "child_table": "expense",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "expense_category",
-    "constraint_name": "expense_category_id_fkey"
+    "constraint_name": "expense_category_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -187,7 +223,9 @@
     "child_table": "expense",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "expense_merchant_account_id_fkey"
+    "constraint_name": "expense_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -197,7 +235,9 @@
     "child_table": "expense_category",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "expense_category_merchant_account_id_fkey"
+    "constraint_name": "expense_category_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -207,7 +247,9 @@
     "child_table": "external_ref",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "external_ref_connection_tenant_shop_fk"
+    "constraint_name": "external_ref_connection_tenant_shop_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -217,7 +259,9 @@
     "child_table": "external_ref",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "external_ref_shop_tenant_fk"
+    "constraint_name": "external_ref_shop_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -227,7 +271,9 @@
     "child_table": "feedback",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "feedback_merchant_account_id_fkey"
+    "constraint_name": "feedback_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -237,7 +283,9 @@
     "child_table": "ia_conversation",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "ia_conversation_merchant_account_id_fkey"
+    "constraint_name": "ia_conversation_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -247,7 +295,9 @@
     "child_table": "ia_message",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "ia_conversation",
-    "constraint_name": "ia_message_conversation_id_fkey"
+    "constraint_name": "ia_message_conversation_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -257,7 +307,9 @@
     "child_table": "ia_message",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "ia_message_merchant_account_id_fkey"
+    "constraint_name": "ia_message_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -267,7 +319,9 @@
     "child_table": "ia_tool_audit",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "ia_conversation",
-    "constraint_name": "ia_tool_audit_conversation_id_fkey"
+    "constraint_name": "ia_tool_audit_conversation_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -277,7 +331,9 @@
     "child_table": "ia_tool_audit",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "ia_tool_audit_merchant_account_id_fkey"
+    "constraint_name": "ia_tool_audit_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -287,7 +343,9 @@
     "child_table": "ingestion_event",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "ingestion_event_connection_tenant_shop_fk"
+    "constraint_name": "ingestion_event_connection_tenant_shop_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -297,7 +355,9 @@
     "child_table": "ingestion_event",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "ingestion_event_merchant_account_id_fkey"
+    "constraint_name": "ingestion_event_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -307,7 +367,9 @@
     "child_table": "invitation",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "invitation_merchant_account_id_fkey"
+    "constraint_name": "invitation_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -317,7 +379,9 @@
     "child_table": "manual_order_number_counter",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "manual_order_number_counter_merchant_account_id_fkey"
+    "constraint_name": "manual_order_number_counter_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -327,7 +391,9 @@
     "child_table": "merchant_member",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "merchant_member_merchant_account_id_fkey"
+    "constraint_name": "merchant_member_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -337,7 +403,9 @@
     "child_table": "merchant_settings",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "merchant_settings_merchant_account_id_fkey"
+    "constraint_name": "merchant_settings_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -347,7 +415,9 @@
     "child_table": "order_line",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "order_line_merchant_account_id_fkey"
+    "constraint_name": "order_line_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -357,7 +427,9 @@
     "child_table": "order_line",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "orders",
-    "constraint_name": "order_line_order_id_fkey"
+    "constraint_name": "order_line_order_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -367,7 +439,9 @@
     "child_table": "order_line",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "order_line_product_id_fkey"
+    "constraint_name": "order_line_product_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -377,7 +451,9 @@
     "child_table": "order_line",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "order_line_shop_tenant_fk"
+    "constraint_name": "order_line_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -387,7 +463,9 @@
     "child_table": "order_state_transition",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "order_state_transition_merchant_account_id_fkey"
+    "constraint_name": "order_state_transition_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -397,7 +475,9 @@
     "child_table": "order_state_transition",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "orders",
-    "constraint_name": "order_state_transition_order_id_fkey"
+    "constraint_name": "order_state_transition_order_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -407,7 +487,9 @@
     "child_table": "order_state_transition",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "order_state_transition_shop_tenant_fk"
+    "constraint_name": "order_state_transition_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -417,7 +499,9 @@
     "child_table": "orders",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "customer",
-    "constraint_name": "orders_customer_id_fkey"
+    "constraint_name": "orders_customer_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -427,7 +511,9 @@
     "child_table": "orders",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "orders_merchant_account_id_fkey"
+    "constraint_name": "orders_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -437,7 +523,9 @@
     "child_table": "orders",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "orders_shop_id_fkey"
+    "constraint_name": "orders_shop_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -447,7 +535,9 @@
     "child_table": "orders",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "orders_shop_tenant_fk"
+    "constraint_name": "orders_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -457,7 +547,9 @@
     "child_table": "orders",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "orders_store_connection_tenant_shop_fk"
+    "constraint_name": "orders_store_connection_tenant_shop_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -467,7 +559,9 @@
     "child_table": "pcd_access_audit",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "pcd_access_audit_shop_id_fkey"
+    "constraint_name": "pcd_access_audit_shop_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -477,7 +571,9 @@
     "child_table": "pcd_access_audit",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "pcd_access_audit_tenant_id_fkey"
+    "constraint_name": "pcd_access_audit_tenant_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -487,7 +583,9 @@
     "child_table": "pcd_access_quota_bucket",
     "parent_scope": [],
     "parent_table": "pcd_access_quota_policy",
-    "constraint_name": "pcd_access_quota_bucket_action_fkey"
+    "constraint_name": "pcd_access_quota_bucket_action_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -497,7 +595,9 @@
     "child_table": "pcd_access_quota_bucket",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "pcd_access_quota_bucket_shop_id_fkey"
+    "constraint_name": "pcd_access_quota_bucket_shop_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -507,7 +607,9 @@
     "child_table": "pcd_access_quota_bucket",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "pcd_access_quota_bucket_tenant_id_fkey"
+    "constraint_name": "pcd_access_quota_bucket_tenant_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -517,7 +619,9 @@
     "child_table": "product",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "product_merchant_account_id_fkey"
+    "constraint_name": "product_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -527,7 +631,9 @@
     "child_table": "product",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "product_shop_tenant_fk"
+    "constraint_name": "product_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -537,7 +643,9 @@
     "child_table": "product_ad_spend",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "product_ad_spend_merchant_account_id_fkey"
+    "constraint_name": "product_ad_spend_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -547,7 +655,9 @@
     "child_table": "product_ad_spend",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "product_ad_spend_product_id_fkey"
+    "constraint_name": "product_ad_spend_product_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -557,7 +667,9 @@
     "child_table": "product_ad_spend",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "purchase_lot",
-    "constraint_name": "product_ad_spend_purchase_lot_id_fkey"
+    "constraint_name": "product_ad_spend_purchase_lot_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -567,7 +679,9 @@
     "child_table": "product_ad_spend",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "product_ad_spend_shop_tenant_fk"
+    "constraint_name": "product_ad_spend_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -577,7 +691,9 @@
     "child_table": "product_bundle_component",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "product_bundle_component_bundle_product_id_fkey"
+    "constraint_name": "product_bundle_component_bundle_product_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -587,7 +703,9 @@
     "child_table": "product_bundle_component",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "product_bundle_component_component_product_id_fkey"
+    "constraint_name": "product_bundle_component_component_product_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -597,7 +715,9 @@
     "child_table": "product_bundle_component",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "product_bundle_component_merchant_account_id_fkey"
+    "constraint_name": "product_bundle_component_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -607,7 +727,9 @@
     "child_table": "product_bundle_component",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "product_bundle_component_shop_tenant_fk"
+    "constraint_name": "product_bundle_component_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -617,7 +739,9 @@
     "child_table": "product_stock",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "product_stock_merchant_account_id_fkey"
+    "constraint_name": "product_stock_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -627,7 +751,9 @@
     "child_table": "product_stock",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "product_stock_product_id_fkey"
+    "constraint_name": "product_stock_product_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -637,7 +763,9 @@
     "child_table": "product_stock",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "product_stock_shop_tenant_fk"
+    "constraint_name": "product_stock_shop_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -647,7 +775,9 @@
     "child_table": "purchase_lot",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "purchase_lot_merchant_account_id_fkey"
+    "constraint_name": "purchase_lot_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -657,7 +787,9 @@
     "child_table": "purchase_lot",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "purchase_lot_shop_tenant_fk"
+    "constraint_name": "purchase_lot_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -667,7 +799,9 @@
     "child_table": "purchase_lot_cost_correction",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "purchase_lot_cost_correction_merchant_account_id_fkey"
+    "constraint_name": "purchase_lot_cost_correction_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -677,7 +811,9 @@
     "child_table": "purchase_lot_cost_correction",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "purchase_lot",
-    "constraint_name": "purchase_lot_cost_correction_purchase_lot_id_fkey"
+    "constraint_name": "purchase_lot_cost_correction_purchase_lot_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -687,7 +823,9 @@
     "child_table": "purchase_lot_cost_correction",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "purchase_lot_line",
-    "constraint_name": "purchase_lot_cost_correction_purchase_lot_line_id_fkey"
+    "constraint_name": "purchase_lot_cost_correction_purchase_lot_line_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -697,7 +835,9 @@
     "child_table": "purchase_lot_cost_correction",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "purchase_lot_cost_correction_shop_tenant_fk"
+    "constraint_name": "purchase_lot_cost_correction_shop_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -707,7 +847,9 @@
     "child_table": "purchase_lot_line",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "purchase_lot_line_merchant_account_id_fkey"
+    "constraint_name": "purchase_lot_line_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -717,7 +859,9 @@
     "child_table": "purchase_lot_line",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "purchase_lot_line_product_id_fkey"
+    "constraint_name": "purchase_lot_line_product_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -727,7 +871,9 @@
     "child_table": "purchase_lot_line",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "purchase_lot",
-    "constraint_name": "purchase_lot_line_purchase_lot_id_fkey"
+    "constraint_name": "purchase_lot_line_purchase_lot_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -737,7 +883,9 @@
     "child_table": "purchase_lot_line",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "purchase_lot_line_shop_tenant_fk"
+    "constraint_name": "purchase_lot_line_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -747,7 +895,9 @@
     "child_table": "purchase_lot_line_allocation",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "purchase_lot_line_allocation_merchant_account_id_fkey"
+    "constraint_name": "purchase_lot_line_allocation_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -757,7 +907,9 @@
     "child_table": "purchase_lot_line_allocation",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "orders",
-    "constraint_name": "purchase_lot_line_allocation_order_id_fkey"
+    "constraint_name": "purchase_lot_line_allocation_order_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -767,7 +919,9 @@
     "child_table": "purchase_lot_line_allocation",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "order_line",
-    "constraint_name": "purchase_lot_line_allocation_order_line_id_fkey"
+    "constraint_name": "purchase_lot_line_allocation_order_line_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -777,7 +931,9 @@
     "child_table": "purchase_lot_line_allocation",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "purchase_lot_line",
-    "constraint_name": "purchase_lot_line_allocation_purchase_lot_line_id_fkey"
+    "constraint_name": "purchase_lot_line_allocation_purchase_lot_line_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -787,7 +943,9 @@
     "child_table": "purchase_lot_line_allocation",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "order_state_transition",
-    "constraint_name": "purchase_lot_line_allocation_recognized_transition_id_fkey"
+    "constraint_name": "purchase_lot_line_allocation_recognized_transition_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -797,7 +955,9 @@
     "child_table": "purchase_lot_line_allocation",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "purchase_lot_line_allocation_shop_tenant_fk"
+    "constraint_name": "purchase_lot_line_allocation_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -807,7 +967,9 @@
     "child_table": "settlement_allocation",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "settlement_allocation_merchant_account_id_fkey"
+    "constraint_name": "settlement_allocation_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -817,7 +979,9 @@
     "child_table": "settlement_allocation",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "orders",
-    "constraint_name": "settlement_allocation_order_id_fkey"
+    "constraint_name": "settlement_allocation_order_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -827,7 +991,9 @@
     "child_table": "settlement_allocation",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "cash_settlement",
-    "constraint_name": "settlement_allocation_settlement_id_fkey"
+    "constraint_name": "settlement_allocation_settlement_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -837,7 +1003,9 @@
     "child_table": "settlement_shortfall",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "driver",
-    "constraint_name": "settlement_shortfall_driver_id_fkey"
+    "constraint_name": "settlement_shortfall_driver_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -847,7 +1015,9 @@
     "child_table": "settlement_shortfall",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "settlement_shortfall_merchant_account_id_fkey"
+    "constraint_name": "settlement_shortfall_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -857,7 +1027,9 @@
     "child_table": "settlement_shortfall",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "cash_settlement",
-    "constraint_name": "settlement_shortfall_settlement_id_fkey"
+    "constraint_name": "settlement_shortfall_settlement_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -867,7 +1039,9 @@
     "child_table": "shop",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "shop_merchant_account_id_fkey"
+    "constraint_name": "shop_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -877,7 +1051,9 @@
     "child_table": "shop_member",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "shop_member_merchant_account_id_fkey"
+    "constraint_name": "shop_member_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -887,7 +1063,9 @@
     "child_table": "shop_member",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "shop_member_shop_id_fkey"
+    "constraint_name": "shop_member_shop_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -897,7 +1075,9 @@
     "child_table": "shop_member",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "shop_member_shop_tenant_fk"
+    "constraint_name": "shop_member_shop_tenant_fk",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -907,7 +1087,9 @@
     "child_table": "shopify_customer_redaction_tombstone",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "shopify_customer_redaction_tombstone_merchant_account_id_fkey"
+    "constraint_name": "shopify_customer_redaction_tombstone_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -917,7 +1099,9 @@
     "child_table": "shopify_customer_redaction_tombstone",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "shopify_customer_redaction_tombstone_shop_id_fkey"
+    "constraint_name": "shopify_customer_redaction_tombstone_shop_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -927,7 +1111,9 @@
     "child_table": "shopify_dsar_artifact",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "shopify_dsar_artifact_merchant_account_id_fkey"
+    "constraint_name": "shopify_dsar_artifact_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -937,7 +1123,9 @@
     "child_table": "shopify_dsar_artifact",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "shopify_dsar_artifact_shop_id_fkey"
+    "constraint_name": "shopify_dsar_artifact_shop_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -947,7 +1135,9 @@
     "child_table": "shopify_dsar_artifact",
     "parent_scope": ["shop_id", "merchant_account_id"],
     "parent_table": "webhook_event",
-    "constraint_name": "shopify_dsar_artifact_webhook_event_id_fkey"
+    "constraint_name": "shopify_dsar_artifact_webhook_event_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -957,7 +1147,9 @@
     "child_table": "shopify_dsar_download_authorization",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "shopify_dsar_artifact",
-    "constraint_name": "shopify_dsar_download_authorization_artifact_id_fkey"
+    "constraint_name": "shopify_dsar_download_authorization_artifact_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -967,7 +1159,9 @@
     "child_table": "shopify_dsar_download_authorization",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "shopify_dsar_download_authorization_shop_id_fkey"
+    "constraint_name": "shopify_dsar_download_authorization_shop_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -977,7 +1171,9 @@
     "child_table": "shopify_dsar_download_authorization",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "shopify_dsar_download_authorization_tenant_id_fkey"
+    "constraint_name": "shopify_dsar_download_authorization_tenant_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -987,7 +1183,9 @@
     "child_table": "shopify_webhook_reconcile_lease",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "shopify_webhook_reconcile_lease_store_connection_id_fkey"
+    "constraint_name": "shopify_webhook_reconcile_lease_store_connection_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -997,7 +1195,9 @@
     "child_table": "shopify_webhook_subscription_state",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "shopify_webhook_subscription_state_store_connection_id_fkey"
+    "constraint_name": "shopify_webhook_subscription_state_store_connection_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1007,7 +1207,9 @@
     "child_table": "stock_movement",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "driver",
-    "constraint_name": "stock_movement_driver_id_fkey"
+    "constraint_name": "stock_movement_driver_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1017,7 +1219,9 @@
     "child_table": "stock_movement",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "stock_movement_merchant_account_id_fkey"
+    "constraint_name": "stock_movement_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1027,7 +1231,9 @@
     "child_table": "stock_movement",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "orders",
-    "constraint_name": "stock_movement_order_id_fkey"
+    "constraint_name": "stock_movement_order_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1037,7 +1243,9 @@
     "child_table": "stock_movement",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "stock_movement_product_id_fkey"
+    "constraint_name": "stock_movement_product_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1047,7 +1255,9 @@
     "child_table": "stock_movement",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "stock_movement_shop_tenant_fk"
+    "constraint_name": "stock_movement_shop_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1057,7 +1267,9 @@
     "child_table": "stock_movement",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "order_state_transition",
-    "constraint_name": "stock_movement_transition_id_fkey"
+    "constraint_name": "stock_movement_transition_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1067,7 +1279,9 @@
     "child_table": "stock_reconciliation_alert",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "stock_reconciliation_alert_merchant_account_id_fkey"
+    "constraint_name": "stock_reconciliation_alert_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1077,7 +1291,9 @@
     "child_table": "stock_reconciliation_alert",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "product",
-    "constraint_name": "stock_reconciliation_alert_product_id_fkey"
+    "constraint_name": "stock_reconciliation_alert_product_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1087,7 +1303,9 @@
     "child_table": "store_connection",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "store_connection_merchant_account_id_fkey"
+    "constraint_name": "store_connection_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1097,7 +1315,9 @@
     "child_table": "store_connection",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "store_connection_shop_tenant_fk"
+    "constraint_name": "store_connection_shop_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1107,7 +1327,9 @@
     "child_table": "store_connection_credential",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "store_connection_credential_connection_tenant_fk"
+    "constraint_name": "store_connection_credential_connection_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1117,7 +1339,9 @@
     "child_table": "store_connection_intent",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "merchant_member",
-    "constraint_name": "store_connection_intent_created_by_member_id_fkey"
+    "constraint_name": "store_connection_intent_created_by_member_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1127,7 +1351,9 @@
     "child_table": "store_connection_intent",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "store_connection_intent_shop_tenant_fk"
+    "constraint_name": "store_connection_intent_shop_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1137,7 +1363,9 @@
     "child_table": "store_connection_resource_receipt",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "store_connection_resource_receipt_store_connection_id_fkey"
+    "constraint_name": "store_connection_resource_receipt_store_connection_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1147,7 +1375,9 @@
     "child_table": "store_connection_sync_state",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "store_connection_sync_state_connection_tenant_fk"
+    "constraint_name": "store_connection_sync_state_connection_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1157,7 +1387,9 @@
     "child_table": "store_connection_webhook_subscription",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "store_connection_webhook_subscription_connection_tenant_fk"
+    "constraint_name": "store_connection_webhook_subscription_connection_tenant_fk",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1167,7 +1399,9 @@
     "child_table": "store_connection_webhook_token",
     "parent_scope": ["merchant_account_id", "shop_id"],
     "parent_table": "store_connection",
-    "constraint_name": "store_connection_webhook_token_store_connection_id_fkey"
+    "constraint_name": "store_connection_webhook_token_store_connection_id_fkey",
+    "authenticated_insert_fk_columns": false,
+    "authenticated_update_fk_columns": false
   },
   {
     "child_rls": true,
@@ -1177,7 +1411,9 @@
     "child_table": "webhook_event",
     "parent_scope": [],
     "parent_table": "merchant_account",
-    "constraint_name": "webhook_event_merchant_account_id_fkey"
+    "constraint_name": "webhook_event_merchant_account_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   },
   {
     "child_rls": true,
@@ -1187,6 +1423,8 @@
     "child_table": "webhook_event",
     "parent_scope": ["merchant_account_id"],
     "parent_table": "shop",
-    "constraint_name": "webhook_event_shop_id_fkey"
+    "constraint_name": "webhook_event_shop_id_fkey",
+    "authenticated_insert_fk_columns": true,
+    "authenticated_update_fk_columns": true
   }
 ]

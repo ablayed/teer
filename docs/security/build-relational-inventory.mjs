@@ -45,18 +45,84 @@ for (const r of pairs) {
   const triggers = controls.triggers.filter((t) => t.table === r.child_table);
   const relevant = triggers.filter((t) => /assert_.*integrity/.test(t.function));
   const checks = controls.policies.filter(
-    (p) => p.tablename === r.child_table && ['INSERT', 'UPDATE', 'ALL'].includes(p.cmd),
+    (p) =>
+      p.tablename === r.child_table &&
+      ['INSERT', 'UPDATE', 'ALL'].includes(p.cmd) &&
+      p.roles.some((role) => ['authenticated', 'public'].includes(role)),
   );
-  const policyRelational = checks.some((p) => (p.with_check ?? '').includes(r.parent_table));
+  const policyRelational = checks.some((p) =>
+    new RegExp(`\\bFROM\\s+(?:public\\.)?${r.parent_table}\\b`, 'i').test(
+      p.with_check ?? p.qual ?? '',
+    ),
+  );
+  // These exact references were compared with the installed trigger bodies.
+  // No inference from a trigger name alone, or from current_shop_role's name.
+  const checkedTriggerColumns = {
+    product_bundle_component: ['bundle_product_id', 'component_product_id'],
+    purchase_lot_line: ['purchase_lot_id', 'product_id'],
+    product_ad_spend: ['product_id', 'purchase_lot_id'],
+    purchase_lot_line_allocation: ['order_line_id', 'purchase_lot_line_id'],
+  };
+  const checkedTrigger =
+    relevant.length > 0 && child.every((c) => checkedTriggerColumns[r.child_table]?.includes(c));
+  const alternateGuard = all.find((other) => {
+    if (
+      other.constraint_name === r.constraint_name ||
+      other.child_table !== r.child_table ||
+      other.parent_table !== r.parent_table ||
+      !other.validated
+    )
+      return false;
+    const parts = other.definition.match(/^FOREIGN KEY \(([^)]+)\) REFERENCES [^(]+\(([^)]+)\)/);
+    if (!parts) return false;
+    const childKeys = parts[1].split(',').map((v) => v.trim());
+    const parentKeys = parts[2].split(',').map((v) => v.trim());
+    const includes = (c, p) => childKeys.some((key, i) => key === c && parentKeys[i] === p);
+    return (
+      child.every((c, i) => includes(c, parent[i])) &&
+      common.every(
+        ([c, p]) =>
+          includes(c, p) &&
+          (child.includes(c) ||
+            controls.columns.some(
+              (column) =>
+                column.table === r.child_table && column.column === c && column.nullable === 'NO',
+            )),
+      )
+    );
+  });
+  const writePolicy = (command) =>
+    !r.child_rls ||
+    checks.some(
+      (p) =>
+        [command, 'ALL'].includes(p.cmd) &&
+        p.permissive === 'PERMISSIVE' &&
+        !/^\(?false\)?$/i.test((p.with_check ?? p.qual ?? '').trim()),
+    );
+  const jwtWrite =
+    (r.authenticated_insert_fk_columns && writePolicy('INSERT')) ||
+    (r.authenticated_update_fk_columns && writePolicy('UPDATE'));
+  const evaluation =
+    structural.length === common.length && common.length
+      ? 'Scope structurelle présente (FK) ; autorisation transport distincte'
+      : alternateGuard
+        ? `Scope protégée par la FK composite parallèle ${alternateGuard.constraint_name} ; ne pas compter le FK simple comme faille`
+        : checkedTrigger
+          ? 'Comparaison tenant/shop du parent présente dans trigger ; pas de nouveau test de transport'
+          : policyRelational
+            ? 'WITH CHECK relationnel présent ; chemin privilégié à investiguer'
+            : jwtWrite
+              ? 'NEEDS INVESTIGATION : colonnes FK insérables/modifiables par JWT, appartenance parent non structurellement démontrée'
+              : 'NEEDS INVESTIGATION : écriture JWT non établie (GRANT ou policy absente) ; tracer RPC/services privilégiés';
   rows.push(
-    `| ${r.child_table} → ${r.parent_table} | ${r.constraint_name} | ${structural.join(', ') || 'Aucune scope dans FK'} | ${relevant.map((t) => t.function).join(', ') || 'Aucun trigger relationnel spécialisé'} | ${policyRelational ? 'Relation mentionnée : revue nécessaire' : 'RLS ne démontre pas la relation'} | ${structural.length === common.length && common.length ? 'Contrainte structurelle présente ; transport non retesté' : 'NEEDS INVESTIGATION : vérifier chaque référence et ses appelants'} |`,
+    `| ${r.child_table} → ${r.parent_table} | ${r.constraint_name} | ${structural.join(', ') || 'Aucune scope dans FK'} | INSERT ${r.authenticated_insert_fk_columns}, UPDATE ${r.authenticated_update_fk_columns} | ${relevant.map((t) => t.function).join(', ') || 'Aucun trigger relationnel spécialisé'} | ${policyRelational ? 'Sous-requête parent présente : vérifier égalités' : 'RLS ne démontre pas la relation'} | ${evaluation} |`,
   );
 }
 fs.writeFileSync(
   new URL('count-inconsistent-business-references.sql', import.meta.url),
-  `-- Lecture seule. À exécuter humainement avec visibilité de toutes les lignes ; jamais via anon/RLS masquant des données.\n-- Comptes uniquement. Les shops facultatifs ne sont comparés que lorsque les deux sont non NULL.\n-- Une référence nullable absente est légitime. Un résultat positif impose revue, pas nettoyage automatique.\nBEGIN TRANSACTION READ ONLY;\nSET LOCAL statement_timeout = '30s';\n${selects.join('\nUNION ALL\n')}\nORDER BY reference;\nROLLBACK;\n`,
+  `-- Lecture seule. À exécuter humainement avec visibilité de toutes les lignes ; jamais via anon/RLS masquant des données.\n-- Comptes uniquement. Les shops facultatifs ne sont comparés que lorsque les deux sont non NULL.\n-- Une référence nullable absente est légitime. Un résultat positif impose revue, pas nettoyage automatique.\nBEGIN TRANSACTION READ ONLY;\nSET LOCAL statement_timeout = '30s';\nSET LOCAL row_security = off;\n${selects.join('\nUNION ALL\n')}\nORDER BY reference;\nROLLBACK;\n`,
 );
 fs.writeFileSync(
   new URL('relational-reference-register.md', import.meta.url),
-  `# Inventaire relationnel — catalogue local au 12 novembre 2026\n\n${all.length} FK public → public ; ${pairs.length} ont une scope marchand/boutique des deux côtés. Toutes ces références sont listées ci-dessous. Les ${all.length - pairs.length} autres sont conservées dans le JSON intégral, notamment identités Auth/merchant_account ou relations sans scope dupliquée.\n\nCe tableau vérifie la présence structurelle des contrôles, pas l'exécution complète de chaque transport. RLS de la ligne enfant et assign_default_store_context ne prouvent pas l'appartenance du parent. Un trigger spécialisé peut couvrir certains parents et en oublier d'autres : lire son corps dans relational-controls.json. Un rôle BYPASSRLS n'est pas protégé par une policy. Pas de nouvelle exploitation pour étendre le registre des failles confirmées.\n\n| Référence | Contrainte | Scope dans FK | Trigger candidat | WITH CHECK | Évaluation |\n|---|---|---|---|---|---|\n${rows.join('\n')}\n\nLe comptage généré est une revue structurelle de tenant et de shop non NULL, pas une validation de toute règle métier (par exemple allocation.order_id = order_line.order_id). Le SQL est limité à 30 s et read-only ; timeout ou erreur signifie résultat incomplet, pas zéro incohérence. La production peut diverger du catalogue local ; contrôler son catalogue avant application.\n`,
+  `# Inventaire relationnel — catalogue local au 12 novembre 2026\n\n${all.length} FK public → public ; ${pairs.length} ont une scope marchand/boutique des deux côtés. Toutes ces références sont listées ci-dessous. Les ${all.length - pairs.length} autres sont conservées dans le JSON intégral, notamment identités Auth/merchant_account ou relations sans scope dupliquée.\n\nCe tableau vérifie la présence structurelle des contrôles, pas l'exécution complète de chaque transport. RLS de la ligne enfant et assign_default_store_context ne prouvent pas l'appartenance du parent. Un trigger spécialisé peut couvrir certains parents et en oublier d'autres : lire son corps dans relational-controls.json. Un rôle BYPASSRLS n'est pas protégé par une policy. Pas de nouvelle exploitation pour étendre le registre des failles confirmées. Les GRANT utilisent has_column_privilege pour toutes les colonnes de chaque FK (droits hérités inclus), et ne prouvent pas à eux seuls qu'une ligne valide pourrait être écrite.\n\n| Référence | Contrainte | Scope dans FK | GRANT authenticated colonnes FK | Trigger candidat | WITH CHECK | Évaluation |\n|---|---|---|---|---|---|---|\n${rows.join('\n')}\n\nLe comptage généré est une revue structurelle de tenant et de shop non NULL, pas une validation de toute règle métier (par exemple allocation.order_id = order_line.order_id). Le SQL est limité à 30 s et read-only ; timeout ou erreur signifie résultat incomplet, pas zéro incohérence. La production peut diverger du catalogue local ; contrôler son catalogue avant application.\n`,
 );
