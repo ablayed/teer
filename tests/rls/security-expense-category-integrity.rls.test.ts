@@ -110,6 +110,47 @@ it('positive: own expense remains editable and visible in the financial report',
   expect(JSON.stringify(report)).toContain('Synthetic own category');
 });
 
+it('positive: own JWT retains expense create, edit and delete with an own category', async () => {
+  const actor = actors[0];
+  const created = await actor.client
+    .from('expense')
+    .insert({
+      merchant_account_id: actor.tenantId,
+      category_id: actor.categoryId,
+      amount_minor: 201,
+      spent_at: new Date().toISOString().slice(0, 10),
+      created_by: actor.userId,
+    })
+    .select('id')
+    .single();
+  assert.ok(!created.error && created.data, 'own JWT expense insert must succeed');
+  const id = created.data.id;
+  const changed = await actor.client
+    .from('expense')
+    .update({ amount_minor: 202 })
+    .eq('id', id)
+    .select('amount_minor')
+    .single();
+  expect(changed.error).toBeNull();
+  expect(changed.data?.amount_minor).toBe(202);
+  const deleted = await actor.client.from('expense').delete().eq('id', id).select('id');
+  expect(deleted.error).toBeNull();
+  expect(deleted.data?.length).toBe(1);
+});
+
+it('positive: deleting an own used category remains restricted and preserves its expense', async () => {
+  const created = await createExpenseAction(payload(actors[0].categoryId));
+  assert.ok(created?.data?.ok, 'own expense fixture must succeed');
+  const deletion = await actors[0].client
+    .from('expense_category')
+    .delete()
+    .eq('id', actors[0].categoryId);
+  expect(deletion.error?.code).toBe('23503');
+  const remaining = await admin.from('expense').select('id').eq('id', created.data.id).single();
+  expect(remaining.error).toBeNull();
+  expect(remaining.data?.id).toBe(created.data.id);
+});
+
 it('database: a category tenant cannot change while its own expense references it', async () => {
   const changed = await admin
     .from('expense_category')
