@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { classifyAuthorization } from './m1-result-classification.mjs';
 
 const applicationOrigin = 'http://127.0.0.1:3010';
 const require = createRequire(import.meta.url);
@@ -70,8 +71,21 @@ function cookie(actor) {
 export function registerHttpCases(ctx) {
   const { actors, tenants, admin, fixture, owned, allRoles, managers, results, idFor, httpState } =
     ctx;
-  function record(id, actor, tenant, resource, operation, transport, expected, observed, status) {
-    const passed = expected === observed;
+  function record(
+    id,
+    actor,
+    tenant,
+    resource,
+    operation,
+    transport,
+    expected,
+    observed,
+    status,
+    contractDenied = false,
+  ) {
+    const observationPassed = expected === observed;
+    const classification = classifyAuthorization({ expected, observed, status, contractDenied });
+    const confirmed = ['AUTHORIZATION_CONFIRMED', 'DENIAL_CONFIRMED'].includes(classification);
     results.push({
       id,
       actor: actor.label,
@@ -82,16 +96,12 @@ export function registerHttpCases(ctx) {
       expectedAllowed: expected,
       observedAllowed: observed,
       status,
-      assessment:
-        status >= 500
-          ? 'NEEDS INVESTIGATION: fail-closed response'
-          : passed
-            ? 'EXPECTED BEHAVIOR OBSERVED'
-            : 'MISMATCH',
-      passed,
+      assessment: classification,
+      passed: confirmed ? true : classification === 'VIOLATION_CONFIRMED' ? false : null,
+      observationPassed,
     });
     assert.equal(
-      passed,
+      observationPassed,
       true,
       `${id}: expectedAllowed=${expected}; observedAllowed=${observed}; status=${status}`,
     );
@@ -138,6 +148,8 @@ export function registerHttpCases(ctx) {
             expected,
             observed,
             response.status,
+            response.status === 404 ||
+              (response.status === 200 && /NEXT_REDIRECT|NEXT_HTTP_ERROR_FALLBACK;404/.test(body)),
           );
         });
       if (actor.role === 'agent')
@@ -157,6 +169,7 @@ export function registerHttpCases(ctx) {
             false,
             !denied,
             result.status,
+            denied,
           );
         });
       for (const method of ['GET', 'POST'])
@@ -180,6 +193,20 @@ export function registerHttpCases(ctx) {
           const text = await response.text();
           const expected = owned(actor, tenant) && allRoles.includes(actor.role);
           const observed = response.status === 200 && text.includes(tenant.ids.orders);
+          if (response.status === 503) {
+            assert.equal(
+              expected,
+              false,
+              'a legitimate search must not be accepted as a 503 observation',
+            );
+            const failure = JSON.parse(text);
+            assert.ok(['quota_unavailable', 'audit_unavailable'].includes(failure.error));
+            assert.deepEqual(Object.keys(failure), ['error']);
+            assert.ok(
+              !text.includes(tenant.ids.orders),
+              'processing error must not return order data',
+            );
+          }
           record(
             `HTTP/orders/${method}/${actor.label}/${tenant.label}`,
             actor,
@@ -190,6 +217,7 @@ export function registerHttpCases(ctx) {
             expected,
             observed,
             response.status,
+            [401, 403, 404].includes(response.status),
           );
           if (actor.role === 'agent')
             assert.ok(
@@ -221,6 +249,7 @@ export function registerHttpCases(ctx) {
           expected,
           response.status === 200 && text.includes('LOCAL_STREAM_END_'),
           response.status,
+          [401, 403, 404].includes(response.status),
         );
       });
       test(`HTTP/export-authorization/${actor.label}/${tenant.label}`, async () => {
@@ -230,6 +259,14 @@ export function registerHttpCases(ctx) {
         );
         const body = await response.json();
         const expected = owned(actor, tenant) && managers.includes(actor.role);
+        if (response.status === 503) {
+          assert.equal(expected, false);
+          assert.equal(
+            JSON.stringify(body) === '{"error":"reauthentication_required"}',
+            true,
+            '503 must contain only its expected error code',
+          );
+        }
         // The download token stays only in memory, never in reports or assertion output.
         record(
           `HTTP/export-authorization/${actor.label}/${tenant.label}`,
@@ -241,6 +278,7 @@ export function registerHttpCases(ctx) {
           expected,
           response.status === 200 && typeof body.downloadToken === 'string',
           response.status,
+          [401, 403, 404].includes(response.status),
         );
       });
       test(`HTTP/export-download/${actor.label}/${tenant.label}`, async () => {
@@ -266,6 +304,14 @@ export function registerHttpCases(ctx) {
           },
         );
         const text = await response.text();
+        if (response.status === 503) {
+          assert.equal(expected, false);
+          assert.equal(
+            JSON.stringify(JSON.parse(text)) === '{"error":"reauthentication_required"}',
+            true,
+            '503 must contain only its expected error code',
+          );
+        }
         record(
           `HTTP/export-download/${actor.label}/${tenant.label}`,
           actor,
@@ -276,6 +322,7 @@ export function registerHttpCases(ctx) {
           expected,
           response.status === 200 && text.includes('"synthetic":true'),
           response.status,
+          [401, 403, 404].includes(response.status),
         );
       });
     }
@@ -530,6 +577,11 @@ export function registerHttpCases(ctx) {
             expected,
             observed,
             response.status,
+            [401, 403, 404].includes(response.status) ||
+              (response.status === 200 &&
+                /FORBIDDEN|UNAUTHENTICATED|not_found|order_not_found|customer_not_found/.test(
+                  response.text,
+                )),
           );
         });
       }

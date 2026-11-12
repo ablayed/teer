@@ -475,6 +475,11 @@ for (const actor of actors)
             observedAllowed: allowed,
             errorCode,
             passed,
+            assessment: passed
+              ? expected
+                ? 'AUTHORIZATION_CONFIRMED'
+                : 'DENIAL_CONFIRMED'
+              : 'VIOLATION_CONFIRMED',
           });
           assert.equal(
             passed,
@@ -507,7 +512,20 @@ after(async () => {
         {
           applicableIdentified: 1046,
           executed: results.length,
-          passed: results.filter((r) => r.passed).length,
+          executionCoveragePercent: (results.length / 1046) * 100,
+          controlsConfirmed: results.filter((r) => r.passed === true).length,
+          authorizationEvidencePercent:
+            (results.filter((r) => r.passed === true).length / 1046) * 100,
+          classificationCounts: Object.fromEntries(
+            [...new Set(results.map((r) => r.assessment))].map((key) => [
+              key,
+              results.filter((r) => r.assessment === key).length,
+            ]),
+          ),
+          indeterminate: results.filter((r) => r.passed === null).length,
+          violations: results.filter((r) => r.passed === false).length,
+          observationsMatchingExpectedEffect: results.filter((r) => r.observationPassed ?? r.passed)
+            .length,
           cases: results,
           limits:
             'Identified scope: 640 RLS/RPC cases,100 Route Handler cases,260 Server Action HTTP cases,40 RSC cases,6 private-cost column checks (including revoked agent). Other action variants and direct AI-tool execution are outside this percentage. No driver TeamRole exists; linked Auth users are tested without merchant membership. Twenty negative HTTP cases return 503 and require investigation, not a VERIFIED SECURE classification.',

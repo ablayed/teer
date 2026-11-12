@@ -1,6 +1,8 @@
 # M1 — matrice locale d'autorisation
 
-**Nouveau constat intertenant confirmé : SEC-A-002, haute — catégorie de dépenses étrangère acceptée, libellé privé exposé au rapport et suppression légitime de la catégorie B bloquée.** Voir [diagnostic et preuves](./securite-2-sec-a-002.md). Cette extension compte cinq cas : un conforme et quatre violations. Total identifié/exécuté M1 étendu : **1 051 / 1 051**, dont **1 047 conformes et quatre violations**. La CI verte de la matrice initiale ne détectait pas ce mélange de tenant parent/enfant. Aucun correctif effectué.
+**Suivi Sécurité-3, 12 novembre :** la classification initiale est remplacée par [le diagnostic et les règles corrigées](./securite-3-m1-classification.md). `m1-cases.json` distingue désormais contrôles confirmés et résultats indéterminés. Le total exécuté n'est pas le total d'autorisations validées ; une réponse 503 n'est jamais comptée comme refus confirmé.
+
+**Constat intertenant historique SEC-A-002, haute — catégorie de dépenses étrangère acceptée, libellé privé exposé au rapport et suppression légitime de la catégorie B bloquée.** Voir [diagnostic et preuves](./securite-2-sec-a-002.md). L'extension historique compte cinq cas, dont quatre violations. Total identifié/exécuté étendu : **1 051 / 1 051**, couverture d'exécution uniquement. Ne pas annoncer 1 047 contrôles validés : les erreurs HTTP et les autres contrats non établis doivent en être exclus. La CI verte initiale ne détectait pas ce mélange de tenant parent/enfant. Le correctif est préparé séparément dans #318, pas fusionné ni appliqué à distance.
 
 Date : 11 novembre 2026. Base applicative : `428af3b` (S0 et T1 fusionnés). Aucune correction applicative, migration ni opération distante. Verdict du lot étendu : **VULNERABLE**, pas une attestation de sécurité globale.
 
@@ -29,7 +31,7 @@ Couverture de **ce catalogue borné** = cas exécutés / 1 046. Ce dénominateur
 
 ## Résultats, limites et diagnostic
 
-La matrice élargie a exécuté 1 046 cas, tous conformes aux observations attendues, aucun ignoré. **Vingt refus HTTP retournent 503** : commandes sur boutique étrangère (12), autorisation d'export étrangère (4), téléchargement étranger (4). Aucune donnée cible n'a été observée, mais ces cas restent **NEEDS INVESTIGATION** : l'erreur serveur peut masquer une garde incomplète et ne satisfait pas à elle seule le contrat de refus métier.
+La matrice initiale avait exécuté 1 046 cas sans marqueur interdit observé, aucun ignoré. Ce résultat historique n'est pas une validation complète des autorisations. **Vingt réponses HTTP retournent 503** : commandes sur boutique étrangère (12), autorisation d'export étrangère (4), téléchargement étranger (4). Ces cas restent **NEEDS INVESTIGATION** ; leur cause et le classement corrigé sont dans le suivi Sécurité-3. D'autres négatifs sans contrat identifiable peuvent aussi rester indéterminés.
 
 Les premières tentatives conservées dans les preuves locales ont exposé des erreurs de harnais : l'action de liste d'équipe exige `{}` ; les requêtes RSC Next sans `_rsc` passent par une redirection 307 locale. Le harnais envoie désormais le schéma réel et suit uniquement cette redirection sur la même origine. Aucune assertion d'accès autorisé/interdit, aucun test préexistant, timeout ou seuil n'a été affaibli. Aucun échec n'est supprimé des preuves locales.
 
@@ -41,7 +43,7 @@ Installer les dépendances verrouillées sans scripts, démarrer Supabase local 
 
 ```powershell
 $env:M1_RESULTS_PATH='docs/security/m1-cases.json'
-node --test --test-concurrency=1 tests/security/m1-authorization-matrix.mjs
+node tests/security/f2-run-authorization-matrix.mjs
 pnpm exec vitest run tests/rls/ia-assistant.rls.test.ts tests/unit/ia/red-team.test.ts
 ```
 
