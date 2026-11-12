@@ -19,6 +19,8 @@ entrées ci-dessous existent précisément pour qu'une notion déjà tranchée n
 
 ## Formulations figées
 
+Assistant IA — indisponibilité : « L’assistant est momentanément indisponible. Réessayez dans un instant. » Limite de générations : « La limite de demandes de l’assistant est atteinte. Réessayez dans une minute. » Aucun détail Redis ou fournisseur n'est affiché (lot sécurité F2).
+
 | Chaîne | Statut | Raison |
 |---|---|---|
 | « Marge provisoire — en attente de : {liste des coûts manquants} » | **Formulation figée.** Nomme explicitement CHAQUE entrée manquante (ex. « Transport pas encore facturé », « Publicité pas encore saisie ») — jamais un « Marge provisoire » nu sans dire quoi manque. | Lot F2 (rentabilité par arrivage), `purchase-lot-detail-panel.tsx` (`MISSING_INPUT_LABELS`/`missingInputLabel`). Une marge provisoire sans le détail de ce qui manque oblige le marchand à deviner ; le nommer explicitement est ce qui rend la ligne actionnable. |

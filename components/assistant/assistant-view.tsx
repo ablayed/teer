@@ -406,7 +406,11 @@ function ChatPanel({
 
         {error ? (
           <p className="self-start text-danger text-sm">
-            Une erreur est survenue. Réessaie dans un instant.
+            {error.message.includes('generation_unavailable')
+              ? 'L’assistant est momentanément indisponible. Réessayez dans un instant.'
+              : error.message.includes('generation_limited')
+                ? 'La limite de demandes de l’assistant est atteinte. Réessayez dans une minute.'
+                : 'Une erreur est survenue. Réessayez dans un instant.'}
           </p>
         ) : null}
       </div>

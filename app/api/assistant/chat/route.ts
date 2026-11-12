@@ -1,5 +1,6 @@
 import { buildAiToolSet } from '@/lib/ia/ai-tools';
 import { persistMessage, touchConversation, validateConversation } from '@/lib/ia/conversation';
+import { recordIaGenerationUsage, reserveIaGeneration } from '@/lib/ia/generation-quota';
 import { checkToolRateLimit } from '@/lib/ia/rate-limit';
 import { resolveIaContext } from '@/lib/ia/server-context';
 import { buildSystemPrompt } from '@/lib/ia/system-prompt';
@@ -115,8 +116,24 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const ctx = { ...auth.ctx, conversationId: validId };
+  const reservation = await reserveIaGeneration(ctx);
+  if (!reservation.ok) {
+    return new Response(
+      JSON.stringify({
+        error: reservation.reason === 'limited' ? 'generation_limited' : 'generation_unavailable',
+      }),
+      {
+        status: reservation.reason === 'limited' ? 429 : 503,
+        headers: {
+          'content-type': 'application/json',
+          ...(reservation.reason === 'limited' ? { 'retry-after': '60' } : {}),
+        },
+      },
+    );
+  }
   await persistMessage(ctx.supabase, ctx.merchantAccountId, validId, 'user', userText);
 
+  let usageRecorded = false;
   const result = streamText({
     model: groq(MODEL),
     system: buildSystemPrompt(ctx.role),
@@ -125,7 +142,20 @@ export async function POST(req: Request): Promise<Response> {
     stopWhen: stepCountIs(5),
     temperature: 0,
     maxRetries: 3, // repli 429 fournisseur = backoff exponentiel automatique
-    onFinish: async ({ text }) => {
+    onError: async () => {
+      if (usageRecorded) return;
+      usageRecorded = true;
+      await recordIaGenerationUsage(ctx, { failed: true });
+    },
+    onFinish: async ({ text, totalUsage }) => {
+      if (!usageRecorded) {
+        usageRecorded = true;
+        await recordIaGenerationUsage(ctx, {
+          failed: false,
+          inputTokens: totalUsage.inputTokens,
+          outputTokens: totalUsage.outputTokens,
+        });
+      }
       await persistMessage(ctx.supabase, ctx.merchantAccountId, validId, 'assistant', text);
       await touchConversation(ctx.supabase, validId);
     },
